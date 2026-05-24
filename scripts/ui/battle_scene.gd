@@ -26,6 +26,9 @@ const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 @onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title
 @onready var _preview_body: Label = $HudLayer/PreviewPanel/VBox/Body
 @onready var _message_label: Label = $HudLayer/TopCenter/Message
+@onready var _queue_title: Label = $HudLayer/TurnQueuePanel/VBox/Title
+@onready var _queue_row: HBoxContainer = $HudLayer/TurnQueuePanel/VBox/QueueRow
+@onready var _queue_hint: Label = $HudLayer/TurnQueuePanel/VBox/Hint
 @onready var _move_btn: Button = $HudLayer/BottomBar/ActionBar/MoveBtn
 @onready var _attack_btn: Button = $HudLayer/BottomBar/ActionBar/AttackBtn
 @onready var _skill_btn: Button = $HudLayer/BottomBar/ActionBar/SkillBtn
@@ -41,6 +44,9 @@ var _inspect_uid: String = ""
 var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _panel_visible: bool = true
 var _enemy_phase_running: bool = false  # 敌方回合进行中，锁定玩家输入
+var _player_animating: bool = false     # 玩家移动动画进行中，锁定输入
+var _animation_speed_scale: float = 1.0
+var _enemy_turn_queue: Array[String] = []
 
 # 弹出式槽位选择器
 var _slot_popup: Control = null
@@ -50,7 +56,6 @@ func _ready() -> void:
 	_controller.state_changed.connect(_refresh)
 	_controller.battle_ended.connect(_on_battle_ended)
 	_controller.anim_move.connect(_on_anim_move)
-	_controller.anim_move_path.connect(_on_anim_move_path)
 	_controller.anim_damage.connect(_on_anim_damage)
 	_controller.anim_gem_flash.connect(_on_anim_gem_flash)
 	_board.cell_clicked.connect(_on_cell_clicked)
@@ -59,6 +64,7 @@ func _ready() -> void:
 	_toggle_panel_btn.pressed.connect(_on_toggle_panel)
 	_style_action_buttons()
 	_create_slot_popup()
+	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
 
 
@@ -80,7 +86,7 @@ func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
 	_controller.start_encounter(encounter_id)
 	_inspect_uid = ""
-	_controller.select_action(Constants.ACTION_EXTRACT if encounter_id == "tutorial_001" else Constants.ACTION_MOVE)
+	_controller.select_action("")
 	_refresh()
 	if encounter_id == "tutorial_001":
 		_show_tutorial_intro()
@@ -90,8 +96,12 @@ func _on_action_pressed(action: String) -> void:
 	if _enemy_phase_running:
 		return
 	_dismiss_popup()
-	_controller.select_action(action)
-	_message_label.text = _controller.get_action_hint()
+	if _controller.selected_action == action:
+		_controller.select_action("")
+		_message_label.text = "已取消当前操作"
+	else:
+		_controller.select_action(action)
+		_message_label.text = _controller.get_action_hint()
 	_refresh()
 
 
@@ -100,7 +110,7 @@ func _on_action_pressed(action: String) -> void:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func _on_cell_clicked(cell: Vector2i) -> void:
-	if _enemy_phase_running:
+	if _enemy_phase_running or _player_animating:
 		return
 	var state := _controller.state
 	if state == null or state.phase != Constants.PHASE_PLAYER:
@@ -111,7 +121,18 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 	match _controller.selected_action:
 		Constants.ACTION_MOVE:
 			_dismiss_popup()
-			_show_result(_controller.try_move(cell))
+			var move_result := _controller.try_move(cell)
+			if move_result.get("ok", false):
+				# 锁定输入，清除高亮，逐格播放动画，完成后刷新
+				_player_animating = true
+				_board.set_highlights({})
+				var events: Array = move_result.get("move_events", [])
+				for ev in events:
+					await _play_anim_event(ev)
+				_player_animating = false
+				_refresh()
+			else:
+				_show_result(move_result)
 		Constants.ACTION_ATTACK:
 			_dismiss_popup()
 			if unit != null:
@@ -125,7 +146,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				# 播放技能动画
 				var skill_events: Array = skill_result.get("events", [])
 				for ev in skill_events:
-					_play_anim_event(ev)
+					await _play_anim_event(ev)
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			# 点击有效目标 → 显示槽位弹窗（单位或地块）
 			var targets: Array = _controller.get_highlights().get("targets", [])
@@ -272,8 +293,14 @@ func _run_enemy_phase_async() -> void:
 	_refresh()
 
 	var enemies := _controller.get_sorted_enemies()
+	_enemy_turn_queue.clear()
 	for enemy in enemies:
+		_enemy_turn_queue.append(enemy.uid)
+	_refresh_turn_queue()
+	for enemy in enemies:
+		_refresh_turn_queue()
 		if not enemy.alive:
+			_consume_enemy_turn(enemy.uid)
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
@@ -286,14 +313,17 @@ func _run_enemy_phase_async() -> void:
 			await _play_anim_event(ev)
 
 		# 每个敌人之间短暂停顿
-		await get_tree().create_timer(0.2).timeout
+		await get_tree().create_timer(_scaled_anim_time(0.2)).timeout
 		_board.queue_redraw()
+		_consume_enemy_turn(enemy.uid)
+		_refresh_turn_queue()
 
 	# 所有敌人执行完毕
 	if _controller.state.phase != Constants.PHASE_ENDED:
 		_controller.finish_enemy_phase()
 
 	_enemy_phase_running = false
+	_enemy_turn_queue.clear()
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
 
@@ -306,13 +336,13 @@ func _play_anim_event(ev: Dictionary) -> void:
 			var from_pos: Vector2i = ev.get("from", Vector2i.ZERO)
 			var to_pos: Vector2i = ev.get("to", Vector2i.ZERO)
 			_board.animate_move(uid, from_pos, to_pos)
-			await get_tree().create_timer(0.22).timeout
+			await _board.animation_finished
 		"damage":
 			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
 			var damage: int = ev.get("damage", 1)
 			var is_crit: bool = ev.get("is_crit", false)
 			_board.play_damage_effect(pos, damage, is_crit)
-			await get_tree().create_timer(0.3).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.3)).timeout
 		"explode":
 			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
 			var radius: int = ev.get("radius", 1)
@@ -322,12 +352,12 @@ func _play_anim_event(ev: Dictionary) -> void:
 				if cell != pos:
 					_board.play_damage_effect(cell, 4, true)
 			_board.queue_redraw()
-			await get_tree().create_timer(0.6).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
 		"gem_flash":
 			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
 			var color: Color = ev.get("color", Color.WHITE)
 			_board.play_gem_flash(pos, color)
-			await get_tree().create_timer(0.25).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.25)).timeout
 		_:
 			pass  # unit_start, unit_end 等标记不需要动画
 
@@ -361,12 +391,6 @@ func _on_toggle_panel() -> void:
 	_panel_visible = not _panel_visible
 	_status_panel.visible = _panel_visible
 	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
-	# 调整棋盘区域
-	var board_layer: Control = $BoardLayer
-	if _panel_visible:
-		board_layer.offset_left = 240.0
-	else:
-		board_layer.offset_left = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -408,6 +432,11 @@ func _refresh() -> void:
 	_board.state = state
 	_board.selected_unit_uid = _inspect_uid
 	_board.set_highlights(_controller.get_highlights())
+	if not _enemy_phase_running:
+		_enemy_turn_queue.clear()
+		for enemy in _controller.get_sorted_enemies():
+			_enemy_turn_queue.append(enemy.uid)
+	_refresh_turn_queue()
 	_refresh_unit_list()
 	_refresh_inspect()
 	_refresh_action_buttons()
@@ -422,11 +451,13 @@ func _refresh_unit_list() -> void:
 			continue
 		var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
 		var hp_text: String = "♥%d/%d" % [unit.hp, unit.max_hp]
+		var speed_text: String = " S%d" % unit.speed
+		var armor_text: String = " A%d" % CombatRules.current_armor(state, unit)
 		var slot_text: String = _slot_icons(unit, state)
 		var intent_text: String = ""
 		if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 			intent_text = " →%s" % unit.intent.preview_text
-		var line: String = "%s %s%s%s" % [unit_name, hp_text, slot_text, intent_text]
+		var line: String = "%s %s%s%s%s%s" % [unit_name, hp_text, speed_text, armor_text, slot_text, intent_text]
 		var idx: int = _unit_list.add_item(line)
 		_unit_list.set_item_metadata(idx, unit.uid)
 		if unit.uid == _inspect_uid:
@@ -466,7 +497,8 @@ func _refresh_inspect() -> void:
 			_inspect_body.text = ""
 		else:
 			var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
-			_inspect_title.text = "%s  %d/%d HP" % [unit_name, unit.hp, unit.max_hp]
+			var armor_value := CombatRules.current_armor(state, unit)
+			_inspect_title.text = "%s  %d/%d HP  护甲%d" % [unit_name, unit.hp, unit.max_hp, armor_value]
 			var lines: Array[String] = []
 			if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 				lines.append("意图: %s" % unit.intent.preview_text)
@@ -583,11 +615,6 @@ func _on_anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> vo
 	_board.animate_move(unit_uid, from_pos, to_pos)
 
 
-func _on_anim_move_path(events: Array[Dictionary]) -> void:
-	for ev in events:
-		await _play_anim_event(ev)
-
-
 func _on_anim_damage(grid: Vector2i, damage: int, is_crit: bool) -> void:
 	_board.play_damage_effect(grid, damage, is_crit)
 
@@ -671,3 +698,119 @@ func _show_tutorial_intro() -> void:
 	overlay.modulate.a = 0.0
 	var tween := create_tween()
 	tween.tween_property(overlay, "modulate:a", 1.0, 0.3)
+
+
+func set_animation_speed_scale(speed_scale: float) -> void:
+	_animation_speed_scale = maxf(speed_scale, 0.05)
+	_apply_animation_speed()
+
+
+func _apply_animation_speed() -> void:
+	if _board != null:
+		_board.set_animation_speed_scale(_animation_speed_scale)
+
+
+func _scaled_anim_time(base_duration: float) -> float:
+	return base_duration / _animation_speed_scale
+
+
+func _consume_enemy_turn(enemy_uid: String) -> void:
+	var idx: int = _enemy_turn_queue.find(enemy_uid)
+	if idx >= 0:
+		_enemy_turn_queue.remove_at(idx)
+
+
+func _refresh_turn_queue() -> void:
+	var state := _controller.state
+	if state == null:
+		_queue_title.text = "ATB 时间轴"
+		_queue_hint.text = "ACTIVE: -"
+		return
+	_queue_title.text = "ATB 时间轴"
+	for child in _queue_row.get_children():
+		child.queue_free()
+	var active_uid: String = _get_active_turn_uid()
+	var active_unit: UnitState = state.units.get(active_uid, null)
+	if active_unit != null:
+		var active_name: String = _data_registry().get_unit_display_name(active_unit.unit_def_id)
+		_queue_hint.text = "ACTIVE: %s (S%d)" % [active_name, active_unit.speed]
+	else:
+		_queue_hint.text = "ACTIVE: -"
+	var timeline: Array[String] = _build_turn_timeline_uids(active_uid, 10)
+	for uid in timeline:
+		var unit: UnitState = state.units.get(uid, null)
+		if unit == null or not unit.alive:
+			continue
+		_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid))
+
+
+func _get_active_turn_uid() -> String:
+	var state := _controller.state
+	if state == null:
+		return ""
+	if state.phase == Constants.PHASE_PLAYER:
+		var player: UnitState = state.get_player()
+		return player.uid if player != null and player.alive else ""
+	if _enemy_phase_running and not _enemy_turn_queue.is_empty():
+		return _enemy_turn_queue[0]
+	return ""
+
+
+func _build_turn_timeline_uids(active_uid: String, max_items: int) -> Array[String]:
+	var state := _controller.state
+	if state == null:
+		return []
+	var units: Array = []
+	for unit in state.units.values():
+		if unit.alive:
+			units.append(unit)
+	units.sort_custom(func(a: UnitState, b: UnitState) -> bool:
+		if a.speed == b.speed:
+			return a.uid < b.uid
+		return a.speed > b.speed
+	)
+	if units.is_empty():
+		return []
+	var ordered: Array[String] = []
+	for unit in units:
+		ordered.append(unit.uid)
+	var start_idx: int = 0
+	if not active_uid.is_empty():
+		var idx: int = ordered.find(active_uid)
+		if idx >= 0:
+			start_idx = idx
+	var timeline: Array[String] = []
+	for i in range(max_items):
+		timeline.append(ordered[(start_idx + i) % ordered.size()])
+	return timeline
+
+
+func _create_timeline_avatar(unit: UnitState, is_active: bool) -> Control:
+	var root := VBoxContainer.new()
+	root.custom_minimum_size = Vector2(44, 46)
+	root.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(38, 38)
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = Color(0.12, 0.14, 0.18, 0.95)
+	frame_style.border_color = Color(1.0, 0.85, 0.35) if is_active else Color(0.38, 0.42, 0.5, 0.85)
+	frame_style.set_border_width_all(2 if is_active else 1)
+	frame_style.set_corner_radius_all(4)
+	frame.add_theme_stylebox_override("panel", frame_style)
+	root.add_child(frame)
+
+	var icon := TextureRect.new()
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(30, 30)
+	icon.texture = UnitVisuals.get_unit_texture(unit.unit_def_id)
+	icon.modulate = Color(1.0, 1.0, 1.0) if unit.alive else Color(0.4, 0.4, 0.4)
+	frame.add_child(icon)
+
+	var speed_label := Label.new()
+	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	speed_label.text = "S%d" % unit.speed
+	speed_label.modulate = Color(1.0, 0.9, 0.5) if is_active else Color(0.82, 0.84, 0.9)
+	root.add_child(speed_label)
+	return root

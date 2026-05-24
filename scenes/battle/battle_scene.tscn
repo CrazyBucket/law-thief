@@ -152,6 +152,32 @@ theme_override_font_sizes/font_size = 18
 horizontal_alignment = 1
 text = "选择操作"
 
+[node name="TurnQueuePanel" type="PanelContainer" parent="HudLayer"]
+layout_mode = 0
+offset_left = 1048.0
+offset_top = 8.0
+offset_right = 1320.0
+offset_bottom = 152.0
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/TurnQueuePanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="HudLayer/TurnQueuePanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "ATB 时间轴"
+
+[node name="QueueRow" type="HBoxContainer" parent="HudLayer/TurnQueuePanel/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(252, 48)
+theme_override_constants/separation = 4
+
+[node name="Hint" type="Label" parent="HudLayer/TurnQueuePanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.84, 0.9, 1)
+text = "ACTIVE: -"
+
 [node name="TogglePanelBtn" type="Button" parent="HudLayer"]
 layout_mode = 0
 offset_left = 236.0

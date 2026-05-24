@@ -123,6 +123,7 @@ func _register_unit_defs() -> void:
 			"display_name": "窃律者",
 			"max_hp": 6,
 			"move_points": 3,
+			"speed": 12,
 			"base_attack": 1,
 			"ai_profile_id": "player",
 			"slots": [
@@ -135,6 +136,7 @@ func _register_unit_defs() -> void:
 			"display_name": "自爆工兵",
 			"max_hp": 2,
 			"move_points": 3,
+			"speed": 11,
 			"base_attack": 1,
 			"ai_profile_id": "bomber",
 			"slots": [
@@ -147,6 +149,7 @@ func _register_unit_defs() -> void:
 			"display_name": "训练守卫",
 			"max_hp": 1,
 			"move_points": 1,
+			"speed": 8,
 			"base_attack": 1,
 			"ai_profile_id": "melee_chase",
 			"slots": [
@@ -159,6 +162,7 @@ func _register_unit_defs() -> void:
 			"display_name": "重甲守卫",
 			"max_hp": 3,
 			"move_points": 1,
+			"speed": 7,
 			"base_attack": 1,
 			"ai_profile_id": "guard",
 			"slots": [
@@ -171,6 +175,7 @@ func _register_unit_defs() -> void:
 			"display_name": "毒虫",
 			"max_hp": 2,
 			"move_points": 2,
+			"speed": 10,
 			"base_attack": 1,
 			"ai_profile_id": "poison_roamer",
 			"slots": [
@@ -183,6 +188,7 @@ func _register_unit_defs() -> void:
 			"display_name": "引力眼",
 			"max_hp": 2,
 			"move_points": 0,
+			"speed": 9,
 			"base_attack": 0,
 			"ai_profile_id": "puller",
 			"slots": [
@@ -195,6 +201,7 @@ func _register_unit_defs() -> void:
 			"display_name": "小怪",
 			"max_hp": 1,
 			"move_points": 2,
+			"speed": 9,
 			"base_attack": 1,
 			"ai_profile_id": "melee_chase",
 			"slots": [
@@ -207,6 +214,7 @@ func _register_unit_defs() -> void:
 			"display_name": "窃贼",
 			"max_hp": 2,
 			"move_points": 3,
+			"speed": 13,
 			"base_attack": 1,
 			"ai_profile_id": "thief",
 			"slots": [
@@ -219,6 +227,7 @@ func _register_unit_defs() -> void:
 			"display_name": "电塔",
 			"max_hp": 3,
 			"move_points": 0,
+			"speed": 6,
 			"base_attack": 0,
 			"ai_profile_id": "turret",
 			"slots": [

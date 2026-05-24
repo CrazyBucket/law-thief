@@ -39,6 +39,7 @@ const ACTION_EXTRACT := "extract"
 const ACTION_INSERT := "insert"
 const ACTION_TRIGGER := "trigger"
 const ACTION_END_TURN := "end_turn"
+const ACTION_NONE := ""
 
 const EXTRACT_RANGE := 3
 const INSERT_RANGE := 3

@@ -34,8 +34,8 @@ static func _compute_intent_from_ai(state: GameState, unit: UnitState) -> Intent
 			intent.type = "melee_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
-			intent.damage = unit.base_attack
-			intent.preview_text = "近战攻击 (%d)" % unit.base_attack
+			intent.damage = CombatRules.attack_damage(state, unit)
+			intent.preview_text = "近战攻击 (%d)" % intent.damage
 
 		EnemyAI.ActionType.SKILL_RED:
 			var red_slot := unit.get_slot(Constants.SLOT_RED)
@@ -83,12 +83,12 @@ static func _build_skill_intent(state: GameState, unit: UnitState, gem: GemState
 
 		Constants.GEM_GRAVITY:
 			intent.type = "pull"
-			intent.preview_text = "引力拉近"
+			intent.preview_text = "引力拉近+束缚"
 
 		Constants.GEM_POISON:
 			intent.type = "poison_attack"
-			intent.damage = unit.base_attack
-			intent.preview_text = "毒攻击 (%d+毒)" % unit.base_attack
+			intent.damage = CombatRules.attack_damage(state, unit)
+			intent.preview_text = "毒攻击 (%d+毒)" % intent.damage
 
 		Constants.GEM_CONDUCTIVE:
 			intent.type = "shock"
@@ -132,7 +132,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 		"melee_attack":
 			var attacked: bool = _execute_melee(state, unit, intent)
 			if attacked:
-				anim_events.append({"type": "damage", "pos": intent.target_pos, "damage": unit.base_attack, "is_crit": false})
+				anim_events.append({"type": "damage", "pos": intent.target_pos, "damage": intent.damage, "is_crit": false})
 		"charge_explode":
 			GemEffects.on_red_action(state, unit, intent)
 			anim_events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
@@ -147,6 +147,15 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append({"type": "gem_flash", "pos": intent.target_pos, "color": Color(0.9, 0.2, 0.2)})
 		"lawless_move":
 			pass  # 移动已在上面执行
+		"lawless_attack":
+			var lawless_target: UnitState = state.units.get(intent.target_uid, null)
+			if lawless_target != null and lawless_target.alive and BoardUtils.manhattan(unit.pos, lawless_target.pos) == 1:
+				CombatRules.apply_damage(state, lawless_target, intent.damage, unit.uid, "lawless_attack")
+				anim_events.append({"type": "damage", "pos": lawless_target.pos, "damage": intent.damage, "is_crit": true})
+		"lawless_extract":
+			var extracted := _execute_lawless_extract(state, unit, intent.target_uid)
+			if extracted:
+				anim_events.append({"type": "gem_flash", "pos": unit.pos, "color": Color(0.95, 0.25, 0.25)})
 		"move":
 			pass  # 纯移动，无行动
 
@@ -195,25 +204,69 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 		break
 
 
+static func _execute_lawless_extract(state: GameState, unit: UnitState, target_uid: String) -> bool:
+	var target: UnitState = state.units.get(target_uid, null)
+	if target == null or not target.alive:
+		return false
+	if BoardUtils.manhattan(unit.pos, target.pos) > Constants.EXTRACT_RANGE:
+		return false
+	var target_gem_uid := unit.lawless_target_gem_uid
+	for slot in target.slots:
+		if slot.gem_uid != target_gem_uid:
+			continue
+		var stolen_gem: GemState = state.gems.get(target_gem_uid, null)
+		slot.gem_uid = ""
+		if stolen_gem != null:
+			var red_slot := unit.get_slot(Constants.SLOT_RED)
+			if red_slot != null and red_slot.gem_uid.is_empty():
+				red_slot.gem_uid = stolen_gem.uid
+				stolen_gem.owner_uid = unit.uid
+				stolen_gem.slot_index = unit.slots.find(red_slot)
+			else:
+				stolen_gem.owner_uid = unit.uid
+				stolen_gem.slot_index = -1
+		unit.lawless = false
+		unit.lawless_target_gem_uid = ""
+		unit.remove_status("lawless")
+		state.log("%s 夺回了失去的宝石" % unit.uid)
+		return true
+	return false
+
+
 # ─── 失律意图（被偷红宝石后的混乱行为） ─────────────────────────────────────
 static func _lawless_intent(state: GameState, unit: UnitState) -> IntentState:
 	var gem: GemState = state.gems.get(unit.lawless_target_gem_uid, null)
 	var target_pos := unit.pos
+	var target_uid := ""
 	if gem != null:
 		if gem.owner_uid == state.player_uid and not state.held_gem_uid.is_empty():
 			var player := state.get_player()
 			if player != null:
 				target_pos = player.pos
+				target_uid = player.uid
 		elif gem.owner_uid != "":
 			var owner: UnitState = state.units.get(gem.owner_uid, null)
 			if owner != null:
 				target_pos = owner.pos
+				target_uid = owner.uid
+	var damage := CombatRules.attack_damage(state, unit) + 1
 	var intent := IntentState.new()
-	intent.type = "lawless_move"
 	intent.source_uid = unit.uid
+	intent.target_uid = target_uid
+	if target_uid != "" and BoardUtils.manhattan(unit.pos, target_pos) <= Constants.EXTRACT_RANGE:
+		intent.type = "lawless_extract"
+		intent.target_pos = unit.pos
+		intent.preview_text = "失律夺回宝石"
+		return intent
 	intent.path = BoardUtils.path_toward(state, unit.pos, target_pos, unit.move_points, unit.uid)
 	intent.target_pos = intent.path.back() if not intent.path.is_empty() else unit.pos
-	intent.preview_text = "失律追逐宝石"
+	if target_uid != "" and BoardUtils.manhattan(intent.target_pos, target_pos) == 1:
+		intent.type = "lawless_attack"
+		intent.damage = damage
+		intent.preview_text = "失律狂袭 (%d)" % damage
+	else:
+		intent.type = "lawless_move"
+		intent.preview_text = "失律追逐宝石"
 	return intent
 
 

@@ -8,7 +8,9 @@ var pos: Vector2i = Vector2i.ZERO
 var hp: int = 1
 var max_hp: int = 1
 var move_points: int = 1
+var speed: int = 10
 var base_attack: int = 1
+var armor: int = 0
 var slots: Array = []
 var statuses: Array = []
 var intent: IntentState = null
@@ -27,7 +29,9 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 	unit.hp = def.get("max_hp", 1)
 	unit.max_hp = def.get("max_hp", 1)
 	unit.move_points = def.get("move_points", 1)
+	unit.speed = def.get("speed", 10)
 	unit.base_attack = def.get("base_attack", 1)
+	unit.armor = def.get("armor", 0)
 	unit.ai_profile_id = def.get("ai_profile_id", "melee_chase")
 	for slot_data in def.get("slots", []):
 		unit.slots.append(

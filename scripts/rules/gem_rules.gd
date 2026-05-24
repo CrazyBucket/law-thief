@@ -69,6 +69,8 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if state.player_acted:
 		return _fail("本回合已行动")
+	if slot.slot_type != Constants.SLOT_RED:
+		return _fail("仅红槽可主动触发")
 	if slot.gem_uid.is_empty():
 		return _fail("槽位为空")
 	if not slot.is_operable(state.turn_index):
@@ -82,7 +84,8 @@ static func trigger(state: GameState, actor: UnitState, target_unit: UnitState, 
 	var check := can_trigger(state, actor, target_unit, slot)
 	if not check.get("ok", false):
 		return check
-	GemEffects.trigger_gem(state, target_unit.uid, slot)
+	if not GemEffects.trigger_gem(state, target_unit.uid, slot):
+		return _fail("该槽位不支持主动触发")
 	IntentSystem.refresh_all_intents(state)
 	state.player_acted = true
 	return _ok()

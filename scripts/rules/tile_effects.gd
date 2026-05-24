@@ -22,10 +22,10 @@ static func on_altar_activated(state: GameState, tile: TileState, gem: GemState)
 			# 引力漩涡：将所有敌人拉向祭坛 1 格
 			GemEffects.pull_around(state, tile.pos, 4, 1)
 		Constants.GEM_HEAVY_ARMOR:
-			# 铁壁祝福：给玩家加 4 点护盾
+			# 铁壁祝福：给玩家加 4 点护甲
 			var player := state.get_player()
 			if player != null:
-				StatusRules.apply_shield(state, player, 4, 3)
+				StatusRules.apply_armor(state, player, 4, 3)
 		Constants.GEM_CONDUCTIVE:
 			# 电磁脉冲：对所有水洼上的单位造成 2 点伤害
 			for key in state.tiles.keys():
@@ -63,10 +63,10 @@ static func tick_pillar_aura(state: GameState, tile: TileState) -> void:
 		var gem_id: String = modifier.get("payload", {}).get("gem_id", "")
 		match gem_id:
 			Constants.GEM_HEAVY_ARMOR:
-				# 每回合给范围内友方加 1 点护盾
+				# 每回合给范围内友方加 1 点护甲
 				var player := state.get_player()
 				if player != null and BoardUtils.manhattan(player.pos, tile.pos) <= 2:
-					StatusRules.apply_shield(state, player, 1, 1)
+					StatusRules.apply_armor(state, player, 1, 1)
 			Constants.GEM_POISON:
 				# 每回合对范围内敌人施加毒
 				for unit in state.units.values():

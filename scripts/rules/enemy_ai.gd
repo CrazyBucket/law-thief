@@ -34,6 +34,7 @@ static func _w(profile: Dictionary, key: String, fallback: float = 0.0) -> float
 static func decide(state: GameState, enemy: UnitState) -> Dictionary:
 	## 返回 { "move_path": Array[Vector2i], "action": ActionCandidate }
 	var profile: Dictionary = AIProfiles.get_profile(enemy.ai_profile_id)
+	var path_profile: Dictionary = _build_path_cost_profile(profile)
 	var candidates: Array = _generate_all_candidates(state, enemy, profile)
 
 	if candidates.is_empty():
@@ -48,7 +49,7 @@ static func decide(state: GameState, enemy: UnitState) -> Dictionary:
 	# 构建移动路径
 	var move_path: Array[Vector2i] = []
 	if best.move_target != Vector2i(-1, -1) and best.move_target != enemy.pos:
-		move_path = BoardUtils.path_toward(state, enemy.pos, best.move_target, enemy.move_points, enemy.uid)
+		move_path = BoardUtils.path_toward(state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, path_profile)
 
 	return {"move_path": move_path, "action": best}
 
@@ -56,9 +57,14 @@ static func decide(state: GameState, enemy: UnitState) -> Dictionary:
 # ─── 生成所有候选行动 ─────────────────────────────────────────────────────
 static func _generate_all_candidates(state: GameState, enemy: UnitState, profile: Dictionary) -> Array:
 	var candidates: Array = []
+	var path_profile: Dictionary = _build_path_cost_profile(profile)
 
 	# 获取所有可达格子（包括原地）
-	var reachable: Array[Vector2i] = BoardUtils.reachable_cells(state, enemy.pos, enemy.move_points, enemy.uid)
+	var reachable: Array[Vector2i] = []
+	if enemy.has_status("rooted"):
+		reachable = [] as Array[Vector2i]
+	else:
+		reachable = BoardUtils.reachable_cells(state, enemy.pos, enemy.move_points, enemy.uid, path_profile)
 	reachable.append(enemy.pos)  # 原地也是选项
 
 	for move_pos in reachable:
@@ -109,7 +115,7 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 	candidate.action_target_uid = player.uid
 
 	# 打分
-	var damage_dealt: int = enemy.base_attack
+	var damage_dealt: int = CombatRules.attack_damage(state, enemy)
 	var score: float = float(damage_dealt) * _w(profile, "w_damage", 10.0)
 
 	# 击杀加分
@@ -200,7 +206,7 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
-	if dist > 3:  # 引力范围
+	if dist > 4:  # 引力范围
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -208,7 +214,7 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 
-	var score: float = _w(profile, "w_pull", 15.0)
+	var score: float = _w(profile, "w_pull", 15.0) + 8.0
 	# 拉到危险地块加分
 	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
 	var tile: TileState = state.get_tile(pull_dest)
@@ -216,6 +222,8 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 		score += float(Constants.SPIKE_DAMAGE) * _w(profile, "w_damage", 10.0)
 	if tile.has_modifier("poison_fog"):
 		score += _w(profile, "w_damage", 10.0) * 0.5
+	# 引力会附带束缚，距离越远价值越高
+	score += float(dist) * 1.2
 
 	candidate.score = score
 	candidate.description = "引力拉近"
@@ -234,7 +242,7 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 
-	var score: float = float(enemy.base_attack) * _w(profile, "w_damage", 10.0)
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
 	score += _w(profile, "w_poison", 8.0)  # 附加中毒价值
 
 	candidate.score = score
@@ -365,6 +373,17 @@ static func _evaluate_move_only(state: GameState, enemy: UnitState, reachable: A
 		results.append(candidate)
 
 	return results
+
+
+# ─── 路径权重构建 ───────────────────────────────────────────────────────────
+static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
+	return {
+		"base_step_cost": _w(profile, "path_base_step_cost", 1.0),
+		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
+		"poison_damage_weight": _w(profile, "path_poison_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
+		"water_cost_bias": _w(profile, "path_water_cost_bias", 0.0),
+		"allow_partial_path": profile.get("allow_partial_path", true),
+	}
 
 
 # ─── 地块安全评估 ─────────────────────────────────────────────────────────

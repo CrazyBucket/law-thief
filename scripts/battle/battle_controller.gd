@@ -6,18 +6,17 @@ const _TileEffects = preload("res://scripts/rules/tile_effects.gd")
 signal state_changed
 signal battle_ended(result: String)
 signal anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
-signal anim_move_path(events: Array[Dictionary])  # 逐格移动动画事件列表
 signal anim_damage(grid: Vector2i, damage: int, is_crit: bool)
 signal anim_gem_flash(grid: Vector2i, gem_color: Color)
 
 var state: GameState = null
-var selected_action: String = Constants.ACTION_MOVE
+var selected_action: String = ""
 var selected_unit_uid: String = ""
 
 
 func start_encounter(encounter_id: String, seed_value: int = 0) -> void:
 	state = _data_registry().create_battle_state(encounter_id, seed_value)
-	selected_action = Constants.ACTION_MOVE
+	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
 	_emit_changed()
 
@@ -35,12 +34,16 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var player := state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	if player.has_status("rooted"):
+		return _fail("被束缚，无法移动")
 	var reachable := BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	if not target_pos in reachable:
 		return _fail("无法移动到该格")
 
 	# 计算 A* 路径并逐格移动
-	var path := BoardUtils.astar_path(state, player.pos, target_pos, player.move_points, player.uid)
+	var path := BoardUtils.astar_path(state, player.pos, target_pos, player.move_points, player.uid, {
+		"allow_partial_path": false
+	})
 	if path.is_empty():
 		return _fail("无法规划路径")
 
@@ -54,9 +57,11 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	TileRules.on_unit_entered(state, player, previous)
 	state.player_moved = true
 	state.log("玩家移动到 %s" % target_pos)
-	anim_move_path.emit(move_events)
-	_emit_changed()
-	return _ok()
+	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
+	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
+	var result := _ok()
+	result["move_events"] = move_events
+	return result
 
 
 func try_attack(target_uid: String) -> Dictionary:
@@ -70,7 +75,7 @@ func try_attack(target_uid: String) -> Dictionary:
 		return _fail("目标无效")
 	if not CombatRules.attack(state, player, target):
 		return _fail("无法攻击")
-	anim_damage.emit(target.pos, player.base_attack, false)
+	anim_damage.emit(target.pos, CombatRules.attack_damage(state, player), false)
 	state.player_acted = true
 	_check_battle_end()
 	IntentSystem.refresh_all_intents(state)
@@ -257,8 +262,14 @@ func finish_enemy_phase() -> void:
 
 ## 获取排序后的存活敌人列表
 func get_sorted_enemies() -> Array:
+	if state == null:
+		return []
 	var enemies := state.get_alive_enemies()
-	enemies.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
+	enemies.sort_custom(func(a: UnitState, b: UnitState) -> bool:
+		if a.speed == b.speed:
+			return a.uid < b.uid
+		return a.speed > b.speed
+	)
 	return enemies
 
 
@@ -326,7 +337,7 @@ func get_highlights() -> Dictionary:
 	var player := state.get_player()
 	if player == null:
 		return result
-	if selected_action == Constants.ACTION_MOVE and not state.player_moved:
+	if selected_action == Constants.ACTION_MOVE and not state.player_moved and not player.has_status("rooted"):
 		result["reachable"] = BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	elif selected_action == Constants.ACTION_ATTACK and not state.player_acted:
 		result["targets"] = _adjacent_enemy_cells(player.pos)
@@ -382,11 +393,11 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			lines.append(_slot_preview_line(unit, slot, i))
 	match selected_action:
 		Constants.ACTION_MOVE:
-			if not state.player_moved and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
+			if not state.player_moved and not player.has_status("rooted") and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
 			if unit != null and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(player.pos, cell) == 1:
-				lines.append("→ 点击攻击（%d 伤害）" % player.base_attack)
+				lines.append("→ 点击攻击（%d 伤害）" % CombatRules.attack_damage(state, player))
 				lines.append_array(_death_gem_preview_lines(unit))
 		Constants.ACTION_EXTRACT:
 			if unit != null and can_use_action(Constants.ACTION_EXTRACT):
@@ -421,6 +432,10 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 func get_action_hint() -> String:
 	match selected_action:
 		Constants.ACTION_MOVE:
+			if state != null:
+				var player := state.get_player()
+				if player != null and player.has_status("rooted"):
+					return "移动：你被束缚，暂时无法移动"
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
 			return "攻击：点击邻格敌人（消耗行动）"
@@ -439,7 +454,7 @@ func get_action_hint() -> String:
 			return "嵌入：点击目标 → 选空槽（免费）"
 		Constants.ACTION_TRIGGER:
 			return "触发：点击目标 → 选槽位（消耗行动）"
-	return ""
+	return "请选择操作"
 
 
 func get_tutorial_hint() -> String:

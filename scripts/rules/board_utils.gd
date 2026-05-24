@@ -1,6 +1,15 @@
 class_name BoardUtils
 extends RefCounted
 
+const _MIN_STEP_COST: float = 0.05
+const _DEFAULT_PATH_COST_PROFILE := {
+	"base_step_cost": 1.0,
+	"spike_damage_weight": 0.4,
+	"poison_damage_weight": 0.35,
+	"water_cost_bias": 0.0,
+	"allow_partial_path": true,
+}
+
 
 static func in_bounds(state: GameState, pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.y >= 0 and pos.x < state.board_size.x and pos.y < state.board_size.y
@@ -41,28 +50,44 @@ static func is_passable(state: GameState, pos: Vector2i, ignore_uid: String = ""
 	return true
 
 
+## 生成寻路权重配置（可通过 overrides 覆盖）
+static func path_cost_profile(overrides: Dictionary = {}) -> Dictionary:
+	var profile: Dictionary = _DEFAULT_PATH_COST_PROFILE.duplicate(true)
+	for key in overrides.keys():
+		profile[key] = overrides[key]
+	return profile
+
+
 ## 获取地块移动代价（用于 A* 和 reachable_cells）
-## 普通地板=1，陷阱=3（优先绕开），不可通行=INF
+## 保留旧接口，兼容历史调用
 static func tile_move_cost(state: GameState, pos: Vector2i) -> float:
+	return _step_cost_with_profile(state, pos, _DEFAULT_PATH_COST_PROFILE)
+
+
+static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
+	var base_step: float = float(profile.get("base_step_cost", 1.0))
+	var cost: float = base_step
 	var tile: TileState = state.get_tile(pos)
 	match tile.tile_id:
 		Constants.TILE_SPIKE:
-			return 3.0
+			cost += float(Constants.SPIKE_DAMAGE) * float(profile.get("spike_damage_weight", 2.0))
+		Constants.TILE_WATER:
+			cost += float(profile.get("water_cost_bias", 0.0))
 		_:
 			pass
 	if tile.has_modifier("poison_fog"):
-		return 3.0
-	return 1.0
+		cost += float(Constants.POISON_FOG_DAMAGE) * float(profile.get("poison_damage_weight", 2.0))
+	return maxf(cost, _MIN_STEP_COST)
 
 
 ## A* 寻路：从 from_pos 到 to_pos，最多消耗 max_steps 步移动力
 ## 返回路径（不含起点），如果无法到达则返回在 max_steps 内最接近目标的路径
-## avoid_occupied: 是否绕开有单位的格子（默认 true）
-static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "", avoid_occupied: bool = true) -> Array[Vector2i]:
+static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
 	if from_pos == to_pos:
 		return [] as Array[Vector2i]
+	var profile := path_cost_profile(cost_profile)
+	var allow_partial: bool = bool(profile.get("allow_partial_path", true))
 
-	# A* open set: {pos: {g_cost, parent, f_cost}}
 	var open_set: Array[Vector2i] = [from_pos]
 	var g_costs: Dictionary = {from_pos: 0.0}
 	var f_costs: Dictionary = {from_pos: float(manhattan(from_pos, to_pos))}
@@ -97,19 +122,10 @@ static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, m
 				continue
 			if not in_bounds(state, neighbor):
 				continue
-			# 可通行性检查：目标格允许站（即使有单位也可以作为终点寻路目标）
-			if avoid_occupied and neighbor != to_pos:
-				if not is_passable(state, neighbor, ignore_uid):
-					continue
-			elif not avoid_occupied:
-				if not in_bounds(state, neighbor):
-					continue
-			else:
-				# neighbor == to_pos 时，允许寻路到目标（即使有单位占据）
-				if not in_bounds(state, neighbor):
-					continue
+			if not is_passable(state, neighbor, ignore_uid):
+				continue
 
-			var step_cost: float = tile_move_cost(state, neighbor)
+			var step_cost: float = _step_cost_with_profile(state, neighbor, profile)
 			var tentative_g: float = current_g + step_cost
 
 			# 超过移动力上限则跳过
@@ -130,6 +146,10 @@ static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, m
 					best_dist = dist_to_target
 					best_pos = neighbor
 
+	# 不允许近似路径时，目标没到达则失败
+	if not allow_partial and best_pos != to_pos:
+		return [] as Array[Vector2i]
+
 	# 回溯路径
 	if best_pos == from_pos:
 		return [] as Array[Vector2i]
@@ -146,20 +166,46 @@ static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, m
 
 
 ## path_toward: 使用 A* 寻路（替代旧的贪心直线算法）
-## 返回从 from_pos 朝 to_pos 移动的路径，最多 max_steps 步
-static func path_toward(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "") -> Array[Vector2i]:
-	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, true)
+## 用于敌人 AI 移动——目标可能被占据（如玩家位置），寻路到最近可达点
+static func path_toward(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
+	# 如果目标被占据，寻路到目标的邻接格中最近的那个
+	if not is_passable(state, to_pos, ignore_uid):
+		var best_neighbor: Vector2i = from_pos
+		var best_dist: int = manhattan(from_pos, to_pos)
+		for adj in neighbors4(to_pos):
+			if not in_bounds(state, adj):
+				continue
+			if not is_passable(state, adj, ignore_uid) and adj != from_pos:
+				continue
+			var d: int = manhattan(from_pos, adj)
+			if d < best_dist:
+				best_dist = d
+				best_neighbor = adj
+		if best_neighbor == from_pos:
+			return [] as Array[Vector2i]
+		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile)
+	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile)
 
 
-## BFS 可达格子（考虑地块代价）
-static func reachable_cells(state: GameState, start: Vector2i, move_points: int, ignore_uid: String = "") -> Array[Vector2i]:
+## Dijkstra BFS 可达格子（考虑地块代价）
+static func reachable_cells(state: GameState, start: Vector2i, move_points: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
+	var profile := path_cost_profile(cost_profile)
 	var visited: Dictionary = {start: 0.0}
-	var queue: Array = [start]
+	var queue: Array[Vector2i] = [start]
 	var result: Array[Vector2i] = []
 	while not queue.is_empty():
-		var current: Vector2i = queue.pop_front()
+		# 简易优先队列：找最小 cost 的节点
+		var min_idx: int = 0
+		var min_cost: float = visited[queue[0]]
+		for i in range(1, queue.size()):
+			var c: float = visited[queue[i]]
+			if c < min_cost:
+				min_cost = c
+				min_idx = i
+		var current: Vector2i = queue[min_idx]
+		queue.remove_at(min_idx)
 		var dist: float = visited[current]
-		if dist > 0.0:
+		if current != start:
 			result.append(current)
 		if dist >= float(move_points):
 			continue
@@ -168,7 +214,7 @@ static func reachable_cells(state: GameState, start: Vector2i, move_points: int,
 				continue
 			if not is_passable(state, neighbor, ignore_uid):
 				continue
-			var cost: float = tile_move_cost(state, neighbor)
+			var cost: float = _step_cost_with_profile(state, neighbor, profile)
 			var new_dist: float = dist + cost
 			if new_dist > float(move_points):
 				continue
@@ -179,7 +225,7 @@ static func reachable_cells(state: GameState, start: Vector2i, move_points: int,
 	return result
 
 
-## 旧接口保留兼容：贪心单步（仅内部使用）
+## 旧接口保留兼容：贪心单步（仅 pull 技能等内部使用）
 static func step_toward(from_pos: Vector2i, to_pos: Vector2i) -> Vector2i:
 	var delta := to_pos - from_pos
 	if delta == Vector2i.ZERO:

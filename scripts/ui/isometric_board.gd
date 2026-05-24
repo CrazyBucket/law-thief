@@ -14,6 +14,7 @@ var selected_unit_uid: String = ""
 var state: GameState = null
 
 var _board_origin: Vector2 = Vector2.ZERO
+var _animation_speed_scale: float = 1.0
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
 var _anim_queue: Array[Dictionary] = []  # 待播放动画队列
@@ -207,13 +208,28 @@ func _gui_input(event: InputEvent) -> void:
 func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)
-	var delta_offset: Vector2 = from_screen - to_screen  # 初始偏移（从旧位置开始）
-	_move_offsets[unit_uid] = delta_offset
+	var logical_pos: Vector2i = to_pos
+	if state != null:
+		var unit: UnitState = state.units.get(unit_uid, null)
+		if unit != null:
+			logical_pos = unit.pos
+	var logical_screen: Vector2 = grid_to_screen(logical_pos)
+	var from_offset: Vector2 = from_screen - logical_screen
+	var to_offset: Vector2 = to_screen - logical_screen
+	_move_offsets[unit_uid] = from_offset
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
-	tween.tween_method(_set_move_offset.bind(unit_uid), delta_offset, Vector2.ZERO, 0.25)
-	tween.tween_callback(_on_move_anim_done.bind(unit_uid))
+	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(0.25))
+	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset))
+
+
+func set_animation_speed_scale(speed_scale: float) -> void:
+	_animation_speed_scale = maxf(speed_scale, 0.05)
+
+
+func _scaled_duration(base_duration: float) -> float:
+	return base_duration / _animation_speed_scale
 
 
 func _set_move_offset(offset: Vector2, uid: String) -> void:
@@ -221,8 +237,11 @@ func _set_move_offset(offset: Vector2, uid: String) -> void:
 	queue_redraw()
 
 
-func _on_move_anim_done(uid: String) -> void:
-	_move_offsets.erase(uid)
+func _on_move_anim_done(uid: String, final_offset: Vector2) -> void:
+	if final_offset.length_squared() <= 0.001:
+		_move_offsets.erase(uid)
+	else:
+		_move_offsets[uid] = final_offset
 	queue_redraw()
 	animation_finished.emit()
 
