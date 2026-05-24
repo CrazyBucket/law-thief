@@ -52,6 +52,7 @@ const GRAVITY_COLLISION_DAMAGE := 1
 const SPIKE_DAMAGE := 2
 const POISON_FOG_DAMAGE := 1
 const POISON_FOG_DURATION := 2
+const POISON_SKILL_DEBUFF_TURNS := 3
 
 const STATUS_POISON := "poison"
 const STATUS_ARMOR := "armor"

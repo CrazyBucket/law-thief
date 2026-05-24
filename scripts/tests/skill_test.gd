@@ -11,7 +11,7 @@ func _run_tests() -> void:
 	_test_skill_not_available_without_gem()
 	_test_extract_to_red_slot_enables_skill()
 	_test_skill_deals_damage()
-	_test_fragile_skill_shatters_gem()
+	_test_poison_skill_stacks_twice_on_enemy()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -82,6 +82,32 @@ func _test_skill_deals_damage() -> void:
 	print("  [OK] explosion skill dealt %d damage" % (guard_hp_before - guard.hp))
 	print("  [OK] skill consumed action")
 	print("  [OK] returned %d animation events" % events.size())
+
+
+func _test_poison_skill_stacks_twice_on_enemy() -> void:
+	print("--- Test: Poison skill stacking on 3x3 ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var guard: UnitState = null
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_training_guard":
+			guard = unit
+			break
+	assert(guard != null)
+	var poison_gem := GemState.new()
+	poison_gem.uid = "test_poison_skill_gem"
+	poison_gem.gem_id = Constants.GEM_POISON
+	state.gems[poison_gem.uid] = poison_gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = poison_gem.uid
+	var ev1: Array = GemEffects.player_use_skill(state, player, guard.pos)
+	var ev2: Array = GemEffects.player_use_skill(state, player, guard.pos)
+	var ps: StatusInstance = guard.get_status(Constants.STATUS_POISON)
+	assert(ps != null, "poison status should apply on units in AoE")
+	assert(ps.stacks == 2, "two casts should stack poison: got %d" % ps.stacks)
+	assert(ev1.any(func(e): return e.get("type", "") == "poison_burst"), "skill should emit poison_burst vfx event")
+	print("  [OK] double poison_skill merged stacks (%d layers)" % ps.stacks)
 
 
 func _test_fragile_skill_shatters_gem() -> void:

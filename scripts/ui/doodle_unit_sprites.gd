@@ -1,0 +1,71 @@
+extends RefCounted
+
+## Doodle RPG：Knight 行走/劈砍。通过 preload 脚本后 .new() 得到实例再调方法，
+## 避免依赖 class_name / 静态方法在 GDScript 上的限制。
+
+const KNIGHT_ROOT := "res://assets/demo/doodle-rpg/ALL SPRITES/Knight/"
+const WALK_SUBPATH := "Walking w Sword/"
+const SWING_SUBPATH := "Sword Swing/"
+
+var _texture_cache: Dictionary = {}
+
+
+func facing_from_grid_delta(delta: Vector2i) -> String:
+	if delta.x == 0 and delta.y == 0:
+		return "Forward"
+	var sx := float(delta.x - delta.y)
+	var sy := float(delta.x + delta.y)
+	var deg := rad_to_deg(atan2(sy, sx))
+	if deg < 0:
+		deg += 360.0
+	if deg < 22.5 or deg >= 337.5:
+		return "Right"
+	if deg < 67.5:
+		return "DR"
+	if deg < 112.5:
+		return "Forward"
+	if deg < 157.5:
+		return "DL"
+	if deg < 202.5:
+		return "Left"
+	if deg < 247.5:
+		return "UL"
+	if deg < 292.5:
+		return "Up"
+	return "UR"
+
+
+func portrait_texture() -> Texture2D:
+	return texture_walk("Forward", 0)
+
+
+func texture_walk(facing: String, frame: int) -> Texture2D:
+	var fi := clampi(frame, 0, 2)
+	return _ensure_texture("%s%s%s%d.png" % [KNIGHT_ROOT, WALK_SUBPATH, facing, fi])
+
+
+func texture_sword_swing(facing: String, frame: int) -> Texture2D:
+	var fi := clampi(frame, 0, 2)
+	return _ensure_texture("%s%s%s%d.png" % [KNIGHT_ROOT, SWING_SUBPATH, facing, fi])
+
+
+func texture_shadow() -> Texture2D:
+	return _ensure_texture("%s%s" % [KNIGHT_ROOT, "Shadow.png"])
+
+
+func _ensure_texture(abs_path: String) -> Texture2D:
+	var cached_variant: Variant = _texture_cache.get(abs_path, null)
+	if cached_variant is Texture2D:
+		return cached_variant as Texture2D
+	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	if rl != null and rl is Texture2D:
+		var from_import: Texture2D = rl as Texture2D
+		_texture_cache[abs_path] = from_import
+		return from_import
+	var decoded := Image.new()
+	if decoded.load(abs_path) != OK:
+		push_warning("[DoodleKnightSprites] 无法加载: %s" % abs_path)
+		return null
+	var raw_tex := ImageTexture.create_from_image(decoded)
+	_texture_cache[abs_path] = raw_tex
+	return raw_tex

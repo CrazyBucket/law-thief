@@ -81,7 +81,7 @@ static func _build_player_skill_events(gem_id: String, player: UnitState, target
 		Constants.GEM_EXPLOSION:
 			events.append({"type": "explode", "pos": target_pos, "radius": Constants.EXPLOSION_RADIUS})
 		Constants.GEM_POISON:
-			events.append({"type": "gem_flash", "pos": target_pos, "color": Color(0.4, 0.9, 0.2)})
+			events.append({"type": "poison_burst", "pos": target_pos, "radius": 1})
 		Constants.GEM_GRAVITY:
 			events.append({"type": "gem_flash", "pos": player.pos, "color": Color(0.6, 0.3, 1.0)})
 		Constants.GEM_HEAVY_ARMOR:
@@ -107,7 +107,7 @@ static func get_slot_effect_description(gem_id: String, slot_type: String, conte
 						Constants.GEM_EXPLOSION:
 							return "引爆：对目标格及周围造成 %d 伤害" % Constants.EXPLOSION_DAMAGE
 						Constants.GEM_POISON:
-							return "毒雾：在目标周围制造毒雾区域"
+							return "剧毒：目标周围 3×3（含边）铺设毒雾，范围内敌人叠加中毒（层数合并）"
 						Constants.GEM_GRAVITY:
 							return "引力：将目标拉向自己，碰撞造成 %d 伤害并束缚 2 回合" % Constants.GRAVITY_COLLISION_DAMAGE
 						Constants.GEM_HEAVY_ARMOR:
@@ -330,7 +330,7 @@ static func _run_enemy_red_action(state: GameState, unit: UnitState, slot: SlotS
 			if poison_target == null or BoardUtils.manhattan(unit.pos, poison_target.pos) != 1:
 				return [] as Array[Dictionary]
 			var poison_events := _enemy_red_damage_events(state, unit, target_uid, CombatRules.attack_damage(state, unit), "poison_attack")
-			if not poison_events.is_empty():
+			if poison_target.alive:
 				StatusRules.apply_poison(state, poison_target)
 			return poison_events
 		Constants.GEM_GRAVITY:
@@ -476,8 +476,12 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 						MODE_TRIGGER:
 							TileRules.create_poison_fog(state, owner.pos)
 						MODE_SKILL:
-							for cell in BoardUtils.cells_in_radius(ctx.get("target_pos", owner.pos), 1):
+							var skill_anchor: Vector2i = ctx.get("target_pos", owner.pos)
+							for cell in BoardUtils.cells_in_radius(skill_anchor, 1):
 								TileRules.create_poison_fog(state, cell)
+								var occ: UnitState = state.get_unit_at(cell)
+								if occ != null and occ.alive and occ.team != owner.team:
+									StatusRules.apply_poison(state, occ, 1, Constants.POISON_SKILL_DEBUFF_TURNS)
 						MODE_ENEMY:
 							_execute_poison_attack(state, owner, ctx.get("target_uid", ""))
 					return true

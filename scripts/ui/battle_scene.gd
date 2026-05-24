@@ -1,6 +1,5 @@
 extends Control
 
-const UnitVisuals = preload("res://scripts/ui/unit_visuals.gd")
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
@@ -69,6 +68,7 @@ func _ready() -> void:
 
 
 func _apply_ui_theme() -> void:
+	_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_status_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
 	_top_bar.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT.darkened(0.2)))
 	_bottom_dock.add_theme_stylebox_override("panel", BattleUiTheme.dock_style())
@@ -148,7 +148,12 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			_dismiss_popup()
 			if unit != null:
 				_inspect_uid = unit.uid
-				_show_result(_controller.try_attack(unit.uid))
+				var atk_res := _controller.try_attack(unit.uid)
+				_show_result(atk_res)
+				if atk_res.get("ok", false):
+					var ply := _controller.state.get_player()
+					if ply != null:
+						_board.start_strike_effect(ply.uid, unit.pos)
 		Constants.ACTION_SKILL:
 			_dismiss_popup()
 			var skill_result := _controller.try_skill(cell)
@@ -326,13 +331,22 @@ func _play_anim_event(ev: Dictionary) -> void:
 			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
 			await _board.animation_finished
 		"damage":
+			var atk_uid: String = str(ev.get("attacker_uid", ""))
+			if atk_uid != "":
+				_board.start_strike_effect(atk_uid, ev.get("pos", Vector2i.ZERO))
 			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), ev.get("damage", 1), ev.get("is_crit", false))
 			await get_tree().create_timer(_scaled_anim_time(0.3)).timeout
 		"explode":
-			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			_board.play_explosion(pos)
+			var pos_ev: Vector2i = ev.get("pos", Vector2i.ZERO)
+			_board.play_explosion(pos_ev)
 			_board.queue_redraw()
 			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
+		"poison_burst":
+			var ppos: Variant = ev.get("pos", Vector2i.ZERO)
+			var prad_i: Variant = ev.get("radius", 1)
+			_board.play_poison_burst(ppos, int(prad_i))
+			await get_tree().create_timer(_scaled_anim_time(0.5)).timeout
+			_board.queue_redraw()
 		"gem_flash":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
 			await get_tree().create_timer(_scaled_anim_time(0.25)).timeout
@@ -374,7 +388,8 @@ func _refresh() -> void:
 		return
 	var player := state.get_player()
 	if player != null:
-		_portrait.texture = UnitVisuals.get_unit_texture(player.unit_def_id)
+		_portrait.texture = UnitLooks.get_unit_texture(player.unit_def_id)
+		_portrait.self_modulate = UnitLooks.sprite_modulate_for_unit(player.team, player.unit_def_id)
 		_player_name.text = _data_registry().get_unit_display_name(player.unit_def_id)
 		_hp_bar.max_value = player.max_hp
 		_hp_bar.value = player.hp
@@ -404,7 +419,7 @@ func _refresh() -> void:
 	if held != null:
 		var gem_name: String = _data_registry().get_gem_display_name(held.gem_id)
 		_held_label.text = "手持 ◆ %s" % gem_name
-		_held_label.add_theme_color_override("font_color", UnitVisuals.gem_color(held.gem_id).lightened(0.15))
+		_held_label.add_theme_color_override("font_color", UnitLooks.gem_color(held.gem_id).lightened(0.15))
 	else:
 		_held_label.text = ""
 		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
@@ -456,9 +471,11 @@ func _create_unit_card(unit: UnitState, state: GameState) -> Control:
 	card.add_child(row)
 	var icon := TextureRect.new()
 	icon.custom_minimum_size = Vector2(28, 28)
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = UnitVisuals.get_unit_texture(unit.unit_def_id)
+	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
+	icon.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
 	row.add_child(icon)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -508,7 +525,7 @@ func _slot_icons(unit: UnitState, state: GameState) -> String:
 			parts.append("○")
 		else:
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			parts.append(UnitVisuals.gem_symbol(gem.gem_id) if gem != null else "?")
+			parts.append(UnitLooks.gem_symbol(gem.gem_id) if gem != null else "?")
 	return "[%s]" % "".join(parts)
 
 
@@ -541,7 +558,7 @@ func _refresh_inspect() -> void:
 
 func _slot_detail_bbcode(state: GameState, _unit: UnitState, slot: SlotState) -> String:
 	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
-	var slot_col := UnitVisuals.slot_color(slot.slot_type)
+	var slot_col := UnitLooks.slot_color(slot.slot_type)
 	var col_hex := slot_col.to_html(false)
 	if slot.locked:
 		return "[color=%s]  %s 🔒 锁定[/color]" % [col_hex, slot_name]
@@ -560,11 +577,11 @@ func _slot_detail_bbcode(state: GameState, _unit: UnitState, slot: SlotState) ->
 
 func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
 	var chip := PanelContainer.new()
-	var color := UnitVisuals.slot_color(slot.slot_type)
+	var color := UnitLooks.slot_color(slot.slot_type)
 	if not slot.gem_uid.is_empty():
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem != null:
-			color = UnitVisuals.gem_color(gem.gem_id)
+			color = UnitLooks.gem_color(gem.gem_id)
 	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
 	var label := Label.new()
 	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
@@ -574,7 +591,7 @@ func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
 		label.text = "%s○" % slot_name
 	else:
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		label.text = "%s%s" % [slot_name, UnitVisuals.gem_symbol(gem.gem_id) if gem != null else "?"]
+		label.text = "%s%s" % [slot_name, UnitLooks.gem_symbol(gem.gem_id) if gem != null else "?"]
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	chip.add_child(label)
@@ -814,7 +831,7 @@ func _create_timeline_avatar(unit: UnitState, is_active: bool) -> Control:
 	icon.custom_minimum_size = Vector2(32, 32)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = UnitVisuals.get_unit_texture(unit.unit_def_id)
+	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
 	frame.add_child(icon)
 	var speed_label := Label.new()
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

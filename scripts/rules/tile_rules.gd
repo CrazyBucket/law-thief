@@ -26,7 +26,16 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
 	var tile := state.get_tile(pos)
-	tile.add_modifier("poison_fog", Constants.POISON_FOG_DURATION)
+	var add_turns := Constants.POISON_FOG_DURATION
+	for i in range(tile.modifiers.size()):
+		var existing: Variant = tile.modifiers[i]
+		if str(existing.get("type", "")) != "poison_fog":
+			continue
+		var merged: Dictionary = existing.duplicate(true)
+		merged["duration"] = int(merged.get("duration", 0)) + add_turns
+		tile.modifiers[i] = merged
+		return
+	tile.add_modifier("poison_fog", add_turns)
 
 
 static func _unlock_armor_locks(state: GameState, unit: UnitState) -> void:

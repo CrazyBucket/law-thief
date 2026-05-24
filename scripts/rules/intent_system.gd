@@ -112,7 +112,13 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 		"melee_attack":
 			var dealt := _execute_melee(state, unit, intent)
 			if dealt > 0:
-				anim_events.append({"type": "damage", "pos": intent.target_pos, "damage": dealt, "is_crit": false})
+				anim_events.append({
+					"type": "damage",
+					"pos": intent.target_pos,
+					"damage": dealt,
+					"is_crit": false,
+					"attacker_uid": unit.uid,
+				})
 		"charge_explode", "pull", "poison_attack", "shock", "fragile_charge":
 			anim_events.append_array(GemEffects.on_red_action(state, unit, intent))
 		"extract":
@@ -125,7 +131,13 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			if lawless_target != null and lawless_target.alive and BoardUtils.manhattan(unit.pos, lawless_target.pos) == 1:
 				var dealt := CombatRules.apply_damage(state, lawless_target, intent.damage, unit.uid, "lawless_attack")
 				if dealt > 0:
-					anim_events.append({"type": "damage", "pos": lawless_target.pos, "damage": dealt, "is_crit": true})
+					anim_events.append({
+						"type": "damage",
+						"pos": lawless_target.pos,
+						"damage": dealt,
+						"is_crit": true,
+						"attacker_uid": unit.uid,
+					})
 		"lawless_extract":
 			var extracted := _execute_lawless_extract(state, unit, intent.target_uid)
 			if extracted:
