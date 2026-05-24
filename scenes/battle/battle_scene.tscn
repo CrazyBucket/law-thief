@@ -1,0 +1,248 @@
+[gd_scene load_steps=3 format=3 uid="uid://lawthiefbattle01"]
+
+[ext_resource type="Script" path="res://scripts/ui/battle_scene.gd" id="1_battle"]
+[ext_resource type="Script" path="res://scripts/ui/isometric_board.gd" id="2_board"]
+
+[node name="BattleScene" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_battle")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.08, 0.12, 1)
+
+[node name="BoardLayer" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 10.0
+offset_bottom = -70.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="IsometricBoard" type="Control" parent="BoardLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("2_board")
+
+[node name="HudLayer" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StatusPanel" type="PanelContainer" parent="HudLayer"]
+layout_mode = 1
+anchors_preset = 0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 232.0
+offset_bottom = 680.0
+mouse_filter = 0
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/StatusPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PlayerRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Portrait" type="TextureRect" parent="HudLayer/StatusPanel/VBox/PlayerRow"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HudLayer/StatusPanel/VBox/PlayerRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Name" type="Label" parent="HudLayer/StatusPanel/VBox/PlayerRow/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "窃律者"
+
+[node name="HpBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/PlayerRow/Info"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+max_value = 6.0
+value = 6.0
+show_percentage = false
+
+[node name="TurnLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+text = "回合 1"
+
+[node name="HeldLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+text = "手中宝石: 无"
+
+[node name="HintLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+autowrap_mode = 3
+text = "教学提示"
+
+[node name="UnitList" type="ItemList" parent="HudLayer/StatusPanel/VBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 0
+
+[node name="InspectTitle" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "选中单位"
+
+[node name="InspectBody" type="RichTextLabel" parent="HudLayer/StatusPanel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+fit_content = true
+scroll_active = false
+text = "◆ 菱形 = 宝石"
+
+[node name="SlotBox" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Log" type="RichTextLabel" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+text = "战斗日志"
+
+[node name="TopCenter" type="Control" parent="HudLayer"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -360.0
+offset_top = 8.0
+offset_right = 360.0
+offset_bottom = 48.0
+grow_horizontal = 2
+
+[node name="Message" type="Label" parent="HudLayer/TopCenter"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+text = "选择操作"
+
+[node name="TogglePanelBtn" type="Button" parent="HudLayer"]
+layout_mode = 0
+offset_left = 236.0
+offset_top = 8.0
+offset_right = 264.0
+offset_bottom = 36.0
+text = "◀"
+
+[node name="PreviewPanel" type="PanelContainer" parent="HudLayer"]
+visible = false
+mouse_filter = 2
+layout_mode = 0
+custom_minimum_size = Vector2(220, 0)
+offset_left = 400.0
+offset_top = 120.0
+offset_right = 620.0
+offset_bottom = 240.0
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/PreviewPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "预览"
+
+[node name="Body" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
+autowrap_mode = 3
+text = ""
+
+[node name="BottomBar" type="HBoxContainer" parent="HudLayer"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -68.0
+offset_right = 360.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 0
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="ActionBar" type="HBoxContainer" parent="HudLayer/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MoveBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "移动"
+
+[node name="AttackBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "攻击"
+
+[node name="SkillBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "技能"
+
+[node name="ExtractBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "拔出"
+
+[node name="InsertBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "嵌入"
+
+[node name="TriggerBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "触发"
+
+[node name="EndTurnBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "结束回合"
+
+[node name="BackBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+layout_mode = 2
+text = "返回"
+
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/SkillBtn" to="." method="_on_action_pressed" binds= ["skill"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/TriggerBtn" to="." method="_on_action_pressed" binds= ["trigger"]]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/EndTurnBtn" to="." method="_on_end_turn_pressed"]
+[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/BackBtn" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HudLayer/TogglePanelBtn" to="." method="_on_toggle_panel"]
