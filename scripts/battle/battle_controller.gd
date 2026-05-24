@@ -1,7 +1,7 @@
 class_name BattleController
 extends RefCounted
 
-const _TileEffects = preload("res://scripts/rules/tile_effects.gd")
+const _StatusUi = preload("res://scripts/ui/status_ui.gd")
 
 signal state_changed
 signal battle_ended(result: String)
@@ -34,7 +34,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var player := state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
-	if player.has_status("rooted"):
+	if not StatusRules.can_move(player):
 		return _fail("被束缚，无法移动")
 	var reachable := BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	if not target_pos in reachable:
@@ -73,7 +73,7 @@ func try_attack(target_uid: String) -> Dictionary:
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return _fail("目标无效")
-	if not CombatRules.attack(state, player, target):
+	if CombatRules.attack(state, player, target) <= 0:
 		return _fail("无法攻击")
 	anim_damage.emit(target.pos, CombatRules.attack_damage(state, player), false)
 	state.player_acted = true
@@ -245,10 +245,6 @@ func finish_enemy_phase() -> void:
 	StatusRules.tick_turn_end(state)
 	if state.phase == Constants.PHASE_ENDED:
 		return
-	# 机关柱光环每回合 tick
-	for tile in state.tiles.values():
-		if tile.has_slots() and tile.tile_id == Constants.TILE_PILLAR:
-			_TileEffects.tick_pillar_aura(state, tile)
 	state.turn_index += 1
 	StatusRules.tick_turn_start(state)
 	state.phase = Constants.PHASE_PLAYER
@@ -337,7 +333,7 @@ func get_highlights() -> Dictionary:
 	var player := state.get_player()
 	if player == null:
 		return result
-	if selected_action == Constants.ACTION_MOVE and not state.player_moved and not player.has_status("rooted"):
+	if selected_action == Constants.ACTION_MOVE and not state.player_moved and StatusRules.can_move(player):
 		result["reachable"] = BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	elif selected_action == Constants.ACTION_ATTACK and not state.player_acted:
 		result["targets"] = _adjacent_enemy_cells(player.pos)
@@ -386,6 +382,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			lines.append(_slot_preview_line_tile(tile, tslot, i))
 	if unit != null:
 		lines.append("%s HP %d/%d" % [_data_registry().get_unit_display_name(unit.unit_def_id), unit.hp, unit.max_hp])
+		for status_line in _StatusUi.preview_lines(unit):
+			lines.append(status_line)
 		if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 			lines.append("意图: %s" % unit.intent.preview_text)
 		for i in range(unit.slots.size()):
@@ -393,7 +391,7 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			lines.append(_slot_preview_line(unit, slot, i))
 	match selected_action:
 		Constants.ACTION_MOVE:
-			if not state.player_moved and not player.has_status("rooted") and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
+			if not state.player_moved and StatusRules.can_move(player) and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
 			if unit != null and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(player.pos, cell) == 1:
@@ -434,7 +432,7 @@ func get_action_hint() -> String:
 		Constants.ACTION_MOVE:
 			if state != null:
 				var player := state.get_player()
-				if player != null and player.has_status("rooted"):
+				if player != null and not StatusRules.can_move(player):
 					return "移动：你被束缚，暂时无法移动"
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
@@ -573,7 +571,11 @@ func _slot_preview_line(unit: UnitState, slot: SlotState, index: int) -> String:
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return "%s槽: ?" % label
-	return "%s槽: ◆%s" % [label, _data_registry().get_gem_display_name(gem.gem_id)]
+	var gem_name: String = _data_registry().get_gem_display_name(gem.gem_id)
+	var effect := GemEffects.get_slot_effect_description(gem.gem_id, slot.slot_type, _unit_slot_context(unit, slot))
+	if effect.is_empty():
+		return "%s槽: ◆%s" % [label, gem_name]
+	return "%s槽: ◆%s — %s" % [label, gem_name, effect]
 
 
 func _slot_preview_line_tile(tile: TileState, slot: SlotState, index: int) -> String:
@@ -585,7 +587,28 @@ func _slot_preview_line_tile(tile: TileState, slot: SlotState, index: int) -> St
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return "地块%s槽: ?" % label
-	return "地块%s槽: ◆%s" % [label, _data_registry().get_gem_display_name(gem.gem_id)]
+	var gem_name: String = _data_registry().get_gem_display_name(gem.gem_id)
+	var effect := GemEffects.get_slot_effect_description(gem.gem_id, slot.slot_type, _tile_slot_context(tile))
+	if effect.is_empty():
+		return "地块%s槽: ◆%s" % [label, gem_name]
+	return "地块%s槽: ◆%s — %s" % [label, gem_name, effect]
+
+
+func _unit_slot_context(unit: UnitState, slot: SlotState) -> String:
+	match slot.slot_type:
+		Constants.SLOT_RED:
+			return "enemy_active" if unit.team == Constants.TEAM_ENEMY else "player_trigger"
+		Constants.SLOT_BLUE:
+			return "unit_blue"
+	return ""
+
+
+func _tile_slot_context(tile: TileState) -> String:
+	if tile.tile_id == Constants.TILE_ALTAR:
+		return "altar"
+	if tile.tile_id == Constants.TILE_PILLAR:
+		return "pillar"
+	return ""
 
 
 func _attack_effect_preview(player_pos: Vector2i) -> Array:
@@ -601,10 +624,16 @@ func _attack_effect_preview(player_pos: Vector2i) -> Array:
 			if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
 				continue
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			if gem != null and gem.gem_id == Constants.GEM_EXPLOSION:
+			if gem == null:
+				continue
+			if gem.gem_id == Constants.GEM_EXPLOSION:
 				for cell in BoardUtils.cells_in_radius(unit.pos, Constants.EXPLOSION_RADIUS):
 					if BoardUtils.in_bounds(state, cell):
 						cells.append(cell)
+			elif gem.gem_id == Constants.GEM_FRAGILE:
+				for neighbor in BoardUtils.neighbors4(unit.pos):
+					if BoardUtils.in_bounds(state, neighbor):
+						cells.append(neighbor)
 	return cells
 
 
@@ -616,8 +645,11 @@ func _death_gem_preview_lines(unit: UnitState) -> Array[String]:
 		if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		if gem != null and gem.gem_id == Constants.GEM_EXPLOSION:
-			lines.append("预判: 击杀后爆炸波及周围 1 格")
+		if gem == null:
+			continue
+		var effect := GemEffects.get_slot_effect_description(gem.gem_id, Constants.SLOT_BLACK, "")
+		if not effect.is_empty():
+			lines.append("预判: %s" % effect)
 	return lines
 
 

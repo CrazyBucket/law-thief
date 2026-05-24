@@ -1,8 +1,6 @@
 class_name GemRules
 extends RefCounted
 
-const _TileEffects = preload("res://scripts/rules/tile_effects.gd")
-
 
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if not slot.is_operable(state.turn_index):
@@ -58,10 +56,8 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	slot.gem_uid = gem.uid
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, gem.gem_id, target_unit.uid, slot.slot_type])
-	if target_unit.lawless and target_unit.lawless_target_gem_uid == gem.uid:
-		target_unit.lawless = false
-		target_unit.lawless_target_gem_uid = ""
-		target_unit.remove_status("lawless")
+	if StatusRules.is_lawless(target_unit) and StatusRules.get_lawless_gem_uid(target_unit) == gem.uid:
+		StatusRules.clear_lawless(target_unit)
 	IntentSystem.refresh_all_intents(state)
 	return _ok()
 
@@ -150,12 +146,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	slot.gem_uid = gem.uid
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, gem.gem_id, tile.tile_id])
-	# 祭坛嵌入后立即触发效果
-	if tile.tile_id == Constants.TILE_ALTAR:
-		_TileEffects.on_altar_activated(state, tile, gem)
-	# 机关柱嵌入后施加持续光环
-	elif tile.tile_id == Constants.TILE_PILLAR:
-		_TileEffects.on_pillar_activated(state, tile, gem)
+	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
 	return _ok()
 
 
@@ -180,7 +171,8 @@ static func trigger_tile(state: GameState, actor: UnitState, tile: TileState, sl
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
-	_TileEffects.on_tile_trigger(state, tile, gem)
+	if not GemEffects.trigger_tile_gem(state, tile, slot):
+		return _fail("该槽位不支持主动触发")
 	state.player_acted = true
 	return _ok()
 

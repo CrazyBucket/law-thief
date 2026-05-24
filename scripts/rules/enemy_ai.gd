@@ -61,7 +61,7 @@ static func _generate_all_candidates(state: GameState, enemy: UnitState, profile
 
 	# 获取所有可达格子（包括原地）
 	var reachable: Array[Vector2i] = []
-	if enemy.has_status("rooted"):
+	if not StatusRules.can_move(enemy):
 		reachable = [] as Array[Vector2i]
 	else:
 		reachable = BoardUtils.reachable_cells(state, enemy.pos, enemy.move_points, enemy.uid, path_profile)

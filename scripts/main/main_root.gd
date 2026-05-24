@@ -1,5 +1,7 @@
 extends Control
-## 主菜单 —— 带浮动粒子背景、渐入动画、风格化按钮
+## 主菜单
+
+const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 @onready var _particle_canvas: Control = $ParticleCanvas
 @onready var _title: Label = $ContentLayer/TitleBlock/Title
@@ -94,54 +96,8 @@ func _style_buttons() -> void:
 
 
 func _apply_button_style(btn: Button, is_primary: bool) -> void:
-	# Normal
-	var normal := StyleBoxFlat.new()
-	if is_primary:
-		normal.bg_color = Color(0.85, 0.25, 0.35, 0.92)
-		normal.border_color = Color(1.0, 0.5, 0.4, 0.9)
-	else:
-		normal.bg_color = Color(0.12, 0.12, 0.18, 0.88)
-		normal.border_color = Color(0.4, 0.4, 0.5, 0.6)
-	normal.set_border_width_all(2)
-	normal.set_corner_radius_all(8)
-	normal.content_margin_left = 16
-	normal.content_margin_right = 16
-	normal.content_margin_top = 8
-	normal.content_margin_bottom = 8
-	btn.add_theme_stylebox_override("normal", normal)
-
-	# Hover
-	var hover := StyleBoxFlat.new()
-	if is_primary:
-		hover.bg_color = Color(0.95, 0.35, 0.4, 0.95)
-		hover.border_color = Color(1.0, 0.7, 0.5, 1.0)
-	else:
-		hover.bg_color = Color(0.18, 0.18, 0.26, 0.95)
-		hover.border_color = Color(0.7, 0.55, 0.3, 0.9)
-	hover.set_border_width_all(2)
-	hover.set_corner_radius_all(8)
-	hover.content_margin_left = 16
-	hover.content_margin_right = 16
-	hover.content_margin_top = 8
-	hover.content_margin_bottom = 8
-	btn.add_theme_stylebox_override("hover", hover)
-
-	# Pressed
-	var pressed := StyleBoxFlat.new()
-	pressed.bg_color = Color(0.7, 0.2, 0.25, 0.95)
-	pressed.border_color = Color(1.0, 0.9, 0.5, 1.0)
-	pressed.set_border_width_all(3)
-	pressed.set_corner_radius_all(8)
-	pressed.content_margin_left = 16
-	pressed.content_margin_right = 16
-	pressed.content_margin_top = 8
-	pressed.content_margin_bottom = 8
-	btn.add_theme_stylebox_override("pressed", pressed)
-
-	# 字体
+	BattleUiTheme.apply_button(btn, "end" if is_primary else "ghost")
 	btn.add_theme_font_size_override("font_size", 16 if is_primary else 14)
-	btn.add_theme_color_override("font_color", Color.WHITE)
-	btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.8))
 
 
 func _play_intro_animation() -> void:

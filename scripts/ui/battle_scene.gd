@@ -1,22 +1,23 @@
 extends Control
-## 战斗场景主控制器
-## 核心改动：
-## - 敌方回合用 await 逐个执行，每个敌人动完才轮到下一个
-## - 槽位弹窗改为点击触发（不是 hover），解决交互冲突
-## - 左侧面板可折叠，地图占满全屏
 
 const UnitVisuals = preload("res://scripts/ui/unit_visuals.gd")
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
+const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const StatusUi = preload("res://scripts/ui/status_ui.gd")
 
 @onready var _board: Control = $BoardLayer/IsometricBoard
 @onready var _status_panel: PanelContainer = $HudLayer/StatusPanel
-@onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/PlayerRow/Portrait
-@onready var _player_name: Label = $HudLayer/StatusPanel/VBox/PlayerRow/Info/Name
-@onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/PlayerRow/Info/HpBar
-@onready var _turn_label: Label = $HudLayer/StatusPanel/VBox/TurnLabel
+@onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Portrait
+@onready var _player_name: Label = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/Name
+@onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/HpBar
+@onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/HpText
+@onready var _player_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/StatusRow
+@onready var _turn_label: Label = $HudLayer/StatusPanel/VBox/TurnChips/TurnLabel
+@onready var _move_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/MoveChip
+@onready var _act_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/ActChip
 @onready var _held_label: Label = $HudLayer/StatusPanel/VBox/HeldLabel
 @onready var _hint_label: Label = $HudLayer/StatusPanel/VBox/HintLabel
-@onready var _unit_list: ItemList = $HudLayer/StatusPanel/VBox/UnitList
+@onready var _unit_roster: VBoxContainer = $HudLayer/StatusPanel/VBox/UnitScroll/UnitRoster
 @onready var _inspect_title: Label = $HudLayer/StatusPanel/VBox/InspectTitle
 @onready var _inspect_body: RichTextLabel = $HudLayer/StatusPanel/VBox/InspectBody
 @onready var _slot_box: HBoxContainer = $HudLayer/StatusPanel/VBox/SlotBox
@@ -24,18 +25,21 @@ const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 @onready var _toggle_panel_btn: Button = $HudLayer/TogglePanelBtn
 @onready var _preview_panel: PanelContainer = $HudLayer/PreviewPanel
 @onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title
-@onready var _preview_body: Label = $HudLayer/PreviewPanel/VBox/Body
-@onready var _message_label: Label = $HudLayer/TopCenter/Message
+@onready var _preview_body: RichTextLabel = $HudLayer/PreviewPanel/VBox/Body
+@onready var _top_bar: PanelContainer = $HudLayer/TopBar
+@onready var _phase_badge: Label = $HudLayer/TopBar/HBox/PhaseBadge
+@onready var _message_label: Label = $HudLayer/TopBar/HBox/Message
 @onready var _queue_title: Label = $HudLayer/TurnQueuePanel/VBox/Title
 @onready var _queue_row: HBoxContainer = $HudLayer/TurnQueuePanel/VBox/QueueRow
 @onready var _queue_hint: Label = $HudLayer/TurnQueuePanel/VBox/Hint
-@onready var _move_btn: Button = $HudLayer/BottomBar/ActionBar/MoveBtn
-@onready var _attack_btn: Button = $HudLayer/BottomBar/ActionBar/AttackBtn
-@onready var _skill_btn: Button = $HudLayer/BottomBar/ActionBar/SkillBtn
-@onready var _extract_btn: Button = $HudLayer/BottomBar/ActionBar/ExtractBtn
-@onready var _insert_btn: Button = $HudLayer/BottomBar/ActionBar/InsertBtn
-@onready var _trigger_btn: Button = $HudLayer/BottomBar/ActionBar/TriggerBtn
-@onready var _end_turn_btn: Button = $HudLayer/BottomBar/ActionBar/EndTurnBtn
+@onready var _bottom_dock: PanelContainer = $HudLayer/BottomDock
+@onready var _move_btn: Button = $HudLayer/BottomDock/BottomBar/MoveGroup/MoveBtn
+@onready var _attack_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn
+@onready var _skill_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/SkillBtn
+@onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn
+@onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn
+@onready var _trigger_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn
+@onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn
 
 var _controller: BattleController = BattleController.new()
 var _encounter_id: String = "tutorial_001"
@@ -43,12 +47,10 @@ var _encounter_id: String = "tutorial_001"
 var _inspect_uid: String = ""
 var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _panel_visible: bool = true
-var _enemy_phase_running: bool = false  # 敌方回合进行中，锁定玩家输入
-var _player_animating: bool = false     # 玩家移动动画进行中，锁定输入
+var _enemy_phase_running: bool = false
+var _player_animating: bool = false
 var _animation_speed_scale: float = 1.0
 var _enemy_turn_queue: Array[String] = []
-
-# 弹出式槽位选择器
 var _slot_popup: Control = null
 
 
@@ -60,12 +62,28 @@ func _ready() -> void:
 	_controller.anim_gem_flash.connect(_on_anim_gem_flash)
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
-	_unit_list.item_selected.connect(_on_unit_list_selected)
-	_toggle_panel_btn.pressed.connect(_on_toggle_panel)
-	_style_action_buttons()
+	_apply_ui_theme()
 	_create_slot_popup()
 	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
+
+
+func _apply_ui_theme() -> void:
+	_status_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
+	_top_bar.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT.darkened(0.2)))
+	_bottom_dock.add_theme_stylebox_override("panel", BattleUiTheme.dock_style())
+	$HudLayer/TurnQueuePanel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.PHASE_PLAYER.darkened(0.35)))
+	_preview_panel.add_theme_stylebox_override("panel", BattleUiTheme.tooltip_style())
+	$HudLayer/StatusPanel/VBox/PlayerCard.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER.darkened(0.15)))
+	_player_name.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	_message_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	_hint_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	for label_path in ["RosterTitle", "LogTitle", "InspectTitle"]:
+		var label: Label = $HudLayer/StatusPanel/VBox.get_node(label_path)
+		label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	_hp_bar.add_theme_stylebox_override("background", _flat_style(Color(0.12, 0.13, 0.18), Color(0.22, 0.24, 0.3)))
+	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
 
 
 func _create_slot_popup() -> void:
@@ -98,16 +116,12 @@ func _on_action_pressed(action: String) -> void:
 	_dismiss_popup()
 	if _controller.selected_action == action:
 		_controller.select_action("")
-		_message_label.text = "已取消当前操作"
+		_message_label.text = "已取消选择"
 	else:
 		_controller.select_action(action)
 		_message_label.text = _controller.get_action_hint()
 	_refresh()
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 玩家输入
-# ═══════════════════════════════════════════════════════════════════════════
 
 func _on_cell_clicked(cell: Vector2i) -> void:
 	if _enemy_phase_running or _player_animating:
@@ -115,15 +129,12 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 	var state := _controller.state
 	if state == null or state.phase != Constants.PHASE_PLAYER:
 		return
-
 	var unit := state.get_unit_at(cell)
-
 	match _controller.selected_action:
 		Constants.ACTION_MOVE:
 			_dismiss_popup()
 			var move_result := _controller.try_move(cell)
 			if move_result.get("ok", false):
-				# 锁定输入，清除高亮，逐格播放动画，完成后刷新
 				_player_animating = true
 				_board.set_highlights({})
 				var events: Array = move_result.get("move_events", [])
@@ -143,19 +154,16 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			var skill_result := _controller.try_skill(cell)
 			_show_result(skill_result)
 			if skill_result.get("ok", false):
-				# 播放技能动画
 				var skill_events: Array = skill_result.get("events", [])
 				for ev in skill_events:
 					await _play_anim_event(ev)
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
-			# 点击有效目标 → 显示槽位弹窗（单位或地块）
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
 				if unit != null and unit.alive:
 					_inspect_uid = unit.uid
 					_show_slot_popup(unit)
 				else:
-					# 无单位但地块有槽位（祭坛/石柱）
 					var tile: TileState = _controller.state.get_tile(cell)
 					if tile != null and tile.has_slots():
 						_show_tile_slot_popup(tile, cell)
@@ -172,43 +180,47 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		_preview_panel.visible = false
 		_board.set_hover(Vector2i(-1, -1))
 		return
-
 	_board.set_hover(cell)
-
-	# 预览面板（跟随鼠标）
 	var preview: Dictionary = _controller.get_cell_preview(cell)
 	_preview_title.text = preview.get("title", "")
-	_preview_body.text = preview.get("body", "")
+	_preview_body.text = _format_preview_body(preview.get("body", ""))
 	_preview_panel.visible = true
 	var mouse: Vector2 = get_viewport().get_mouse_position()
-	_preview_panel.position = mouse + Vector2(16, 16)
+	_preview_panel.position = mouse + Vector2(18, 18)
 	_clamp_preview_panel()
+
+
+func _format_preview_body(body: String) -> String:
+	if body.is_empty():
+		return ""
+	var lines: PackedStringArray = body.split("\n")
+	var formatted: Array[String] = []
+	for line in lines:
+		if line.begins_with("→"):
+			formatted.append("[color=#7fd4ff]%s[/color]" % line)
+		elif line.begins_with("意图:"):
+			formatted.append("[color=#ffb07a]%s[/color]" % line)
+		elif line.begins_with("状态:"):
+			formatted.append("[color=#ff7070]%s[/color]" % line)
+		elif line.begins_with("预判:"):
+			formatted.append("[color=#ffd166]%s[/color]" % line)
+		else:
+			formatted.append("[color=#c8cad4]%s[/color]" % line)
+	return "\n".join(formatted)
 
 
 func _show_slot_popup(unit: UnitState) -> void:
 	var screen_pos: Vector2 = _board.grid_to_screen(unit.pos)
 	var board_global: Vector2 = _board.global_position
-	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -60)
-	_slot_popup.show_for_unit(
-		unit,
-		_controller.state,
-		_controller.selected_action,
-		popup_pos,
-		_controller.check_slot_action
-	)
+	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
+	_slot_popup.show_for_unit(unit, _controller.state, _controller.selected_action, popup_pos, _controller.check_slot_action)
 
 
 func _show_tile_slot_popup(tile: TileState, cell: Vector2i) -> void:
 	var screen_pos: Vector2 = _board.grid_to_screen(cell)
 	var board_global: Vector2 = _board.global_position
-	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -60)
-	_slot_popup.show_for_tile(
-		tile,
-		_controller.state,
-		_controller.selected_action,
-		popup_pos,
-		_controller.check_tile_slot_action
-	)
+	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
+	_slot_popup.show_for_tile(tile, _controller.state, _controller.selected_action, popup_pos, _controller.check_tile_slot_action)
 
 
 func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
@@ -228,10 +240,10 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 		match _controller.selected_action:
 			Constants.ACTION_EXTRACT:
 				_controller.select_action(Constants.ACTION_INSERT)
-				_message_label.text = "已从地块拔出！点击目标嵌入"
+				_message_label.text = "已从地块拔出，点击目标嵌入"
 			Constants.ACTION_INSERT:
 				_controller.select_action(Constants.ACTION_ATTACK)
-				_message_label.text = "已嵌入地块！选择攻击或触发"
+				_message_label.text = "已嵌入地块，可攻击或触发"
 	_refresh()
 
 
@@ -252,10 +264,10 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 		match _controller.selected_action:
 			Constants.ACTION_EXTRACT:
 				_controller.select_action(Constants.ACTION_INSERT)
-				_message_label.text = "已拔出！点击目标嵌入（免费）"
+				_message_label.text = "已拔出，点击目标嵌入（免费）"
 			Constants.ACTION_INSERT:
 				_controller.select_action(Constants.ACTION_ATTACK)
-				_message_label.text = "已嵌入！选择攻击或触发"
+				_message_label.text = "已嵌入，可攻击或触发"
 	_refresh()
 
 
@@ -268,17 +280,6 @@ func _dismiss_popup() -> void:
 		_slot_popup.hide_popup()
 
 
-func _on_unit_list_selected(index: int) -> void:
-	var meta: Variant = _unit_list.get_item_metadata(index)
-	if meta is String:
-		_inspect_uid = meta
-		_refresh()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 敌方回合：真正的异步逐个执行
-# ═══════════════════════════════════════════════════════════════════════════
-
 func _on_end_turn_pressed() -> void:
 	if _enemy_phase_running:
 		return
@@ -289,9 +290,8 @@ func _on_end_turn_pressed() -> void:
 func _run_enemy_phase_async() -> void:
 	_enemy_phase_running = true
 	_controller.begin_enemy_phase()
-	_message_label.text = "敌方回合..."
+	_message_label.text = "敌方行动中..."
 	_refresh()
-
 	var enemies := _controller.get_sorted_enemies()
 	_enemy_turn_queue.clear()
 	for enemy in enemies:
@@ -304,62 +304,38 @@ func _run_enemy_phase_async() -> void:
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
-
-		# 执行这个敌人的意图，获取动画事件
 		var events: Array[Dictionary] = _controller.execute_single_enemy(enemy)
-
-		# 逐个播放动画事件，每个都 await 完成
 		for ev in events:
 			await _play_anim_event(ev)
-
-		# 每个敌人之间短暂停顿
 		await get_tree().create_timer(_scaled_anim_time(0.2)).timeout
 		_board.queue_redraw()
+		_refresh()
 		_consume_enemy_turn(enemy.uid)
 		_refresh_turn_queue()
-
-	# 所有敌人执行完毕
 	if _controller.state.phase != Constants.PHASE_ENDED:
 		_controller.finish_enemy_phase()
-
 	_enemy_phase_running = false
 	_enemy_turn_queue.clear()
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
 
 
-## 播放单个动画事件并等待完成
 func _play_anim_event(ev: Dictionary) -> void:
 	match ev.get("type", ""):
 		"move_step":
-			var uid: String = ev.get("uid", "")
-			var from_pos: Vector2i = ev.get("from", Vector2i.ZERO)
-			var to_pos: Vector2i = ev.get("to", Vector2i.ZERO)
-			_board.animate_move(uid, from_pos, to_pos)
+			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
 			await _board.animation_finished
 		"damage":
-			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var damage: int = ev.get("damage", 1)
-			var is_crit: bool = ev.get("is_crit", false)
-			_board.play_damage_effect(pos, damage, is_crit)
+			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), ev.get("damage", 1), ev.get("is_crit", false))
 			await get_tree().create_timer(_scaled_anim_time(0.3)).timeout
 		"explode":
 			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var radius: int = ev.get("radius", 1)
 			_board.play_explosion(pos)
-			var affected: Array[Vector2i] = BoardUtils.cells_in_radius(pos, radius)
-			for cell in affected:
-				if cell != pos:
-					_board.play_damage_effect(cell, 4, true)
 			_board.queue_redraw()
 			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
 		"gem_flash":
-			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var color: Color = ev.get("color", Color.WHITE)
-			_board.play_gem_flash(pos, color)
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
 			await get_tree().create_timer(_scaled_anim_time(0.25)).timeout
-		_:
-			pass  # unit_start, unit_end 等标记不需要动画
 
 
 func _on_back_pressed() -> void:
@@ -367,8 +343,10 @@ func _on_back_pressed() -> void:
 
 
 func _on_battle_ended(result: String) -> void:
-	_message_label.text = "战斗结束: %s" % ("胜利！" if result == "win" else "失败...")
+	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
 	_hint_label.text = ""
+	_phase_badge.text = "结束"
+	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
 
 
@@ -376,26 +354,19 @@ func _show_result(result: Dictionary) -> void:
 	if result.get("ok", false):
 		_message_label.text = _controller.get_action_hint()
 	else:
-		_message_label.text = result.get("reason", "操作失败")
+		_message_label.text = result.get("reason", "无法执行")
 
 
 func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 面板折叠
-# ═══════════════════════════════════════════════════════════════════════════
-
 func _on_toggle_panel() -> void:
 	_panel_visible = not _panel_visible
 	_status_panel.visible = _panel_visible
 	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
+	_toggle_panel_btn.position.x = 260.0 if _panel_visible else 8.0
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 刷新 UI
-# ═══════════════════════════════════════════════════════════════════════════
 
 func _refresh() -> void:
 	var state := _controller.state
@@ -407,28 +378,44 @@ func _refresh() -> void:
 		_player_name.text = _data_registry().get_unit_display_name(player.unit_def_id)
 		_hp_bar.max_value = player.max_hp
 		_hp_bar.value = player.hp
+		var ratio := float(player.hp) / float(maxi(player.max_hp, 1))
+		_hp_bar.add_theme_stylebox_override("fill", _flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08)))
+		_hp_text.text = "%d / %d" % [player.hp, player.max_hp]
+		_refresh_player_status_row(player)
 
-	var phase_text: String = "你的回合" if state.phase == Constants.PHASE_PLAYER else ("结束" if state.phase == Constants.PHASE_ENDED else "敌方")
-	var move_icon: String = "✓" if state.player_moved else "○"
-	var act_icon: String = "✓" if state.player_acted else "○"
-	_turn_label.text = "T%d %s  移动%s 行动%s" % [state.turn_index, phase_text, move_icon, act_icon]
+	_turn_label.text = "T%d" % state.turn_index
+	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
+	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
+	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
+	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
+
+	match state.phase:
+		Constants.PHASE_PLAYER:
+			_phase_badge.text = "你的回合"
+			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_PLAYER)
+		Constants.PHASE_ENDED:
+			_phase_badge.text = "战斗结束"
+			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
+		_:
+			_phase_badge.text = "敌方回合"
+			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_ENEMY)
 
 	var held := _controller.get_held_gem()
 	if held != null:
-		_held_label.text = "◆%s" % _data_registry().get_gem_display_name(held.gem_id)
-		_held_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+		var gem_name: String = _data_registry().get_gem_display_name(held.gem_id)
+		_held_label.text = "手持 ◆ %s" % gem_name
+		_held_label.add_theme_color_override("font_color", UnitVisuals.gem_color(held.gem_id).lightened(0.15))
 	else:
 		_held_label.text = ""
-		_held_label.remove_theme_color_override("font_color")
+		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 
+	_hint_label.text = _controller.get_tutorial_hint()
 	var tutorial_hint: String = _controller.get_tutorial_hint()
-	_hint_label.text = tutorial_hint
-
-	# 教学关：步骤提示优先显示在顶部大字区域
 	if not tutorial_hint.is_empty():
 		_message_label.text = tutorial_hint.split("\n")[0]
-	elif _message_label.text == "选择操作" or _message_label.text.is_empty():
+	elif _message_label.text.is_empty():
 		_message_label.text = _controller.get_action_hint()
+
 	_board.state = state
 	_board.selected_unit_uid = _inspect_uid
 	_board.set_highlights(_controller.get_highlights())
@@ -437,31 +424,77 @@ func _refresh() -> void:
 		for enemy in _controller.get_sorted_enemies():
 			_enemy_turn_queue.append(enemy.uid)
 	_refresh_turn_queue()
-	_refresh_unit_list()
+	_refresh_unit_roster()
 	_refresh_inspect()
 	_refresh_action_buttons()
+	_refresh_combat_log()
 	_board.queue_redraw()
 
 
-func _refresh_unit_list() -> void:
+func _refresh_player_status_row(player: UnitState) -> void:
+	StatusUi.populate_status_row(_player_status_row, player, true)
+
+
+func _refresh_unit_roster() -> void:
+	for child in _unit_roster.get_children():
+		child.queue_free()
 	var state := _controller.state
-	_unit_list.clear()
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
-		var hp_text: String = "♥%d/%d" % [unit.hp, unit.max_hp]
-		var speed_text: String = " S%d" % unit.speed
-		var armor_text: String = " A%d" % CombatRules.current_armor(state, unit)
-		var slot_text: String = _slot_icons(unit, state)
-		var intent_text: String = ""
-		if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-			intent_text = " →%s" % unit.intent.preview_text
-		var line: String = "%s %s%s%s%s%s" % [unit_name, hp_text, speed_text, armor_text, slot_text, intent_text]
-		var idx: int = _unit_list.add_item(line)
-		_unit_list.set_item_metadata(idx, unit.uid)
-		if unit.uid == _inspect_uid:
-			_unit_list.select(idx)
+		var card := _create_unit_card(unit, state)
+		_unit_roster.add_child(card)
+
+
+func _create_unit_card(unit: UnitState, state: GameState) -> Control:
+	var card := PanelContainer.new()
+	var selected := unit.uid == _inspect_uid
+	var accent := Color(0.95, 0.35, 0.35) if unit.team == Constants.TEAM_ENEMY else BattleUiTheme.PHASE_PLAYER
+	card.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent if selected else BattleUiTheme.BORDER.darkened(0.1)))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	card.add_child(row)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(28, 28)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = UnitVisuals.get_unit_texture(unit.unit_def_id)
+	row.add_child(icon)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
+	var title := Label.new()
+	title.text = unit_name
+	title.add_theme_font_size_override("font_size", 13)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	info.add_child(title)
+	var meta := Label.new()
+	var armor := CombatRules.current_armor(state, unit)
+	meta.text = "HP %d/%d  速%d  甲%d  %s" % [unit.hp, unit.max_hp, unit.speed, armor, _slot_icons(unit, state)]
+	meta.add_theme_font_size_override("font_size", 10)
+	meta.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	info.add_child(meta)
+	if not unit.statuses.is_empty():
+		info.add_child(StatusUi.build_status_row(unit, true))
+	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
+		var intent_label := Label.new()
+		intent_label.text = unit.intent.preview_text
+		intent_label.add_theme_font_size_override("font_size", 10)
+		intent_label.add_theme_color_override("font_color", Color(1.0, 0.72, 0.45))
+		info.add_child(intent_label)
+	var btn := Button.new()
+	btn.flat = true
+	btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	btn.pressed.connect(func(): _select_unit(unit.uid))
+	card.add_child(btn)
+	card.custom_minimum_size = Vector2(0, 56)
+	return card
+
+
+func _select_unit(uid: String) -> void:
+	_inspect_uid = uid
+	_refresh()
 
 
 func _slot_icons(unit: UnitState, state: GameState) -> String:
@@ -475,73 +508,81 @@ func _slot_icons(unit: UnitState, state: GameState) -> String:
 			parts.append("○")
 		else:
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			if gem != null:
-				parts.append(UnitVisuals.gem_symbol(gem.gem_id))
-			else:
-				parts.append("?")
-	return " [%s]" % "".join(parts)
+			parts.append(UnitVisuals.gem_symbol(gem.gem_id) if gem != null else "?")
+	return "[%s]" % "".join(parts)
 
 
 func _refresh_inspect() -> void:
 	var state := _controller.state
 	for child in _slot_box.get_children():
 		child.queue_free()
-
 	if _inspect_uid.is_empty():
-		_inspect_title.text = ""
+		_inspect_title.text = "单位详情"
+		_inspect_body.text = "[color=#666b78]点击左侧单位或棋盘单位查看详情[/color]"
+		return
+	var unit: UnitState = state.units.get(_inspect_uid, null)
+	if unit == null:
+		_inspect_title.text = "已阵亡"
 		_inspect_body.text = ""
-	else:
-		var unit: UnitState = state.units.get(_inspect_uid, null)
-		if unit == null:
-			_inspect_title.text = "已阵亡"
-			_inspect_body.text = ""
-		else:
-			var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
-			var armor_value := CombatRules.current_armor(state, unit)
-			_inspect_title.text = "%s  %d/%d HP  护甲%d" % [unit_name, unit.hp, unit.max_hp, armor_value]
-			var lines: Array[String] = []
-			if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-				lines.append("意图: %s" % unit.intent.preview_text)
-			for i in range(unit.slots.size()):
-				var slot: SlotState = unit.slots[i]
-				lines.append(_slot_detail_line(state, slot))
-			_inspect_body.text = "\n".join(lines)
-
-			for i in range(unit.slots.size()):
-				var slot: SlotState = unit.slots[i]
-				var indicator := ColorRect.new()
-				indicator.custom_minimum_size = Vector2(20, 20)
-				indicator.color = UnitVisuals.slot_color(slot.slot_type)
-				if slot.gem_uid.is_empty():
-					indicator.color.a = 0.3
-				if slot.locked:
-					indicator.color = indicator.color.darkened(0.5)
-				_slot_box.add_child(indicator)
-
-	var log_lines := state.combat_log.slice(maxi(0, state.combat_log.size() - 4))
-	_log_label.text = "\n".join(log_lines)
+		return
+	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
+	var armor_value := CombatRules.current_armor(state, unit)
+	_inspect_title.text = "%s" % unit_name
+	var lines: Array[String] = []
+	lines.append("[color=#9aa0ad]HP %d/%d · 护甲 %d · 速度 %d[/color]" % [unit.hp, unit.max_hp, armor_value, unit.speed])
+	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
+		lines.append("[color=#ffb07a]意图: %s[/color]" % unit.intent.preview_text)
+	lines.append(StatusUi.format_all_bbcode(unit))
+	for slot in unit.slots:
+		lines.append(_slot_detail_bbcode(state, unit, slot))
+		_slot_box.add_child(_create_slot_chip(state, slot))
+	_inspect_body.text = "\n".join(lines)
 
 
-func _slot_detail_line(state: GameState, slot: SlotState) -> String:
-	var label: String = "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
+func _slot_detail_bbcode(state: GameState, _unit: UnitState, slot: SlotState) -> String:
+	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
+	var slot_col := UnitVisuals.slot_color(slot.slot_type)
+	var col_hex := slot_col.to_html(false)
 	if slot.locked:
-		return "  %s🔒" % label
+		return "[color=%s]  %s 🔒 锁定[/color]" % [col_hex, slot_name]
 	if slot.gem_uid.is_empty():
-		return "  %s○" % label
+		return "[color=%s]  %s ○ 空槽[/color]" % [col_hex, slot_name]
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
-		return "  %s?" % label
-	return "  %s◆%s" % [label, _data_registry().get_gem_display_name(gem.gem_id)]
+		return "[color=%s]  %s ?[/color]" % [col_hex, slot_name]
+	var gem_name: String = _data_registry().get_gem_display_name(gem.gem_id)
+	var context := "unit_blue" if slot.slot_type == Constants.SLOT_BLUE else ("player_skill" if slot.slot_type == Constants.SLOT_RED else "")
+	var effect: String = GemEffects.get_slot_effect_description(gem.gem_id, slot.slot_type, context)
+	if effect.is_empty():
+		return "[color=%s]  %s ◆ %s[/color]" % [col_hex, slot_name, gem_name]
+	return "[color=%s]  %s ◆ %s[/color] [color=#8a909c]— %s[/color]" % [col_hex, slot_name, gem_name, effect]
+
+
+func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
+	var chip := PanelContainer.new()
+	var color := UnitVisuals.slot_color(slot.slot_type)
+	if not slot.gem_uid.is_empty():
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			color = UnitVisuals.gem_color(gem.gem_id)
+	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
+	var label := Label.new()
+	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
+	if slot.locked:
+		label.text = "%s🔒" % slot_name
+	elif slot.gem_uid.is_empty():
+		label.text = "%s○" % slot_name
+	else:
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		label.text = "%s%s" % [slot_name, UnitVisuals.gem_symbol(gem.gem_id) if gem != null else "?"]
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	chip.add_child(label)
+	return chip
 
 
 func _refresh_action_buttons() -> void:
 	var current: String = _controller.selected_action
-	_highlight_action_button(_move_btn, current == Constants.ACTION_MOVE)
-	_highlight_action_button(_attack_btn, current == Constants.ACTION_ATTACK)
-	_highlight_action_button(_skill_btn, current == Constants.ACTION_SKILL)
-	_highlight_action_button(_extract_btn, current == Constants.ACTION_EXTRACT)
-	_highlight_action_button(_insert_btn, current == Constants.ACTION_INSERT)
-	_highlight_action_button(_trigger_btn, current == Constants.ACTION_TRIGGER)
 	var can_act: bool = not _enemy_phase_running
 	_move_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_MOVE)
 	_attack_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_ATTACK)
@@ -550,54 +591,65 @@ func _refresh_action_buttons() -> void:
 	_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT)
 	_trigger_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_TRIGGER)
 	_end_turn_btn.disabled = not can_act or _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER
-
-	# 技能按钮动态文本：显示当前持有宝石名
+	BattleUiTheme.apply_button(_move_btn, "move", current == Constants.ACTION_MOVE)
+	BattleUiTheme.apply_button(_attack_btn, "combat", current == Constants.ACTION_ATTACK)
+	BattleUiTheme.apply_button(_skill_btn, "skill", current == Constants.ACTION_SKILL)
+	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
+	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
+	BattleUiTheme.apply_button(_trigger_btn, "gem", current == Constants.ACTION_TRIGGER)
+	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
 	if _controller.can_use_action(Constants.ACTION_SKILL):
 		var held := _controller.get_held_gem()
 		if held != null:
-			_skill_btn.text = "技能(%s)" % _data_registry().get_gem_display_name(held.gem_id)
+			_skill_btn.text = "技能·%s" % _data_registry().get_gem_display_name(held.gem_id)
 		else:
-			_skill_btn.text = "技能"
+			var player := _controller.state.get_player()
+			var red := player.get_slot(Constants.SLOT_RED) if player != null else null
+			if red != null and not red.gem_uid.is_empty():
+				var gem: GemState = _controller.state.gems.get(red.gem_uid, null)
+				if gem != null:
+					_skill_btn.text = "技能·%s" % _data_registry().get_gem_display_name(gem.gem_id)
+				else:
+					_skill_btn.text = "技能"
+			else:
+				_skill_btn.text = "技能"
 	else:
-		_skill_btn.text = "技能(空)"
-
-	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出(满)"
-	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入(空)"
-
-
-func _highlight_action_button(button: Button, active: bool) -> void:
-	var style := StyleBoxFlat.new()
-	if active:
-		style.bg_color = Color(0.85, 0.65, 0.2, 0.95)
-		style.border_color = Color(1, 0.9, 0.5)
-	else:
-		style.bg_color = Color(0.18, 0.18, 0.24, 0.92)
-		style.border_color = Color(0.35, 0.35, 0.42)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(4)
-	button.add_theme_stylebox_override("normal", style)
-	button.add_theme_stylebox_override("hover", style)
-	button.add_theme_stylebox_override("pressed", style)
-	button.add_theme_stylebox_override("disabled", style)
+		_skill_btn.text = "技能"
+	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
+	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
 
 
-func _style_action_buttons() -> void:
-	for button in [_move_btn, _attack_btn, _skill_btn, _extract_btn, _insert_btn, _trigger_btn, _end_turn_btn]:
-		button.custom_minimum_size = Vector2(88, 44)
+func _refresh_combat_log() -> void:
+	var state := _controller.state
+	if state == null:
+		_log_label.text = ""
+		return
+	var log_lines := state.combat_log.slice(maxi(0, state.combat_log.size() - 6))
+	_log_label.text = _format_combat_log(log_lines)
+
+
+func _format_combat_log(lines: PackedStringArray) -> String:
+	var formatted: Array[String] = []
+	for line in lines:
+		if "伤害" in line or "被击败" in line:
+			formatted.append("[color=#ff8a80]%s[/color]" % line)
+		elif "嵌入" in line or "拔出" in line or "宝石" in line:
+			formatted.append("[color=#8fd4a8]%s[/color]" % line)
+		elif "回合" in line or "遭遇" in line:
+			formatted.append("[color=#9aa0ad]%s[/color]" % line)
+		else:
+			formatted.append("[color=#c8cad4]%s[/color]" % line)
+	return "\n".join(formatted)
 
 
 func _clamp_preview_panel() -> void:
-	# 限制预览面板最大高度为屏幕的 40%
-	var max_panel_h: float = size.y * 0.4
+	var max_panel_h: float = size.y * 0.42
 	if _preview_panel.size.y > max_panel_h:
 		_preview_panel.size.y = max_panel_h
-		_preview_body.clip_text = true
-	else:
-		_preview_body.clip_text = false
-	var max_x: float = size.x - _preview_panel.size.x - 8
-	var max_y: float = size.y - _preview_panel.size.y - 8
-	_preview_panel.position.x = clampf(_preview_panel.position.x, 8, maxf(max_x, 8.0))
-	_preview_panel.position.y = clampf(_preview_panel.position.y, 8, maxf(max_y, 8.0))
+	var max_x: float = size.x - _preview_panel.size.x - 8.0
+	var max_y: float = size.y - _preview_panel.size.y - 80.0
+	_preview_panel.position.x = clampf(_preview_panel.position.x, 8.0, maxf(max_x, 8.0))
+	_preview_panel.position.y = clampf(_preview_panel.position.y, 56.0, maxf(max_y, 56.0))
 
 
 func _input(event: InputEvent) -> void:
@@ -606,10 +658,6 @@ func _input(event: InputEvent) -> void:
 			_dismiss_popup()
 			get_viewport().set_input_as_handled()
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 玩家动作动画回调（移动/攻击/宝石操作）
-# ═══════════════════════════════════════════════════════════════════════════
 
 func _on_anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
 	_board.animate_move(unit_uid, from_pos, to_pos)
@@ -623,81 +671,54 @@ func _on_anim_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	_board.play_gem_flash(grid, gem_color)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 教学引导
-# ═══════════════════════════════════════════════════════════════════════════
-
 func _show_tutorial_intro() -> void:
 	var overlay := ColorRect.new()
-	overlay.name = "TutorialOverlay"
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.color = Color(0.0, 0.0, 0.0, 0.75)
+	overlay.color = Color(0.02, 0.02, 0.05, 0.82)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
-
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.custom_minimum_size = Vector2(560, 0)
+	panel.offset_left = -280
+	panel.offset_right = 280
+	panel.offset_top = -220
+	panel.offset_bottom = 220
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
+	overlay.add_child(panel)
 	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	vbox.offset_left = -280
-	vbox.offset_right = 280
-	vbox.offset_top = -200
-	vbox.offset_bottom = 200
-	vbox.add_theme_constant_override("separation", 16)
-	overlay.add_child(vbox)
-
+	vbox.add_theme_constant_override("separation", 14)
+	panel.add_child(vbox)
 	var title := Label.new()
-	title.text = "窃律者 — 操作指南"
+	title.text = "窃律者 · 操作指南"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	vbox.add_child(title)
-
 	var body := RichTextLabel.new()
 	body.bbcode_enabled = true
 	body.fit_content = true
-	body.scroll_active = false
-	body.custom_minimum_size = Vector2(0, 240)
-	body.text = """[color=#aaaacc]这是一个回合制战术游戏。每回合你有：[/color]
+	body.custom_minimum_size = Vector2(0, 260)
+	body.text = """[color=#9aa0ad]每回合资源：[/color]
+[color=#5ad8ff]● 1 次移动[/color]　[color=#ffcc44]● 1 次行动[/color]（攻击/技能/触发）
+[color=#88ff88]● 拔出/嵌入免费[/color]，可穿插在行动前后
 
-[color=#5ad8ff]● 1次移动[/color] — 点底部「移动」按钮，再点蓝色高亮格
-[color=#ffcc44]● 1次行动[/color] — 攻击/技能/触发宝石（三选一）
-[color=#88ff88]● 免费操作[/color] — 拔出/嵌入宝石（不消耗行动）
+[color=#ff6666]核心：偷敌人宝石 → 装入自己槽位 → 释放技能[/color]
 
-[color=#ff6666]核心玩法：偷取敌人的宝石 → 装入自己红槽 → 释放技能！[/color]
+[color=#ff5555]红槽[/color] 主动　[color=#5599ff]蓝槽[/color] 被动　[color=#888]黑槽[/color] 死亡触发
+[color=#ffaa44]祭坛[/color] 立即全场　[color=#6699ff]机关柱[/color] 每回合光环
 
-[color=#aaaacc]你有 3 个槽位：[/color]
-[color=#ff5555]红槽[/color] — 主动技能：装入宝石后点「技能」释放
-[color=#5599ff]蓝槽[/color] — 被动防御：自动触发防御效果
-[color=#333333]黑槽[/color] — 死亡触发：嵌入敌人身上，击杀时引爆
-
-[color=#aaaacc]本关目标：[/color]
-[color=#ffffff]① 点「拔出」→ 点自爆工兵 → 选红槽偷走爆炸宝石
-② 点「技能」→ 对守卫释放爆炸（范围伤害！）
-③ 或者：嵌入守卫黑槽 → 攻击补刀 → 死亡引爆[/color]
-
-[color=#88ff88]操作完毕点「结束回合」，敌人会行动。[/color]"""
+[color=#ffffff]教学目标：拔工兵红槽 → 技能/黑槽嫁祸 → 结束回合[/color]"""
 	vbox.add_child(body)
-
 	var btn := Button.new()
-	btn.text = "明白了，开始战斗！"
-	btn.custom_minimum_size = Vector2(200, 48)
+	btn.text = "开始战斗"
+	btn.custom_minimum_size = Vector2(180, 44)
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.85, 0.25, 0.35, 0.95)
-	style.border_color = Color(1.0, 0.5, 0.4)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(8)
-	btn.add_theme_stylebox_override("normal", style)
-	btn.add_theme_stylebox_override("hover", style)
-	btn.add_theme_stylebox_override("pressed", style)
-	btn.add_theme_font_size_override("font_size", 16)
-	btn.add_theme_color_override("font_color", Color.WHITE)
+	BattleUiTheme.apply_button(btn, "end")
 	btn.pressed.connect(func(): overlay.queue_free())
 	vbox.add_child(btn)
-
-	# 淡入
 	overlay.modulate.a = 0.0
-	var tween := create_tween()
-	tween.tween_property(overlay, "modulate:a", 1.0, 0.3)
+	create_tween().tween_property(overlay, "modulate:a", 1.0, 0.28)
 
 
 func set_animation_speed_scale(speed_scale: float) -> void:
@@ -723,25 +744,20 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 func _refresh_turn_queue() -> void:
 	var state := _controller.state
 	if state == null:
-		_queue_title.text = "ATB 时间轴"
-		_queue_hint.text = "ACTIVE: -"
 		return
-	_queue_title.text = "ATB 时间轴"
 	for child in _queue_row.get_children():
 		child.queue_free()
 	var active_uid: String = _get_active_turn_uid()
 	var active_unit: UnitState = state.units.get(active_uid, null)
 	if active_unit != null:
 		var active_name: String = _data_registry().get_unit_display_name(active_unit.unit_def_id)
-		_queue_hint.text = "ACTIVE: %s (S%d)" % [active_name, active_unit.speed]
+		_queue_hint.text = "当前 %s · 速 %d" % [active_name, active_unit.speed]
 	else:
-		_queue_hint.text = "ACTIVE: -"
-	var timeline: Array[String] = _build_turn_timeline_uids(active_uid, 10)
-	for uid in timeline:
+		_queue_hint.text = "当前 —"
+	for uid in _build_turn_timeline_uids(active_uid, 8):
 		var unit: UnitState = state.units.get(uid, null)
-		if unit == null or not unit.alive:
-			continue
-		_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid))
+		if unit != null and unit.alive:
+			_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid))
 
 
 func _get_active_turn_uid() -> String:
@@ -787,30 +803,40 @@ func _build_turn_timeline_uids(active_uid: String, max_items: int) -> Array[Stri
 
 func _create_timeline_avatar(unit: UnitState, is_active: bool) -> Control:
 	var root := VBoxContainer.new()
-	root.custom_minimum_size = Vector2(44, 46)
+	root.custom_minimum_size = Vector2(48, 54)
 	root.alignment = BoxContainer.ALIGNMENT_CENTER
-
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(38, 38)
-	var frame_style := StyleBoxFlat.new()
-	frame_style.bg_color = Color(0.12, 0.14, 0.18, 0.95)
-	frame_style.border_color = Color(1.0, 0.85, 0.35) if is_active else Color(0.38, 0.42, 0.5, 0.85)
-	frame_style.set_border_width_all(2 if is_active else 1)
-	frame_style.set_corner_radius_all(4)
-	frame.add_theme_stylebox_override("panel", frame_style)
+	frame.custom_minimum_size = Vector2(40, 40)
+	var accent := BattleUiTheme.TEXT_GOLD if is_active else BattleUiTheme.BORDER
+	frame.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
 	root.add_child(frame)
-
 	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(32, 32)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(30, 30)
 	icon.texture = UnitVisuals.get_unit_texture(unit.unit_def_id)
-	icon.modulate = Color(1.0, 1.0, 1.0) if unit.alive else Color(0.4, 0.4, 0.4)
 	frame.add_child(icon)
-
 	var speed_label := Label.new()
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	speed_label.text = "S%d" % unit.speed
-	speed_label.modulate = Color(1.0, 0.9, 0.5) if is_active else Color(0.82, 0.84, 0.9)
+	speed_label.text = "%d" % unit.speed
+	speed_label.add_theme_font_size_override("font_size", 10)
+	speed_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD if is_active else BattleUiTheme.TEXT_MUTED)
 	root.add_child(speed_label)
 	return root
+
+
+func _style_chip(label: Label, highlight: bool, color: Color) -> void:
+	if not highlight:
+		label.remove_theme_stylebox_override("normal")
+		label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+		return
+	label.add_theme_stylebox_override("normal", BattleUiTheme.chip_style(color))
+	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+
+
+func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = bg
+	box.border_color = border
+	box.set_corner_radius_all(4)
+	return box

@@ -13,8 +13,13 @@ static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector
 	var tile := state.get_tile(pos)
 	if tile.has_modifier("poison_fog"):
 		StatusRules.apply_poison(state, unit, 1, 2)
-	if _unit_has_blue_poison(state, unit):
-		tile.add_modifier("poison_fog", Constants.POISON_FOG_DURATION)
+	GemEffects.run_unit_hooks(
+		state,
+		unit,
+		Constants.SLOT_BLUE,
+		GemEffects.TIMING_MOVED_THROUGH,
+		{"pos": pos}
+	)
 
 
 static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
@@ -22,16 +27,6 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 		return
 	var tile := state.get_tile(pos)
 	tile.add_modifier("poison_fog", Constants.POISON_FOG_DURATION)
-
-
-static func _unit_has_blue_poison(state: GameState, unit: UnitState) -> bool:
-	for slot in unit.slots:
-		if slot.slot_type != Constants.SLOT_BLUE or slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		if gem != null and gem.gem_id == Constants.GEM_POISON:
-			return true
-	return false
 
 
 static func _unlock_armor_locks(state: GameState, unit: UnitState) -> void:

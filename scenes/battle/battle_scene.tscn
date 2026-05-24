@@ -19,17 +19,26 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.08, 0.08, 0.12, 1)
+color = Color(0.05, 0.05, 0.09, 1)
+
+[node name="Vignette" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.22)
 
 [node name="BoardLayer" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = 10.0
-offset_bottom = -70.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
 [node name="IsometricBoard" type="Control" parent="BoardLayer"]
 layout_mode = 1
@@ -49,140 +58,206 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+[node name="TopBar" type="PanelContainer" parent="HudLayer"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 8.0
+offset_right = 320.0
+offset_bottom = 44.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="HBox" type="HBoxContainer" parent="HudLayer/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PhaseBadge" type="Label" parent="HudLayer/TopBar/HBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "你的回合"
+
+[node name="Message" type="Label" parent="HudLayer/TopBar/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+text = "选择操作"
+
+[node name="Spacer" type="Control" parent="HudLayer/TopBar/HBox"]
+custom_minimum_size = Vector2(8, 0)
+layout_mode = 2
+
 [node name="StatusPanel" type="PanelContainer" parent="HudLayer"]
 layout_mode = 1
-anchors_preset = 0
-anchor_right = 0.0
-anchor_bottom = 0.0
+anchors_preset = 9
+anchor_bottom = 1.0
 offset_left = 8.0
 offset_top = 8.0
-offset_right = 232.0
-offset_bottom = 680.0
+offset_right = 256.0
+offset_bottom = -8.0
+grow_vertical = 2
 mouse_filter = 0
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/StatusPanel"]
 layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="PlayerRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox"]
-layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Portrait" type="TextureRect" parent="HudLayer/StatusPanel/VBox/PlayerRow"]
-custom_minimum_size = Vector2(64, 64)
+[node name="PlayerCard" type="PanelContainer" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+
+[node name="PlayerRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/PlayerCard"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Portrait" type="TextureRect" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow"]
+custom_minimum_size = Vector2(56, 56)
 layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Info" type="VBoxContainer" parent="HudLayer/StatusPanel/VBox/PlayerRow"]
+[node name="Info" type="VBoxContainer" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/separation = 4
 
-[node name="Name" type="Label" parent="HudLayer/StatusPanel/VBox/PlayerRow/Info"]
+[node name="Name" type="Label" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 17
 text = "窃律者"
 
-[node name="HpBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/PlayerRow/Info"]
-custom_minimum_size = Vector2(0, 18)
+[node name="HpBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info"]
+custom_minimum_size = Vector2(0, 16)
 layout_mode = 2
 max_value = 6.0
 value = 6.0
 show_percentage = false
 
-[node name="TurnLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
+[node name="HpText" type="Label" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info"]
 layout_mode = 2
-text = "回合 1"
+theme_override_font_sizes/font_size = 11
+text = "6 / 6"
+
+[node name="StatusRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TurnChips" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TurnLabel" type="Label" parent="HudLayer/StatusPanel/VBox/TurnChips"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "T1"
+
+[node name="MoveChip" type="Label" parent="HudLayer/StatusPanel/VBox/TurnChips"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "移动 ○"
+
+[node name="ActChip" type="Label" parent="HudLayer/StatusPanel/VBox/TurnChips"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "行动 ○"
 
 [node name="HeldLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
 layout_mode = 2
-text = "手中宝石: 无"
+theme_override_font_sizes/font_size = 12
+text = ""
 
 [node name="HintLabel" type="Label" parent="HudLayer/StatusPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.78, 0.35, 1)
+theme_override_colors/font_color = Color(0.78, 0.72, 0.48, 1)
+theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
-text = "教学提示"
+text = ""
 
-[node name="UnitList" type="ItemList" parent="HudLayer/StatusPanel/VBox"]
-custom_minimum_size = Vector2(0, 120)
+[node name="RosterTitle" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "战场单位"
+
+[node name="UnitScroll" type="ScrollContainer" parent="HudLayer/StatusPanel/VBox"]
+custom_minimum_size = Vector2(0, 140)
 layout_mode = 2
 size_flags_vertical = 0
+horizontal_scroll_mode = 0
+
+[node name="UnitRoster" type="VBoxContainer" parent="HudLayer/StatusPanel/VBox/UnitScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
 
 [node name="InspectTitle" type="Label" parent="HudLayer/StatusPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "选中单位"
+theme_override_font_sizes/font_size = 14
+text = "单位详情"
 
 [node name="InspectBody" type="RichTextLabel" parent="HudLayer/StatusPanel/VBox"]
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
+bbcode_enabled = true
 fit_content = true
 scroll_active = false
-text = "◆ 菱形 = 宝石"
+text = ""
 
 [node name="SlotBox" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
+
+[node name="LogTitle" type="Label" parent="HudLayer/StatusPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "战斗记录"
 
 [node name="Log" type="RichTextLabel" parent="HudLayer/StatusPanel/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
-text = "战斗日志"
-
-[node name="TopCenter" type="Control" parent="HudLayer"]
-layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -360.0
-offset_top = 8.0
-offset_right = 360.0
-offset_bottom = 48.0
-grow_horizontal = 2
-
-[node name="Message" type="Label" parent="HudLayer/TopCenter"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 18
-horizontal_alignment = 1
-text = "选择操作"
+bbcode_enabled = true
+scroll_active = false
+fit_content = false
+text = ""
 
 [node name="TurnQueuePanel" type="PanelContainer" parent="HudLayer"]
-layout_mode = 0
-offset_left = 1048.0
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -268.0
 offset_top = 8.0
-offset_right = 1320.0
-offset_bottom = 152.0
+offset_right = -8.0
+offset_bottom = 128.0
+grow_horizontal = 0
+mouse_filter = 2
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/TurnQueuePanel"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="HudLayer/TurnQueuePanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
-text = "ATB 时间轴"
+theme_override_font_sizes/font_size = 13
+text = "行动顺序"
 
 [node name="QueueRow" type="HBoxContainer" parent="HudLayer/TurnQueuePanel/VBox"]
+custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-custom_minimum_size = Vector2(252, 48)
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="Hint" type="Label" parent="HudLayer/TurnQueuePanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.84, 0.9, 1)
-text = "ACTIVE: -"
+theme_override_colors/font_color = Color(0.72, 0.74, 0.82, 1)
+theme_override_font_sizes/font_size = 11
+text = "当前: -"
 
 [node name="TogglePanelBtn" type="Button" parent="HudLayer"]
 layout_mode = 0
-offset_left = 236.0
-offset_top = 8.0
-offset_right = 264.0
+offset_left = 268.0
+offset_top = 12.0
+offset_right = 292.0
 offset_bottom = 36.0
 text = "◀"
 
@@ -190,85 +265,117 @@ text = "◀"
 visible = false
 mouse_filter = 2
 layout_mode = 0
-custom_minimum_size = Vector2(220, 0)
+custom_minimum_size = Vector2(240, 0)
 offset_left = 400.0
 offset_top = 120.0
-offset_right = 620.0
-offset_bottom = 240.0
+offset_right = 640.0
+offset_bottom = 260.0
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/PreviewPanel"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="HudLayer/PreviewPanel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-text = "预览"
+text = "格子预览"
 
-[node name="Body" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+[node name="Body" type="RichTextLabel" parent="HudLayer/PreviewPanel/VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(200, 0)
+custom_minimum_size = Vector2(216, 0)
+bbcode_enabled = true
 autowrap_mode = 3
+fit_content = true
+scroll_active = false
 text = ""
 
-[node name="BottomBar" type="HBoxContainer" parent="HudLayer"]
+[node name="BottomDock" type="PanelContainer" parent="HudLayer"]
 layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
+anchors_preset = 12
 anchor_top = 1.0
-anchor_right = 0.5
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -360.0
 offset_top = -68.0
-offset_right = 360.0
-offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 0
-alignment = 1
-theme_override_constants/separation = 8
+mouse_filter = 2
 
-[node name="ActionBar" type="HBoxContainer" parent="HudLayer/BottomBar"]
+[node name="BottomBar" type="HBoxContainer" parent="HudLayer/BottomDock"]
 layout_mode = 2
-theme_override_constants/separation = 8
+alignment = 1
+theme_override_constants/separation = 10
 
-[node name="MoveBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="MoveGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="MoveBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/MoveGroup"]
+custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "移动"
 
-[node name="AttackBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="Sep1" type="VSeparator" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+
+[node name="CombatGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AttackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/CombatGroup"]
+custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "攻击"
 
-[node name="SkillBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="SkillBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/CombatGroup"]
+custom_minimum_size = Vector2(88, 44)
 layout_mode = 2
 text = "技能"
 
-[node name="ExtractBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="Sep2" type="VSeparator" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+
+[node name="GemGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ExtractBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup"]
+custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "拔出"
 
-[node name="InsertBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="InsertBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup"]
+custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "嵌入"
 
-[node name="TriggerBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="TriggerBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup"]
+custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "触发"
 
-[node name="EndTurnBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="Sep3" type="VSeparator" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+
+[node name="TurnGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="EndTurnBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup"]
+custom_minimum_size = Vector2(96, 44)
 layout_mode = 2
 text = "结束回合"
 
-[node name="BackBtn" type="Button" parent="HudLayer/BottomBar/ActionBar"]
+[node name="BackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup"]
+custom_minimum_size = Vector2(56, 44)
 layout_mode = 2
 text = "返回"
 
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/SkillBtn" to="." method="_on_action_pressed" binds= ["skill"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/TriggerBtn" to="." method="_on_action_pressed" binds= ["trigger"]]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/EndTurnBtn" to="." method="_on_end_turn_pressed"]
-[connection signal="pressed" from="HudLayer/BottomBar/ActionBar/BackBtn" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/MoveGroup/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/SkillBtn" to="." method="_on_action_pressed" binds= ["skill"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn" to="." method="_on_action_pressed" binds= ["trigger"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn" to="." method="_on_end_turn_pressed"]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/BackBtn" to="." method="_on_back_pressed"]
 [connection signal="pressed" from="HudLayer/TogglePanelBtn" to="." method="_on_toggle_panel"]

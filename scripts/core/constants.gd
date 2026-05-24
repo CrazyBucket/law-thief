@@ -48,6 +48,13 @@ const SKILL_RANGE := 3
 
 const EXPLOSION_DAMAGE := 2
 const EXPLOSION_RADIUS := 1
+const GRAVITY_COLLISION_DAMAGE := 1
 const SPIKE_DAMAGE := 2
 const POISON_FOG_DAMAGE := 1
 const POISON_FOG_DURATION := 2
+
+const STATUS_POISON := "poison"
+const STATUS_ARMOR := "armor"
+const STATUS_ROOTED := "rooted"
+const STATUS_EXPOSED := "exposed"
+const STATUS_LAWLESS := "lawless"

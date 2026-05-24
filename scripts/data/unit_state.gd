@@ -1,6 +1,8 @@
 class_name UnitState
 extends RefCounted
 
+const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
+
 var uid: String = ""
 var unit_def_id: String = ""
 var team: String = ""
@@ -15,8 +17,6 @@ var slots: Array = []
 var statuses: Array = []
 var intent: IntentState = null
 var alive: bool = true
-var lawless: bool = false
-var lawless_target_gem_uid: String = ""
 var ai_profile_id: String = ""
 
 
@@ -72,14 +72,9 @@ func get_status(status_id: String) -> StatusInstance:
 	return null
 
 
-func add_status(status: StatusInstance) -> void:
-	for existing in statuses:
-		if existing.status_id == status.status_id:
-			existing.stacks += status.stacks
-			existing.duration = max(existing.duration, status.duration)
-			return
-	statuses.append(status)
-
-
 func remove_status(status_id: String) -> void:
 	statuses = statuses.filter(func(item): return item.status_id != status_id)
+
+
+func list_statuses() -> Array:
+	return _StatusRegistry.sort_statuses(statuses)
