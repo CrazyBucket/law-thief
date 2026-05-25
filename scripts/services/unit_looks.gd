@@ -37,21 +37,8 @@ func sprite_modulate_for_unit(team: String, unit_def_id: String) -> Color:
 	return Color.WHITE.lerp(body.lightened(0.1), 0.52)
 
 
-func gem_color(gem_id: String) -> Color:
-	match gem_id:
-		"gem_explosion":
-			return Color(1.0, 0.45, 0.2)
-		"gem_poison":
-			return Color(0.55, 0.9, 0.35)
-		"gem_gravity":
-			return Color(0.35, 0.65, 1.0)
-		"gem_heavy_armor":
-			return Color(0.7, 0.75, 0.85)
-		"gem_conductive":
-			return Color(0.95, 0.9, 0.3)
-		"gem_fragile":
-			return Color(0.85, 0.55, 0.95)
-	return Color.WHITE
+func gem_color(gem_ref: Variant) -> Color:
+	return _data_registry().get_gem_color(gem_ref)
 
 
 func slot_color(slot_type: String) -> Color:
@@ -65,18 +52,9 @@ func slot_color(slot_type: String) -> Color:
 	return Color.WHITE
 
 
-func gem_symbol(gem_id: String) -> String:
-	match gem_id:
-		"gem_explosion":
-			return "爆"
-		"gem_poison":
-			return "毒"
-		"gem_gravity":
-			return "引"
-		"gem_heavy_armor":
-			return "甲"
-		"gem_conductive":
-			return "电"
-		"gem_fragile":
-			return "碎"
-	return "◆"
+func gem_symbol(gem_ref: Variant) -> String:
+	return _data_registry().get_gem_symbol(gem_ref)
+
+
+func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")

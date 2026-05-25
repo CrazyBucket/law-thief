@@ -74,7 +74,7 @@ static func _build_skill_intent(state: GameState, unit: UnitState, gem: GemState
 	intent.target_uid = action.action_target_uid
 	intent.path = move_path
 	var base_damage := CombatRules.attack_damage(state, unit)
-	var meta: Dictionary = GemEffects.get_enemy_red_intent_meta(gem.gem_id, base_damage)
+	var meta: Dictionary = GemEffects.get_enemy_red_intent_meta(gem, base_damage)
 	intent.type = meta.get("type", "wait")
 	intent.preview_text = meta.get("preview", "等待")
 	intent.damage = int(meta.get("damage", 0))
@@ -189,7 +189,7 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 		slot.gem_uid = ""
 		if slot.slot_type == Constants.SLOT_RED and target.team == Constants.TEAM_ENEMY:
 			StatusRules.apply_lawless(state, target, gem.uid)
-		state.log("%s 窃取了 %s 的宝石 %s" % [unit.uid, target.uid, gem.gem_id])
+		state.log("%s 窃取了 %s 的宝石 %s" % [unit.uid, target.uid, _data_registry().get_gem_display_name(gem)])
 		refresh_all_intents(state)
 		break
 
@@ -273,6 +273,10 @@ static func _find_gem_carrier(state: GameState, gem: GemState) -> UnitState:
 			if slot.gem_uid == gem.uid:
 				return unit
 	return null
+
+
+static func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
 static func _get_water_cluster(state: GameState, origin: Vector2i) -> Array[Vector2i]:

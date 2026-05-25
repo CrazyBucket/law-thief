@@ -25,7 +25,7 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	gem.owner_uid = actor.uid
 	gem.slot_index = -1
 	slot.gem_uid = ""
-	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, gem.gem_id])
+	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, _data_registry().get_gem_display_name(gem)])
 	if slot.slot_type == Constants.SLOT_RED and target_unit.team == Constants.TEAM_ENEMY:
 		StatusRules.apply_lawless(state, target_unit, gem.uid)
 	IntentSystem.refresh_all_intents(state)
@@ -55,7 +55,7 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	gem.slot_index = target_unit.slots.find(slot)
 	slot.gem_uid = gem.uid
 	state.held_gem_uid = ""
-	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, gem.gem_id, target_unit.uid, slot.slot_type])
+	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
 	if StatusRules.is_lawless(target_unit) and StatusRules.get_lawless_gem_uid(target_unit) == gem.uid:
 		StatusRules.clear_lawless(target_unit)
 	IntentSystem.refresh_all_intents(state)
@@ -116,7 +116,7 @@ static func extract_tile(state: GameState, actor: UnitState, tile: TileState, sl
 	gem.owner_uid = ""
 	gem.slot_index = -1
 	slot.gem_uid = ""
-	state.log("%s 从 %s 地块拔出 %s" % [actor.uid, tile.tile_id, gem.gem_id])
+	state.log("%s 从 %s 地块拔出 %s" % [actor.uid, tile.tile_id, _data_registry().get_gem_display_name(gem)])
 	return _ok({"gem_uid": gem.uid})
 
 
@@ -145,7 +145,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	gem.slot_index = tile.slots.find(slot)
 	slot.gem_uid = gem.uid
 	state.held_gem_uid = ""
-	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, gem.gem_id, tile.tile_id])
+	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, _data_registry().get_gem_display_name(gem), tile.tile_id])
 	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
 	return _ok()
 
@@ -187,3 +187,7 @@ static func _fail(reason: String) -> Dictionary:
 		"ok": false,
 		"reason": reason,
 	}
+
+
+static func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")

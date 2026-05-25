@@ -150,16 +150,16 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 	if player == null or not player.alive:
 		return results
 
-	match gem.gem_id:
-		Constants.GEM_EXPLOSION:
+	match str(GemEffects.get_enemy_red_intent_meta(gem, CombatRules.attack_damage(state, enemy)).get("type", "wait")):
+		"charge_explode":
 			results.append_array(_score_explosion_skill(state, enemy, from_pos, player, profile))
-		Constants.GEM_GRAVITY:
+		"pull":
 			results.append_array(_score_pull_skill(state, enemy, from_pos, player, profile))
-		Constants.GEM_POISON:
+		"poison_attack":
 			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
-		Constants.GEM_CONDUCTIVE:
+		"shock":
 			results.append_array(_score_shock_skill(state, enemy, from_pos, player, profile))
-		Constants.GEM_FRAGILE:
+		"fragile_charge":
 			results.append_array(_score_fragile_skill(state, enemy, from_pos, player, profile))
 
 	return results
@@ -326,7 +326,7 @@ static func _evaluate_extract_from(state: GameState, enemy: UnitState, from_pos:
 				score += _w(profile, "w_steal_red", 25.0)
 
 			candidate.score = score
-			candidate.description = "拔出%s的%s宝石" % [unit.uid, gem.gem_id]
+			candidate.description = "拔出%s的%s宝石" % [unit.uid, _data_registry().get_gem_display_name(gem)]
 			results.append(candidate)
 
 	return results
@@ -407,3 +407,7 @@ static func _nearest_ally_distance(state: GameState, from_pos: Vector2i, ignore_
 		if dist < best:
 			best = dist
 	return best
+
+
+static func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")

@@ -23,6 +23,7 @@ const GEM_GRAVITY := "gem_gravity"
 const GEM_HEAVY_ARMOR := "gem_heavy_armor"
 const GEM_CONDUCTIVE := "gem_conductive"
 const GEM_FRAGILE := "gem_fragile"
+const GEM_CHAOS := "gem_chaos"
 
 const TILE_FLOOR := "tile_floor"
 const TILE_SPIKE := "tile_spike"

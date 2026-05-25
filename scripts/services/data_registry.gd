@@ -2,12 +2,36 @@ extends Node
 
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 
+const ABILITY_PLAYER_SKILL := "player_skill"
+const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
+const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
+const ABILITY_BLUE_TURN_START := "blue_turn_start"
+const ABILITY_BLUE_DAMAGED := "blue_damaged"
+const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
+const ABILITY_BLACK_DEATH := "black_death"
+const ABILITY_TILE_ACTIVE := "tile_active"
+const ABILITY_TILE_TURN_START := "tile_turn_start"
+const ABILITY_ATTACK_BONUS := "attack_bonus"
+const ABILITY_ARMOR_BONUS := "armor_bonus"
+
+const _RARITY_WEIGHTS := {
+	"common": 100.0,
+	"uncommon": 55.0,
+	"rare": 25.0,
+	"epic": 10.0,
+	"legendary": 4.0,
+}
+
+var _gem_effect_profiles: Dictionary = {}
+var _gem_defs: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
 var _uid_counter: int = 0
 
 
 func _ready() -> void:
+	_register_gem_effect_profiles()
+	_register_gem_defs()
 	_register_unit_defs()
 	_register_encounters()
 
@@ -44,14 +68,21 @@ func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState
 			for override in gem_overrides:
 				if override.get("slot_type", -1) == slot_entry.get("slot_type", -1) and override.has("gem_id"):
 					slot_entry["gem_id"] = override["gem_id"]
+					if override.has("gem_overrides"):
+						slot_entry["gem_overrides"] = override.get("gem_overrides", {}).duplicate(true)
+					if override.has("locked"):
+						slot_entry["locked"] = override["locked"]
+					if override.has("lock_type"):
+						slot_entry["lock_type"] = override["lock_type"]
 					gem_overrides.erase(override)
 					break
 			if slot_entry.has("gem_id"):
 				var gem_uid := _next_uid("gem")
-				var gem := GemState.create(gem_uid, slot_entry.get("gem_id", ""))
+				var gem := create_gem_instance(gem_uid, slot_entry.get("gem_id", ""), slot_entry.get("gem_overrides", {}))
 				state.gems[gem_uid] = gem
 				slot_entry["gem_uid"] = gem_uid
 				slot_entry.erase("gem_id")
+				slot_entry.erase("gem_overrides")
 			def["slots"].append(slot_entry)
 		var enemy := UnitState.from_def(
 			enemy_uid,
@@ -77,39 +108,200 @@ func get_encounter_ids() -> Array:
 	return _encounters.keys()
 
 
+func next_runtime_uid(prefix: String) -> String:
+	return _next_uid(prefix)
+
+
+func has_unit_def(unit_def_id: String) -> bool:
+	return _unit_defs.has(unit_def_id)
+
+
+func get_unit_def(unit_def_id: String) -> Dictionary:
+	return _unit_defs.get(unit_def_id, {}).duplicate(true)
+
+
+func get_unit_def_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for unit_def_id in _unit_defs.keys():
+		ids.append(str(unit_def_id))
+	ids.sort()
+	return ids
+
+
+func has_gem_def(gem_id: String) -> bool:
+	return _gem_defs.has(gem_id)
+
+
+func get_gem_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for gem_id in _gem_defs.keys():
+		ids.append(str(gem_id))
+	ids.sort()
+	return ids
+
+
+func get_tile_ids() -> Array[String]:
+	return [
+		Constants.TILE_FLOOR,
+		Constants.TILE_SPIKE,
+		Constants.TILE_WATER,
+		Constants.TILE_ALTAR,
+		Constants.TILE_PILLAR,
+	]
+
+
+func has_tile_id(tile_id: String) -> bool:
+	return tile_id in get_tile_ids()
+
+
 func get_unit_display_name(unit_def_id: String) -> String:
-	return _unit_defs.get(unit_def_id, {}).get("display_name", unit_def_id)
+	var def: Dictionary = _unit_defs.get(unit_def_id, {})
+	return _translate_key(str(def.get("display_name_key", "")), {}, unit_def_id)
 
 
 func get_tile_display_name(tile_id: String) -> String:
-	match tile_id:
-		Constants.TILE_SPIKE:
-			return "尖刺"
-		Constants.TILE_WATER:
-			return "水洼"
-		Constants.TILE_ALTAR:
-			return "祭坛"
-		Constants.TILE_PILLAR:
-			return "机关柱"
+	return _translate_key(_tile_display_name_key(tile_id), {}, tile_id)
+
+
+func get_gem_def(gem_ref: Variant) -> Dictionary:
+	return _resolve_gem_def(gem_ref)
+
+
+func get_gem_display_name(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	return _translate_key(str(def.get("display_name_key", "")), {}, _gem_id_from_ref(gem_ref))
+
+
+func get_gem_symbol(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	return _translate_key(str(def.get("symbol_key", "")), {}, str(def.get("symbol", "◆")))
+
+
+func get_gem_color(gem_ref: Variant) -> Color:
+	return _resolve_gem_def(gem_ref).get("color", Color.WHITE)
+
+
+func get_gem_rarity(gem_ref: Variant) -> String:
+	return str(_resolve_gem_def(gem_ref).get("rarity", "common"))
+
+
+func get_gem_rarity_label(gem_ref: Variant) -> String:
+	var rarity: String = get_gem_rarity(gem_ref)
+	return _translate_key("gem.rarity.%s" % rarity, {}, rarity.capitalize())
+
+
+func get_gem_spawn_weight(gem_ref: Variant) -> float:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	if def.has("spawn_weight"):
+		return float(def.get("spawn_weight", 0.0))
+	return float(_RARITY_WEIGHTS.get(get_gem_rarity(gem_ref), 1.0))
+
+
+func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
+	var results: Array[String] = []
+	for gem_id in _gem_defs.keys():
+		var def: Dictionary = _gem_defs[gem_id]
+		if not def.get("allow_random_pool", true):
+			continue
+		var rarity := str(def.get("rarity", "common"))
+		if not allowed_rarities.is_empty() and not rarity in allowed_rarities:
+			continue
+		results.append(gem_id)
+	results.sort()
+	return results
+
+
+func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = []) -> String:
+	var candidates := get_spawnable_gem_ids(allowed_rarities)
+	if candidates.is_empty():
+		return ""
+	var total_weight := 0.0
+	var weighted: Array[Dictionary] = []
+	for gem_id in candidates:
+		var weight := get_gem_spawn_weight(gem_id)
+		if weight <= 0.0:
+			continue
+		total_weight += weight
+		weighted.append({"gem_id": gem_id, "limit": total_weight})
+	if weighted.is_empty():
+		return ""
+	var roll := (float(RngService.roll_int(domain, 0, 1000000)) / 1000000.0) * total_weight
+	for entry in weighted:
+		if roll < float(entry.get("limit", 0.0)):
+			return str(entry.get("gem_id", ""))
+	return str(weighted.back().get("gem_id", ""))
+
+
+func create_gem_instance(uid: String, gem_id: String, gem_overrides: Dictionary = {}) -> GemState:
+	var overrides := gem_overrides.duplicate(true)
+	if gem_id != Constants.GEM_CHAOS:
+		return GemState.create(uid, gem_id, overrides)
+	var chaos_config: Dictionary = overrides.get("chaos_config", {})
+	var preferred_rarity := str(chaos_config.get("preferred_rarity", "rare"))
+	var ability_sources: Dictionary = chaos_config.get("ability_sources", {})
+	overrides.erase("chaos_config")
+	overrides = _deep_merge_dict(
+		_build_chaos_gem_overrides(preferred_rarity, ability_sources),
+		overrides
+	)
+	return GemState.create(uid, gem_id, overrides)
+
+
+func create_chaos_gem(uid: String, preferred_rarity: String = "rare", ability_sources: Dictionary = {}) -> GemState:
+	return create_gem_instance(uid, Constants.GEM_CHAOS, {
+		"chaos_config": {
+			"preferred_rarity": preferred_rarity,
+			"ability_sources": ability_sources.duplicate(true),
+		}
+	})
+
+
+func get_gem_ability_profile(gem_ref: Variant, ability_slot: String) -> String:
+	var ability_profiles: Dictionary = _resolve_gem_def(gem_ref).get("ability_profiles", {})
+	return str(ability_profiles.get(ability_slot, ""))
+
+
+func get_player_skill_target_mode(gem_ref: Variant) -> String:
+	var profile: Dictionary = _effect_profile(get_gem_ability_profile(gem_ref, ABILITY_PLAYER_SKILL))
+	return str(profile.get("player_skill_target_mode", "any_cell"))
+
+
+func get_gem_effect_description(gem_ref: Variant, slot_type: String, context: String) -> String:
+	var parts: Array[String] = []
+	for ability_slot in _ability_slots_for_display(slot_type, context):
+		var profile_id := get_gem_ability_profile(gem_ref, ability_slot)
+		if profile_id.is_empty():
+			continue
+		var text := _translate_ability_description(profile_id, ability_slot)
+		if text.is_empty() or text in parts:
+			continue
+		parts.append(text)
+	return "；".join(parts)
+
+
+func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
+	var profile: Dictionary = _effect_profile(get_gem_ability_profile(gem_ref, ABILITY_ENEMY_RED_ACTION))
+	if profile.is_empty():
+		return {"type": "wait", "preview": _translate_key("intent.wait", {}, "等待"), "damage": 0}
+	var intent: Dictionary = profile.get("enemy_intent", {})
+	if intent.is_empty():
+		return {"type": "wait", "preview": _translate_key("intent.wait", {}, "等待"), "damage": 0}
+	var params: Dictionary = intent.get("params", {}).duplicate(true)
+	var resolved_damage := int(intent.get("damage", 0))
+	match str(intent.get("damage_mode", "fixed")):
+		"base_attack":
+			resolved_damage = damage
+			params["damage"] = damage
 		_:
-			return "地面"
-
-
-func get_gem_display_name(gem_id: String) -> String:
-	match gem_id:
-		Constants.GEM_EXPLOSION:
-			return "爆炸"
-		Constants.GEM_POISON:
-			return "剧毒"
-		Constants.GEM_GRAVITY:
-			return "引力"
-		Constants.GEM_HEAVY_ARMOR:
-			return "重甲"
-		Constants.GEM_CONDUCTIVE:
-			return "导电"
-		Constants.GEM_FRAGILE:
-			return "易碎"
-	return gem_id
+			if resolved_damage != 0 and not params.has("damage"):
+				params["damage"] = resolved_damage
+	if not params.has("damage") and resolved_damage != 0:
+		params["damage"] = resolved_damage
+	return {
+		"type": str(intent.get("type", "wait")),
+		"preview": _translate_key(str(intent.get("preview_key", "")), params, "等待"),
+		"damage": resolved_damage,
+	}
 
 
 func _next_uid(prefix: String) -> String:
@@ -117,10 +309,234 @@ func _next_uid(prefix: String) -> String:
 	return "%s_%d" % [prefix, _uid_counter]
 
 
+func _register_gem_effect_profiles() -> void:
+	_gem_effect_profiles = {
+		"explosion": {
+			"player_skill_target_mode": "any_cell",
+			"enemy_intent": {
+				"type": "charge_explode",
+				"preview_key": "gem.intent.charge_explode",
+				"params": {"damage": Constants.EXPLOSION_DAMAGE},
+				"damage": Constants.EXPLOSION_DAMAGE,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.explosion.player_skill", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
+				ABILITY_BLUE_TURN_START: {"key": "gem.effect.explosion.blue_turn_start"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.explosion.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.explosion.tile_active"},
+				ABILITY_TILE_TURN_START: {"key": "gem.effect.explosion.tile_turn_start"},
+			},
+		},
+		"poison": {
+			"player_skill_target_mode": "any_cell",
+			"enemy_intent": {
+				"type": "poison_attack",
+				"damage_mode": "base_attack",
+				"preview_key": "gem.intent.poison_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.poison.player_skill"},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.poison.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.poison.enemy_red_action"},
+				ABILITY_BLUE_MOVE_THROUGH: {"key": "gem.effect.poison.blue_move_through"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.poison.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.poison.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.poison.tile_active"},
+				ABILITY_TILE_TURN_START: {"key": "gem.effect.poison.tile_turn_start"},
+			},
+		},
+		"gravity": {
+			"player_skill_target_mode": "enemy_unit",
+			"enemy_intent": {
+				"type": "pull",
+				"preview_key": "gem.intent.pull",
+				"params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE},
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.gravity.player_skill", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
+				ABILITY_BLUE_TURN_START: {"key": "gem.effect.gravity.blue_turn_start"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.gravity.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.gravity.tile_active"},
+				ABILITY_TILE_TURN_START: {"key": "gem.effect.gravity.tile_turn_start"},
+			},
+		},
+		"heavy_armor": {
+			"player_skill_target_mode": "self",
+			"enemy_intent": {
+				"type": "wait",
+				"preview_key": "intent.wait",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.heavy_armor.player_skill"},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.heavy_armor.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.heavy_armor.enemy_red_action"},
+				ABILITY_ARMOR_BONUS: {"key": "gem.effect.heavy_armor.armor_bonus"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.heavy_armor.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.heavy_armor.tile_active"},
+				ABILITY_TILE_TURN_START: {"key": "gem.effect.heavy_armor.tile_turn_start"},
+			},
+		},
+		"conductive": {
+			"player_skill_target_mode": "water_tile",
+			"enemy_intent": {
+				"type": "shock",
+				"preview_key": "gem.intent.shock",
+				"params": {"damage": 1},
+				"damage": 1,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.conductive.player_skill"},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.conductive.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.conductive.enemy_red_action"},
+				ABILITY_BLUE_TURN_START: {"key": "gem.effect.conductive.blue_turn_start"},
+				ABILITY_ARMOR_BONUS: {"key": "gem.effect.conductive.armor_bonus"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.conductive.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.conductive.tile_active"},
+				ABILITY_TILE_TURN_START: {"key": "gem.effect.conductive.tile_turn_start"},
+			},
+		},
+		"fragile": {
+			"player_skill_target_mode": "any_cell",
+			"enemy_intent": {
+				"type": "fragile_charge",
+				"preview_key": "gem.intent.fragile_charge",
+				"params": {"damage": 1},
+				"damage": 1,
+			},
+			"ability_descriptions": {
+				ABILITY_PLAYER_SKILL: {"key": "gem.effect.fragile.player_skill"},
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.fragile.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.fragile.enemy_red_action"},
+				ABILITY_ATTACK_BONUS: {"key": "gem.effect.fragile.attack_bonus"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.fragile.black_death"},
+				ABILITY_TILE_ACTIVE: {"key": "gem.effect.fragile.tile_active"},
+			},
+		},
+	}
+
+
+func _register_gem_defs() -> void:
+	_gem_defs = {
+		Constants.GEM_EXPLOSION: {
+			"display_name_key": "gem.explosion.name",
+			"symbol_key": "gem.explosion.symbol",
+			"symbol": "爆",
+			"color": Color(1.0, 0.45, 0.2),
+			"rarity": "common",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "explosion",
+				ABILITY_UNIT_RED_ACTIVE: "explosion",
+				ABILITY_ENEMY_RED_ACTION: "explosion",
+				ABILITY_BLUE_TURN_START: "explosion",
+				ABILITY_BLACK_DEATH: "explosion",
+				ABILITY_TILE_ACTIVE: "explosion",
+				ABILITY_TILE_TURN_START: "explosion",
+			},
+		},
+		Constants.GEM_POISON: {
+			"display_name_key": "gem.poison.name",
+			"symbol_key": "gem.poison.symbol",
+			"symbol": "毒",
+			"color": Color(0.55, 0.9, 0.35),
+			"rarity": "common",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "poison",
+				ABILITY_UNIT_RED_ACTIVE: "poison",
+				ABILITY_ENEMY_RED_ACTION: "poison",
+				ABILITY_BLUE_DAMAGED: "poison",
+				ABILITY_BLUE_MOVE_THROUGH: "poison",
+				ABILITY_BLACK_DEATH: "poison",
+				ABILITY_TILE_ACTIVE: "poison",
+				ABILITY_TILE_TURN_START: "poison",
+			},
+		},
+		Constants.GEM_GRAVITY: {
+			"display_name_key": "gem.gravity.name",
+			"symbol_key": "gem.gravity.symbol",
+			"symbol": "引",
+			"color": Color(0.35, 0.65, 1.0),
+			"rarity": "rare",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "gravity",
+				ABILITY_UNIT_RED_ACTIVE: "gravity",
+				ABILITY_ENEMY_RED_ACTION: "gravity",
+				ABILITY_BLUE_TURN_START: "gravity",
+				ABILITY_BLACK_DEATH: "gravity",
+				ABILITY_TILE_ACTIVE: "gravity",
+				ABILITY_TILE_TURN_START: "gravity",
+			},
+		},
+		Constants.GEM_HEAVY_ARMOR: {
+			"display_name_key": "gem.heavy_armor.name",
+			"symbol_key": "gem.heavy_armor.symbol",
+			"symbol": "甲",
+			"color": Color(0.7, 0.75, 0.85),
+			"rarity": "uncommon",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "heavy_armor",
+				ABILITY_UNIT_RED_ACTIVE: "heavy_armor",
+				ABILITY_ENEMY_RED_ACTION: "heavy_armor",
+				ABILITY_ARMOR_BONUS: "heavy_armor",
+				ABILITY_BLACK_DEATH: "heavy_armor",
+				ABILITY_TILE_ACTIVE: "heavy_armor",
+				ABILITY_TILE_TURN_START: "heavy_armor",
+			},
+		},
+		Constants.GEM_CONDUCTIVE: {
+			"display_name_key": "gem.conductive.name",
+			"symbol_key": "gem.conductive.symbol",
+			"symbol": "电",
+			"color": Color(0.95, 0.9, 0.3),
+			"rarity": "uncommon",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "conductive",
+				ABILITY_UNIT_RED_ACTIVE: "conductive",
+				ABILITY_ENEMY_RED_ACTION: "conductive",
+				ABILITY_BLUE_TURN_START: "conductive",
+				ABILITY_ARMOR_BONUS: "conductive",
+				ABILITY_BLACK_DEATH: "conductive",
+				ABILITY_TILE_ACTIVE: "conductive",
+				ABILITY_TILE_TURN_START: "conductive",
+			},
+		},
+		Constants.GEM_FRAGILE: {
+			"display_name_key": "gem.fragile.name",
+			"symbol_key": "gem.fragile.symbol",
+			"symbol": "碎",
+			"color": Color(0.85, 0.55, 0.95),
+			"rarity": "rare",
+			"ability_profiles": {
+				ABILITY_PLAYER_SKILL: "fragile",
+				ABILITY_UNIT_RED_ACTIVE: "fragile",
+				ABILITY_ENEMY_RED_ACTION: "fragile",
+				ABILITY_ATTACK_BONUS: "fragile",
+				ABILITY_BLACK_DEATH: "fragile",
+				ABILITY_TILE_ACTIVE: "fragile",
+			},
+		},
+		Constants.GEM_CHAOS: {
+			"display_name_key": "gem.chaos.name",
+			"symbol_key": "gem.chaos.symbol",
+			"symbol": "乱",
+			"color": Color(0.68, 0.34, 1.0),
+			"rarity": "legendary",
+			"allow_random_pool": false,
+			"ability_profiles": {},
+		},
+	}
+
+
 func _register_unit_defs() -> void:
 	_unit_defs = {
 		"unit_player": {
-			"display_name": "窃律者",
+			"display_name_key": "unit.player.name",
 			"max_hp": 6,
 			"move_points": 3,
 			"speed": 12,
@@ -133,7 +549,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_bomber": {
-			"display_name": "自爆工兵",
+			"display_name_key": "unit.bomber.name",
 			"max_hp": 2,
 			"move_points": 3,
 			"speed": 11,
@@ -146,7 +562,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_training_guard": {
-			"display_name": "训练守卫",
+			"display_name_key": "unit.training_guard.name",
 			"max_hp": 1,
 			"move_points": 1,
 			"speed": 8,
@@ -159,7 +575,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_heavy_guard": {
-			"display_name": "重甲守卫",
+			"display_name_key": "unit.heavy_guard.name",
 			"max_hp": 3,
 			"move_points": 1,
 			"speed": 7,
@@ -172,7 +588,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_poison_bug": {
-			"display_name": "毒虫",
+			"display_name_key": "unit.poison_bug.name",
 			"max_hp": 2,
 			"move_points": 2,
 			"speed": 10,
@@ -185,7 +601,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_gravity_eye": {
-			"display_name": "引力眼",
+			"display_name_key": "unit.gravity_eye.name",
 			"max_hp": 2,
 			"move_points": 0,
 			"speed": 9,
@@ -198,7 +614,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_grunt": {
-			"display_name": "小怪",
+			"display_name_key": "unit.grunt.name",
 			"max_hp": 1,
 			"move_points": 2,
 			"speed": 9,
@@ -211,7 +627,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_thief": {
-			"display_name": "窃贼",
+			"display_name_key": "unit.thief.name",
 			"max_hp": 2,
 			"move_points": 3,
 			"speed": 13,
@@ -224,7 +640,7 @@ func _register_unit_defs() -> void:
 			],
 		},
 		"unit_shock_tower": {
-			"display_name": "电塔",
+			"display_name_key": "unit.shock_tower.name",
 			"max_hp": 3,
 			"move_points": 0,
 			"speed": 6,
@@ -334,3 +750,186 @@ func _register_encounters() -> void:
 			],
 		},
 	}
+
+
+func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
+	var gem_id := _gem_id_from_ref(gem_ref)
+	var base: Dictionary = _gem_defs.get(gem_id, {}).duplicate(true)
+	if gem_ref is GemState:
+		var gem := gem_ref as GemState
+		if not gem.def_overrides.is_empty():
+			base = _deep_merge_dict(base, gem.def_overrides)
+	return base
+
+
+func _effect_profile(profile_id: String) -> Dictionary:
+	return _gem_effect_profiles.get(profile_id, {})
+
+
+func _translate_ability_description(profile_id: String, ability_slot: String) -> String:
+	var profile: Dictionary = _effect_profile(profile_id)
+	if profile.is_empty():
+		return ""
+	var descriptions: Dictionary = profile.get("ability_descriptions", {})
+	var entry: Variant = descriptions.get(ability_slot, {})
+	if entry is Dictionary:
+		var payload := entry as Dictionary
+		return _translate_key(str(payload.get("key", "")), payload.get("params", {}), "")
+	if entry is String:
+		return _translate_key(str(entry), {}, "")
+	return ""
+
+
+func _ability_slots_for_display(slot_type: String, context: String) -> Array[String]:
+	match slot_type:
+		Constants.SLOT_RED:
+			match context:
+				"player_skill":
+					return [ABILITY_PLAYER_SKILL]
+				"player_trigger":
+					return [ABILITY_UNIT_RED_ACTIVE]
+				"enemy_active":
+					return [ABILITY_ENEMY_RED_ACTION]
+				"altar":
+					return [ABILITY_TILE_ACTIVE]
+		Constants.SLOT_BLUE:
+			match context:
+				"unit_blue":
+					return [
+						ABILITY_BLUE_TURN_START,
+						ABILITY_BLUE_DAMAGED,
+						ABILITY_BLUE_MOVE_THROUGH,
+						ABILITY_ATTACK_BONUS,
+						ABILITY_ARMOR_BONUS,
+					]
+				"pillar":
+					return [ABILITY_TILE_TURN_START]
+		Constants.SLOT_BLACK:
+			return [ABILITY_BLACK_DEATH]
+	return []
+
+
+func _build_chaos_gem_overrides(preferred_rarity: String, ability_sources: Dictionary) -> Dictionary:
+	var ability_profiles: Dictionary = {}
+	for ability_slot in _chaos_randomizable_slots():
+		var donor_gem_id := str(ability_sources.get(ability_slot, ""))
+		if donor_gem_id.is_empty():
+			donor_gem_id = _roll_ability_donor(ability_slot, preferred_rarity)
+		var profile_id := get_gem_ability_profile(donor_gem_id, ability_slot)
+		if profile_id.is_empty():
+			continue
+		ability_profiles[ability_slot] = profile_id
+	return {"ability_profiles": ability_profiles}
+
+
+func _chaos_randomizable_slots() -> Array[String]:
+	return [
+		ABILITY_PLAYER_SKILL,
+		ABILITY_UNIT_RED_ACTIVE,
+		ABILITY_ENEMY_RED_ACTION,
+		ABILITY_BLUE_TURN_START,
+		ABILITY_BLUE_DAMAGED,
+		ABILITY_BLUE_MOVE_THROUGH,
+		ABILITY_BLACK_DEATH,
+		ABILITY_TILE_ACTIVE,
+		ABILITY_TILE_TURN_START,
+		ABILITY_ATTACK_BONUS,
+		ABILITY_ARMOR_BONUS,
+	]
+
+
+func _roll_ability_donor(ability_slot: String, preferred_rarity: String) -> String:
+	var candidates: Array[String] = []
+	var rarity_cap := _rarity_rank(preferred_rarity)
+	for gem_id in _gem_defs.keys():
+		if gem_id == Constants.GEM_CHAOS:
+			continue
+		if get_gem_ability_profile(gem_id, ability_slot).is_empty():
+			continue
+		if rarity_cap >= 0 and _rarity_rank(get_gem_rarity(gem_id)) > rarity_cap:
+			continue
+		candidates.append(gem_id)
+	if candidates.is_empty():
+		for gem_id in _gem_defs.keys():
+			if gem_id == Constants.GEM_CHAOS:
+				continue
+			if not get_gem_ability_profile(gem_id, ability_slot).is_empty():
+				candidates.append(gem_id)
+	if candidates.is_empty():
+		return ""
+	var total_weight := 0.0
+	var weighted: Array[Dictionary] = []
+	for gem_id in candidates:
+		var weight := get_gem_spawn_weight(gem_id)
+		if weight <= 0.0:
+			continue
+		total_weight += weight
+		weighted.append({"gem_id": gem_id, "limit": total_weight})
+	if weighted.is_empty():
+		return str(candidates.front())
+	var domain := "chaos_%s" % ability_slot
+	var roll := (float(RngService.roll_int(domain, 0, 1000000)) / 1000000.0) * total_weight
+	for entry in weighted:
+		if roll < float(entry.get("limit", 0.0)):
+			return str(entry.get("gem_id", ""))
+	return str(weighted.back().get("gem_id", ""))
+
+
+func _rarity_rank(rarity: String) -> int:
+	match rarity:
+		"common":
+			return 0
+		"uncommon":
+			return 1
+		"rare":
+			return 2
+		"epic":
+			return 3
+		"legendary":
+			return 4
+	return -1
+
+
+func _tile_display_name_key(tile_id: String) -> String:
+	match tile_id:
+		Constants.TILE_SPIKE:
+			return "tile.spike.name"
+		Constants.TILE_WATER:
+			return "tile.water.name"
+		Constants.TILE_ALTAR:
+			return "tile.altar.name"
+		Constants.TILE_PILLAR:
+			return "tile.pillar.name"
+		_:
+			return "tile.floor.name"
+
+
+func _translate_key(key: String, params: Dictionary = {}, fallback: String = "") -> String:
+	if key.is_empty():
+		return fallback
+	var translated := I18nService.tr_key(key, params)
+	if translated == key and not fallback.is_empty():
+		return fallback
+	return translated
+
+
+func _gem_id_from_ref(gem_ref: Variant) -> String:
+	if gem_ref is GemState:
+		return (gem_ref as GemState).gem_id
+	return str(gem_ref)
+
+
+func _deep_merge_dict(base: Dictionary, overrides: Dictionary) -> Dictionary:
+	var merged := base.duplicate(true)
+	for key in overrides.keys():
+		var override_value: Variant = overrides[key]
+		var base_value: Variant = merged.get(key, null)
+		if base_value is Dictionary and override_value is Dictionary:
+			merged[key] = _deep_merge_dict(base_value as Dictionary, override_value as Dictionary)
+		elif override_value is Dictionary:
+			merged[key] = (override_value as Dictionary).duplicate(true)
+		elif override_value is Array:
+			merged[key] = (override_value as Array).duplicate(true)
+		else:
+			merged[key] = override_value
+	return merged

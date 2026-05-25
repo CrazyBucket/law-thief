@@ -45,6 +45,68 @@ godot --headless --path . --script res://scripts/tests/smoke_test.gd
 godot --headless --path . --script res://scripts/tests/encounter_load_test.gd
 ```
 
+## Editor CLI
+
+战斗场景右下角提供运行时 `Editor CLI`，用于临时改图、刷单位、挂宝石和导出关卡配置。当前规范如下：
+
+- 命令统一为 `spawn` / `set` / `remove` 这类 CLI 形式
+- 生成类命令直接使用资源 `id`，不再额外写对象类型
+- `spawn <object_id>` 会自动识别 `unit id` / `gem id` / `tile id`
+- 坐标统一使用 `x,y`，可选参数统一使用 `--option value`
+
+命令总览：
+
+```text
+list units
+list gems
+list tiles
+
+spawn <object_id> <pos> [--team enemy|player]
+spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]
+move [unit] <from_pos> <to_pos>
+remove unit <pos>
+remove gem <pos> [--slot red|blue|black] [--target unit|tile]
+set tile <pos> <tile_id>
+set stat <pos> <field> <value>
+set spawn <pos>
+export [encounter] [encounter_id]
+```
+
+含义说明：
+
+- `list`: 查看当前可用的单位、宝石、地块 `id`
+- `spawn`: 按 `id` 生成对象；单位生成到棋盘，宝石会默认优先塞单位槽，否则塞地块槽，地块则直接替换当前位置
+- `spawn-many`: 批量生成同一种单位，适合快速铺怪
+- `move`: 移动单位；也可写 `move unit 1,1 2,1`
+- `remove unit`: 删除指定位置的单位（玩家不可删）
+- `remove gem`: 删除指定位置槽位内的宝石，可用 `--slot` / `--target` 精确指定
+- `set tile`: 把指定坐标替换为目标地块 `id`
+- `set stat`: 修改单位属性，支持 `hp`、`max_hp`、`move_points`、`speed`、`base_attack`、`armor`、`alive`
+- `set spawn`: 修改玩家出生点
+- `export encounter`: 导出当前运行时战场为 encounter 配置片段
+
+示例：
+
+```text
+spawn unit_bomber 2,4 --team enemy
+spawn gem_poison 2,4 --slot red --target tile
+spawn tile_altar 4,4
+spawn-many unit_grunt 0,0 1,0 2,0 --team enemy
+move 2,4 3,4
+remove unit 3,4
+remove gem 2,4 --slot red --target unit
+set tile 4,4 tile_water
+set stat 2,4 hp 12
+set spawn 1,6
+export encounter custom_level_001
+```
+
+对应回归脚本：
+
+```bash
+godot --headless --path . --script res://scripts/tests/hook_test.gd
+```
+
 ## MVP 内容
 
 - 8×8 棋盘、单角色、6 种怪物、6 种宝石、2 种地块

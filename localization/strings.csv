@@ -1,3 +1,85 @@
 keys,zh_CN,en_US
 app.title,Law Thief,Law Thief
 app.subtitle,窃律者 MVP,Law Thief MVP
+tile.floor.name,地面,Floor
+tile.spike.name,尖刺,Spike
+tile.water.name,水洼,Water
+tile.altar.name,祭坛,Altar
+tile.pillar.name,机关柱,Pillar
+intent.wait,等待,Wait
+gem.rarity.common,普通,Common
+gem.rarity.uncommon,稀有,Uncommon
+gem.rarity.rare,珍稀,Rare
+gem.rarity.epic,史诗,Epic
+gem.rarity.legendary,传说,Legendary
+gem.explosion.name,爆炸,Explosion
+gem.explosion.symbol,爆,Blast
+gem.poison.name,剧毒,Poison
+gem.poison.symbol,毒,Tox
+gem.gravity.name,引力,Gravity
+gem.gravity.symbol,引,Grav
+gem.heavy_armor.name,重甲,Heavy Armor
+gem.heavy_armor.symbol,甲,Armor
+gem.conductive.name,导电,Conductive
+gem.conductive.symbol,电,Volt
+gem.fragile.name,易碎,Fragile
+gem.fragile.symbol,碎,Shard
+gem.chaos.name,混沌,Chaos
+gem.chaos.symbol,乱,Chaos
+unit.player.name,窃律者,Law Thief
+unit.bomber.name,自爆工兵,Bomber Sapper
+unit.training_guard.name,训练守卫,Training Guard
+unit.heavy_guard.name,重甲守卫,Heavy Guard
+unit.poison_bug.name,毒虫,Poison Bug
+unit.gravity_eye.name,引力眼,Gravity Eye
+unit.grunt.name,小怪,Grunt
+unit.thief.name,窃贼,Thief
+unit.shock_tower.name,电塔,Shock Tower
+gem.intent.charge_explode,冲刺爆炸 ({damage}),Charge Explosion ({damage})
+gem.intent.poison_attack,毒攻击 ({damage}+毒),Poison Strike ({damage}+Poison)
+gem.intent.pull,引力拉近+碰撞({damage}),Gravity Pull + Collision ({damage})
+gem.intent.shock,电击 ({damage}),Shock ({damage})
+gem.intent.fragile_charge,冲撞自毁 ({damage}),Fragile Charge ({damage})
+gem.effect.explosion.player_skill,引爆：对目标格及周围造成 {damage} 伤害,Detonate: deal {damage} damage to target cell and nearby cells
+gem.effect.explosion.unit_red_active,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
+gem.effect.explosion.enemy_red_action,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
+gem.effect.explosion.blue_turn_start,被动：回合开始对邻格敌人 1 伤害,Passive: deal 1 damage to an adjacent enemy at turn start
+gem.effect.explosion.black_death,死亡：爆炸波及周围 1 格,Death: explosion hits nearby cells within 1
+gem.effect.explosion.tile_active,祭坛：全场敌人受到 1 伤害,Altar: deal 1 damage to all enemies
+gem.effect.explosion.tile_turn_start,光环：1 格内敌人每回合 1 伤害,Aura: deal 1 damage each turn to enemies within 1 tile
+gem.effect.poison.player_skill,剧毒：目标周围 3x3 铺设毒雾并叠加中毒,Venom: create poison fog in a 3x3 area and add poison stacks
+gem.effect.poison.unit_red_active,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
+gem.effect.poison.enemy_red_action,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
+gem.effect.poison.blue_move_through,被动：移动经过格留下毒雾,Passive: leave poison fog on moved-through tiles
+gem.effect.poison.blue_damaged,被动：受击反施毒,Passive: inflict poison when damaged
+gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
+gem.effect.poison.tile_active,祭坛：周围 2 格制造毒雾,Altar: create poison fog within 2 tiles
+gem.effect.poison.tile_turn_start,光环：2 格内敌人每回合中毒,Aura: poison enemies within 2 tiles each turn
+gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害并束缚 2 回合,Gravity: pull the target toward you, deal {damage} collision damage, and root for 2 turns
+gem.effect.gravity.unit_red_active,触发：周围 2 格拉扯 1 步,Trigger: pull units within 2 tiles by 1 step
+gem.effect.gravity.enemy_red_action,引力拉近+碰撞({damage}),Pull and collide for {damage}
+gem.effect.gravity.blue_turn_start,被动：回合开始拉最近敌人并束缚,Passive: pull the nearest enemy and root them at turn start
+gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
+gem.effect.gravity.tile_active,祭坛：4 格内单位拉向祭坛,Altar: pull units within 4 tiles toward the altar
+gem.effect.gravity.tile_turn_start,光环：2 格内单位每回合被拉拽,Aura: pull units within 2 tiles each turn
+gem.effect.heavy_armor.player_skill,重甲：给自己加 3 点护甲（2 回合）,Heavy Armor: gain 3 armor for 2 turns
+gem.effect.heavy_armor.unit_red_active,触发：获得 2 点护甲（1 回合）,Trigger: gain 2 armor for 1 turn
+gem.effect.heavy_armor.enemy_red_action,等待,Wait
+gem.effect.heavy_armor.armor_bonus,被动：+2 护甲,Passive: +2 armor
+gem.effect.heavy_armor.black_death,死亡：最近友方获得 3 护甲,Death: nearest ally gains 3 armor
+gem.effect.heavy_armor.tile_active,祭坛：玩家获得 4 护甲（3 回合）,Altar: player gains 4 armor for 3 turns
+gem.effect.heavy_armor.tile_turn_start,光环：2 格内玩家每回合 +1 护甲,Aura: player within 2 tiles gains +1 armor each turn
+gem.effect.conductive.player_skill,导电：电击目标水洼连通区域所有单位,Conductive: shock all units in the connected water region
+gem.effect.conductive.unit_red_active,触发：电击自身所在水洼连通区域,Trigger: shock the connected water region under the owner
+gem.effect.conductive.enemy_red_action,电击 ({damage}),Shock ({damage})
+gem.effect.conductive.blue_turn_start,被动：站在水洼上电击周围敌人,Passive: while on water, shock nearby enemies
+gem.effect.conductive.armor_bonus,被动：站在水洼上 +1 护甲,Passive: gain +1 armor while standing on water
+gem.effect.conductive.black_death,死亡：周围水洼导电连锁,Death: chain conductive shocks through nearby water
+gem.effect.conductive.tile_active,祭坛：水洼上单位受到 2 伤害,Altar: units on water take 2 damage
+gem.effect.conductive.tile_turn_start,光环：3 格内水洼每回合电击,Aura: water within 3 tiles shocks each turn
+gem.effect.fragile.player_skill,碎击：对目标造成 3 伤害，但宝石碎裂消失,Shatter: deal 3 damage to the target, then destroy the gem
+gem.effect.fragile.unit_red_active,触发：自毁并造成范围伤害,Trigger: self-destruct and deal area damage
+gem.effect.fragile.enemy_red_action,冲撞自毁 ({damage}),Fragile charge ({damage})
+gem.effect.fragile.attack_bonus,被动：攻击 +1 伤害,Passive: attacks deal +1 damage
+gem.effect.fragile.black_death,死亡：四邻格 1 伤害,Death: deal 1 damage to the 4 neighboring cells
+gem.effect.fragile.tile_active,祭坛：全场敌人 2 伤害，宝石碎裂,Altar: deal 2 damage to all enemies and shatter the gem

@@ -71,7 +71,7 @@ func _build_buttons(slots: Array, check_fn: Callable, state: GameState, action: 
 		if not slot.gem_uid.is_empty():
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
 			if gem != null:
-				gem_text = _gem_name(gem.gem_id)
+				gem_text = _data_registry().get_gem_display_name(gem)
 		match action:
 			"extract":
 				btn.text = "%s %s" % [slot_label, gem_text] if not gem_text.is_empty() else "%s 空" % slot_label
@@ -142,15 +142,8 @@ func _slot_label(slot_type: String) -> String:
 	return "?"
 
 
-func _gem_name(gem_id: String) -> String:
-	match gem_id:
-		"gem_explosion": return "爆炸"
-		"gem_poison": return "剧毒"
-		"gem_gravity": return "引力"
-		"gem_heavy_armor": return "重甲"
-		"gem_conductive": return "导电"
-		"gem_fragile": return "易碎"
-	return "?"
+func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
 func _gui_input(event: InputEvent) -> void:

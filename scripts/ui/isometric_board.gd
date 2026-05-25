@@ -218,11 +218,11 @@ func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
 		var slot: SlotState = entry["slot"]
 		var gem: GemState = entry["gem"]
 		var pos := Vector2(start_x + i * spacing, anchor.y)
-		var color: Color = UnitLooks.gem_color(gem.gem_id).lerp(UnitLooks.slot_color(slot.slot_type), 0.25)
+		var color: Color = UnitLooks.gem_color(gem).lerp(UnitLooks.slot_color(slot.slot_type), 0.25)
 		if slot.locked:
 			color = color.darkened(0.35)
 		_draw_small_diamond(pos, 11.0, 7.0, color)
-		draw_string(ThemeDB.fallback_font, pos + Vector2(-5, 3), UnitLooks.gem_symbol(gem.gem_id), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.08, 0.08, 0.1))
+		draw_string(ThemeDB.fallback_font, pos + Vector2(-5, 3), UnitLooks.gem_symbol(gem), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.08, 0.08, 0.1))
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
