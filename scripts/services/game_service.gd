@@ -1,6 +1,7 @@
 extends Node
 
 var pending_encounter_id: String = "tutorial_001"
+var adventure_return: bool = false
 
 
 func start_battle(encounter_id: String) -> void:

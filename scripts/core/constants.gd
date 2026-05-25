@@ -31,6 +31,19 @@ const TILE_WATER := "tile_water"
 const TILE_ALTAR := "tile_altar"      # 祭坛：有 1 个红槽，嵌入宝石触发全场效果
 const TILE_PILLAR := "tile_pillar"    # 机关柱：有 1 个蓝槽，嵌入宝石提供持续光环
 
+const TILE_ROOM_START := "tile_room_start"
+const TILE_ROOM_END := "tile_room_end"
+const TILE_ROOM_COMBAT := "tile_room_combat"
+const TILE_ROOM_ELITE := "tile_room_elite"
+const TILE_ROOM_REST := "tile_room_rest"
+const TILE_ROOM_SHOP := "tile_room_shop"
+const TILE_ROOM_EVENT := "tile_room_event"
+
+const ROOM_TILE_IDS: Array[String] = [
+	TILE_ROOM_START, TILE_ROOM_END, TILE_ROOM_COMBAT, TILE_ROOM_ELITE,
+	TILE_ROOM_REST, TILE_ROOM_SHOP, TILE_ROOM_EVENT,
+]
+
 const LOCK_ARMOR := "armor_lock"
 
 const ACTION_MOVE := "move"

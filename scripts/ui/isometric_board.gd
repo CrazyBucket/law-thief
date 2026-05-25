@@ -16,6 +16,8 @@ var highlights: Dictionary = {}
 var hover_cell: Vector2i = Vector2i(-1, -1)
 var selected_unit_uid: String = ""
 var state: GameState = null
+## 为 true 时逻辑 (0,0) 显示在棋盘底部（等距原点对调，仅冒险地图）
+var invert_origin: bool = false
 
 var _board_origin: Vector2 = Vector2.ZERO
 var _animation_speed_scale: float = 1.0
@@ -115,15 +117,25 @@ func set_hover(cell: Vector2i) -> void:
 
 
 func grid_to_screen(grid: Vector2i) -> Vector2:
-	return IsoCoordinates.grid_to_screen(grid, _board_origin)
+	return IsoCoordinates.grid_to_screen(grid, _board_origin, invert_origin, _board_size())
+
+
+func _board_size() -> Vector2i:
+	if state != null:
+		return state.board_size
+	return Constants.BOARD_SIZE
+
+
+func _sorted_cells() -> Array[Vector2i]:
+	return IsoCoordinates.sorted_cells(_board_size(), invert_origin)
 
 
 func _draw() -> void:
 	if state == null:
 		return
-	for grid in IsoCoordinates.sorted_cells():
+	for grid in _sorted_cells():
 		_draw_tile(grid)
-	for grid in IsoCoordinates.sorted_cells():
+	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
 		if unit != null:
 			_draw_unit(unit)
@@ -254,10 +266,10 @@ func _draw_intent_badge(pos: Vector2, text: String) -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
-		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, Constants.BOARD_SIZE)
+		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, _board_size(), invert_origin)
 		cell_hovered.emit(cell, cell.x >= 0)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, Constants.BOARD_SIZE)
+		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, _board_size(), invert_origin)
 		if cell.x >= 0:
 			cell_clicked.emit(cell)
 

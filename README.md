@@ -47,9 +47,9 @@ godot --headless --path . --script res://scripts/tests/encounter_load_test.gd
 
 ## Editor CLI
 
-战斗场景右下角提供运行时 `Editor CLI`，用于临时改图、刷单位、挂宝石和导出关卡配置。当前规范如下：
+战斗场景按 **F9** 打开上半屏 `Editor CLI`（半透明遮罩），用于临时改图、刷单位、挂宝石和导出关卡配置。当前规范如下：
 
-- 命令统一为 `spawn` / `set` / `remove` 这类 CLI 形式
+- 命令以 `/` 开头，例如 `/spawn`、`/set`、`/remove`；不带 `/` 的旧写法仍兼容
 - 生成类命令直接使用资源 `id`，不再额外写对象类型
 - `spawn <object_id>` 会自动识别 `unit id` / `gem id` / `tile id`
 - 坐标统一使用 `x,y`，可选参数统一使用 `--option value`
@@ -57,19 +57,21 @@ godot --headless --path . --script res://scripts/tests/encounter_load_test.gd
 命令总览：
 
 ```text
-list units
-list gems
-list tiles
+/help
 
-spawn <object_id> <pos> [--team enemy|player]
-spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]
-move [unit] <from_pos> <to_pos>
-remove unit <pos>
-remove gem <pos> [--slot red|blue|black] [--target unit|tile]
-set tile <pos> <tile_id>
-set stat <pos> <field> <value>
-set spawn <pos>
-export [encounter] [encounter_id]
+/list units
+/list gems
+/list tiles
+
+/spawn <object_id> <pos> [--team enemy|player]
+/spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]
+/move [unit] <from_pos> <to_pos>
+/remove unit <pos>
+/remove gem <pos> [--slot red|blue|black] [--target unit|tile]
+/set tile <pos> <tile_id>
+/set stat <pos> <field> <value>
+/set spawn <pos>
+/export [encounter] [encounter_id]
 ```
 
 含义说明：

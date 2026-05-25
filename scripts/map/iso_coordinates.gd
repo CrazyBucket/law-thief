@@ -2,11 +2,32 @@ class_name IsoCoordinates
 extends RefCounted
 
 # 标准 2:1 等距：菱形宽 ISO_TILE_W，半高 ISO_TILE_H，四边完美拼接
-static func grid_to_screen(grid: Vector2i, origin: Vector2) -> Vector2:
+static func invert_grid(grid: Vector2i, board_size: Vector2i) -> Vector2i:
+	return Vector2i(board_size.x - 1 - grid.x, board_size.y - 1 - grid.y)
+
+
+static func to_display_grid(grid: Vector2i, board_size: Vector2i, invert_origin: bool) -> Vector2i:
+	if invert_origin:
+		return invert_grid(grid, board_size)
+	return grid
+
+
+static func depth_sort_key(grid: Vector2i, board_size: Vector2i, invert_origin: bool) -> int:
+	var g := to_display_grid(grid, board_size, invert_origin)
+	return g.x + g.y
+
+
+static func grid_to_screen(
+	grid: Vector2i,
+	origin: Vector2,
+	invert_origin: bool = false,
+	board_size: Vector2i = Constants.BOARD_SIZE
+) -> Vector2:
+	var display := to_display_grid(grid, board_size, invert_origin)
 	var half_w := Constants.ISO_TILE_W * 0.5
 	return origin + Vector2(
-		(grid.x - grid.y) * half_w,
-		(grid.x + grid.y) * Constants.ISO_TILE_H * 0.5
+		(display.x - display.y) * half_w,
+		(display.x + display.y) * Constants.ISO_TILE_H * 0.5
 	)
 
 
@@ -39,25 +60,42 @@ static func point_in_diamond(point: Vector2, center: Vector2) -> bool:
 	return absf(rel.x) / half_w + absf(rel.y) / half_h <= 1.0
 
 
-static func pick_grid_at(screen: Vector2, origin: Vector2, board_size: Vector2i) -> Vector2i:
-	var rough := screen_to_grid(screen, origin)
+static func pick_grid_at(
+	screen: Vector2,
+	origin: Vector2,
+	board_size: Vector2i,
+	invert_origin: bool = false
+) -> Vector2i:
+	# screen_to_grid 解的是显示坐标；invert 时再反算回逻辑坐标（与战斗模式同量级）
+	var display_rough := screen_to_grid(screen, origin)
+	var logical_rough: Vector2i = (
+		invert_grid(display_rough, board_size) if invert_origin else display_rough
+	)
 	var candidates: Array[Vector2i] = [
-		rough,
-		rough + Vector2i(-1, 0),
-		rough + Vector2i(1, 0),
-		rough + Vector2i(0, -1),
-		rough + Vector2i(0, 1),
-		rough + Vector2i(-1, -1),
-		rough + Vector2i(1, 1),
-		rough + Vector2i(-1, 1),
-		rough + Vector2i(1, -1),
+		logical_rough,
+		logical_rough + Vector2i(-1, 0),
+		logical_rough + Vector2i(1, 0),
+		logical_rough + Vector2i(0, -1),
+		logical_rough + Vector2i(0, 1),
+		logical_rough + Vector2i(-1, -1),
+		logical_rough + Vector2i(1, 1),
+		logical_rough + Vector2i(-1, 1),
+		logical_rough + Vector2i(1, -1),
 	]
-	for grid in candidates:
-		if grid.x < 0 or grid.y < 0 or grid.x >= board_size.x or grid.y >= board_size.y:
+	var best: Vector2i = Vector2i(-1, -1)
+	var best_depth: int = -1
+	for logical in candidates:
+		if logical.x < 0 or logical.y < 0 or logical.x >= board_size.x or logical.y >= board_size.y:
 			continue
-		if point_in_diamond(screen, grid_to_screen(grid, origin)):
-			return grid
-	return Vector2i(-1, -1)
+		if not point_in_diamond(screen, grid_to_screen(logical, origin, invert_origin, board_size)):
+			continue
+		if not invert_origin:
+			return logical
+		var depth: int = depth_sort_key(logical, board_size, true)
+		if depth > best_depth:
+			best_depth = depth
+			best = logical
+	return best
 
 
 static func board_pixel_size() -> Vector2:
@@ -83,14 +121,17 @@ static func board_origin(view_size: Vector2) -> Vector2:
 	return Vector2(ox, oy)
 
 
-static func sorted_cells() -> Array[Vector2i]:
+static func sorted_cells(
+	board_size: Vector2i = Constants.BOARD_SIZE,
+	invert_origin: bool = false
+) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for y in range(Constants.BOARD_SIZE.y):
-		for x in range(Constants.BOARD_SIZE.x):
+	for y in range(board_size.y):
+		for x in range(board_size.x):
 			cells.append(Vector2i(x, y))
 	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		var da := a.x + a.y
-		var db := b.x + b.y
+		var da := depth_sort_key(a, board_size, invert_origin)
+		var db := depth_sort_key(b, board_size, invert_origin)
 		if da == db:
 			return a.x < b.x
 		return da < db

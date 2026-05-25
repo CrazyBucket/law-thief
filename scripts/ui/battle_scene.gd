@@ -3,6 +3,7 @@ extends Control
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
+const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 
 @onready var _board: Control = $BoardLayer/IsometricBoard
 @onready var _status_panel: PanelContainer = $HudLayer/StatusPanel
@@ -51,12 +52,8 @@ var _player_animating: bool = false
 var _animation_speed_scale: float = 1.0
 var _enemy_turn_queue: Array[String] = []
 var _slot_popup: Control = null
-var _console_panel: PanelContainer = null
-var _console_output: RichTextLabel = null
-var _console_input: LineEdit = null
-var _console_toggle_btn: Button = null
-var _console_visible: bool = false
-var _console_history: Array[String] = []
+var _console_layer: CanvasLayer = null
+var _console: Control = null
 
 
 func _ready() -> void:
@@ -102,60 +99,12 @@ func _create_slot_popup() -> void:
 
 
 func _create_level_console() -> void:
-	_console_panel = PanelContainer.new()
-	_console_panel.visible = false
-	_console_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_console_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_console_panel.offset_left = -388.0
-	_console_panel.offset_top = -336.0
-	_console_panel.offset_right = -12.0
-	_console_panel.offset_bottom = -84.0
-	_console_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT.darkened(0.15)))
-	$HudLayer.add_child(_console_panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	_console_panel.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "Editor CLI"
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	vbox.add_child(title)
-
-	var hint := Label.new()
-	hint.text = "Runtime editor. Use IDs directly; type help for command docs."
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	vbox.add_child(hint)
-
-	_console_output = RichTextLabel.new()
-	_console_output.bbcode_enabled = true
-	_console_output.scroll_active = true
-	_console_output.fit_content = false
-	_console_output.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_console_output.custom_minimum_size = Vector2(0, 140)
-	vbox.add_child(_console_output)
-
-	_console_input = LineEdit.new()
-	_console_input.placeholder_text = "spawn unit_bomber 2,4 --team enemy"
-	_console_input.clear_button_enabled = true
-	_console_input.text_submitted.connect(_on_console_submitted)
-	vbox.add_child(_console_input)
-
-	_console_toggle_btn = Button.new()
-	_console_toggle_btn.text = "CLI"
-	_console_toggle_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_console_toggle_btn.offset_left = -102.0
-	_console_toggle_btn.offset_top = -120.0
-	_console_toggle_btn.offset_right = -12.0
-	_console_toggle_btn.offset_bottom = -84.0
-	BattleUiTheme.apply_button(_console_toggle_btn, "ghost")
-	_console_toggle_btn.pressed.connect(_toggle_level_console)
-	$HudLayer.add_child(_console_toggle_btn)
-
-	_append_console_entry("Type [color=#7fd4ff]help[/color] to see the CLI reference.", "#9aa0ad")
+	_console_layer = CanvasLayer.new()
+	_console_layer.layer = 64
+	add_child(_console_layer)
+	_console = EditorConsoleScene.instantiate()
+	_console.command_submitted.connect(_on_console_submitted)
+	_console_layer.add_child(_console)
 
 
 func setup(encounter_id: String) -> void:
@@ -417,7 +366,11 @@ func _play_anim_event(ev: Dictionary) -> void:
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+	if GameService.adventure_return:
+		GameService.adventure_return = false
+		get_tree().change_scene_to_file("res://scenes/map/adventure_map.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
 
 func _on_battle_ended(result: String) -> void:
@@ -435,59 +388,24 @@ func _show_result(result: Dictionary) -> void:
 		_message_label.text = result.get("reason", "无法执行")
 
 
-func _toggle_level_console() -> void:
-	_set_level_console_visible(not _console_visible)
-
-
-func _set_level_console_visible(visible: bool) -> void:
-	_console_visible = visible
-	if _console_panel != null:
-		_console_panel.visible = visible
-	if _console_toggle_btn != null:
-		_console_toggle_btn.text = "Close CLI" if visible else "CLI"
-	if visible and _console_input != null:
-		_console_input.grab_focus()
-		_console_input.select_all()
-	elif _console_input != null:
-		_console_input.release_focus()
-
-
-func _on_console_submitted(raw_text: String) -> void:
-	var command := raw_text.strip_edges()
-	if command.is_empty():
-		return
+func _on_console_submitted(command: String) -> void:
 	if _enemy_phase_running or _player_animating:
-		_append_console_entry("> %s" % command, "#ffd166")
-		_append_console_entry("Editor CLI is unavailable during animations or enemy turns.", "#ff8a80")
-		if _console_input != null:
-			_console_input.clear()
+		_console.append_log("> %s" % command, "#ffd166")
+		_console.append_log("Editor CLI is unavailable during animations or enemy turns.", "#ff8a80")
 		return
-	_append_console_entry("> %s" % command, "#ffd166")
+	_console.append_log("> %s" % command, "#ffd166")
 	var result := _controller.run_editor_command(command)
 	if result.get("ok", false):
 		var message := str(result.get("message", "Command succeeded"))
-		_append_console_entry(message, "#8fd4a8")
+		_console.append_log(message, "#8fd4a8")
 		for line in result.get("lines", []):
-			_append_console_entry("- %s" % str(line), "#c8cad4")
+			_console.append_log("- %s" % str(line), "#c8cad4")
 		if _controller.state != null:
 			_message_label.text = message
 	else:
 		var reason := str(result.get("reason", "Command failed"))
-		_append_console_entry(reason, "#ff8a80")
+		_console.append_log(reason, "#ff8a80")
 		_message_label.text = reason
-	if _console_input != null:
-		_console_input.clear()
-		_console_input.grab_focus()
-
-
-func _append_console_entry(text: String, color: String = "#c8cad4") -> void:
-	_console_history.append("[color=%s]%s[/color]" % [color, text])
-	while _console_history.size() > 18:
-		_console_history.remove_at(0)
-	if _console_output != null:
-		_console_output.text = "\n".join(_console_history)
-		await get_tree().process_frame
-		_console_output.scroll_to_line(maxi(0, _console_output.get_line_count() - 1))
 
 
 func _data_registry() -> Node:
@@ -710,7 +628,7 @@ func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
 		label.text = "%s○" % slot_name
 	else:
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
-			label.text = "%s%s" % [slot_name, UnitLooks.gem_symbol(gem) if gem != null else "?"]
+		label.text = "%s%s" % [slot_name, UnitLooks.gem_symbol(gem) if gem != null else "?"]
 
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
@@ -791,12 +709,12 @@ func _clamp_preview_panel() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_QUOTELEFT or event.keycode == KEY_F2:
-			_set_level_console_visible(not _console_visible)
+		if event.keycode == KEY_F9 and _console != null:
+			_console.toggle()
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_ESCAPE and _console_visible:
-			_set_level_console_visible(false)
+		if event.keycode == KEY_ESCAPE and _console != null and _console.is_open():
+			_console.close()
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:

@@ -132,6 +132,15 @@ func _on_tutorial_pressed() -> void:
 	_start_battle("tutorial_001")
 
 
+func _on_map_pressed() -> void:
+	var tween := create_tween()
+	tween.tween_property(self, "modulate:a", 0.0, 0.25)
+	tween.tween_callback(func():
+		AdventureService.start_new_run()
+		get_tree().change_scene_to_file("res://scenes/map/adventure_map.tscn")
+	)
+
+
 func _on_template_a_pressed() -> void:
 	_start_battle("template_a")
 

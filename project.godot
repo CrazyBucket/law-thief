@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameService="*res://scripts/services/game_service.gd"
+AdventureService="*res://scripts/services/adventure_service.gd"
 RngService="*res://scripts/services/rng_service.gd"
 SaveService="*res://scripts/services/save_service.gd"
 SettingsService="*res://scripts/services/settings_service.gd"

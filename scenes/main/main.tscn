@@ -95,6 +95,11 @@ custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 text = "▶  新手教学"
 
+[node name="MapBtn" type="Button" parent="ContentLayer/MenuBlock"]
+custom_minimum_size = Vector2(320, 48)
+layout_mode = 2
+text = "🗺  地图"
+
 [node name="TemplateABtn" type="Button" parent="ContentLayer/MenuBlock"]
 custom_minimum_size = Vector2(320, 44)
 layout_mode = 2
@@ -132,6 +137,7 @@ text = "v0.3  |  战术 Roguelike  |  Godot 4.6"
 horizontal_alignment = 1
 
 [connection signal="pressed" from="ContentLayer/MenuBlock/TutorialBtn" to="." method="_on_tutorial_pressed"]
+[connection signal="pressed" from="ContentLayer/MenuBlock/MapBtn" to="." method="_on_map_pressed"]
 [connection signal="pressed" from="ContentLayer/MenuBlock/TemplateABtn" to="." method="_on_template_a_pressed"]
 [connection signal="pressed" from="ContentLayer/MenuBlock/TemplateBBtn" to="." method="_on_template_b_pressed"]
 [connection signal="pressed" from="ContentLayer/MenuBlock/TemplateCBtn" to="." method="_on_template_c_pressed"]

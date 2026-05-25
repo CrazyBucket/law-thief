@@ -2,6 +2,7 @@ class_name TileRenderer
 extends RefCounted
 
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
+const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const SIDE_DEPTH := 10.0
 
 
@@ -65,6 +66,9 @@ static func _draw_overlay(canvas: Control, center: Vector2, color: Color) -> voi
 
 
 static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState) -> void:
+	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
+		_draw_room_label(canvas, center, tile.tile_id)
+		return
 	match tile.tile_id:
 		Constants.TILE_SPIKE:
 			_draw_spikes(canvas, center)
@@ -98,7 +102,40 @@ static func _draw_floor_noise(canvas: Control, center: Vector2, variant: int) ->
 	canvas.draw_circle(center + Vector2(6, 4), 1.2, dot_color)
 
 
+static func _draw_room_label(canvas: Control, center: Vector2, tile_id: String) -> void:
+	var room_type: String = _AdventureRoomDisplay.room_type_from_tile(tile_id)
+	var display: Dictionary = _AdventureRoomDisplay.get_display(room_type)
+	var font: Font = ThemeDB.fallback_font
+	var glyph: String = display["glyph"]
+	var label: String = display["label"]
+	var glyph_size: int = 22
+	var label_size: int = 12
+	var glyph_dims: Vector2 = font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, glyph_size)
+	var label_dims: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, label_size)
+	var text_y: float = center.y - (glyph_dims.y + label_dims.y) * 0.5
+	canvas.draw_string(
+		font, Vector2(center.x - glyph_dims.x * 0.5, text_y + glyph_dims.y),
+		glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, glyph_size, Color(1, 1, 1, 0.95)
+	)
+	canvas.draw_string(
+		font, Vector2(center.x - label_dims.x * 0.5, text_y + glyph_dims.y + label_dims.y + 2.0),
+		label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size, Color(0.92, 0.92, 0.96, 0.9)
+	)
+
+
+static func _room_palette(tile_id: String) -> Dictionary:
+	var room_type: String = _AdventureRoomDisplay.room_type_from_tile(tile_id)
+	var base: Color = _AdventureRoomDisplay.get_display(room_type)["color"]
+	return {
+		"top": base.darkened(0.15),
+		"left": base.darkened(0.35),
+		"right": base.darkened(0.25),
+	}
+
+
 static func _palette(tile: TileState) -> Dictionary:
+	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
+		return _room_palette(tile.tile_id)
 	match tile.tile_id:
 		Constants.TILE_SPIKE:
 			return {

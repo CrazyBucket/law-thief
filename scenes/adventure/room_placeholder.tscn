@@ -1,0 +1,73 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8lawthiefroom01"]
+
+[ext_resource type="Script" path="res://scripts/ui/adventure_room_placeholder.gd" id="1_room"]
+
+[node name="RoomPlaceholder" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_room")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.04, 0.08, 1)
+
+[node name="Content" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -160.0
+offset_right = 280.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="Content"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Content/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "房间"
+horizontal_alignment = 1
+
+[node name="Body" type="Label" parent="Content/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "占位内容"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ContinueBtn" type="Button" parent="Content/VBox"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "返回地图"
+
+[node name="BackBtn" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -120.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 52.0
+grow_horizontal = 0
+text = "返回地图"
+
+[connection signal="pressed" from="Content/VBox/ContinueBtn" to="." method="_on_continue_pressed"]
+[connection signal="pressed" from="BackBtn" to="." method="_on_back_pressed"]

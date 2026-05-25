@@ -719,7 +719,7 @@ func run_editor_command(raw_command: String) -> Dictionary:
 		"export":
 			return _run_editor_export_command(tokens, 1)
 		_:
-			return _fail("unknown command: %s (use `help` for usage)" % tokens[0])
+			return _fail("unknown command: %s (use /help for usage)" % tokens[0])
 
 
 func _run_editor_spawn_command(tokens: Array, start_index: int) -> Dictionary:
@@ -862,17 +862,20 @@ func _run_editor_list_command(tokens: Array, start_index: int = 1) -> Dictionary
 	var lines: Array[String] = []
 	match category:
 		"unit":
+			lines.append("(string def_id)")
 			for unit_def_id in _data_registry().get_unit_def_ids():
-				lines.append("%s - %s" % [unit_def_id, _data_registry().get_unit_display_name(unit_def_id)])
-			return _ok({"message": "Unit definitions", "lines": lines})
+				lines.append("  %s  %s" % [unit_def_id, _data_registry().get_unit_display_name(unit_def_id)])
+			return _ok({"message": "Unit definition ids (strings)", "lines": lines})
 		"gem":
+			lines.append("(string def_id)")
 			for gem_id in _data_registry().get_gem_ids():
-				lines.append("%s - %s" % [gem_id, _data_registry().get_gem_display_name(gem_id)])
-			return _ok({"message": "Gem definitions", "lines": lines})
+				lines.append("  %s  %s" % [gem_id, _data_registry().get_gem_display_name(gem_id)])
+			return _ok({"message": "Gem definition ids (strings)", "lines": lines})
 		"tile":
+			lines.append("(string def_id)")
 			for tile_id in _data_registry().get_tile_ids():
-				lines.append("%s - %s" % [tile_id, _data_registry().get_tile_display_name(tile_id)])
-			return _ok({"message": "Tile definitions", "lines": lines})
+				lines.append("  %s  %s" % [tile_id, _data_registry().get_tile_display_name(tile_id)])
+			return _ok({"message": "Tile definition ids (strings)", "lines": lines})
 	return _fail("list only supports units, gems, or tiles")
 
 
@@ -1523,6 +1526,8 @@ func _editor_tokens(raw_command: String) -> Array[String]:
 	var tokens: Array[String] = []
 	for token in normalized.split(" ", false):
 		var value := String(token).strip_edges()
+		if value.begins_with("/"):
+			value = value.substr(1)
 		if value.is_empty():
 			continue
 		if _is_editor_filler_token(value):
@@ -1629,37 +1634,40 @@ func _normalize_editor_stat_field(token: String) -> String:
 
 func _editor_help_lines() -> Array[String]:
 	return [
-		"Editor CLI",
+		"Editor CLI (F9)",
+		"Commands start with /. Bare names like help still work.",
+		"IDs are string resource keys (unit_bomber, gem_poison, tile_water), not numeric.",
+		"Runtime unit_uid / gem_uid are also strings; list only shows definition ids.",
 		"",
 		"Catalogs:",
-		"  list units                 Show spawnable unit ids",
-		"  list gems                  Show spawnable gem ids",
-		"  list tiles                 Show placeable tile ids",
+		"  /list units                Show spawnable unit ids",
+		"  /list gems                 Show spawnable gem ids",
+		"  /list tiles                Show placeable tile ids",
 		"",
 		"Commands:",
-		"  spawn <object_id> <pos> [--team enemy|player]",
+		"  /spawn <object_id> <pos> [--team enemy|player]",
 		"    - object_id can be a unit id, gem id, or tile id",
 		"    - units spawn on the board; gems auto-detect unit/tile unless overridden",
-		"    - example: spawn unit_bomber 2,4 --team enemy",
-		"    - example: spawn gem_poison 2,4 --slot red --target tile",
-		"    - example: spawn tile_altar 4,4",
-		"  spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",
-		"    - example: spawn-many unit_grunt 0,0 1,0 2,0 --team enemy",
-		"  move [unit] <from_pos> <to_pos>",
-		"    - example: move 2,4 3,4",
-		"  remove unit <pos>",
-		"    - example: remove unit 3,4",
-		"  remove gem <pos> [--slot red|blue|black] [--target unit|tile]",
-		"    - example: remove gem 2,4 --slot red --target unit",
-		"  set tile <pos> <tile_id>",
-		"    - example: set tile 4,4 tile_water",
-		"  set stat <pos> <field> <value>",
+		"    - example: /spawn unit_bomber 2,4 --team enemy",
+		"    - example: /spawn gem_poison 2,4 --slot red --target tile",
+		"    - example: /spawn tile_altar 4,4",
+		"  /spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",
+		"    - example: /spawn-many unit_grunt 0,0 1,0 2,0 --team enemy",
+		"  /move [unit] <from_pos> <to_pos>",
+		"    - example: /move 2,4 3,4",
+		"  /remove unit <pos>",
+		"    - example: /remove unit 3,4",
+		"  /remove gem <pos> [--slot red|blue|black] [--target unit|tile]",
+		"    - example: /remove gem 2,4 --slot red --target unit",
+		"  /set tile <pos> <tile_id>",
+		"    - example: /set tile 4,4 tile_water",
+		"  /set stat <pos> <field> <value>",
 		"    - supported fields: hp, max_hp, move_points, speed, base_attack, armor, alive",
-		"    - example: set stat 2,4 hp 12",
-		"  set spawn <pos>",
-		"    - example: set spawn 1,6",
-		"  export [encounter] [encounter_id]",
-		"    - example: export encounter custom_level_001",
+		"    - example: /set stat 2,4 hp 12",
+		"  /set spawn <pos>",
+		"    - example: /set spawn 1,6",
+		"  /export [encounter] [encounter_id]",
+		"    - example: /export encounter custom_level_001",
 	]
 
 
