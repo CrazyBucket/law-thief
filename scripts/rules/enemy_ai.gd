@@ -157,11 +157,6 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_pull_skill(state, enemy, from_pos, player, profile))
 		"poison_attack":
 			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
-		"shock":
-			results.append_array(_score_shock_skill(state, enemy, from_pos, player, profile))
-		"fragile_charge":
-			results.append_array(_score_fragile_skill(state, enemy, from_pos, player, profile))
-
 	return results
 
 
@@ -247,49 +242,6 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 
 	candidate.score = score
 	candidate.description = "毒攻击"
-	results.append(candidate)
-	return results
-
-
-# ─── 电击评分 ─────────────────────────────────────────────────────────────
-static func _score_shock_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) > 2:
-		return results
-
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-
-	var score: float = _w(profile, "w_damage", 10.0)  # 1 点伤害
-	# 如果玩家站在水上，导电连锁加分
-	var player_tile: TileState = state.get_tile(player.pos)
-	if player_tile.tile_id == Constants.TILE_WATER:
-		score += _w(profile, "w_damage", 10.0) * 2.0  # 水上导电额外伤害
-
-	candidate.score = score
-	candidate.description = "电击"
-	results.append(candidate)
-	return results
-
-
-# ─── 易碎冲撞评分 ─────────────────────────────────────────────────────────
-static func _score_fragile_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) > 2:
-		return results
-
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-
-	var score: float = _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_self_sacrifice", 0.0)
-
-	candidate.score = score
-	candidate.description = "易碎冲撞"
 	results.append(candidate)
 	return results
 

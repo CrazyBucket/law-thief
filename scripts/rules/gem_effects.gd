@@ -6,6 +6,8 @@ const TIMING_TURN_START := "turn_start"
 const TIMING_OWNER_DAMAGED := "owner_damaged"
 const TIMING_ON_DEATH := "on_death"
 const TIMING_MOVED_THROUGH := "moved_through"
+const TIMING_FORCED_MOVE := "forced_move"   # 被强制位移时（击退、引力等）
+const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻击）
 
 const MODE_TRIGGER := "trigger"
 const MODE_SKILL := "skill"
@@ -69,8 +71,8 @@ static func trigger_gem(state: GameState, owner_uid: String, slot: SlotState) ->
 	return _run_slot_hook(state, owner, slot, TIMING_ACTIVE, {})
 
 
-static func on_unit_death(state: GameState, unit: UnitState) -> void:
-	run_unit_hooks(state, unit, Constants.SLOT_BLACK, TIMING_ON_DEATH, {})
+static func on_unit_death(state: GameState, unit: UnitState, out_events: Array[Dictionary] = []) -> void:
+	_run_death_hooks_with_events(state, unit, out_events)
 
 
 ## 玩家使用红槽技能：对目标位置/单位施放，效果因宝石而异
@@ -95,12 +97,10 @@ static func _build_player_skill_events(gem: GemState, player: UnitState, target_
 			events.append({"type": "explode", "pos": target_pos, "radius": Constants.EXPLOSION_RADIUS})
 		"poison":
 			events.append({"type": "poison_burst", "pos": target_pos, "radius": 1})
-		"gravity", "heavy_armor":
+		"gravity":
 			events.append({"type": "gem_flash", "pos": player.pos, "color": _data_registry().get_gem_color(gem)})
-		"conductive":
+		"arc", "fire_gem", "ice":
 			events.append({"type": "gem_flash", "pos": target_pos, "color": _data_registry().get_gem_color(gem)})
-		"fragile":
-			events.append({"type": "damage", "pos": target_pos, "damage": 3, "is_crit": true})
 	return events
 
 
@@ -113,35 +113,12 @@ static func get_slot_effect_description(gem_ref: Variant, slot_type: String, con
 	return _data_registry().get_gem_effect_description(gem_ref, slot_type, context)
 
 
-static func get_attack_bonus(state: GameState, unit: UnitState) -> int:
-	var bonus := 0
-	for slot in unit.slots:
-		if slot.slot_type != Constants.SLOT_BLUE or slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		if gem == null:
-			continue
-		if _ability_profile(gem, ABILITY_ATTACK_BONUS) == "fragile":
-			bonus += 1
-	return bonus
+static func get_attack_bonus(_state: GameState, _unit: UnitState) -> int:
+	return 0
 
 
-static func get_armor_bonus(state: GameState, unit: UnitState) -> int:
-	var bonus := 0
-	for slot in unit.slots:
-		if slot.slot_type != Constants.SLOT_BLUE or slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		if gem == null:
-			continue
-		match _ability_profile(gem, ABILITY_ARMOR_BONUS):
-			"heavy_armor":
-				bonus += 2
-			"conductive":
-				var tile := state.get_tile(unit.pos)
-				if tile.tile_id == Constants.TILE_WATER:
-					bonus += 1
-	return bonus
+static func get_armor_bonus(_state: GameState, _unit: UnitState) -> int:
+	return 0
 
 
 static func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
@@ -197,7 +174,26 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 		for slot in hit_unit.slots:
 			if slot.locked and slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, slot, state.turn_index)
+		# 爆炸冲击波：将命中单位推离爆炸中心（skip_gem_hooks=true 防止链式触发）
+		if hit_unit.alive and hit_unit.pos != center:
+			Displacement.knockback(state, hit_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
 	return events
+
+
+## 强制位移钩子：携带爆炸宝石的单位被强制位移时自爆
+static func on_forced_displacement(state: GameState, unit: UnitState, events: Array[Dictionary]) -> void:
+	for slot in unit.slots:
+		if slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem == null:
+			continue
+		# 蓝槽爆炸宝石：被强制位移时引发爆炸
+		if slot.slot_type == Constants.SLOT_BLUE and _ability_profile(gem, ABILITY_BLUE_DAMAGED) == "explosion":
+			state.log("%s 被强制位移触发爆炸！" % unit.uid)
+			events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
+			events.append_array(_explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
+			break
 
 
 static func pull_around(state: GameState, center: Vector2i, pull_range: int, steps: int, source_uid: String = "") -> void:
@@ -250,13 +246,6 @@ static func _run_enemy_red_action(state: GameState, unit: UnitState, slot: SlotS
 			return poison_events
 		"pull":
 			return _execute_pull_events(state, unit, target_uid)
-		"shock":
-			var shock_target: UnitState = state.units.get(target_uid, null)
-			if shock_target == null or BoardUtils.manhattan(unit.pos, shock_target.pos) > 2:
-				return [] as Array[Dictionary]
-			return _enemy_red_damage_events(state, unit, target_uid, 1, "shock")
-		"fragile_charge":
-			return _execute_fragile_charge_events(state, unit, target_uid)
 	return [] as Array[Dictionary]
 
 
@@ -320,6 +309,7 @@ static func pull_unit_toward_with_events(
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
 		current = next
 	if unit.pos != start_pos:
+		TileRules.on_unit_position_changed(state, unit, start_pos)
 		TileRules.on_unit_entered(state, unit, start_pos)
 	return events
 
@@ -388,6 +378,10 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 			if slot.slot_type != Constants.SLOT_BLUE:
 				return false
 			return _run_unit_moved_through_effect(state, owner, gem, ctx)
+		TIMING_ON_CONTACT:
+			if slot.slot_type != Constants.SLOT_BLUE:
+				return false
+			return _run_unit_contact_effect(state, owner, gem, ctx)
 	return false
 
 
@@ -434,33 +428,46 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: Sl
 				MODE_ENEMY:
 					_execute_pull_events(state, owner, ctx.get("target_uid", ""))
 			return true
-		"heavy_armor":
+		"arc":
+			# 红槽导电：触发电弧（概率麻痹），不走 pipeline 以避免递归
 			match mode:
-				MODE_TRIGGER:
-					StatusRules.apply_armor(state, owner, 2, 1)
-				MODE_SKILL, MODE_ENEMY:
-					StatusRules.apply_armor(state, owner, 3, 2)
-			return true
-		"conductive":
-			match mode:
-				MODE_TRIGGER:
-					_activate_water_cluster(state, owner.pos)
+				MODE_TRIGGER, MODE_ENEMY:
+					var arc_target: UnitState = state.get_unit_at(ctx.get("target_pos", owner.pos))
+					if arc_target == null:
+						arc_target = state.units.get(ctx.get("target_uid", ""), null)
+					if arc_target != null and arc_target.alive:
+						var dummy_events: Array[Dictionary] = []
+						_arc_to(state, arc_target, owner.uid, CombatRules.attack_damage(state, owner), dummy_events)
 				MODE_SKILL:
-					_activate_water_cluster(state, ctx.get("target_pos", owner.pos))
-				MODE_ENEMY:
-					_execute_shock(state, owner, ctx.get("target_uid", ""))
+					pass
 			return true
-		"fragile":
+		"fire_gem":
 			match mode:
 				MODE_TRIGGER:
-					CombatRules.apply_damage(state, owner, owner.hp, owner.uid, "fragile_trigger")
+					TileRules.create_fire(state, owner.pos)
 				MODE_SKILL:
-					var fragile_target := state.get_unit_at(ctx.get("target_pos", owner.pos))
-					if fragile_target != null:
-						CombatRules.apply_damage(state, fragile_target, 3, owner.uid, "fragile_skill")
-					_destroy_unit_slot_gem(state, owner, slot, gem)
+					var fire_target_pos: Vector2i = ctx.get("target_pos", owner.pos)
+					TileRules.create_fire(state, fire_target_pos)
+					var fire_occ := state.get_unit_at(fire_target_pos)
+					if fire_occ != null and fire_occ.alive and fire_occ.team != owner.team:
+						StatusRules.apply_burning(state, fire_occ, 1, owner.uid)
 				MODE_ENEMY:
-					_execute_fragile_charge(state, owner, ctx.get("target_uid", ""))
+					var fire_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+					if fire_t != null and fire_t.alive:
+						StatusRules.apply_burning(state, fire_t, 1, owner.uid)
+			return true
+		"ice":
+			match mode:
+				MODE_TRIGGER:
+					StatusRules.apply_slowed(state, owner, 1, owner.uid)
+				MODE_SKILL:
+					var ice_target := state.get_unit_at(ctx.get("target_pos", owner.pos))
+					if ice_target != null and ice_target.uid != owner.uid:
+						apply_ice_hit_effect(state, ice_target, owner.uid)
+				MODE_ENEMY:
+					var ice_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+					if ice_t != null and ice_t.alive:
+						apply_ice_hit_effect(state, ice_t, owner.uid)
 			return true
 	return false
 
@@ -480,71 +487,109 @@ static func _run_unit_turn_start_effect(state: GameState, owner: UnitState, gem:
 					CombatRules.apply_damage(state, target, 1, owner.uid, "blue_explosion_aura")
 					break
 			return true
-		"conductive":
-			var current_tile := state.get_tile(owner.pos)
-			if current_tile.tile_id == Constants.TILE_WATER:
-				for cell in BoardUtils.cells_in_radius(owner.pos, 1):
-					var target := state.get_unit_at(cell)
-					if target != null and target.alive and target.team != owner.team:
-						CombatRules.apply_damage(state, target, 1, owner.uid, "blue_conductive_aura")
-			return true
 	return false
 
 
 static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: GemState, ctx: Dictionary) -> bool:
 	var reason: String = ctx.get("reason", "")
-	if reason == "blue_conductive_rebound":
-		return false
 	var source_uid: String = ctx.get("source_uid", "")
-	if source_uid.is_empty():
-		return false
-	var source: UnitState = state.units.get(source_uid, null)
-	if source == null or not source.alive:
-		return false
+	var damage: int = ctx.get("damage", 0)
+	var source: UnitState = state.units.get(source_uid, null) if not source_uid.is_empty() else null
 	match _ability_profile(gem, ABILITY_BLUE_DAMAGED):
+		"explosion":
+			if reason == "burning" or reason == "tile_fire":
+				state.log("%s 被火焰点燃引爆！" % owner.uid)
+				var dummy_events: Array[Dictionary] = []
+				dummy_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
+				dummy_events.append_array(_explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid))
+			return true
+		"gravity":
+			if source != null and source.alive and BoardUtils.manhattan(owner.pos, source.pos) > 1 and damage > 0:
+				var deflect_target: UnitState = _random_neighbor_unit(state, owner, source.uid)
+				if deflect_target != null:
+					CombatRules.apply_damage(state, deflect_target, damage, owner.uid, "gravity_deflect")
+				# 若无单位则弹到自身脚下地块（不造成单位伤害，仅标记事件）
+			return true
 		"poison":
-			if BoardUtils.manhattan(owner.pos, source.pos) <= 1:
+			if source != null and source.alive and BoardUtils.manhattan(owner.pos, source.pos) <= 1:
 				StatusRules.apply_poison(state, source, 1, 2)
 			return true
-		"conductive":
-			var owner_tile := state.get_tile(owner.pos)
-			if owner_tile.tile_id == Constants.TILE_WATER and BoardUtils.manhattan(owner.pos, source.pos) <= 2:
-				CombatRules.apply_damage(state, source, 1, owner.uid, "blue_conductive_rebound")
+		"arc":
+			if source != null and source.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
+				var rebound_events: Array[Dictionary] = []
+				_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), rebound_events)
+			return true
+	return false
+
+
+## 带事件输出的死亡钩子入口
+static func _run_death_hooks_with_events(state: GameState, unit: UnitState, out_events: Array[Dictionary]) -> void:
+	for slot in unit.slots:
+		if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem == null:
+			continue
+		_run_unit_death_effect_with_events(state, unit, gem, out_events)
+
+
+static func _run_unit_death_effect_with_events(state: GameState, owner: UnitState, gem: GemState, out_events: Array[Dictionary]) -> bool:
+	match _ability_profile(gem, ABILITY_BLACK_DEATH):
+		"explosion":
+			var evs := explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid)
+			out_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
+			out_events.append_array(evs)
+			return true
+		"poison":
+			_transfer_debuffs_to_random_units(state, owner, 1)
+			return true
+		"gravity":
+			# 死亡时将 3x3 范围内单位拉向自身（产生 move_step 事件）
+			for unit in state.units.values():
+				if not unit.alive or unit.uid == owner.uid:
+					continue
+				if BoardUtils.chebyshev(owner.pos, unit.pos) > Constants.EXPLOSION_DEATH_RADIUS:
+					continue
+				Displacement.pull_toward(state, unit, owner.pos, 1, owner.uid, out_events)
+			return true
+		"arc":
+			# 黑槽导电：死亡落雷，3x3 范围内随机单位，固定 10 伤害，33% 概率麻痹
+			var candidates: Array[UnitState] = []
+			for unit in state.units.values():
+				if not unit.alive or unit.uid == owner.uid:
+					continue
+				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
+					candidates.append(unit)
+			if not candidates.is_empty():
+				var strike_target: UnitState = candidates[randi() % candidates.size()]
+				var dealt := CombatRules.apply_true_damage(
+					state, strike_target, Constants.LIGHTNING_DEATH_DAMAGE, owner.uid, "lightning_death"
+				)
+				if dealt > 0:
+					out_events.append({"type": "damage", "pos": strike_target.pos, "damage": dealt, "is_crit": false})
+				if strike_target.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
+					StatusRules.apply_paralyzed(state, strike_target, 1, owner.uid)
+				out_events.append({"type": "lightning", "pos": owner.pos, "target_pos": strike_target.pos})
+			return true
+		"fire_gem":
+			# 黑槽燃烧：5x5 范围内随机选 5 个空地块创建火焰
+			_scatter_fire_on_death(state, owner, out_events)
+			return true
+		"ice":
+			# 黑槽冰冻：3x3 范围内所有单位下回合行动顺序垫底
+			for unit in state.units.values():
+				if not unit.alive or unit.uid == owner.uid:
+					continue
+				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
+					StatusRules.apply_sluggish(state, unit, owner.uid)
+					out_events.append({"type": "frost_pulse", "pos": unit.pos})
 			return true
 	return false
 
 
 static func _run_unit_death_effect(state: GameState, owner: UnitState, gem: GemState) -> bool:
-	match _ability_profile(gem, ABILITY_BLACK_DEATH):
-		"explosion":
-			explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid)
-			return true
-		"poison":
-			for cell in BoardUtils.cells_in_radius(owner.pos, 1):
-				TileRules.create_poison_fog(state, cell)
-			return true
-		"gravity":
-			pull_around(state, owner.pos, 2, 1, owner.uid)
-			return true
-		"fragile":
-			for neighbor in BoardUtils.neighbors4(owner.pos):
-				var target := state.get_unit_at(neighbor)
-				if target != null:
-					CombatRules.apply_damage(state, target, 1, owner.uid, "fragile_shatter")
-			return true
-		"conductive":
-			for cell in BoardUtils.cells_in_radius(owner.pos, 2):
-				var tile := state.get_tile(cell)
-				if tile.tile_id == Constants.TILE_WATER:
-					_activate_water_cluster(state, cell)
-			return true
-		"heavy_armor":
-			var ally := _nearest_alive_ally(state, owner)
-			if ally != null:
-				StatusRules.apply_armor(state, ally, 3, 2)
-				state.log("%s 死亡后将重甲遗产传给 %s" % [owner.uid, ally.uid])
-			return true
-	return false
+	var dummy: Array[Dictionary] = []
+	return _run_unit_death_effect_with_events(state, owner, gem, dummy)
 
 
 static func _run_unit_moved_through_effect(state: GameState, _owner: UnitState, gem: GemState, ctx: Dictionary) -> bool:
@@ -555,10 +600,22 @@ static func _run_unit_moved_through_effect(state: GameState, _owner: UnitState, 
 	return false
 
 
-static func _destroy_unit_slot_gem(state: GameState, owner: UnitState, slot: SlotState, gem: GemState) -> void:
-	slot.gem_uid = ""
-	state.gems.erase(gem.uid)
-	state.log("易碎宝石碎裂消失！")
+## 蓝槽接触效果：接触到其他单位时触发
+static func _run_unit_contact_effect(state: GameState, owner: UnitState, gem: GemState, ctx: Dictionary) -> bool:
+	var other: UnitState = ctx.get("target", null)
+	if other == null or not other.alive:
+		return false
+	match _ability_profile(gem, ABILITY_BLUE_DAMAGED):
+		"poison":
+			StatusRules.apply_poison(state, other, 1, 2, owner.uid)
+			return true
+		"fire_gem":
+			StatusRules.apply_burning(state, other, 1, owner.uid)
+			return true
+		"ice":
+			StatusRules.apply_slowed(state, other, 1, owner.uid)
+			return true
+	return false
 
 
 static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotState, gem: GemState, timing: String) -> bool:
@@ -574,7 +631,7 @@ static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotSta
 	return false
 
 
-static func _run_tile_active_effect(state: GameState, tile: TileState, slot: SlotState, gem: GemState) -> bool:
+static func _run_tile_active_effect(state: GameState, tile: TileState, _slot: SlotState, gem: GemState) -> bool:
 	match _ability_profile(gem, ABILITY_TILE_ACTIVE):
 		"explosion":
 			for unit in state.units.values():
@@ -588,36 +645,11 @@ static func _run_tile_active_effect(state: GameState, tile: TileState, slot: Slo
 		"gravity":
 			pull_around(state, tile.pos, 4, 1)
 			return true
-		"heavy_armor":
-			var player := state.get_player()
-			if player != null:
-				StatusRules.apply_armor(state, player, 4, 3)
-			return true
-		"conductive":
-			for key in state.tiles.keys():
-				var water_tile: TileState = state.tiles[key]
-				if water_tile.tile_id != Constants.TILE_WATER:
-					continue
-				var unit := state.get_unit_at(water_tile.pos)
-				if unit != null:
-					CombatRules.apply_damage(state, unit, 2, "", "altar_emp")
-			return true
-		"fragile":
-			for unit in state.units.values():
-				if unit.alive and unit.team == Constants.TEAM_ENEMY:
-					CombatRules.apply_damage(state, unit, 2, "", "altar_shatter")
-			_destroy_tile_slot_gem(state, tile, slot, gem)
-			return true
 	return false
 
 
 static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: GemState) -> bool:
 	match _ability_profile(gem, ABILITY_TILE_TURN_START):
-		"heavy_armor":
-			var player := state.get_player()
-			if player != null and BoardUtils.manhattan(player.pos, tile.pos) <= 2:
-				StatusRules.apply_armor(state, player, 1, 1)
-			return true
 		"poison":
 			for unit in state.units.values():
 				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= 2:
@@ -631,24 +663,8 @@ static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: 
 		"gravity":
 			pull_around(state, tile.pos, 2, 1)
 			return true
-		"conductive":
-			for key in state.tiles.keys():
-				var water_tile: TileState = state.tiles[key]
-				if water_tile.tile_id != Constants.TILE_WATER:
-					continue
-				if BoardUtils.manhattan(water_tile.pos, tile.pos) > 3:
-					continue
-				var unit := state.get_unit_at(water_tile.pos)
-				if unit != null:
-					CombatRules.apply_damage(state, unit, 1, "", "pillar_shock")
-			return true
 	return false
 
-
-static func _destroy_tile_slot_gem(state: GameState, _tile: TileState, slot: SlotState, gem: GemState) -> void:
-	slot.gem_uid = ""
-	state.gems.erase(gem.uid)
-	state.log("易碎宝石在祭坛中碎裂！")
 
 
 static func _gem_id(state: GameState, slot: SlotState) -> String:
@@ -683,17 +699,18 @@ static func _nearest_opponent(state: GameState, unit: UnitState) -> UnitState:
 	return best
 
 
-static func _nearest_alive_ally(state: GameState, unit: UnitState) -> UnitState:
-	var best: UnitState = null
-	var best_dist := 999
-	for other in state.units.values():
-		if not other.alive or other.uid == unit.uid or other.team != unit.team:
+static func _random_neighbor_unit(state: GameState, center: UnitState, exclude_uid: String = "") -> UnitState:
+	var candidates: Array[UnitState] = []
+	for cell in BoardUtils.cells_in_radius(center.pos, 1):
+		if cell == center.pos:
 			continue
-		var dist := BoardUtils.manhattan(unit.pos, other.pos)
-		if dist < best_dist:
-			best_dist = dist
-			best = other
-	return best
+		var unit := state.get_unit_at(cell)
+		if unit != null and unit.alive and unit.uid != center.uid and unit.uid != exclude_uid:
+			candidates.append(unit)
+	if candidates.is_empty():
+		return null
+	return candidates[randi() % candidates.size()]
+
 
 
 static func _execute_poison_attack(state: GameState, unit: UnitState, target_uid: String) -> void:
@@ -705,78 +722,139 @@ static func _execute_poison_attack(state: GameState, unit: UnitState, target_uid
 		StatusRules.apply_poison(state, target)
 
 
-static func _execute_shock(state: GameState, unit: UnitState, target_uid: String) -> void:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null:
-		return
-	if BoardUtils.manhattan(unit.pos, target.pos) <= 2:
-		CombatRules.apply_damage(state, target, 1, unit.uid, "shock")
-
-
 static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 	return _data_registry().get_gem_ability_profile(gem_ref, ability_slot)
 
 
-static func _execute_fragile_charge_events(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
-	var events: Array[Dictionary] = []
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null:
-		return events
-	var path := BoardUtils.path_toward(state, unit.pos, target.pos, 1, unit.uid)
-	if path.is_empty():
-		return events
-	var previous := unit.pos
-	unit.pos = path[0]
-	TileRules.on_unit_entered(state, unit, previous)
-	events.append({"type": "move_step", "uid": unit.uid, "from": previous, "to": unit.pos})
-	var dealt := CombatRules.apply_damage(state, target, 1, unit.uid, "fragile_charge")
+## ─── 电弧（arc）辅助 ──────────────────────────────────────────────────────
+
+## 红槽电弧命中后弹射入口：从 first_hit 出发，向 2 格内其他敌方单位弹射
+## 每个目标最多 1 次，仅弹射敌方，伤害为原始的 20%
+## 6.6% 概率触发整条弹射链
+static func apply_arc_chain(
+	state: GameState,
+	first_hit: UnitState,
+	attacker: UnitState,
+	base_damage: int,
+	events: Array[Dictionary]
+) -> void:
+	if randf() >= Constants.ARC_PROC_CHANCE:
+		return
+	var arc_damage := maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO))
+	var hit_uids: Dictionary = {attacker.uid: true, first_hit.uid: true}
+	_arc_chain_step(state, first_hit, attacker.uid, arc_damage, hit_uids, events)
+
+
+## 电弧弹射递归：从 source 向 ARC_CHAIN_RANGE 内未命中的敌方随机弹射一次
+static func _arc_chain_step(
+	state: GameState,
+	source: UnitState,
+	attacker_uid: String,
+	arc_damage: int,
+	hit_uids: Dictionary,
+	events: Array[Dictionary]
+) -> void:
+	var attacker_unit: UnitState = state.units.get(attacker_uid, null)
+	var attacker_team: String = attacker_unit.team if attacker_unit != null else source.team
+	var candidates: Array[UnitState] = []
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		if unit.team == attacker_team:
+			continue
+		if hit_uids.has(unit.uid):
+			continue
+		if BoardUtils.chebyshev(source.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
+			candidates.append(unit)
+	if candidates.is_empty():
+		return
+	var next: UnitState = candidates[randi() % candidates.size()]
+	hit_uids[next.uid] = true
+	_arc_to(state, next, attacker_uid, arc_damage, events)
+
+
+## 对单个目标施加电弧伤害（真实伤害，6.6% 麻痹）
+static func _arc_to(
+	state: GameState,
+	target: UnitState,
+	source_uid: String,
+	damage: int,
+	events: Array[Dictionary]
+) -> void:
+	if not target.alive:
+		return
+	var dealt := CombatRules.apply_true_damage(state, target, damage, source_uid, "arc")
 	if dealt > 0:
 		events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
-	var self_dealt := CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "fragile_self")
-	if self_dealt > 0:
-		events.append({"type": "damage", "pos": unit.pos, "damage": self_dealt, "is_crit": false})
-	return events
+	if target.alive and randf() < Constants.ARC_PROC_CHANCE:
+		StatusRules.apply_paralyzed(state, target, 1, source_uid)
+	events.append({"type": "arc", "pos": target.pos})
 
 
-static func _execute_fragile_charge(state: GameState, unit: UnitState, target_uid: String) -> void:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null:
+## ─── 冰冻（ice）辅助 ──────────────────────────────────────────────────────
+
+## 命中冰冻效果：潮湿单位直接冻结（麻痹+缓速），普通单位仅缓速
+static func apply_ice_hit_effect(state: GameState, target: UnitState, source_uid: String) -> void:
+	if not target.alive:
 		return
-	var path := BoardUtils.path_toward(state, unit.pos, target.pos, 1, unit.uid)
-	if path.is_empty():
+	if StatusRules.is_wet(target):
+		StatusRules.apply_paralyzed(state, target, 1, source_uid)
+		StatusRules.apply_slowed(state, target, 2, source_uid)
+		target.remove_status(Constants.STATUS_WET)
+		state.log("%s 被冻结！" % target.uid)
+	else:
+		StatusRules.apply_slowed(state, target, 1, source_uid)
+
+
+## ─── 燃烧（fire_gem）辅助 ────────────────────────────────────────────────
+
+## 死亡散布火焰：5x5 范围内随机选 FIRE_DEATH_FIRE_COUNT 个格子创建火焰，优先空地
+static func _scatter_fire_on_death(state: GameState, owner: UnitState, out_events: Array[Dictionary]) -> void:
+	var all_cells: Array[Vector2i] = []
+	for cell in BoardUtils.cells_in_radius(owner.pos, Constants.FIRE_DEATH_RADIUS):
+		if BoardUtils.in_bounds(state, cell):
+			all_cells.append(cell)
+	# 优先选空格
+	var empty_cells: Array[Vector2i] = []
+	var occupied_cells: Array[Vector2i] = []
+	for cell in all_cells:
+		if state.get_unit_at(cell) == null:
+			empty_cells.append(cell)
+		else:
+			occupied_cells.append(cell)
+	# 打乱顺序后取前 N 个
+	empty_cells.shuffle()
+	occupied_cells.shuffle()
+	var pool: Array[Vector2i] = empty_cells
+	pool.append_array(occupied_cells)
+	var count := mini(Constants.FIRE_DEATH_FIRE_COUNT, pool.size())
+	for i in range(count):
+		TileRules.create_fire(state, pool[i])
+		out_events.append({"type": "fire_burst", "pos": pool[i]})
+
+
+## 死亡转移负面：将 owner 身上所有负面状态随机转给 radius 内存活的敌方单位
+static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState, radius: int) -> void:
+	var debuffs: Array[StatusInstance] = []
+	for s in owner.statuses:
+		if StatusRegistry.status_type(s.status_id) == StatusRegistry.TYPE_DEBUFF:
+			debuffs.append(s)
+	if debuffs.is_empty():
 		return
-	var previous := unit.pos
-	unit.pos = path[0]
-	TileRules.on_unit_entered(state, unit, previous)
-	CombatRules.apply_damage(state, target, 1, unit.uid, "fragile_charge")
-	CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "fragile_self")
-
-
-static func _activate_water_cluster(state: GameState, origin: Vector2i) -> void:
-	var cluster := _connected_water(state, origin)
-	for pos in cluster:
-		var unit := state.get_unit_at(pos)
-		if unit != null:
-			CombatRules.apply_damage(state, unit, 1, "", "conductive")
-
-
-static func _connected_water(state: GameState, origin: Vector2i) -> Array[Vector2i]:
-	var start_tile := state.get_tile(origin)
-	if start_tile.tile_id != Constants.TILE_WATER:
-		return [origin]
-	var result: Array[Vector2i] = []
-	var visited: Dictionary = {}
-	var queue: Array = [origin]
-	while not queue.is_empty():
-		var current: Vector2i = queue.pop_front()
-		if visited.has(current):
+	var candidates: Array[UnitState] = []
+	for unit in state.units.values():
+		if not unit.alive or unit.uid == owner.uid:
 			continue
-		visited[current] = true
-		var tile := state.get_tile(current)
-		if tile.tile_id != Constants.TILE_WATER:
-			continue
-		result.append(current)
-		for neighbor in BoardUtils.neighbors4(current):
-			if not visited.has(neighbor):
-				queue.append(neighbor)
-	return result
+		if BoardUtils.chebyshev(owner.pos, unit.pos) <= radius:
+			candidates.append(unit)
+	if candidates.is_empty():
+		return
+	for debuff in debuffs:
+		var target: UnitState = candidates[randi() % candidates.size()]
+		var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, owner.uid, debuff.payload.duplicate(true))
+		copy.value = debuff.value
+		StatusRegistry.apply_to_unit(target, copy)
+		state.log("%s 死亡将 %s 转给 %s" % [owner.uid, StatusRegistry.display_name(debuff.status_id), target.uid])
+
+
+

@@ -18,6 +18,19 @@ static func apply_poison(
 	})
 
 
+static func apply_burning(
+	state: GameState,
+	unit: UnitState,
+	stacks: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_BURNING, {
+		"stacks": stacks,
+		"duration": 0,
+		"source_uid": source_uid,
+	})
+
+
 static func apply_armor(
 	state: GameState,
 	unit: UnitState,
@@ -99,26 +112,142 @@ static func get_armor_bonus(unit: UnitState) -> int:
 	return maxi(0, armor.value)
 
 
+static func apply_paralyzed(
+	state: GameState,
+	unit: UnitState,
+	_duration: int = 1,
+	source_uid: String = ""
+) -> void:
+	if unit.has_status(Constants.STATUS_PARALYZED):
+		return
+	_apply(state, unit, Constants.STATUS_PARALYZED, {
+		"duration": 0,
+		"source_uid": source_uid,
+	})
+
+
+static func apply_slowed(
+	state: GameState,
+	unit: UnitState,
+	stacks: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_SLOWED, {
+		"stacks": stacks,
+		"duration": 0,
+		"source_uid": source_uid,
+	})
+
+
+static func apply_wet(
+	state: GameState,
+	unit: UnitState,
+	duration: int = 2,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_WET, {
+		"duration": duration,
+		"source_uid": source_uid,
+	})
+
+
+static func apply_sluggish(
+	state: GameState,
+	unit: UnitState,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_SLUGGISH, {
+		"duration": 1,
+		"source_uid": source_uid,
+	})
+
+
+## 返回缓速扣减后的实际移动力（最低1）
+static func effective_move_points(unit: UnitState, base: int) -> int:
+	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
+	if slow == null:
+		return base
+	return maxi(1, base - slow.stacks)
+
+
+static func can_act(unit: UnitState) -> bool:
+	for status in unit.statuses:
+		if _StatusRegistry.blocks_action(status.status_id):
+			return false
+	return true
+
+
+static func is_wet(unit: UnitState) -> bool:
+	return unit.has_status(Constants.STATUS_WET)
+
+
+## 清空单位的 burning 层数（离开火焰地块时调用）
+static func clear_burning(unit: UnitState) -> void:
+	unit.remove_status(Constants.STATUS_BURNING)
+
+
 static func tick_turn_start(state: GameState) -> void:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
 		_apply_blue_turn_start_effects(state, unit)
 		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_START)
-		var tile := state.get_tile(unit.pos)
-		if tile.has_modifier("poison_fog"):
-			CombatRules.apply_damage(state, unit, Constants.POISON_FOG_DAMAGE, unit.uid, "poison_fog")
 
 
+## 分阶段 turn_end，严格执行以下顺序：
+## 1. 地块结算：poison_fog/fire 的 on_stay_end（上毒/上火）
+## 2. 接触结算：相邻接触 (CONTACT_ADJACENT)
+## 3. 状态预处理：burning 在火焰中层数 x2
+## 4. 状态 Tick：统一扣毒/火伤害，层数 -1
+## 5. 地块 modifier 倒计时
+## 6. 死亡清理（已在 apply_damage 中处理，此处仅触发 pillar aura）
 static func tick_turn_end(state: GameState) -> void:
+	# 阶段 1：地块停留结算
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		_tick_tile_stay(state, unit)
+
+	# 阶段 2：接触结算（相邻）
+	ContactResolver.resolve_adjacent(state)
+
+	# 阶段 3：状态预处理（火焰中 burning x2）
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		_pretick_burning(state, unit)
+
+	# 阶段 4：状态 Tick（poison/burning/armor 等）
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
 		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END)
+
+	# 阶段 5：地块 modifier 倒计时
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
 		tile.tick_modifiers()
 	_apply_tile_pillar_auras(state)
+
+
+## 地块停留效果（毒雾上毒，火焰上火）
+static func _tick_tile_stay(state: GameState, unit: UnitState) -> void:
+	var tile := state.get_tile(unit.pos)
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+		apply_poison(state, unit, 1, 2)
+	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		apply_burning(state, unit, 1)
+
+
+## burning 预处理：单位处于火焰地块时，层数 x2
+static func _pretick_burning(state: GameState, unit: UnitState) -> void:
+	var burning: StatusInstance = unit.get_status(Constants.STATUS_BURNING)
+	if burning == null:
+		return
+	var tile := state.get_tile(unit.pos)
+	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		burning.stacks = burning.stacks * 2
+		state.log("%s 处于火焰中，burning 层数翻倍为 %d" % [unit.uid, burning.stacks])
 
 
 static func _apply(state: GameState, unit: UnitState, status_id: String, params: Dictionary) -> void:
@@ -148,8 +277,21 @@ static func _tick_phase(state: GameState, unit: UnitState, phase: String) -> voi
 				state.log("%s 的状态 %s 结束" % [unit.uid, _StatusRegistry.display_name(status.status_id)])
 				_on_status_expired(unit, status)
 				continue
+		# 层数类状态（poison/burning）：tick 后层数 -1，归零则移除
+		elif _is_stack_dot(status.status_id):
+			status.stacks -= 1
+			if status.stacks <= 0:
+				state.log("%s 的 %s 归零" % [unit.uid, _StatusRegistry.display_name(status.status_id)])
+				continue
 		next.append(status)
 	unit.statuses = next
+
+
+static func _is_stack_dot(status_id: String) -> bool:
+	match status_id:
+		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED:
+			return true
+	return false
 
 
 static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
@@ -170,7 +312,9 @@ static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
 static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInstance) -> void:
 	match status.status_id:
 		Constants.STATUS_POISON:
-			CombatRules.apply_damage(state, unit, status.stacks, status.source_uid, "poison")
+			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "poison")
+		Constants.STATUS_BURNING:
+			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "burning")
 
 
 static func _apply_tile_pillar_auras(state: GameState) -> void:

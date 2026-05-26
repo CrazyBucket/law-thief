@@ -82,12 +82,6 @@ static func _build_skill_intent(state: GameState, unit: UnitState, gem: GemState
 		return IntentState.wait(unit.uid)
 	if intent.type == "charge_explode":
 		intent.affected_cells = BoardUtils.cells_in_radius(action.move_target, Constants.EXPLOSION_RADIUS)
-	elif intent.type == "shock":
-		var player := state.get_player()
-		if player != null:
-			var player_tile := state.get_tile(player.pos)
-			if player_tile.tile_id == Constants.TILE_WATER:
-				intent.affected_cells = _get_water_cluster(state, player.pos)
 
 	return intent
 
@@ -119,7 +113,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 					"is_crit": false,
 					"attacker_uid": unit.uid,
 				})
-		"charge_explode", "pull", "poison_attack", "shock", "fragile_charge":
+		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack":
 			anim_events.append_array(GemEffects.on_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)

@@ -15,7 +15,6 @@ func _run_tests() -> void:
 	_test_blue_poison_move_trail()
 	_test_black_poison_death()
 	_test_player_skill_via_hook()
-	_test_chaos_trigger_uses_overridden_profile()
 	_test_editor_console_spawns_and_edits_unit()
 	_test_editor_console_replaces_tile_and_spawns_gem()
 	_test_editor_console_batch_move_delete_commands()
@@ -173,26 +172,6 @@ func _test_player_skill_via_hook() -> void:
 	assert(not events.is_empty(), "skill should return events")
 	assert(guard.hp < hp_before, "skill hook should deal damage")
 	print("  [OK] player skill routed through active hook")
-
-
-func _test_chaos_trigger_uses_overridden_profile() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 42)
-	var state := ctrl.state
-	var player := state.get_player()
-	var chaos_gem: GemState = _data_registry().create_gem_instance("chaos_hook_gem", Constants.GEM_CHAOS, {
-		"ability_profiles": {
-			"unit_red_active": "poison",
-			"player_skill": "gravity",
-		}
-	})
-	state.gems[chaos_gem.uid] = chaos_gem
-	player.slots[0].gem_uid = chaos_gem.uid
-	var fog_before := _count_poison_fog_tiles(state)
-	var triggered := GemEffects.trigger_gem(state, player.uid, player.slots[0])
-	assert(triggered, "chaos trigger should execute overridden red active profile")
-	assert(_count_poison_fog_tiles(state) > fog_before, "chaos trigger should create poison fog")
-	print("  [OK] chaos trigger routed through overridden profile")
 
 
 func _test_editor_console_spawns_and_edits_unit() -> void:

@@ -20,10 +20,9 @@ const SLOT_BLACK := "black"
 const GEM_EXPLOSION := "gem_explosion"
 const GEM_POISON := "gem_poison"
 const GEM_GRAVITY := "gem_gravity"
-const GEM_HEAVY_ARMOR := "gem_heavy_armor"
 const GEM_CONDUCTIVE := "gem_conductive"
-const GEM_FRAGILE := "gem_fragile"
-const GEM_CHAOS := "gem_chaos"
+const GEM_FIRE := "gem_fire"
+const GEM_ICE := "gem_ice"
 
 const TILE_FLOOR := "tile_floor"
 const TILE_SPIKE := "tile_spike"
@@ -55,6 +54,7 @@ const ACTION_TRIGGER := "trigger"
 const ACTION_END_TURN := "end_turn"
 const ACTION_NONE := ""
 
+const ATTACK_RANGE := 3
 const EXTRACT_RANGE := 3
 const INSERT_RANGE := 3
 const TRIGGER_RANGE := 3
@@ -62,14 +62,35 @@ const SKILL_RANGE := 3
 
 const EXPLOSION_DAMAGE := 2
 const EXPLOSION_RADIUS := 1
+const EXPLOSION_CROSS_DAMAGE := 1   # 爆炸宝石命中时十字扩散伤害
+const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 chebyshev 范围）
 const GRAVITY_COLLISION_DAMAGE := 1
+const KNOCKBACK_COLLISION_DAMAGE := 1  # 击退撞墙/撞单位碰撞伤害
 const SPIKE_DAMAGE := 2
 const POISON_FOG_DAMAGE := 1
 const POISON_FOG_DURATION := 2
 const POISON_SKILL_DEBUFF_TURNS := 3
 
+const ARC_PROC_CHANCE := 0.066       # 电弧触发概率 6.6%
+const ARC_PARALYSIS_CHANCE := 0.33   # 电弧麻痹概率 33%（落雷用）
+const ARC_CHAIN_DAMAGE_RATIO := 0.2  # 弹射伤害倍率 20%
+const ARC_CHAIN_RANGE := 2           # 电弧弹射范围
+const LIGHTNING_DEATH_DAMAGE := 10   # 死亡落雷固定伤害
+const FIRE_DEATH_FIRE_COUNT := 5     # 死亡爆裂火团数
+const FIRE_DEATH_RADIUS := 2         # 死亡爆裂范围（5x5 = radius 2）
+const ICE_DEATH_RADIUS := 1          # 冰冻死亡范围（3x3 = radius 1）
+
 const STATUS_POISON := "poison"
+const STATUS_BURNING := "burning"
+const STATUS_PARALYZED := "paralyzed"
+const STATUS_SLOWED := "slowed"
+const STATUS_WET := "wet"
 const STATUS_ARMOR := "armor"
 const STATUS_ROOTED := "rooted"
 const STATUS_EXPOSED := "exposed"
 const STATUS_LAWLESS := "lawless"
+const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
+
+const TILE_MOD_POISON_FOG := "poison_fog"
+const TILE_MOD_FIRE := "fire"
+const FIRE_DURATION := 2

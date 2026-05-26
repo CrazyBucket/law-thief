@@ -70,7 +70,7 @@ func _test_exposed_expires() -> void:
 	var unit := _make_unit(state, "u5")
 	var gem := GemState.new()
 	gem.uid = "heavy_gem"
-	gem.gem_id = Constants.GEM_HEAVY_ARMOR
+	gem.gem_id = Constants.GEM_EXPLOSION
 	state.gems[gem.uid] = gem
 	var slot := SlotState.create(Constants.SLOT_BLUE, gem.uid, true, Constants.LOCK_ARMOR)
 	unit.slots.append(slot)

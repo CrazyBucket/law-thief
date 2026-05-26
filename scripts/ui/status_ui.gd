@@ -2,6 +2,7 @@ class_name StatusUi
 extends RefCounted
 
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
+const _StatusIcons = preload("res://scripts/ui/status_icons.gd")
 
 
 static func build_status_row(unit: UnitState, compact: bool = false) -> HBoxContainer:
@@ -24,12 +25,23 @@ static func build_status_chip(status: StatusInstance, compact: bool = false) -> 
 	var color := _StatusRegistry.status_color(status.status_id)
 	chip.add_theme_stylebox_override("panel", _chip_style(color))
 	chip.tooltip_text = _StatusRegistry.tooltip(status)
-	var label := Label.new()
-	label.text = _StatusRegistry.short_label(status)
-	label.add_theme_font_size_override("font_size", 10 if compact else 11)
-	label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
-	chip.add_child(label)
-	chip.custom_minimum_size = Vector2(34 if compact else 40, 18 if compact else 22)
+	var icon_tex := _StatusIcons.get_icon(status.status_id)
+	if icon_tex != null:
+		var icon_size: float = 16.0 if compact else 20.0
+		var tex_rect := TextureRect.new()
+		tex_rect.texture = icon_tex
+		tex_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex_rect.custom_minimum_size = Vector2(icon_size, icon_size)
+		chip.add_child(tex_rect)
+		chip.custom_minimum_size = Vector2(icon_size + 6, icon_size + 4)
+	else:
+		var label := Label.new()
+		label.text = _StatusRegistry.short_label(status)
+		label.add_theme_font_size_override("font_size", 10 if compact else 11)
+		label.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
+		chip.add_child(label)
+		chip.custom_minimum_size = Vector2(34 if compact else 40, 18 if compact else 22)
 	return chip
 
 

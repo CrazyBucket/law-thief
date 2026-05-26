@@ -12,8 +12,6 @@ func _run_tests() -> void:
 	_test_extract_to_red_slot_enables_skill()
 	_test_skill_deals_damage()
 	_test_poison_skill_stacks_twice_on_enemy()
-	_test_fragile_skill_shatters_gem()
-	_test_chaos_skill_uses_randomized_profile()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -110,67 +108,6 @@ func _test_poison_skill_stacks_twice_on_enemy() -> void:
 	assert(ps.stacks == 2, "two casts should stack poison: got %d" % ps.stacks)
 	assert(ev1.any(func(e): return e.get("type", "") == "poison_burst"), "skill should emit poison_burst vfx event")
 	print("  [OK] double poison_skill merged stacks (%d layers)" % ps.stacks)
-
-
-func _test_fragile_skill_shatters_gem() -> void:
-	print("--- Test: Fragile skill shatters gem ---")
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001")
-	var state := ctrl.state
-	var player := state.get_player()
-	# 给玩家红槽放一个易碎宝石
-	var gem := GemState.new()
-	gem.uid = "test_fragile_1"
-	gem.gem_id = Constants.GEM_FRAGILE
-	state.gems[gem.uid] = gem
-	var red_slot := player.get_slot(Constants.SLOT_RED)
-	red_slot.gem_uid = gem.uid
-	# 找到守卫
-	var guard: UnitState = null
-	for unit in state.units.values():
-		if unit.unit_def_id == "unit_training_guard":
-			guard = unit
-			break
-	assert(guard != null, "guard should exist")
-	# 使用技能
-	var result := ctrl.try_skill(guard.pos)
-	assert(result.get("ok", false), "fragile skill should succeed")
-	# 宝石应该碎裂
-	assert(red_slot.gem_uid.is_empty(), "gem should be removed from slot after shatter")
-	assert(not state.gems.has("test_fragile_1"), "gem should be erased from state")
-	print("  [OK] fragile gem shattered after use")
-	print("  [OK] slot is now empty")
-
-
-func _test_chaos_skill_uses_randomized_profile() -> void:
-	print("--- Test: Chaos gem uses randomized skill profile ---")
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 42)
-	var state := ctrl.state
-	var player := state.get_player()
-	var guard: UnitState = null
-	for unit in state.units.values():
-		if unit.unit_def_id == "unit_training_guard":
-			guard = unit
-			break
-	assert(guard != null, "guard should exist")
-	var chaos_gem: GemState = _data_registry().create_chaos_gem("test_chaos_skill", "rare", {
-		"player_skill": Constants.GEM_GRAVITY,
-		"unit_red_active": Constants.GEM_POISON,
-		"enemy_red_action": Constants.GEM_EXPLOSION,
-	})
-	state.gems[chaos_gem.uid] = chaos_gem
-	player.get_slot(Constants.SLOT_RED).gem_uid = chaos_gem.uid
-	assert(_data_registry().get_gem_ability_profile(chaos_gem, "player_skill") == "gravity", "chaos skill should inherit gravity profile")
-	assert(_data_registry().get_gem_ability_profile(chaos_gem, "unit_red_active") == "poison", "chaos trigger should inherit poison profile")
-	assert(_data_registry().get_player_skill_target_mode(chaos_gem) == "enemy_unit", "chaos skill target mode should follow gravity")
-	var hp_before := guard.hp
-	var events := GemEffects.player_use_skill(state, player, guard.pos)
-	assert(not events.is_empty(), "chaos skill should emit events")
-	assert(guard.hp == hp_before, "gravity skill should pull without direct damage when unobstructed")
-	assert(BoardUtils.manhattan(player.pos, guard.pos) < 3, "gravity skill should pull target closer to player")
-	print("  [OK] chaos skill resolved to gravity profile")
-	print("  [OK] chaos gem kept per-slot randomized loadout")
 
 
 func _data_registry() -> Node:

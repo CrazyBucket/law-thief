@@ -7,6 +7,7 @@ const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd"
 const BoardFxTexturesClass := preload("res://scripts/ui/board_fx_textures.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
+const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
@@ -40,6 +41,9 @@ var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _fx_textures: RefCounted = null
+
+# 抛射物动画：二次贝塞尔曲线飞行
+var _projectile: Dictionary = {}  # {from, to, ctrl, t, color} 空表示无飞行中抛射物
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
@@ -143,6 +147,7 @@ func _draw() -> void:
 		TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell))
 	# 绘制粒子特效
 	_draw_particles()
+	_draw_projectile()
 
 
 func _draw_tile(grid: Vector2i) -> void:
@@ -254,6 +259,36 @@ func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 	draw_rect(Rect2(center, Vector2(width, 5)), Color(0.12, 0.12, 0.16, 0.85))
 	var fill_color := Color(0.25, 0.85, 0.45) if unit.team == Constants.TEAM_PLAYER else Color(0.9, 0.35, 0.45)
 	draw_rect(Rect2(center, Vector2(width * ratio, 5)), fill_color)
+	if not unit.statuses.is_empty():
+		_draw_status_row(center + Vector2(0, 7), unit)
+
+
+func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
+	const ICON_SIZE := 13.0
+	const GAP := 2.0
+	const FONT_SIZE := 9
+	const PAD_X := 3.0
+	const PAD_Y := 2.0
+	var sorted: Array = StatusRegistry.sort_statuses(unit.statuses)
+	var cursor_x := origin.x
+	for status in sorted:
+		var color: Color = StatusRegistry.status_color(status.status_id)
+		var bg := color.darkened(0.5)
+		bg.a = 0.88
+		if StatusIcons.has_icon(status.status_id):
+			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(ICON_SIZE, ICON_SIZE)), bg)
+			StatusIcons.draw_icon(self, Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE)
+			cursor_x += ICON_SIZE + GAP
+		else:
+			var font := ThemeDB.fallback_font
+			var label: String = StatusRegistry.short_label(status)
+			var text_w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+			var chip_w := text_w + PAD_X * 2.0
+			var chip_h := FONT_SIZE + PAD_Y * 2.0
+			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), bg)
+			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), color.lightened(0.1), false, 1.0)
+			draw_string(font, Vector2(cursor_x + PAD_X, origin.y + PAD_Y + FONT_SIZE - 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0.95, 0.96, 0.98))
+			cursor_x += chip_w + GAP
 
 
 func _draw_intent_badge(pos: Vector2, text: String) -> void:
@@ -633,3 +668,85 @@ func _puff_sprite_paths() -> PackedStringArray:
 	for fi in range(7):
 		_cached_puff_paths.append(_PUFF_FRAME_PATH % fi)
 	return _cached_puff_paths
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 抛射物动画
+# ═══════════════════════════════════════════════════════════════════════════
+
+## 播放玩家投射物：从 from_grid 飞向 to_grid，走贝塞尔弧线
+## 落地后 emit animation_finished
+func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
+	var from_scr: Vector2 = grid_to_screen(from_grid) + Vector2(0, -20)
+	var to_scr: Vector2 = grid_to_screen(to_grid) + Vector2(0, -20)
+	var mid: Vector2 = (from_scr + to_scr) * 0.5
+	var dist: float = from_scr.distance_to(to_scr)
+	# 控制点向上偏移，距离越远弧度越明显
+	var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, 28.0, 90.0))
+	_projectile = {
+		"from": from_scr,
+		"to": to_scr,
+		"ctrl": ctrl,
+		"t": 0.0,
+		"color": proj_color,
+	}
+	var duration: float = _scaled_duration(clampf(dist / 520.0, 0.18, 0.38))
+	var tween: Tween = create_tween()
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.tween_method(_set_projectile_t, 0.0, 1.0, duration)
+	tween.tween_callback(_on_projectile_done)
+
+
+func _set_projectile_t(t: float) -> void:
+	if _projectile.is_empty():
+		return
+	_projectile["t"] = t
+	queue_redraw()
+
+
+func _on_projectile_done() -> void:
+	_projectile = {}
+	queue_redraw()
+	animation_finished.emit()
+
+
+func _draw_projectile() -> void:
+	if _projectile.is_empty():
+		return
+	var t: float = float(_projectile["t"])
+	var from: Vector2 = _projectile["from"]
+	var to: Vector2 = _projectile["to"]
+	var ctrl: Vector2 = _projectile["ctrl"]
+	var color: Color = _projectile["color"]
+
+	# 二次贝塞尔插值当前位置
+	var inv := 1.0 - t
+	var pos: Vector2 = inv * inv * from + 2.0 * inv * t * ctrl + t * t * to
+
+	# 朝向（飞行方向的切线）决定绘制角度
+	var tangent: Vector2 = (2.0 * (1.0 - t) * (ctrl - from) + 2.0 * t * (to - ctrl)).normalized()
+
+	# 拖尾：沿切线反方向画几段渐隐线段
+	const TRAIL_STEPS := 5
+	for i in range(TRAIL_STEPS):
+		var s: float = float(i + 1) / float(TRAIL_STEPS)
+		var alpha: float = (1.0 - s) * 0.55
+		var trail_t: float = clampf(t - s * 0.06, 0.0, 1.0)
+		var tinv := 1.0 - trail_t
+		var trail_pos: Vector2 = tinv * tinv * from + 2.0 * tinv * trail_t * ctrl + trail_t * trail_t * to
+		var trail_color: Color = color
+		trail_color.a = alpha
+		draw_line(pos, trail_pos, trail_color, maxf(3.0 - s * 1.5, 0.5))
+
+	# 弹头：菱形
+	var perp: Vector2 = Vector2(-tangent.y, tangent.x)
+	var tip: Vector2 = pos + tangent * 7.0
+	var tail_pt: Vector2 = pos - tangent * 5.0
+	var left_pt: Vector2 = pos + perp * 3.5
+	var right_pt: Vector2 = pos - perp * 3.5
+	var pts := PackedVector2Array([tip, left_pt, tail_pt, right_pt])
+	draw_colored_polygon(pts, color)
+	var outline_color: Color = color.darkened(0.3)
+	outline_color.a = 0.85
+	draw_polyline(PackedVector2Array([tip, left_pt, tail_pt, right_pt, tip]), outline_color, 1.0)

@@ -164,9 +164,18 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				var atk_res := _controller.try_attack(unit.uid)
 				_show_result(atk_res)
 				if atk_res.get("ok", false):
-					var ply := _controller.state.get_player()
-					if ply != null:
-						_board.start_strike_effect(ply.uid, unit.pos)
+					var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
+					var to_pos: Vector2i = atk_res.get("to_pos", unit.pos)
+					_player_animating = true
+					if from_pos.x >= 0:
+						_board.play_projectile(from_pos, to_pos)
+						await _board.animation_finished
+					# 消费 pipeline 产生的后续事件（爆炸、击退等）
+					var attack_events: Array = atk_res.get("attack_events", [])
+					for ev in attack_events:
+						await _play_anim_event(ev)
+					_player_animating = false
+					_refresh()
 		Constants.ACTION_SKILL:
 			_dismiss_popup()
 			var skill_result := _controller.try_skill(cell)

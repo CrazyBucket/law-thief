@@ -38,20 +38,16 @@ func _test_armor_blocks_explosion() -> void:
 	var bomber := _find(state, "unit_bomber")
 	var player := state.get_player()
 	bomber.pos = player.pos + Vector2i(1, 1)
-	var gem := GemState.new()
-	gem.uid = "blue_armor"
-	gem.gem_id = Constants.GEM_HEAVY_ARMOR
-	state.gems[gem.uid] = gem
-	player.slots[1].gem_uid = gem.uid
+	StatusRules.apply_armor(state, player, Constants.EXPLOSION_DAMAGE, 1)
 	var hp_before := player.hp
 	GemEffects.explode_at(state, player.pos, Constants.EXPLOSION_DAMAGE, bomber.uid)
-	assert(player.hp == hp_before, "2 armor should fully block 2 explosion damage")
+	assert(player.hp == hp_before, "armor should fully block explosion damage")
 	var blocked := false
 	for line in state.combat_log:
 		if "护甲吸收" in line:
 			blocked = true
 	assert(blocked, "armor block should be logged")
-	print("  [OK] heavy armor blocks explosion with log")
+	print("  [OK] armor blocks explosion with log")
 
 
 func _test_bomber_diagonal_explosion() -> void:

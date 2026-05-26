@@ -73,14 +73,20 @@ func try_attack(target_uid: String) -> Dictionary:
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return _fail("目标无效")
-	if CombatRules.attack(state, player, target) <= 0:
-		return _fail("无法攻击")
-	anim_damage.emit(target.pos, CombatRules.attack_damage(state, player), false)
+	var from_pos := player.pos
+	var to_pos := target.pos
+	var atk_result := CombatRules.ranged_attack(state, player, target)
+	if not atk_result.get("ok", false):
+		return _fail(atk_result.get("reason", "无法攻击"))
 	state.player_acted = true
 	_check_battle_end()
 	IntentSystem.refresh_all_intents(state)
 	_emit_changed()
-	return _ok()
+	return _ok({
+		"from_pos": from_pos,
+		"to_pos": to_pos,
+		"attack_events": atk_result.get("events", []),
+	})
 
 
 func try_skill(target_pos: Vector2i) -> Dictionary:
@@ -234,6 +240,11 @@ func begin_enemy_phase() -> void:
 func execute_single_enemy(enemy: UnitState) -> Array[Dictionary]:
 	if not enemy.alive:
 		return [] as Array[Dictionary]
+	if enemy.has_status(Constants.STATUS_PARALYZED):
+		enemy.remove_status(Constants.STATUS_PARALYZED)
+		state.log("%s 因麻痹跳过回合" % enemy.uid)
+		_emit_changed()
+		return [] as Array[Dictionary]
 	var events := IntentSystem.execute_intent(state, enemy)
 	_check_battle_end()
 	_emit_changed()
@@ -256,12 +267,16 @@ func finish_enemy_phase() -> void:
 	_emit_changed()
 
 
-## 获取排序后的存活敌人列表
+## 获取排序后的存活敌人列表（sluggish 单位垫底，按原速度顺序）
 func get_sorted_enemies() -> Array:
 	if state == null:
 		return []
 	var enemies := state.get_alive_enemies()
 	enemies.sort_custom(func(a: UnitState, b: UnitState) -> bool:
+		var a_slug: bool = a.has_status(Constants.STATUS_SLUGGISH)
+		var b_slug: bool = b.has_status(Constants.STATUS_SLUGGISH)
+		if a_slug != b_slug:
+			return not a_slug
 		if a.speed == b.speed:
 			return a.uid < b.uid
 		return a.speed > b.speed
@@ -394,8 +409,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			if not state.player_moved and StatusRules.can_move(player) and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
-			if unit != null and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(player.pos, cell) == 1:
-				lines.append("→ 点击攻击（%d 伤害）" % CombatRules.attack_damage(state, player))
+			if unit != null and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(player.pos, cell) <= Constants.ATTACK_RANGE:
+				lines.append("→ 点击射击（%d 伤害）" % CombatRules.attack_damage(state, player))
 				lines.append_array(_death_gem_preview_lines(unit))
 		Constants.ACTION_EXTRACT:
 			if unit != null and can_use_action(Constants.ACTION_EXTRACT):
@@ -436,7 +451,7 @@ func get_action_hint() -> String:
 					return "移动：你被束缚，暂时无法移动"
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
-			return "攻击：点击邻格敌人（消耗行动）"
+			return "射击：点击 %d 格内敌人（消耗行动）" % Constants.ATTACK_RANGE
 		Constants.ACTION_SKILL:
 			var player := state.get_player()
 			if player != null:
@@ -503,7 +518,7 @@ func _skill_target_cells(player: UnitState) -> Array:
 func _adjacent_enemy_cells(from_pos: Vector2i) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
-		if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(from_pos, unit.pos) == 1:
+		if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(from_pos, unit.pos) <= Constants.ATTACK_RANGE:
 			cells.append(unit.pos)
 	return cells
 
@@ -616,7 +631,7 @@ func _attack_effect_preview(player_pos: Vector2i) -> Array:
 	for unit in state.units.values():
 		if not unit.alive or unit.team != Constants.TEAM_ENEMY:
 			continue
-		if BoardUtils.manhattan(player_pos, unit.pos) != 1:
+		if BoardUtils.manhattan(player_pos, unit.pos) > Constants.ATTACK_RANGE:
 			continue
 		if unit.hp > 1:
 			continue
@@ -653,10 +668,6 @@ func _death_gem_preview_cells(origin: Vector2i, gem_ref: Variant) -> Array:
 			for cell in BoardUtils.cells_in_radius(origin, Constants.EXPLOSION_RADIUS):
 				if BoardUtils.in_bounds(state, cell):
 					cells.append(cell)
-		"fragile":
-			for neighbor in BoardUtils.neighbors4(origin):
-				if BoardUtils.in_bounds(state, neighbor):
-					cells.append(neighbor)
 	return cells
 
 
