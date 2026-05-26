@@ -103,6 +103,11 @@ Effect_FooBar/
 
 包不可用时沿用原有程序化粒子 / Doodle 回退，克隆仓库无 symlink 仍可跑 CI。
 
+### 状态图标（`assets/ui/status_icons.png`）
+
+精灵图在 Godot 里设 **Hframes=7、Vframes=5**，用 Frame Coords 对图标。  
+游戏内映射见 [`data/status_icon_atlas.json`](../data/status_icon_atlas.json) 的 `frames`（`[列, 行]`）。
+
 ---
 
 ## 做 demo 时的一条龙检查清单（复制即用）

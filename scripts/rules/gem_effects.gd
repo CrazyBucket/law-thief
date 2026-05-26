@@ -1,6 +1,8 @@
 class_name GemEffects
 extends RefCounted
 
+const _Displacement = preload("res://scripts/rules/displacement.gd")
+
 const TIMING_ACTIVE := "active"
 const TIMING_TURN_START := "turn_start"
 const TIMING_OWNER_DAMAGED := "owner_damaged"
@@ -176,7 +178,7 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 				StatusRules.apply_exposed(state, hit_unit, slot, state.turn_index)
 		# 爆炸冲击波：将命中单位推离爆炸中心（skip_gem_hooks=true 防止链式触发）
 		if hit_unit.alive and hit_unit.pos != center:
-			Displacement.knockback(state, hit_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
+			_Displacement.knockback(state, hit_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
 	return events
 
 
@@ -550,7 +552,7 @@ static func _run_unit_death_effect_with_events(state: GameState, owner: UnitStat
 					continue
 				if BoardUtils.chebyshev(owner.pos, unit.pos) > Constants.EXPLOSION_DEATH_RADIUS:
 					continue
-				Displacement.pull_toward(state, unit, owner.pos, 1, owner.uid, out_events)
+				_Displacement.pull_toward(state, unit, owner.pos, 1, owner.uid, out_events)
 			return true
 		"arc":
 			# 黑槽导电：死亡落雷，3x3 范围内随机单位，固定 10 伤害，33% 概率麻痹

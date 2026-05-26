@@ -1,6 +1,8 @@
 class_name Displacement
 extends RefCounted
 
+const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+
 # ─── 强制位移组件 ─────────────────────────────────────────────────────────────
 #
 # 所有"强制移动"行为的统一入口。
@@ -95,7 +97,7 @@ static func _push_directional(
 			if collision_damage > 0:
 				_deal_collision_damage(state, unit, source_uid, collision_damage, "knockback_collision", events)
 				_deal_collision_damage(state, blocker, unit.uid, collision_damage, "knockback_collision", events)
-			ContactResolver.on_collision(state, unit, blocker)
+			_ContactResolver.on_collision(state, unit, blocker)
 			break
 
 		var from_pos := unit.pos

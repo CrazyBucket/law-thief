@@ -2,6 +2,7 @@ class_name StatusRules
 extends RefCounted
 
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
+const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 
 
 static func apply_poison(
@@ -209,7 +210,7 @@ static func tick_turn_end(state: GameState) -> void:
 		_tick_tile_stay(state, unit)
 
 	# 阶段 2：接触结算（相邻）
-	ContactResolver.resolve_adjacent(state)
+	_ContactResolver.resolve_adjacent(state)
 
 	# 阶段 3：状态预处理（火焰中 burning x2）
 	for unit in state.units.values():

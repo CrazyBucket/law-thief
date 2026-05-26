@@ -28,12 +28,27 @@ static func build_status_chip(status: StatusInstance, compact: bool = false) -> 
 	var icon_tex := _StatusIcons.get_icon(status.status_id)
 	if icon_tex != null:
 		var icon_size: float = 16.0 if compact else 20.0
+		var icon_wrap := Control.new()
+		icon_wrap.custom_minimum_size = Vector2(icon_size, icon_size)
 		var tex_rect := TextureRect.new()
 		tex_rect.texture = icon_tex
 		tex_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex_rect.custom_minimum_size = Vector2(icon_size, icon_size)
-		chip.add_child(tex_rect)
+		tex_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon_wrap.add_child(tex_rect)
+		var badge_text: String = _StatusRegistry.icon_badge(status)
+		if not badge_text.is_empty():
+			var badge := Label.new()
+			badge.text = badge_text
+			badge.add_theme_font_size_override("font_size", 8 if compact else 9)
+			badge.add_theme_color_override("font_color", Color(0.98, 0.98, 1.0))
+			badge.add_theme_color_override("font_outline_color", Color(0.05, 0.06, 0.1, 0.95))
+			badge.add_theme_constant_override("outline_size", 2)
+			badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+			badge.offset_left = -14.0
+			badge.offset_top = -11.0
+			icon_wrap.add_child(badge)
+		chip.add_child(icon_wrap)
 		chip.custom_minimum_size = Vector2(icon_size + 6, icon_size + 4)
 	else:
 		var label := Label.new()

@@ -1,6 +1,8 @@
 class_name CombatRules
 extends RefCounted
 
+const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+
 
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
 	if not unit.alive or amount <= 0:
@@ -51,7 +53,7 @@ static func ranged_attack(state: GameState, attacker: UnitState, target: UnitSta
 		return {"ok": false, "reason": "目标无效", "events": []}
 	if BoardUtils.manhattan(attacker.pos, target.pos) > Constants.ATTACK_RANGE:
 		return {"ok": false, "reason": "目标超出射程", "events": []}
-	return AttackPipeline.execute(state, attacker, target, [AttackPipeline.TAG_RANGED])
+	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_RANGED])
 
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:

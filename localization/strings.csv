@@ -26,6 +26,10 @@ gem.fragile.name,易碎,Fragile
 gem.fragile.symbol,碎,Shard
 gem.chaos.name,混沌,Chaos
 gem.chaos.symbol,乱,Chaos
+gem.fire.name,烈焰,Fire
+gem.fire.symbol,炎,Fire
+gem.ice.name,寒冰,Ice
+gem.ice.symbol,冰,Ice
 unit.player.name,窃律者,Law Thief
 unit.bomber.name,自爆工兵,Bomber Sapper
 unit.training_guard.name,训练守卫,Training Guard
@@ -40,6 +44,9 @@ gem.intent.poison_attack,毒攻击 ({damage}+毒),Poison Strike ({damage}+Poison
 gem.intent.pull,引力拉近+碰撞({damage}),Gravity Pull + Collision ({damage})
 gem.intent.shock,电击 ({damage}),Shock ({damage})
 gem.intent.fragile_charge,冲撞自毁 ({damage}),Fragile Charge ({damage})
+gem.intent.arc_attack,电击 ({damage}),Arc Attack ({damage})
+gem.intent.fire_attack,烈焰攻击 ({damage}),Fire Attack ({damage})
+gem.intent.ice_attack,寒冰攻击 ({damage}),Ice Attack ({damage})
 gem.effect.explosion.player_skill,引爆：对目标格及周围造成 {damage} 伤害,Detonate: deal {damage} damage to target cell and nearby cells
 gem.effect.explosion.unit_red_active,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
 gem.effect.explosion.enemy_red_action,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
@@ -83,3 +90,18 @@ gem.effect.fragile.enemy_red_action,冲撞自毁 ({damage}),Fragile charge ({dam
 gem.effect.fragile.attack_bonus,被动：攻击 +1 伤害,Passive: attacks deal +1 damage
 gem.effect.fragile.black_death,死亡：四邻格 1 伤害,Death: deal 1 damage to the 4 neighboring cells
 gem.effect.fragile.tile_active,祭坛：全场敌人 2 伤害，宝石碎裂,Altar: deal 2 damage to all enemies and shatter the gem
+gem.effect.arc.player_skill,导电：电击目标水洼连通区域所有单位,Conductive: shock all units in the connected water region
+gem.effect.arc.unit_red_active,触发：电击自身所在水洼连通区域,Trigger: shock the connected water region under the owner
+gem.effect.arc.enemy_red_action,电击 ({damage}),Shock ({damage})
+gem.effect.arc.blue_damaged,被动：受击概率反击电击,Passive: chance to shock the attacker when damaged
+gem.effect.arc.black_death,死亡：周围水洼导电连锁,Death: chain conductive shocks through nearby water
+gem.effect.fire_gem.player_skill,烈焰：目标格造火并点燃敌人,Burn: create fire on target cell and ignite enemies
+gem.effect.fire_gem.unit_red_active,触发：自身格造火,Trigger: create fire on the owner's cell
+gem.effect.fire_gem.enemy_red_action,烈焰攻击 ({damage}),Fire attack ({damage})
+gem.effect.fire_gem.blue_damaged,被动：接触敌人叠加着火,Passive: inflict burning on contact
+gem.effect.fire_gem.black_death,死亡：周围散布火焰,Death: scatter fire in the surrounding area
+gem.effect.ice.player_skill,寒冰：冰冻目标（潮湿则冻结）,Ice: chill the target (freeze if wet)
+gem.effect.ice.unit_red_active,触发：自身获得缓速,Trigger: apply slowed to self
+gem.effect.ice.enemy_red_action,寒冰攻击 ({damage}),Ice attack ({damage})
+gem.effect.ice.blue_damaged,被动：接触敌人叠加缓速,Passive: inflict slowed on contact
+gem.effect.ice.black_death,死亡：周围单位获得迟滞,Death: apply sluggish to nearby units

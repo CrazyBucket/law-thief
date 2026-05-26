@@ -1,6 +1,9 @@
 class_name AttackPipeline
 extends RefCounted
 
+const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+const _Displacement = preload("res://scripts/rules/displacement.gd")
+
 # ─── 攻击标签集合 ────────────────────────────────────────────────────────────
 # 标签用于各阶段之间传递语义，宝石/规则通过检查/追加标签影响流程
 const TAG_RANGED       := "ranged"        # 远程攻击
@@ -132,14 +135,14 @@ static func _phase_hit(ctx: AttackContext) -> void:
 		return  # 护甲全吸收且无附带爆炸，直接结束
 
 	# 命中瞬间：接触钩子（攻击/被攻击）
-	ContactResolver.on_attack_contact(ctx.state, ctx.attacker, ctx.target)
+	_ContactResolver.on_attack_contact(ctx.state, ctx.attacker, ctx.target)
 
 	# 命中瞬间：宝石附着效果（中毒等）
 	_gem_hooks_on_hit(ctx)
 
 	# 击退：命中后将目标推离 1 格
 	if ctx.has_tag(TAG_KNOCKBACK) and ctx.target.alive:
-		Displacement.knockback(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
+		_Displacement.knockback(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 
 	# 爆炸：命中点十字范围
 	if ctx.has_tag(TAG_EXPLOSIVE):
@@ -167,7 +170,7 @@ static func _phase_post_attack(ctx: AttackContext) -> void:
 
 	# 红槽引力宝石：攻击后将目标拉近 1 格（目标存活时才拉扯）
 	if ctx.has_tag(TAG_PULL) and not killed:
-		Displacement.pull_toward(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
+		_Displacement.pull_toward(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 
 	if killed and not ctx.has_tag(TAG_NO_KILL_PROC):
 		_gem_hooks_on_kill(ctx)
@@ -262,7 +265,7 @@ static func _apply_cross_explosion(ctx: AttackContext) -> void:
 			ctx.push_damage_event(hit_unit.pos, dealt)
 		# 爆炸冲击波：将命中格单位推离爆炸中心（skip_gem_hooks=true 防止链式触发）
 		if hit_unit.alive:
-			Displacement.knockback(ctx.state, hit_unit, center, 1, ctx.attacker.uid, ctx.events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
+			_Displacement.knockback(ctx.state, hit_unit, center, 1, ctx.attacker.uid, ctx.events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
 
 
 # ─── 内部工具 ────────────────────────────────────────────────────────────

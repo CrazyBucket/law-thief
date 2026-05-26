@@ -16,7 +16,18 @@ signal animation_finished()
 var highlights: Dictionary = {}
 var hover_cell: Vector2i = Vector2i(-1, -1)
 var selected_unit_uid: String = ""
-var state: GameState = null
+var state: GameState = null:
+	set(value):
+		var prev_id := state.get_instance_id() if state != null else 0
+		state = value
+		var next_id := value.get_instance_id() if value != null else 0
+		if next_id != prev_id:
+			_orientation.clear()
+			_walk_phase.clear()
+			_strike_elapsed.clear()
+			_facing_screen_refs.clear()
+		call_deferred("_sync_unit_orientations")
+		queue_redraw()
 ## 为 true 时逻辑 (0,0) 显示在棋盘底部（等距原点对调，仅冒险地图）
 var invert_origin: bool = false
 
@@ -41,13 +52,22 @@ var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _fx_textures: RefCounted = null
-
 # 抛射物动画：二次贝塞尔曲线飞行
 var _projectile: Dictionary = {}  # {from, to, ctrl, t, color} 空表示无飞行中抛射物
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
 const _PUFF_FRAME_PATH := "res://assets/demo/doodle-rpg/ALL SPRITES/Particles/Puff_%d.png"
+const _INVALID_GRID := Vector2i(-9999, -9999)
+## 等距棋盘仅四斜向（由 grid_to_screen 校准）
+const _FACING_GRID_STEPS: Dictionary = {
+	"DR": Vector2i(1, 0),
+	"DL": Vector2i(0, 1),
+	"UL": Vector2i(-1, 0),
+	"UR": Vector2i(0, -1),
+}
+
+var _facing_screen_refs: Dictionary = {}
 
 
 func _ready() -> void:
@@ -58,6 +78,7 @@ func _ready() -> void:
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
 	_fx_textures = BoardFxTexturesClass.new()
 	set_process(true)
+	call_deferred("_sync_unit_orientations")
 
 
 func _update_origin() -> void:
@@ -107,7 +128,6 @@ func _process(delta: float) -> void:
 
 func set_battle_state(new_state: GameState) -> void:
 	state = new_state
-	queue_redraw()
 
 
 func set_highlights(new_highlights: Dictionary) -> void:
@@ -183,7 +203,7 @@ func _draw_unit(unit: UnitState) -> void:
 	var sprite_size := Vector2(62.0, 70.0)
 	var ground_nudge := Vector2(0.0, _UNIT_SPRITE_GROUND_OFFSET_Y)
 	var top_left := center + Vector2(-sprite_size.x * 0.5, -sprite_size.y + 2.0) + ground_nudge
-	var facing := str(_orientation.get(unit.uid, "Forward"))
+	var facing := str(_orientation.get(unit.uid, _default_facing()))
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
 
 	var pose_tex: Texture2D = null
@@ -260,7 +280,82 @@ func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 	var fill_color := Color(0.25, 0.85, 0.45) if unit.team == Constants.TEAM_PLAYER else Color(0.9, 0.35, 0.45)
 	draw_rect(Rect2(center, Vector2(width * ratio, 5)), fill_color)
 	if not unit.statuses.is_empty():
-		_draw_status_row(center + Vector2(0, 7), unit)
+		const ICON_SIZE := 13.0
+		const GAP := 2.0
+		var count := unit.statuses.size()
+		var row_w := float(count) * ICON_SIZE + float(maxi(0, count - 1)) * GAP
+		var row_x := center.x + (width - row_w) * 0.5
+		_draw_status_row(Vector2(row_x, center.y + 7.0), unit)
+
+
+func _sync_unit_orientations() -> void:
+	if state == null or _knight_sprites == null:
+		return
+	var player := state.get_player()
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		if _move_offsets.has(unit.uid) or _strike_elapsed.has(unit.uid):
+			continue
+		var target_pos := _facing_target_pos(unit, player)
+		if target_pos == _INVALID_GRID:
+			_orientation[unit.uid] = _default_facing()
+		else:
+			_orientation[unit.uid] = _facing_from_grid_pos(unit.pos, target_pos)
+
+
+func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
+	var screen_delta := grid_to_screen(to_grid) - grid_to_screen(from_grid)
+	return _pick_facing_for_screen_delta(screen_delta)
+
+
+func _pick_facing_for_screen_delta(screen_delta: Vector2) -> String:
+	if screen_delta.length_squared() < 4.0:
+		return _default_facing()
+	_ensure_facing_screen_refs()
+	var dir := screen_delta.normalized()
+	var best_name := "Forward"
+	var best_dot := -2.0
+	for facing_name in _facing_screen_refs.keys():
+		var ref: Vector2 = _facing_screen_refs[facing_name]
+		var dot := dir.dot(ref)
+		if dot > best_dot:
+			best_dot = dot
+			best_name = facing_name
+	return best_name
+
+
+func _ensure_facing_screen_refs() -> void:
+	if not _facing_screen_refs.is_empty():
+		return
+	var origin_screen := grid_to_screen(Vector2i(0, 0))
+	for facing_name in _FACING_GRID_STEPS.keys():
+		var step: Vector2i = _FACING_GRID_STEPS[facing_name]
+		var v := grid_to_screen(step) - origin_screen
+		if v.length_squared() > 0.01:
+			_facing_screen_refs[facing_name] = v.normalized()
+
+
+func _facing_target_pos(unit: UnitState, _player: UnitState) -> Vector2i:
+	return _nearest_hostile_pos(unit)
+
+
+func _nearest_hostile_pos(unit: UnitState) -> Vector2i:
+	var best := _INVALID_GRID
+	var best_dist_sq := 999999999.0
+	var unit_screen := grid_to_screen(unit.pos)
+	for other in state.units.values():
+		if not other.alive or other.uid == unit.uid or other.team == unit.team:
+			continue
+		var dist_sq := unit_screen.distance_squared_to(grid_to_screen(other.pos))
+		if dist_sq < best_dist_sq:
+			best_dist_sq = dist_sq
+			best = other.pos
+	return best
+
+
+func _default_facing() -> String:
+	return "DR"
 
 
 func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
@@ -272,12 +367,12 @@ func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
 	var sorted: Array = StatusRegistry.sort_statuses(unit.statuses)
 	var cursor_x := origin.x
 	for status in sorted:
-		var color: Color = StatusRegistry.status_color(status.status_id)
-		var bg := color.darkened(0.5)
-		bg.a = 0.88
-		if StatusIcons.has_icon(status.status_id):
-			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(ICON_SIZE, ICON_SIZE)), bg)
-			StatusIcons.draw_icon(self, Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE)
+		if StatusIcons.draw_icon(self, Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE):
+			var badge_text: String = StatusRegistry.icon_badge(status)
+			if not badge_text.is_empty():
+				var font := ThemeDB.fallback_font
+				var badge_x := cursor_x + ICON_SIZE - font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+				draw_string(font, Vector2(badge_x, origin.y + ICON_SIZE - 1.0), badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0.98, 0.98, 1.0))
 			cursor_x += ICON_SIZE + GAP
 		else:
 			var font := ThemeDB.fallback_font
@@ -285,6 +380,9 @@ func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
 			var text_w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 			var chip_w := text_w + PAD_X * 2.0
 			var chip_h := FONT_SIZE + PAD_Y * 2.0
+			var color: Color = StatusRegistry.status_color(status.status_id)
+			var bg := color.darkened(0.5)
+			bg.a = 0.88
 			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), bg)
 			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), color.lightened(0.1), false, 1.0)
 			draw_string(font, Vector2(cursor_x + PAD_X, origin.y + PAD_Y + FONT_SIZE - 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0.95, 0.96, 0.98))
@@ -320,16 +418,14 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 	var attacker: UnitState = state.units.get(attacker_uid, null)
 	if attacker == null:
 		return
-	var dg := victim_cell - attacker.pos
-	_orientation[attacker_uid] = _knight_sprites.facing_from_grid_delta(dg)
+	_orientation[attacker_uid] = _facing_from_grid_pos(attacker.pos, victim_cell)
 	_strike_elapsed[attacker_uid] = 0.0
 	queue_redraw()
 
 
 ## 播放移动动画：单位从 from_pos 滑动到 to_pos
 func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
-	var dg := to_pos - from_pos
-	_orientation[unit_uid] = _knight_sprites.facing_from_grid_delta(dg)
+	_orientation[unit_uid] = _facing_from_grid_pos(from_pos, to_pos)
 	_walk_phase[unit_uid] = 0.0
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)

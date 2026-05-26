@@ -15,8 +15,15 @@ func facing_from_grid_delta(delta: Vector2i) -> String:
 		return "Forward"
 	var sx := float(delta.x - delta.y)
 	var sy := float(delta.x + delta.y)
-	var deg := rad_to_deg(atan2(sy, sx))
-	if deg < 0:
+	return facing_from_screen_delta(Vector2(sx, sy))
+
+
+## 按棋盘屏幕位移选朝向（与 IsoCoordinates.grid_to_screen 一致）
+func facing_from_screen_delta(screen_delta: Vector2) -> String:
+	if screen_delta.length_squared() < 1.0:
+		return "Forward"
+	var deg := rad_to_deg(atan2(screen_delta.y, screen_delta.x))
+	if deg < 0.0:
 		deg += 360.0
 	if deg < 22.5 or deg >= 337.5:
 		return "Right"

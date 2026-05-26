@@ -94,6 +94,18 @@ static func short_label(status: StatusInstance) -> String:
 	return display_name(status.status_id)
 
 
+## 图标角标数字（层数/持续/护甲值）；无数字时返回空串
+static func icon_badge(status: StatusInstance) -> String:
+	match status.status_id:
+		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED:
+			return str(status.stacks)
+		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED:
+			return str(maxi(status.duration, 1))
+		Constants.STATUS_ARMOR:
+			return str(status.value)
+	return ""
+
+
 static func tooltip(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON:

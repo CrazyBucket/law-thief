@@ -55,7 +55,6 @@ var _slot_popup: Control = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
 
-
 func _ready() -> void:
 	_controller.state_changed.connect(_refresh)
 	_controller.battle_ended.connect(_on_battle_ended)
@@ -477,7 +476,7 @@ func _refresh() -> void:
 	elif _message_label.text.is_empty():
 		_message_label.text = _controller.get_action_hint()
 
-	_board.state = state
+	_board.set_battle_state(state)
 	_board.selected_unit_uid = _inspect_uid
 	_board.set_highlights(_controller.get_highlights())
 	if not _enemy_phase_running:
@@ -498,7 +497,8 @@ func _refresh_player_status_row(player: UnitState) -> void:
 
 func _refresh_unit_roster() -> void:
 	for child in _unit_roster.get_children():
-		child.queue_free()
+		_unit_roster.remove_child(child)
+		child.free()
 	var state := _controller.state
 	for unit in state.units.values():
 		if not unit.alive:
@@ -598,11 +598,11 @@ func _refresh_inspect() -> void:
 	lines.append(StatusUi.format_all_bbcode(unit))
 	for slot in unit.slots:
 		lines.append(_slot_detail_bbcode(state, unit, slot))
-		_slot_box.add_child(_create_slot_chip(state, slot))
+		_slot_box.add_child(_create_slot_chip(state, unit, slot))
 	_inspect_body.text = "\n".join(lines)
 
 
-func _slot_detail_bbcode(state: GameState, _unit: UnitState, slot: SlotState) -> String:
+func _slot_detail_bbcode(state: GameState, unit: UnitState, slot: SlotState) -> String:
 	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
 	var slot_col := UnitLooks.slot_color(slot.slot_type)
 	var col_hex := slot_col.to_html(false)
@@ -614,14 +614,13 @@ func _slot_detail_bbcode(state: GameState, _unit: UnitState, slot: SlotState) ->
 	if gem == null:
 		return "[color=%s]  %s ?[/color]" % [col_hex, slot_name]
 	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	var context := "unit_blue" if slot.slot_type == Constants.SLOT_BLUE else ("player_skill" if slot.slot_type == Constants.SLOT_RED else "")
-	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, context)
+	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
 	if effect.is_empty():
 		return "[color=%s]  %s ◆ %s[/color]" % [col_hex, slot_name, gem_name]
 	return "[color=%s]  %s ◆ %s[/color] [color=#8a909c]— %s[/color]" % [col_hex, slot_name, gem_name, effect]
 
 
-func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
+func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Control:
 	var chip := PanelContainer.new()
 	var color := UnitLooks.slot_color(slot.slot_type)
 	if not slot.gem_uid.is_empty():
@@ -633,16 +632,41 @@ func _create_slot_chip(state: GameState, slot: SlotState) -> Control:
 	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
 	if slot.locked:
 		label.text = "%s🔒" % slot_name
+		chip.tooltip_text = "%s槽：锁定" % slot_name
 	elif slot.gem_uid.is_empty():
 		label.text = "%s○" % slot_name
+		chip.tooltip_text = "%s槽：空" % slot_name
 	else:
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		label.text = "%s%s" % [slot_name, UnitLooks.gem_symbol(gem) if gem != null else "?"]
+		if gem == null:
+			label.text = "%s?" % slot_name
+			chip.tooltip_text = "%s槽：无宝石数据" % slot_name
+		else:
+			var gem_name: String = _data_registry().get_gem_display_name(gem)
+			label.text = "%s·%s" % [slot_name, gem_name]
+			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
 
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	chip.add_child(label)
 	return chip
+
+
+func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
+	match slot.slot_type:
+		Constants.SLOT_RED:
+			return "enemy_active" if unit.team == Constants.TEAM_ENEMY else "player_trigger"
+		Constants.SLOT_BLUE:
+			return "unit_blue"
+	return ""
+
+
+func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState) -> String:
+	var gem_name: String = _data_registry().get_gem_display_name(gem)
+	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
+	if effect.is_empty():
+		return gem_name
+	return "%s\n%s" % [gem_name, effect]
 
 
 func _refresh_action_buttons() -> void:

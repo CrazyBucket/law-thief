@@ -1,0 +1,14 @@
+{
+  "frames": {
+    "burning": [0, 0],
+    "paralyzed": [1, 0],
+    "poison": [2, 0],
+    "wet": [5, 0],
+    "rooted": [1, 1],
+    "armor": [6, 1],
+    "exposed": [0, 2],
+    "sluggish": [0, 3],
+    "lawless": [6, 4],
+    "slowed": [1, 4]
+  }
+}

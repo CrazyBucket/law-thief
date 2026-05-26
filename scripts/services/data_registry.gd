@@ -160,7 +160,8 @@ func get_gem_def(gem_ref: Variant) -> Dictionary:
 
 func get_gem_display_name(gem_ref: Variant) -> String:
 	var def: Dictionary = _resolve_gem_def(gem_ref)
-	return _translate_key(str(def.get("display_name_key", "")), {}, _gem_id_from_ref(gem_ref))
+	var fallback: String = str(def.get("symbol", _gem_id_from_ref(gem_ref)))
+	return _translate_key(str(def.get("display_name_key", "")), {}, fallback)
 
 
 func get_gem_symbol(gem_ref: Variant) -> String:
@@ -778,7 +779,7 @@ func _translate_key(key: String, params: Dictionary = {}, fallback: String = "")
 	if key.is_empty():
 		return fallback
 	var translated := I18nService.tr_key(key, params)
-	if translated == key and not fallback.is_empty():
+	if translated == key:
 		return fallback
 	return translated
 
