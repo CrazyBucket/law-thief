@@ -24,8 +24,8 @@ func _test_poison_stack_and_tick() -> void:
 	var poison: StatusInstance = unit.get_status(Constants.STATUS_POISON)
 	assert(poison.stacks == 3, "poison stacks should merge")
 	assert(poison.duration == 3, "poison duration should take max")
-	StatusRules.tick_turn_start(state)
-	assert(unit.hp == 7, "poison should deal 3 damage on turn start")
+	StatusRules.tick_turn_end(state)
+	assert(unit.hp == 1, "poison should deal 9 damage (3 stacks x 3) on turn end: got hp %d" % unit.hp)
 	print("  [OK] poison stack + tick")
 
 

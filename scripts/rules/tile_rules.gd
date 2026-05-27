@@ -6,11 +6,11 @@ extends RefCounted
 # 新增一种 overlay 的进入效果只需在此表加一行，不改其他任何函数
 static var _ENTER_EFFECTS: Dictionary = {
 	Constants.TILE_MOD_POISON_FOG: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_poison(state, unit, 1, 2),
+		StatusRules.apply_poison(state, unit, 1, 0),
 	Constants.TILE_MOD_FIRE: func(state: GameState, unit: UnitState) -> void:
 		StatusRules.apply_burning(state, unit, 1),
 	Constants.TILE_MOD_POISON_PUDDLE: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_poison(state, unit, 1, 2),
+		StatusRules.apply_poison(state, unit, 1, 0),
 }
 
 # ─── 覆盖层共存反应表 ──────────────────────────────────────────────────────────
@@ -25,6 +25,20 @@ static var _OVERLAY_REACTIONS: Dictionary = {
 }
 
 
+## 单位当前所在格的地形常驻效果（水域→潮湿）；出生、停留、进入时均需同步
+static func sync_standing_ground_effects(state: GameState, unit: UnitState) -> void:
+	if not unit.alive:
+		return
+	var tile := state.get_tile(unit.pos)
+	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+		StatusRules.apply_wet(state, unit, 2)
+
+
+static func sync_all_units_standing_ground(state: GameState) -> void:
+	for unit in state.units.values():
+		sync_standing_ground_effects(state, unit)
+
+
 ## 单位主动移动进入格子时
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i) -> void:
 	var tile := state.get_tile(unit.pos)
@@ -34,9 +48,7 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 		CombatRules.apply_damage(state, unit, Constants.SPIKE_DAMAGE, unit.uid, "spike")
 		_unlock_armor_locks(state, unit)
 
-	# 水洼：进入附潮湿
-	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
-		StatusRules.apply_wet(state, unit, 2)
+	sync_standing_ground_effects(state, unit)
 
 	# 实体进入检测（地刺 entity）
 	EntityRules.on_unit_entered(state, unit)
@@ -49,9 +61,7 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector2i) -> void:
 	var tile := state.get_tile(pos)
 
-	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
-		StatusRules.apply_wet(state, unit, 2)
-
+	sync_standing_ground_effects(state, unit)
 	_apply_enter_effects(state, unit, tile)
 
 	GemEffects.run_unit_hooks(
@@ -92,6 +102,7 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 		tile.modifiers[i] = merged
 		return
 	tile.add_modifier(Constants.TILE_MOD_POISON_FOG, add_turns)
+	_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 static func create_fire(state: GameState, pos: Vector2i) -> void:
@@ -174,6 +185,13 @@ static func _apply_enter_effects(state: GameState, unit: UnitState, tile: TileSt
 			_ENTER_EFFECTS[modifier_type].call(state, unit)
 
 
+static func _apply_enter_effects_to_occupant(state: GameState, pos: Vector2i, tile: TileState) -> void:
+	var occupant := state.get_unit_at(pos)
+	if occupant == null or not occupant.alive:
+		return
+	_apply_enter_effects(state, occupant, tile)
+
+
 static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_type: String) -> void:
 	for key in _OVERLAY_REACTIONS.keys():
 		if key[0] == incoming_type and tile.has_modifier(key[1]):
@@ -183,6 +201,7 @@ static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_t
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, Constants.POISON_FOG_DURATION)
+	_apply_enter_effects_to_occupant(state, tile.pos, tile)
 
 
 static func _unlock_armor_locks(state: GameState, unit: UnitState) -> void:

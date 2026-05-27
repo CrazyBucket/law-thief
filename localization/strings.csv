@@ -55,8 +55,7 @@ gem.effect.explosion.tile_turn_start,光环：1 格内敌人每回合 1 伤害,A
 gem.effect.poison.player_skill,剧毒：目标周围 3x3 铺设毒雾并叠加中毒,Venom: create poison fog in a 3x3 area and add poison stacks
 gem.effect.poison.unit_red_active,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
 gem.effect.poison.enemy_red_action,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
-gem.effect.poison.blue_move_through,被动：移动经过格留下毒雾,Passive: leave poison fog on moved-through tiles
-gem.effect.poison.blue_damaged,被动：受击反施毒,Passive: inflict poison when damaged
+gem.effect.poison.blue_damaged,被动：接触施加 1 层毒,Passive: inflict 1 poison stack on contact
 gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
 gem.effect.poison.tile_turn_start,光环：2 格内敌人每回合中毒,Aura: poison enemies within 2 tiles each turn
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害并束缚 2 回合,Gravity: pull the target toward you, deal {damage} collision damage, and root for 2 turns
@@ -83,8 +82,8 @@ gem.effect.fragile.unit_red_active,触发：自毁并造成范围伤害,Trigger:
 gem.effect.fragile.enemy_red_action,冲撞自毁 ({damage}),Fragile charge ({damage})
 gem.effect.fragile.attack_bonus,被动：攻击 +1 伤害,Passive: attacks deal +1 damage
 gem.effect.fragile.black_death,死亡：四邻格 1 伤害,Death: deal 1 damage to the 4 neighboring cells
-gem.effect.arc.player_skill,导电：电击目标水洼连通区域所有单位,Conductive: shock all units in the connected water region
-gem.effect.arc.unit_red_active,触发：电击自身所在水洼连通区域,Trigger: shock the connected water region under the owner
+gem.effect.arc.player_skill,技能：电击相连水域，水域及边缘潮湿单位各受一次电弧（6.6%麻痹）,Skill: shock connected water; each wet unit on water or its edge takes arc damage (6.6% paralyze)
+gem.effect.arc.unit_red_active,攻击水域：导电潮湿单位；攻击陆地单位则2格内弹射1次,Attack water to shock wet units; on land targets arc once within 2 tiles (6.6% paralyze)
 gem.effect.arc.enemy_red_action,电击 ({damage}),Shock ({damage})
 gem.effect.arc.blue_damaged,被动：受击概率反击电击,Passive: chance to shock the attacker when damaged
 gem.effect.arc.black_death,死亡：周围水洼导电连锁,Death: chain conductive shocks through nearby water

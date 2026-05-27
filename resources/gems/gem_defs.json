@@ -27,7 +27,6 @@
       "unit_red_active": "poison",
       "enemy_red_action": "poison",
       "blue_damaged": "poison",
-      "blue_move_through": "poison",
       "black_death": "poison",
       "tile_active": "poison",
       "tile_turn_start": "poison"

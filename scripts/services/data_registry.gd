@@ -94,6 +94,7 @@ func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState
 				gem.slot_index = i
 		state.units[enemy_uid] = enemy
 	BoardMapGenerator.build(state, encounter)
+	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
@@ -316,7 +317,6 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_PLAYER_SKILL: {"key": "gem.effect.poison.player_skill"},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.poison.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.poison.enemy_red_action"},
-				ABILITY_BLUE_MOVE_THROUGH: {"key": "gem.effect.poison.blue_move_through"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.poison.blue_damaged"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.poison.black_death"},
 				ABILITY_TILE_ACTIVE: {"key": "gem.effect.poison.tile_active"},
@@ -342,7 +342,7 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"arc": {
-			"player_skill_target_mode": "enemy_unit",
+			"player_skill_target_mode": "water_tile",
 			"enemy_intent": {
 				"type": "arc_attack",
 				"preview_key": "gem.intent.arc_attack",
@@ -422,7 +422,6 @@ func _register_gem_defs() -> void:
 				ABILITY_UNIT_RED_ACTIVE: "poison",
 				ABILITY_ENEMY_RED_ACTION: "poison",
 				ABILITY_BLUE_DAMAGED: "poison",
-				ABILITY_BLUE_MOVE_THROUGH: "poison",
 				ABILITY_BLACK_DEATH: "poison",
 				ABILITY_TILE_ACTIVE: "poison",
 				ABILITY_TILE_TURN_START: "poison",

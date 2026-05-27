@@ -79,10 +79,17 @@ static func player_use_skill(state: GameState, player: UnitState, target_pos: Ve
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return [] as Array[Dictionary]
-	if not _run_slot_hook(state, player, slot, TIMING_ACTIVE, {"mode": MODE_SKILL, "target_pos": target_pos}):
+	var skill_events: Array[Dictionary] = []
+	var hook_ctx := {
+		"mode": MODE_SKILL,
+		"target_pos": target_pos,
+		"events": skill_events,
+	}
+	if not _run_slot_hook(state, player, slot, TIMING_ACTIVE, hook_ctx):
 		return [] as Array[Dictionary]
 	state.log("玩家使用技能: %s" % _data_registry().get_gem_display_name(gem))
-	return _build_player_skill_events(gem, player, target_pos)
+	skill_events.append_array(_build_player_skill_events(gem, player, target_pos))
+	return skill_events
 
 
 static func _build_player_skill_events(gem: GemState, player: UnitState, target_pos: Vector2i) -> Array[Dictionary]:
@@ -118,6 +125,16 @@ static func get_armor_bonus(_state: GameState, _unit: UnitState) -> int:
 
 static func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 	return _data_registry().get_enemy_red_intent_meta(gem_ref, damage)
+
+
+static func unit_has_red_arc(state: GameState, unit: UnitState) -> bool:
+	var slot := unit.get_slot(Constants.SLOT_RED)
+	if slot == null or slot.gem_uid.is_empty():
+		return false
+	var gem: GemState = state.gems.get(slot.gem_uid, null)
+	if gem == null:
+		return false
+	return _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == "arc"
 
 
 ## 检查玩家是否能对目标使用技能
@@ -207,15 +224,6 @@ static func _execute_charge_explosion(state: GameState, unit: UnitState, target_
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null:
 		return events
-	var path := BoardUtils.path_toward(state, unit.pos, target.pos, 2, unit.uid)
-	var start_pos := unit.pos
-	for step in path:
-		var from_pos := unit.pos
-		unit.pos = step
-		TileRules.on_unit_moved_through(state, unit, step)
-		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": step})
-	if unit.pos != start_pos:
-		TileRules.on_unit_entered(state, unit, start_pos)
 	events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
 	events.append_array(_explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
 	var self_dealt := CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "self_explosion")
@@ -241,6 +249,17 @@ static func _run_enemy_red_action(state: GameState, unit: UnitState, slot: SlotS
 			return poison_events
 		"pull":
 			return _execute_pull_events(state, unit, target_uid)
+		"arc_attack":
+			var arc_target: UnitState = state.units.get(target_uid, null)
+			if arc_target == null or not arc_target.alive:
+				return [] as Array[Dictionary]
+			if BoardUtils.manhattan(unit.pos, arc_target.pos) > Constants.ATTACK_RANGE:
+				return [] as Array[Dictionary]
+			var arc_base := CombatRules.attack_damage(state, unit)
+			var arc_events := _enemy_red_damage_events(state, unit, target_uid, arc_base, "arc_attack")
+			if arc_target.alive:
+				apply_arc_bounce_from_victim(state, arc_target, unit, arc_base, arc_events)
+			return arc_events
 	return [] as Array[Dictionary]
 
 
@@ -424,17 +443,31 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: Sl
 					_execute_pull_events(state, owner, ctx.get("target_uid", ""))
 			return true
 		"arc":
-			# 红槽导电：触发电弧（概率麻痹），不走 pipeline 以避免递归
+			var out_events: Array[Dictionary] = _events_from_ctx(ctx)
+			var arc_anchor: Vector2i = ctx.get("target_pos", owner.pos)
 			match mode:
 				MODE_TRIGGER, MODE_ENEMY:
-					var arc_target: UnitState = state.get_unit_at(ctx.get("target_pos", owner.pos))
-					if arc_target == null:
-						arc_target = state.units.get(ctx.get("target_uid", ""), null)
-					if arc_target != null and arc_target.alive:
-						var dummy_events: Array[Dictionary] = []
-						_arc_to(state, arc_target, owner.uid, CombatRules.attack_damage(state, owner), dummy_events)
+					var trigger_tile := state.get_tile(arc_anchor)
+					if trigger_tile != null and trigger_tile.has_tile_tag(Constants.TAG_TILE_WATER):
+						apply_water_conduction(state, arc_anchor, owner, out_events)
+					else:
+						var arc_target: UnitState = state.get_unit_at(arc_anchor)
+						if arc_target == null:
+							arc_target = state.units.get(ctx.get("target_uid", ""), null)
+						if arc_target != null and arc_target.alive:
+							var arc_base := CombatRules.attack_damage(state, owner)
+							_arc_to(state, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events)
+							apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
 				MODE_SKILL:
-					pass
+					var skill_tile := state.get_tile(arc_anchor)
+					if skill_tile != null and skill_tile.has_tile_tag(Constants.TAG_TILE_WATER):
+						apply_water_conduction(state, arc_anchor, owner, out_events)
+					else:
+						var skill_victim := state.get_unit_at(arc_anchor)
+						if skill_victim != null and skill_victim.alive and skill_victim.uid != owner.uid:
+							var skill_base := CombatRules.attack_damage(state, owner)
+							_arc_to(state, skill_victim, owner.uid, _calc_arc_damage(skill_base), out_events)
+							apply_arc_bounce_from_victim(state, skill_victim, owner, skill_base, out_events)
 			return true
 		"fire_gem":
 			match mode:
@@ -504,10 +537,6 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 				if deflect_target != null:
 					CombatRules.apply_damage(state, deflect_target, damage, owner.uid, "gravity_deflect")
 				# 若无单位则弹到自身脚下地块（不造成单位伤害，仅标记事件）
-			return true
-		"poison":
-			if source != null and source.alive and BoardUtils.manhattan(owner.pos, source.pos) <= 1:
-				StatusRules.apply_poison(state, source, 1, 2)
 			return true
 		"arc":
 			if source != null and source.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
@@ -587,11 +616,7 @@ static func _run_unit_death_effect(state: GameState, owner: UnitState, gem: GemS
 	return _run_unit_death_effect_with_events(state, owner, gem, dummy)
 
 
-static func _run_unit_moved_through_effect(state: GameState, _owner: UnitState, gem: GemState, ctx: Dictionary) -> bool:
-	var pass_pos: Vector2i = ctx.get("pos", _owner.pos)
-	if _ability_profile(gem, ABILITY_BLUE_MOVE_THROUGH) == "poison":
-		TileRules.create_poison_fog(state, pass_pos)
-		return true
+static func _run_unit_moved_through_effect(_state: GameState, _owner: UnitState, _gem: GemState, _ctx: Dictionary) -> bool:
 	return false
 
 
@@ -602,7 +627,7 @@ static func _run_unit_contact_effect(state: GameState, owner: UnitState, gem: Ge
 		return false
 	match _ability_profile(gem, ABILITY_BLUE_DAMAGED):
 		"poison":
-			StatusRules.apply_poison(state, other, 1, 2, owner.uid)
+			StatusRules.apply_poison(state, other, 1, 0, owner.uid)
 			return true
 		"fire_gem":
 			StatusRules.apply_burning(state, other, 1, owner.uid)
@@ -702,52 +727,89 @@ static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 
 ## ─── 电弧（arc）辅助 ──────────────────────────────────────────────────────
 
-## 红槽电弧命中后弹射入口：从 first_hit 出发，向 2 格内其他敌方单位弹射
-## 每个目标最多 1 次，仅弹射敌方，伤害为原始的 20%
-## 6.6% 概率触发整条弹射链
-static func apply_arc_chain(
+static func _calc_arc_damage(base_damage: int) -> int:
+	return maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO))
+
+
+static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
+	var raw: Variant = ctx.get("events", null)
+	if raw is Array:
+		return raw as Array[Dictionary]
+	return [] as Array[Dictionary]
+
+
+## 攻击水域：对相连水域及其边缘格上的所有潮湿单位各造成一次电弧伤害
+static func apply_water_conduction(
 	state: GameState,
-	first_hit: UnitState,
+	anchor_pos: Vector2i,
+	attacker: UnitState,
+	events: Array[Dictionary]
+) -> void:
+	var cluster := BoardUtils.water_cluster(state, anchor_pos)
+	if cluster.is_empty():
+		return
+	var zone := BoardUtils.water_conduction_zone(cluster)
+	var arc_damage := _calc_arc_damage(CombatRules.attack_damage(state, attacker))
+	var hit_uids: Dictionary = {}
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		if not _unit_in_water_conduction_zone(state, unit, zone):
+			continue
+		if hit_uids.has(unit.uid):
+			continue
+		hit_uids[unit.uid] = true
+		_arc_to(state, unit, attacker.uid, arc_damage, events)
+	state.log("水域导电 %s，命中 %d 名单位" % [anchor_pos, hit_uids.size()])
+
+
+## 水域导电目标：站在水域格上，或导电区边缘格且带潮湿
+static func _unit_in_water_conduction_zone(state: GameState, unit: UnitState, zone: Dictionary) -> bool:
+	if not zone.has(unit.pos):
+		return false
+	var tile := state.get_tile(unit.pos)
+	if tile != null and tile.has_tile_tag(Constants.TAG_TILE_WATER):
+		return true
+	return StatusRules.is_wet(unit)
+
+
+## 红槽攻击 TAG_ARC：以被击者为锚，向切比雪夫 2 格内另一敌方弹射 1 次（伤害为普攻 ARC_CHAIN_DAMAGE_RATIO）
+static func apply_arc_bounce_from_victim(
+	state: GameState,
+	victim: UnitState,
 	attacker: UnitState,
 	base_damage: int,
 	events: Array[Dictionary]
 ) -> void:
-	if randf() >= Constants.ARC_PROC_CHANCE:
+	if not victim.alive:
 		return
-	var arc_damage := maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO))
-	var hit_uids: Dictionary = {attacker.uid: true, first_hit.uid: true}
-	_arc_chain_step(state, first_hit, attacker.uid, arc_damage, hit_uids, events)
-
-
-## 电弧弹射递归：从 source 向 ARC_CHAIN_RANGE 内未命中的敌方随机弹射一次
-static func _arc_chain_step(
-	state: GameState,
-	source: UnitState,
-	attacker_uid: String,
-	arc_damage: int,
-	hit_uids: Dictionary,
-	events: Array[Dictionary]
-) -> void:
-	var attacker_unit: UnitState = state.units.get(attacker_uid, null)
-	var attacker_team: String = attacker_unit.team if attacker_unit != null else source.team
+	var arc_damage := _calc_arc_damage(base_damage)
 	var candidates: Array[UnitState] = []
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		if unit.team == attacker_team:
+		if unit.uid == victim.uid or unit.uid == attacker.uid:
 			continue
-		if hit_uids.has(unit.uid):
-			continue
-		if BoardUtils.chebyshev(source.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
+		if BoardUtils.chebyshev(victim.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
 			candidates.append(unit)
 	if candidates.is_empty():
 		return
-	var next: UnitState = candidates[randi() % candidates.size()]
-	hit_uids[next.uid] = true
-	_arc_to(state, next, attacker_uid, arc_damage, events)
+	var bounce_target: UnitState = candidates[randi() % candidates.size()]
+	_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
 
 
-## 对单个目标施加电弧伤害（真实伤害，6.6% 麻痹）
+## 兼容旧调用名（攻击管线）
+static func apply_arc_chain(
+	state: GameState,
+	victim: UnitState,
+	attacker: UnitState,
+	base_damage: int,
+	events: Array[Dictionary]
+) -> void:
+	apply_arc_bounce_from_victim(state, victim, attacker, base_damage, events)
+
+
+## 对单个目标施加电弧伤害；命中 6.6% 麻痹
 static func _arc_to(
 	state: GameState,
 	target: UnitState,
@@ -757,7 +819,7 @@ static func _arc_to(
 ) -> void:
 	if not target.alive:
 		return
-	var dealt := CombatRules.apply_true_damage(state, target, damage, source_uid, "arc")
+	var dealt := CombatRules.apply_damage(state, target, damage, source_uid, "arc")
 	if dealt > 0:
 		events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
 	if target.alive and randf() < Constants.ARC_PROC_CHANCE:

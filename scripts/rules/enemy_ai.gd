@@ -31,11 +31,11 @@ static func _w(profile: Dictionary, key: String, fallback: float = 0.0) -> float
 
 
 # ─── 主入口：为一个敌人生成最优行动 ─────────────────────────────────────────
-static func decide(state: GameState, enemy: UnitState) -> Dictionary:
+static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary = {}) -> Dictionary:
 	## 返回 { "move_path": Array[Vector2i], "action": ActionCandidate }
 	var profile: Dictionary = AIProfiles.get_profile(enemy.ai_profile_id)
 	var path_profile: Dictionary = _build_path_cost_profile(profile)
-	var candidates: Array = _generate_all_candidates(state, enemy, profile)
+	var candidates: Array = _generate_all_candidates(state, enemy, profile, cell_blockers)
 
 	if candidates.is_empty():
 		return {"move_path": [] as Array[Vector2i], "action": null}
@@ -49,13 +49,38 @@ static func decide(state: GameState, enemy: UnitState) -> Dictionary:
 	# 构建移动路径
 	var move_path: Array[Vector2i] = []
 	if best.move_target != Vector2i(-1, -1) and best.move_target != enemy.pos:
-		move_path = BoardUtils.path_toward(state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, path_profile)
+		move_path = BoardUtils.path_toward(
+			state,
+			enemy.pos,
+			best.move_target,
+			enemy.move_points,
+			enemy.uid,
+			path_profile,
+			cell_blockers
+		)
 
 	return {"move_path": move_path, "action": best}
 
 
+static func _is_blocked_destination(
+	state: GameState,
+	pos: Vector2i,
+	uid: String,
+	cell_blockers: Dictionary
+) -> bool:
+	var key := state.tile_key(pos)
+	if not cell_blockers.has(key):
+		return false
+	return str(cell_blockers[key]) != uid
+
+
 # ─── 生成所有候选行动 ─────────────────────────────────────────────────────
-static func _generate_all_candidates(state: GameState, enemy: UnitState, profile: Dictionary) -> Array:
+static func _generate_all_candidates(
+	state: GameState,
+	enemy: UnitState,
+	profile: Dictionary,
+	cell_blockers: Dictionary = {}
+) -> Array:
 	var candidates: Array = []
 	var path_profile: Dictionary = _build_path_cost_profile(profile)
 
@@ -64,10 +89,14 @@ static func _generate_all_candidates(state: GameState, enemy: UnitState, profile
 	if not StatusRules.can_move(enemy):
 		reachable = [] as Array[Vector2i]
 	else:
-		reachable = BoardUtils.reachable_cells(state, enemy.pos, enemy.move_points, enemy.uid, path_profile)
+		reachable = BoardUtils.reachable_cells(
+			state, enemy.pos, enemy.move_points, enemy.uid, path_profile, cell_blockers
+		)
 	reachable.append(enemy.pos)  # 原地也是选项
 
 	for move_pos in reachable:
+		if _is_blocked_destination(state, move_pos, enemy.uid, cell_blockers):
+			continue
 		# --- 在每个可达位置评估可执行的行动 ---
 
 		# 1. 近战攻击
@@ -84,7 +113,7 @@ static func _generate_all_candidates(state: GameState, enemy: UnitState, profile
 			candidates.append_array(extract_candidates)
 
 	# 4. 纯移动（不攻击，只靠近目标）
-	var move_only: Array = _evaluate_move_only(state, enemy, reachable, profile)
+	var move_only: Array = _evaluate_move_only(state, enemy, reachable, profile, cell_blockers)
 	candidates.append_array(move_only)
 
 	# 5. 原地等待（兜底）
@@ -157,6 +186,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_pull_skill(state, enemy, from_pos, player, profile))
 		"poison_attack":
 			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
+		"arc_attack":
+			results.append_array(_score_arc_skill(state, enemy, from_pos, player, profile))
 	return results
 
 
@@ -246,6 +277,27 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 	return results
 
 
+static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) > Constants.ATTACK_RANGE:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var base := float(CombatRules.attack_damage(state, enemy))
+	var score: float = base * _w(profile, "w_damage", 10.0)
+	for unit in state.units.values():
+		if not unit.alive or unit.team == player.team or unit.uid == player.uid:
+			continue
+		if BoardUtils.chebyshev(player.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
+			score += base * Constants.ARC_CHAIN_DAMAGE_RATIO * _w(profile, "w_damage", 10.0) * 0.5
+	candidate.score = score
+	candidate.description = "电击"
+	results.append(candidate)
+	return results
+
+
 # ─── 评估拔出宝石 ─────────────────────────────────────────────────────────
 static func _evaluate_extract_from(state: GameState, enemy: UnitState, from_pos: Vector2i, profile: Dictionary) -> Array:
 	var results: Array = []
@@ -285,7 +337,13 @@ static func _evaluate_extract_from(state: GameState, enemy: UnitState, from_pos:
 
 
 # ─── 评估纯移动（不攻击） ─────────────────────────────────────────────────
-static func _evaluate_move_only(state: GameState, enemy: UnitState, reachable: Array[Vector2i], profile: Dictionary) -> Array:
+static func _evaluate_move_only(
+	state: GameState,
+	enemy: UnitState,
+	reachable: Array[Vector2i],
+	profile: Dictionary,
+	cell_blockers: Dictionary = {}
+) -> Array:
 	var results: Array = []
 	var player: UnitState = state.get_player()
 	if player == null:
@@ -295,6 +353,8 @@ static func _evaluate_move_only(state: GameState, enemy: UnitState, reachable: A
 	for pos in reachable:
 		if pos == enemy.pos:
 			continue  # 原地不算移动
+		if _is_blocked_destination(state, pos, enemy.uid, cell_blockers):
+			continue
 
 		var candidate := ActionCandidate.new()
 		candidate.type = ActionType.MOVE

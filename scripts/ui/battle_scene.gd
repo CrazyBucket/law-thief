@@ -168,21 +168,21 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			_dismiss_popup()
 			if unit != null:
 				_inspect_uid = unit.uid
-				var atk_res := _controller.try_attack(unit.uid)
-				_show_result(atk_res)
-				if atk_res.get("ok", false):
-					var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
-					var to_pos: Vector2i = atk_res.get("to_pos", unit.pos)
-					_player_animating = true
-					if from_pos.x >= 0:
-						_board.play_projectile(from_pos, to_pos)
-						await _board.animation_finished
-						await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
-					var attack_events: Array = atk_res.get("attack_events", [])
-					for ev in attack_events:
-						await _play_anim_event(ev)
-					_player_animating = false
-					_refresh()
+			var atk_res := _controller.try_attack_cell(cell)
+			_show_result(atk_res)
+			if atk_res.get("ok", false):
+				var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
+				var to_pos: Vector2i = atk_res.get("to_pos", cell)
+				_player_animating = true
+				if from_pos.x >= 0:
+					_board.play_projectile(from_pos, to_pos)
+					await _board.animation_finished
+					await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+				var attack_events: Array = atk_res.get("attack_events", [])
+				for ev in attack_events:
+					await _play_anim_event(ev)
+				_player_animating = false
+				_refresh()
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:

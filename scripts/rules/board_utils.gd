@@ -41,9 +41,54 @@ static func cells_in_radius(center: Vector2i, radius: int) -> Array[Vector2i]:
 	return cells
 
 
-static func is_passable(state: GameState, pos: Vector2i, ignore_uid: String = "") -> bool:
+## 从 origin 出发四连通泛洪，返回相连水域格（含毒水洼等带 ground:water 的地块）
+static func water_cluster(state: GameState, origin: Vector2i) -> Array[Vector2i]:
+	if not in_bounds(state, origin):
+		return []
+	var start := state.get_tile(origin)
+	if start == null or not start.has_tile_tag(Constants.TAG_TILE_WATER):
+		return []
+	var result: Array[Vector2i] = []
+	var visited: Dictionary = {}
+	var queue: Array[Vector2i] = [origin]
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		if visited.has(current):
+			continue
+		visited[current] = true
+		var tile := state.get_tile(current)
+		if tile == null or not tile.has_tile_tag(Constants.TAG_TILE_WATER):
+			continue
+		result.append(current)
+		for neighbor in neighbors4(current):
+			if not visited.has(neighbor) and in_bounds(state, neighbor):
+				queue.append(neighbor)
+	return result
+
+
+## 水域导电范围：水域格 + 与任一格水域正交相邻的格子
+static func water_conduction_zone(cluster: Array[Vector2i]) -> Dictionary:
+	var zone: Dictionary = {}
+	for cell in cluster:
+		zone[cell] = true
+		for neighbor in neighbors4(cell):
+			zone[neighbor] = true
+	return zone
+
+
+static func is_passable(
+	state: GameState,
+	pos: Vector2i,
+	ignore_uid: String = "",
+	cell_blockers: Dictionary = {}
+) -> bool:
 	if not in_bounds(state, pos):
 		return false
+	var key := state.tile_key(pos)
+	if cell_blockers.has(key):
+		var blocker_uid: String = str(cell_blockers[key])
+		if not blocker_uid.is_empty() and blocker_uid != ignore_uid:
+			return false
 	var unit := state.get_unit_at(pos)
 	if unit != null and unit.uid != ignore_uid:
 		return false
@@ -86,7 +131,15 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 
 ## A* 寻路：从 from_pos 到 to_pos，最多消耗 max_steps 步移动力
 ## 返回路径（不含起点），如果无法到达则返回在 max_steps 内最接近目标的路径
-static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
+static func astar_path(
+	state: GameState,
+	from_pos: Vector2i,
+	to_pos: Vector2i,
+	max_steps: int,
+	ignore_uid: String = "",
+	cost_profile: Dictionary = {},
+	cell_blockers: Dictionary = {}
+) -> Array[Vector2i]:
 	if from_pos == to_pos:
 		return [] as Array[Vector2i]
 	var profile := path_cost_profile(cost_profile)
@@ -126,7 +179,7 @@ static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, m
 				continue
 			if not in_bounds(state, neighbor):
 				continue
-			if not is_passable(state, neighbor, ignore_uid):
+			if not is_passable(state, neighbor, ignore_uid, cell_blockers):
 				continue
 
 			var step_cost: float = _step_cost_with_profile(state, neighbor, profile)
@@ -171,15 +224,23 @@ static func astar_path(state: GameState, from_pos: Vector2i, to_pos: Vector2i, m
 
 ## path_toward: 使用 A* 寻路（替代旧的贪心直线算法）
 ## 用于敌人 AI 移动——目标可能被占据（如玩家位置），寻路到最近可达点
-static func path_toward(state: GameState, from_pos: Vector2i, to_pos: Vector2i, max_steps: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
+static func path_toward(
+	state: GameState,
+	from_pos: Vector2i,
+	to_pos: Vector2i,
+	max_steps: int,
+	ignore_uid: String = "",
+	cost_profile: Dictionary = {},
+	cell_blockers: Dictionary = {}
+) -> Array[Vector2i]:
 	# 如果目标被占据，寻路到目标的邻接格中最近的那个
-	if not is_passable(state, to_pos, ignore_uid):
+	if not is_passable(state, to_pos, ignore_uid, cell_blockers):
 		var best_neighbor: Vector2i = from_pos
 		var best_dist: int = manhattan(from_pos, to_pos)
 		for adj in neighbors4(to_pos):
 			if not in_bounds(state, adj):
 				continue
-			if not is_passable(state, adj, ignore_uid) and adj != from_pos:
+			if not is_passable(state, adj, ignore_uid, cell_blockers) and adj != from_pos:
 				continue
 			var d: int = manhattan(from_pos, adj)
 			if d < best_dist:
@@ -187,12 +248,19 @@ static func path_toward(state: GameState, from_pos: Vector2i, to_pos: Vector2i, 
 				best_neighbor = adj
 		if best_neighbor == from_pos:
 			return [] as Array[Vector2i]
-		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile)
-	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile)
+		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile, cell_blockers)
+	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers)
 
 
 ## Dijkstra BFS 可达格子（考虑地块代价）
-static func reachable_cells(state: GameState, start: Vector2i, move_points: int, ignore_uid: String = "", cost_profile: Dictionary = {}) -> Array[Vector2i]:
+static func reachable_cells(
+	state: GameState,
+	start: Vector2i,
+	move_points: int,
+	ignore_uid: String = "",
+	cost_profile: Dictionary = {},
+	cell_blockers: Dictionary = {}
+) -> Array[Vector2i]:
 	var profile := path_cost_profile(cost_profile)
 	var visited: Dictionary = {start: 0.0}
 	var queue: Array[Vector2i] = [start]
@@ -216,7 +284,7 @@ static func reachable_cells(state: GameState, start: Vector2i, move_points: int,
 		for neighbor in neighbors4(current):
 			if not in_bounds(state, neighbor):
 				continue
-			if not is_passable(state, neighbor, ignore_uid):
+			if not is_passable(state, neighbor, ignore_uid, cell_blockers):
 				continue
 			var cost: float = _step_cost_with_profile(state, neighbor, profile)
 			var new_dist: float = dist + cost

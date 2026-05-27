@@ -27,7 +27,9 @@ static func build(state: GameState, encounter: Dictionary) -> void:
 			var slotted_tile := TileState.create_with_slots(pos, tile_id, slot_defs)
 			state.tiles[state.tile_key(pos)] = slotted_tile
 		else:
-			state.tiles[state.tile_key(pos)].tile_id = tile_id
+			var placed: TileState = state.tiles[state.tile_key(pos)]
+			placed.tile_id = tile_id
+			placed._init_ground_tags()
 	_apply_floor_variation(state, encounter)
 	_compute_edge_masks(state)
 

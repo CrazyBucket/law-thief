@@ -67,19 +67,51 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 
 
 func try_attack(target_uid: String) -> Dictionary:
+	if state == null:
+		return _fail("战斗未开始")
+	if state == null or state.phase != Constants.PHASE_PLAYER:
+		return _fail("不是玩家回合")
+	if state.player_acted:
+		return _fail("本回合已行动")
+	var target: UnitState = state.units.get(target_uid, null)
+	if target == null or not target.alive:
+		return _fail("目标无效")
+	return try_attack_cell(target.pos)
+
+
+func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	if state == null or state.phase != Constants.PHASE_PLAYER:
 		return _fail("不是玩家回合")
 	if state.player_acted:
 		return _fail("本回合已行动")
 	var player := state.get_player()
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null or not target.alive:
-		return _fail("目标无效")
+	if player == null:
+		return _fail("玩家不存在")
+	if target_pos == player.pos:
+		return _fail("不能攻击自己")
+	if BoardUtils.manhattan(player.pos, target_pos) > Constants.ATTACK_RANGE:
+		return _fail("目标超出射程")
 	var from_pos := player.pos
-	var to_pos := target.pos
-	var atk_result := CombatRules.ranged_attack(state, player, target)
-	if not atk_result.get("ok", false):
-		return _fail(atk_result.get("reason", "无法攻击"))
+	var to_pos := target_pos
+	var attack_events: Array = []
+	var target := state.get_unit_at(target_pos)
+	if target != null and target.alive:
+		var atk_result := CombatRules.ranged_attack(state, player, target)
+		if not atk_result.get("ok", false):
+			return _fail(atk_result.get("reason", "无法攻击"))
+		attack_events = atk_result.get("events", [] as Array[Dictionary])
+	else:
+		var tile := state.get_tile(target_pos)
+		if (
+			tile != null
+			and tile.has_tile_tag(Constants.TAG_TILE_WATER)
+			and GemEffects.unit_has_red_arc(state, player)
+		):
+			attack_events = [] as Array[Dictionary]
+			GemEffects.apply_water_conduction(state, target_pos, player, attack_events)
+			state.log("玩家电击水域 %s" % target_pos)
+		else:
+			state.log("玩家射击空地 %s" % target_pos)
 	state.player_acted = true
 	_check_battle_end()
 	IntentSystem.refresh_all_intents(state)
@@ -87,7 +119,7 @@ func try_attack(target_uid: String) -> Dictionary:
 	return _ok({
 		"from_pos": from_pos,
 		"to_pos": to_pos,
-		"attack_events": atk_result.get("events", []),
+		"attack_events": attack_events,
 	})
 
 
@@ -235,6 +267,7 @@ func begin_enemy_phase() -> void:
 		return
 	state.on_turn_end.emit(state.turn_index)
 	state.phase = Constants.PHASE_ENEMY
+	IntentSystem.refresh_all_intents(state)
 	_emit_changed()
 
 
@@ -248,6 +281,7 @@ func execute_single_enemy(enemy: UnitState) -> Array[Dictionary]:
 		state.log("%s 因麻痹跳过回合" % enemy.uid)
 		_emit_changed()
 		return [] as Array[Dictionary]
+	IntentSystem.refresh_unit_intent(state, enemy)
 	var events := IntentSystem.execute_intent(state, enemy)
 	_check_battle_end()
 	_emit_changed()
@@ -355,7 +389,7 @@ func get_highlights() -> Dictionary:
 	if selected_action == Constants.ACTION_MOVE and not state.player_moved and StatusRules.can_move(player):
 		result["reachable"] = BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	elif selected_action == Constants.ACTION_ATTACK and not state.player_acted:
-		result["targets"] = _adjacent_enemy_cells(player.pos)
+		result["targets"] = _attack_target_cells(player)
 		result["effect_preview"] = _attack_effect_preview(player.pos)
 	elif selected_action == Constants.ACTION_SKILL and can_use_action(Constants.ACTION_SKILL):
 		result["targets"] = _skill_target_cells(player)
@@ -391,7 +425,7 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 		Constants.TILE_PILLAR:
 			lines.append("机关柱：嵌入宝石产生持续光环")
 	if tile.has_modifier("poison_fog"):
-		lines.append("毒雾：回合开始受到 %d 伤害" % Constants.POISON_FOG_DAMAGE)
+		lines.append("毒雾：进入叠 1 层毒；回合结束仍在其内再叠 1 层（每层 %d 伤害）" % Constants.POISON_FOG_DAMAGE)
 	# 显示地块槽位信息
 	if tile.has_slots():
 		for i in range(tile.slots.size()):
@@ -411,9 +445,13 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			if not state.player_moved and StatusRules.can_move(player) and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
-			if unit != null and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(player.pos, cell) <= Constants.ATTACK_RANGE:
-				lines.append("→ 点击射击（%d 伤害）" % CombatRules.attack_damage(state, player))
-				lines.append_array(_death_gem_preview_lines(unit))
+			if cell != player.pos and BoardUtils.manhattan(player.pos, cell) <= Constants.ATTACK_RANGE:
+				if tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
+					lines.append("→ 点击电击水域（相连水域及边缘潮湿单位导电）")
+				else:
+					lines.append("→ 点击射击（%d 伤害）" % CombatRules.attack_damage(state, player))
+				if unit != null:
+					lines.append_array(_death_gem_preview_lines(unit))
 		Constants.ACTION_EXTRACT:
 			if unit != null and can_use_action(Constants.ACTION_EXTRACT):
 				var valid := _valid_slot_indices(unit, Constants.ACTION_EXTRACT)
@@ -453,7 +491,7 @@ func get_action_hint() -> String:
 					return "移动：你被束缚，暂时无法移动"
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
-			return "射击：点击 %d 格内敌人（消耗行动）" % Constants.ATTACK_RANGE
+			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE
 		Constants.ACTION_SKILL:
 			var player := state.get_player()
 			if player != null:
@@ -517,11 +555,23 @@ func _skill_target_cells(player: UnitState) -> Array:
 	return cells
 
 
-func _adjacent_enemy_cells(from_pos: Vector2i) -> Array:
+func _can_attack_target(player: UnitState, target: UnitState) -> bool:
+	if target == null or not target.alive:
+		return false
+	if target.uid == player.uid:
+		return false
+	return BoardUtils.manhattan(player.pos, target.pos) <= Constants.ATTACK_RANGE
+
+
+func _attack_target_cells(player: UnitState) -> Array:
 	var cells: Array = []
-	for unit in state.units.values():
-		if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(from_pos, unit.pos) <= Constants.ATTACK_RANGE:
-			cells.append(unit.pos)
+	for x in range(Constants.BOARD_SIZE.x):
+		for y in range(Constants.BOARD_SIZE.y):
+			var pos := Vector2i(x, y)
+			if pos == player.pos:
+				continue
+			if BoardUtils.manhattan(player.pos, pos) <= Constants.ATTACK_RANGE:
+				cells.append(pos)
 	return cells
 
 
@@ -628,8 +678,11 @@ func _tile_slot_context(tile: TileState) -> String:
 
 func _attack_effect_preview(player_pos: Vector2i) -> Array:
 	var cells: Array = []
+	var player := state.get_player()
+	if player == null:
+		return cells
 	for unit in state.units.values():
-		if not unit.alive or unit.team != Constants.TEAM_ENEMY:
+		if not unit.alive or unit.uid == player.uid:
 			continue
 		if BoardUtils.manhattan(player_pos, unit.pos) > Constants.ATTACK_RANGE:
 			continue
@@ -915,6 +968,7 @@ func _run_editor_spawn_unit(tokens: Array, start_index: int) -> Dictionary:
 	var unit_uid: String = _data_registry().next_runtime_uid("runtime_unit")
 	var unit := UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry().get_unit_def(unit_def_id))
 	state.units[unit_uid] = unit
+	TileRules.sync_standing_ground_effects(state, unit)
 	return _finalize_editor_mutation("spawned %s at %s for team %s" % [unit_def_id, pos, team], false, {"unit_uid": unit_uid})
 
 
@@ -956,6 +1010,7 @@ func _run_editor_move_unit(tokens: Array, start_index: int) -> Dictionary:
 	if occupant != null and occupant.uid != unit.uid:
 		return _fail("destination is occupied: %s" % to_pos)
 	unit.pos = to_pos
+	TileRules.on_unit_entered(state, unit, from_pos)
 	var move_message := "moved %s from %s to %s" % [unit.unit_def_id, from_pos, to_pos]
 	if unit.uid == state.player_uid:
 		move_message = "moved player spawn to %s" % to_pos

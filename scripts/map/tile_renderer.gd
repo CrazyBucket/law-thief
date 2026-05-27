@@ -26,7 +26,7 @@ static func draw_hover_outline(canvas: Control, center: Vector2) -> void:
 	var corners: PackedVector2Array = IsoCoordinates.diamond_corners(center)
 	var closed: PackedVector2Array = corners.duplicate()
 	closed.append(corners[0])
-	canvas.draw_polyline(closed, Color(0.95, 0.95, 1.0, 0.95), 2.5, false)
+	canvas.draw_polyline(closed, Color(0.95, 0.95, 1.0, 0.95), 2.5 * IsoCoordinates.tile_scale, false)
 
 
 static func draw_highlight_fill(canvas: Control, center: Vector2, color: Color) -> void:
@@ -35,9 +35,9 @@ static func draw_highlight_fill(canvas: Control, center: Vector2, color: Color) 
 
 
 static func _draw_block(canvas: Control, center: Vector2, top: Color, left: Color, right: Color) -> void:
-	var half_w := Constants.ISO_TILE_W * 0.5
-	var half_h := Constants.ISO_TILE_H * 0.5
-	var depth := SIDE_DEPTH
+	var half_w := IsoCoordinates._half_w()
+	var half_h := IsoCoordinates._half_h()
+	var depth := SIDE_DEPTH * IsoCoordinates.tile_scale
 	var top_pts: PackedVector2Array = IsoCoordinates.diamond_corners(center)
 	# top_pts: [0]=top, [1]=right, [2]=bottom, [3]=left
 	var left_face := PackedVector2Array([
@@ -59,8 +59,8 @@ static func _draw_block(canvas: Control, center: Vector2, top: Color, left: Colo
 
 
 static func _draw_overlay(canvas: Control, center: Vector2, color: Color) -> void:
-	var half_w := Constants.ISO_TILE_W * 0.35
-	var half_h := Constants.ISO_TILE_H * 0.275
+	var half_w := IsoCoordinates._half_w() * 0.7
+	var half_h := IsoCoordinates._half_h() * 0.55
 	var points := PackedVector2Array([
 		center + Vector2(0, -half_h),
 		center + Vector2(half_w, 0),
@@ -98,9 +98,9 @@ static func _draw_water(canvas: Control, center: Vector2, edge_mask: int) -> voi
 	canvas.draw_arc(center + Vector2(-6, 0), 5.0, 0.0, TAU, 12, ripple, 1.5)
 	canvas.draw_arc(center + Vector2(8, 2), 4.0, 0.0, TAU, 12, ripple, 1.5)
 	if edge_mask & (1 << 0) == 0:
-		canvas.draw_line(center + Vector2(0, -Constants.ISO_TILE_H * 0.5), center + Vector2(-Constants.ISO_TILE_W * 0.25, -Constants.ISO_TILE_H * 0.25), ripple, 1.0)
+		canvas.draw_line(center + Vector2(0, -IsoCoordinates._half_h()), center + Vector2(-IsoCoordinates._half_w() * 0.5, -IsoCoordinates._half_h() * 0.5), ripple, 1.0)
 	if edge_mask & (1 << 2) == 0:
-		canvas.draw_line(center + Vector2(0, Constants.ISO_TILE_H * 0.5), center + Vector2(Constants.ISO_TILE_W * 0.25, Constants.ISO_TILE_H * 0.25), ripple, 1.0)
+		canvas.draw_line(center + Vector2(0, IsoCoordinates._half_h()), center + Vector2(IsoCoordinates._half_w() * 0.5, IsoCoordinates._half_h() * 0.5), ripple, 1.0)
 
 
 static func _draw_floor_noise(canvas: Control, center: Vector2, variant: int) -> void:

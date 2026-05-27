@@ -1,7 +1,48 @@
 class_name IsoCoordinates
 extends RefCounted
 
+## 战斗/地图棋盘相对视口的填充比例（由 IsometricBoard 在 resized 时写入）
+static var tile_scale: float = 1.0
+const BOARD_FILL_RATIO := 0.9
+
 # 标准 2:1 等距：菱形宽 ISO_TILE_W，半高 ISO_TILE_H，四边完美拼接
+
+static func _half_w() -> float:
+	return Constants.ISO_TILE_W * 0.5 * tile_scale
+
+
+static func _half_h() -> float:
+	return Constants.ISO_TILE_H * 0.5 * tile_scale
+
+
+static func _tile_w() -> float:
+	return Constants.ISO_TILE_W * tile_scale
+
+
+static func _tile_h() -> float:
+	return Constants.ISO_TILE_H * tile_scale
+
+
+static func compute_tile_scale(
+	view_size: Vector2,
+	board_size: Vector2i,
+	fill_ratio: float = BOARD_FILL_RATIO
+) -> float:
+	var pixel := board_pixel_size(board_size, 1.0)
+	if pixel.x <= 0.0 or pixel.y <= 0.0:
+		return 1.0
+	return minf(view_size.x * fill_ratio / pixel.x, view_size.y * fill_ratio / pixel.y)
+
+
+## 棋盘 UI 装饰（单位贴图、特效尺寸等）与地块同比例缩放
+static func visual(v: float) -> float:
+	return v * tile_scale
+
+
+static func visual_vec(v: Vector2) -> Vector2:
+	return v * tile_scale
+
+
 static func invert_grid(grid: Vector2i, board_size: Vector2i) -> Vector2i:
 	return Vector2i(board_size.x - 1 - grid.x, board_size.y - 1 - grid.y)
 
@@ -24,25 +65,25 @@ static func grid_to_screen(
 	board_size: Vector2i = Constants.BOARD_SIZE
 ) -> Vector2:
 	var display := to_display_grid(grid, board_size, invert_origin)
-	var half_w := Constants.ISO_TILE_W * 0.5
+	var half_w := _half_w()
 	return origin + Vector2(
 		(display.x - display.y) * half_w,
-		(display.x + display.y) * Constants.ISO_TILE_H * 0.5
+		(display.x + display.y) * _half_h()
 	)
 
 
 static func screen_to_grid(screen: Vector2, origin: Vector2) -> Vector2i:
 	var local := screen - origin
-	var half_w := Constants.ISO_TILE_W * 0.5
-	var half_h := Constants.ISO_TILE_H * 0.5
+	var half_w := _half_w()
+	var half_h := _half_h()
 	var gx := (local.x / half_w + local.y / half_h) * 0.5
 	var gy := (local.y / half_h - local.x / half_w) * 0.5
 	return Vector2i(int(round(gx)), int(round(gy)))
 
 
 static func diamond_corners(center: Vector2) -> PackedVector2Array:
-	var half_w := Constants.ISO_TILE_W * 0.5
-	var half_h := Constants.ISO_TILE_H * 0.5
+	var half_w := _half_w()
+	var half_h := _half_h()
 	return PackedVector2Array([
 		center + Vector2(0, -half_h),
 		center + Vector2(half_w, 0),
@@ -52,8 +93,8 @@ static func diamond_corners(center: Vector2) -> PackedVector2Array:
 
 
 static func point_in_diamond(point: Vector2, center: Vector2) -> bool:
-	var half_w := Constants.ISO_TILE_W * 0.5
-	var half_h := Constants.ISO_TILE_H * 0.5
+	var half_w := _half_w()
+	var half_h := _half_h()
 	var rel := point - center
 	if half_w <= 0.0 or half_h <= 0.0:
 		return false
@@ -98,21 +139,20 @@ static func pick_grid_at(
 	return best
 
 
-static func board_pixel_size() -> Vector2:
+static func board_pixel_size(board_size: Vector2i = Constants.BOARD_SIZE, scale: float = -1.0) -> Vector2:
 	## 棋盘实际像素边界框（含菱形边缘）
-	var half_w := Constants.ISO_TILE_W * 0.5
-	var half_h := Constants.ISO_TILE_H * 0.5
-	# 宽度：最左 grid(0,N-1) 到最右 grid(N-1,0) 的 x 跨度 + 一个菱形宽
-	var span_x: float = (Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y - 2) * half_w + Constants.ISO_TILE_W
-	# 高度：最上 grid(0,0) 到最下 grid(N-1,N-1) 的 y 跨度 + 一个菱形高
-	var span_y: float = (Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y - 2) * half_h + Constants.ISO_TILE_H
+	var s := tile_scale if scale < 0.0 else scale
+	var half_w := Constants.ISO_TILE_W * 0.5 * s
+	var half_h := Constants.ISO_TILE_H * 0.5 * s
+	var span_x: float = (board_size.x + board_size.y - 2) * half_w + Constants.ISO_TILE_W * s
+	var span_y: float = (board_size.x + board_size.y - 2) * half_h + Constants.ISO_TILE_H * s
 	return Vector2(span_x, span_y)
 
 
-static func board_origin(view_size: Vector2) -> Vector2:
+static func board_origin(view_size: Vector2, board_size: Vector2i = Constants.BOARD_SIZE) -> Vector2:
 	## 返回 grid(0,0) 的屏幕坐标，使整个棋盘在 view_size 内居中
-	var half_h := Constants.ISO_TILE_H * 0.5
-	var pixel_size := board_pixel_size()
+	var half_h := _half_h()
+	var pixel_size := board_pixel_size(board_size)
 	# 棋盘关于 origin.x 左右对称，所以 origin.x = 视图水平中心
 	var ox: float = view_size.x * 0.5
 	# 棋盘顶部边缘在 origin.y - half_h，底部在 origin.y + (N+N-2)*half_h + half_h

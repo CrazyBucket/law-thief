@@ -172,9 +172,15 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	if ctx.has_tag(TAG_SLOW_ON_HIT) and ctx.target.alive:
 		GemEffects.apply_ice_hit_effect(ctx.state, ctx.target, ctx.attacker.uid)
 
-	# 电弧：命中后弹射（6.6% 概率触发，per-target 限制1次）
-	if ctx.has_tag(TAG_ARC) and ctx.target.alive:
-		GemEffects.apply_arc_chain(ctx.state, ctx.target, ctx.attacker, ctx.base_damage, ctx.events)
+	# 红槽导电：命中水域则水域导电；否则被击者 2 格内弹射 1 次
+	if ctx.has_tag(TAG_ARC):
+		var hit_tile := ctx.state.get_tile(ctx.target.pos)
+		if hit_tile != null and hit_tile.has_tile_tag(Constants.TAG_TILE_WATER):
+			GemEffects.apply_water_conduction(ctx.state, ctx.target.pos, ctx.attacker, ctx.events)
+		elif ctx.target.alive:
+			GemEffects.apply_arc_bounce_from_victim(
+				ctx.state, ctx.target, ctx.attacker, ctx.base_damage, ctx.events
+			)
 
 
 static func _phase_post_attack(ctx: AttackContext) -> void:
@@ -249,7 +255,7 @@ static func _try_deflect(ctx: AttackContext) -> void:
 
 static func _gem_hooks_on_hit(ctx: AttackContext) -> void:
 	if ctx.has_tag(TAG_POISON) and ctx.target.alive:
-		StatusRules.apply_poison(ctx.state, ctx.target, 1, 2, ctx.attacker.uid)
+		StatusRules.apply_poison(ctx.state, ctx.target, 1, 0, ctx.attacker.uid)
 
 
 static func _gem_hooks_on_kill(ctx: AttackContext) -> void:

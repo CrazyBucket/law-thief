@@ -11,9 +11,10 @@ func _run_tests() -> void:
 	_test_lawless_reclaim_from_hand()
 	_test_lawless_on_enemy_extract()
 	_test_pillar_turn_aura()
-	_test_blue_poison_move_trail()
+	_test_blue_poison_contact()
 	_test_black_poison_death()
 	_test_player_skill_via_hook()
+	_test_water_conduction_hits_unit_standing_in_water()
 	_test_editor_console_spawns_and_edits_unit()
 	_test_editor_console_batch_move_delete_commands()
 	print("HOOK_TEST_PASS")
@@ -98,21 +99,22 @@ func _test_pillar_turn_aura() -> void:
 	print("  [OK] pillar turn aura via hook")
 
 
-func _test_blue_poison_move_trail() -> void:
+func _test_blue_poison_contact() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
+	var guard := _find_unit(state, "unit_training_guard")
 	var gem := GemState.new()
-	gem.uid = "blue_poison_trail"
+	gem.uid = "blue_poison_contact"
 	gem.gem_id = Constants.GEM_POISON
 	state.gems[gem.uid] = gem
 	player.slots[1].gem_uid = gem.uid
-	var pass_pos := player.pos + Vector2i(1, 0)
-	TileRules.on_unit_moved_through(state, player, pass_pos)
-	var tile := state.get_tile(pass_pos)
-	assert(tile.has_modifier("poison_fog"), "blue poison should leave fog on moved-through tile")
-	print("  [OK] blue poison move trail via hook")
+	assert(guard.get_status("poison") == null, "poison should not exist before contact")
+	ContactResolver.on_attack_contact(state, player, guard)
+	assert(guard.get_status("poison") != null, "blue poison contact should apply poison")
+	assert(guard.get_status("poison").stacks == 1, "contact should apply exactly 1 stack")
+	print("  [OK] blue poison contact via hook")
 
 
 func _test_black_poison_death() -> void:
@@ -149,6 +151,24 @@ func _test_player_skill_via_hook() -> void:
 	assert(not events.is_empty(), "skill should return events")
 	assert(guard.hp < hp_before, "skill hook should deal damage")
 	print("  [OK] player skill routed through active hook")
+
+
+func _test_water_conduction_hits_unit_standing_in_water() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("template_c", 42)
+	var state := ctrl.state
+	var player := state.get_player()
+	assert(ctrl.run_editor_command("move 1,6 2,5").get("ok", false), "move player in range of water")
+	assert(ctrl.run_editor_command("spawn unit_grunt 3,4 --team enemy").get("ok", false), "spawn enemy in water")
+	assert(ctrl.run_editor_command("spawn gem_conductive 2,5 --slot red").get("ok", false), "give player arc gem")
+	var guard := state.get_unit_at(Vector2i(3, 4))
+	assert(guard != null, "enemy should stand on water")
+	assert(StatusRules.is_wet(guard), "standing in water should apply wet")
+	var hp_before := guard.hp
+	var atk := ctrl.try_attack_cell(Vector2i(4, 4))
+	assert(atk.get("ok", false), "attack water should succeed")
+	assert(guard.hp < hp_before, "enemy in water should take arc damage from water shock")
+	print("  [OK] water conduction hits unit standing in water")
 
 
 func _test_editor_console_spawns_and_edits_unit() -> void:

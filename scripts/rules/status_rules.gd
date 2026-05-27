@@ -260,6 +260,7 @@ static func tick_turn_end(state: GameState) -> void:
 
 ## 地块停留效果（通过 TileRules 的进入效果表统一分发）
 static func _tick_tile_stay(state: GameState, unit: UnitState) -> void:
+	TileRules.sync_standing_ground_effects(state, unit)
 	var tile := state.get_tile(unit.pos)
 	TileRules._apply_enter_effects(state, unit, tile)
 
@@ -352,7 +353,8 @@ static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
 static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInstance) -> void:
 	match status.status_id:
 		Constants.STATUS_POISON:
-			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "poison")
+			var poison_dmg := status.stacks * Constants.POISON_FOG_DAMAGE
+			CombatRules.apply_true_damage(state, unit, poison_dmg, status.source_uid, "poison")
 		Constants.STATUS_BURNING:
 			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "burning")
 

@@ -6,18 +6,82 @@ extends RefCounted
 
 
 static func refresh_all_intents(state: GameState) -> void:
+	var cell_blockers := build_cell_occupancy(state)
+	var enemies := _sorted_enemies_for_planning(state)
+	for enemy in enemies:
+		if not enemy.alive:
+			continue
+		var start_pos: Vector2i = enemy.pos
+		enemy.intent = _compute_intent_from_ai(state, enemy, cell_blockers)
+		_apply_planned_occupancy(state, cell_blockers, enemy.uid, start_pos, intent_end_pos(enemy, enemy.intent))
+
+
+## 按当前棋盘重算单个敌人意图（敌方回合逐个行动前调用）
+static func refresh_unit_intent(state: GameState, unit: UnitState) -> void:
+	if not unit.alive or unit.team != Constants.TEAM_ENEMY:
+		return
+	unit.intent = _compute_intent_from_ai(state, unit, build_cell_occupancy(state))
+
+
+static func build_cell_occupancy(state: GameState) -> Dictionary:
+	var occupancy: Dictionary = {}
+	for unit in state.units.values():
+		if unit.alive:
+			occupancy[state.tile_key(unit.pos)] = unit.uid
+	return occupancy
+
+
+static func intent_end_pos(unit: UnitState, intent: IntentState) -> Vector2i:
+	if intent == null:
+		return unit.pos
+	if not intent.path.is_empty():
+		return intent.path[intent.path.size() - 1]
+	if intent.target_pos.x >= 0 and intent.target_pos.y >= 0:
+		return intent.target_pos
+	return unit.pos
+
+
+static func _apply_planned_occupancy(
+	state: GameState,
+	cell_blockers: Dictionary,
+	uid: String,
+	old_pos: Vector2i,
+	new_pos: Vector2i
+) -> void:
+	var old_key := state.tile_key(old_pos)
+	if str(cell_blockers.get(old_key, "")) == uid:
+		cell_blockers.erase(old_key)
+	cell_blockers[state.tile_key(new_pos)] = uid
+
+
+static func _sorted_enemies_for_planning(state: GameState) -> Array:
+	var enemies: Array = []
 	for unit in state.units.values():
 		if unit.alive and unit.team == Constants.TEAM_ENEMY:
-			unit.intent = _compute_intent_from_ai(state, unit)
+			enemies.append(unit)
+	enemies.sort_custom(func(a: UnitState, b: UnitState) -> bool:
+		var a_slug: bool = a.has_status(Constants.STATUS_SLUGGISH)
+		var b_slug: bool = b.has_status(Constants.STATUS_SLUGGISH)
+		if a_slug != b_slug:
+			return not a_slug
+		if a.speed == b.speed:
+			return a.uid < b.uid
+		return a.speed > b.speed
+	)
+	return enemies
 
 
-static func _compute_intent_from_ai(state: GameState, unit: UnitState) -> IntentState:
+static func _compute_intent_from_ai(
+	state: GameState,
+	unit: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
 	# 失律状态特殊处理（被偷红宝石后的混乱行为）
 	if StatusRules.is_lawless(unit):
 		return _lawless_intent(state, unit)
 
 	# 使用 Utility AI 决策
-	var decision := EnemyAI.decide(state, unit)
+	var decision := EnemyAI.decide(state, unit, cell_blockers)
 	var action: EnemyAI.ActionCandidate = decision.get("action", null)
 	var move_path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
 
@@ -42,7 +106,7 @@ static func _compute_intent_from_ai(state: GameState, unit: UnitState) -> Intent
 			if red_slot != null and not red_slot.gem_uid.is_empty():
 				var gem: GemState = state.gems.get(red_slot.gem_uid, null)
 				if gem != null:
-					intent = _build_skill_intent(state, unit, gem, action, move_path)
+					intent = _build_skill_intent(state, unit, gem, action, move_path, cell_blockers)
 				else:
 					intent = IntentState.wait(unit.uid)
 			else:
@@ -68,11 +132,18 @@ static func _compute_intent_from_ai(state: GameState, unit: UnitState) -> Intent
 	return intent
 
 
-static func _build_skill_intent(state: GameState, unit: UnitState, gem: GemState, action: EnemyAI.ActionCandidate, move_path: Array[Vector2i]) -> IntentState:
+static func _build_skill_intent(
+	state: GameState,
+	unit: UnitState,
+	gem: GemState,
+	action: EnemyAI.ActionCandidate,
+	move_path: Array[Vector2i],
+	cell_blockers: Dictionary = {}
+) -> IntentState:
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid
 	intent.target_uid = action.action_target_uid
-	intent.path = move_path
+	intent.path = move_path.duplicate()
 	var base_damage := CombatRules.attack_damage(state, unit)
 	var meta: Dictionary = GemEffects.get_enemy_red_intent_meta(gem, base_damage)
 	intent.type = meta.get("type", "wait")
@@ -81,7 +152,18 @@ static func _build_skill_intent(state: GameState, unit: UnitState, gem: GemState
 	if intent.type == "wait":
 		return IntentState.wait(unit.uid)
 	if intent.type == "charge_explode":
-		intent.affected_cells = BoardUtils.cells_in_radius(action.move_target, Constants.EXPLOSION_RADIUS)
+		var target: UnitState = state.units.get(action.action_target_uid, null)
+		if target != null:
+			var dash_from: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
+			var charge_path := BoardUtils.path_toward(
+				state, dash_from, target.pos, 2, unit.uid, {}, cell_blockers
+			)
+			for step in charge_path:
+				intent.path.append(step)
+			var end_pos: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
+			intent.affected_cells = BoardUtils.cells_in_radius(end_pos, Constants.EXPLOSION_RADIUS)
+			intent.target_pos = end_pos
+			intent.preview_text = "冲刺爆炸 (%d)" % Constants.EXPLOSION_DAMAGE
 
 	return intent
 
@@ -150,6 +232,10 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 		return events
 	var previous := unit.pos
 	for step in intent.path:
+		var blocker := state.get_unit_at(step)
+		if blocker != null and blocker.uid != unit.uid:
+			state.log("%s 移动受阻：%s 已被占据" % [unit.uid, step])
+			break
 		var from_pos := unit.pos
 		unit.pos = step
 		TileRules.on_unit_moved_through(state, unit, step)
@@ -268,19 +354,4 @@ static func _data_registry() -> Node:
 
 
 static func _get_water_cluster(state: GameState, origin: Vector2i) -> Array[Vector2i]:
-	var result: Array[Vector2i] = []
-	var visited: Dictionary = {}
-	var queue: Array = [origin]
-	while not queue.is_empty():
-		var current: Vector2i = queue.pop_front()
-		if visited.has(current):
-			continue
-		visited[current] = true
-		var tile := state.get_tile(current)
-		if tile.tile_id != Constants.TILE_WATER:
-			continue
-		result.append(current)
-		for neighbor in BoardUtils.neighbors4(current):
-			if not visited.has(neighbor) and BoardUtils.in_bounds(state, neighbor):
-				queue.append(neighbor)
-	return result
+	return BoardUtils.water_cluster(state, origin)

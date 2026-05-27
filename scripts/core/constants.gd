@@ -70,8 +70,8 @@ const POISON_FOG_DAMAGE := 3
 const POISON_FOG_DURATION := 2
 const POISON_SKILL_DEBUFF_TURNS := 3
 
-const ARC_PROC_CHANCE := 0.066       # 电弧触发概率 6.6%
-const ARC_PARALYSIS_CHANCE := 0.33   # 电弧麻痹概率 33%（落雷用）
+const ARC_PROC_CHANCE := 0.066       # 电弧弹射命中麻痹概率 6.6%
+const ARC_PARALYSIS_CHANCE := 0.33   # 落雷/蓝槽反击麻痹概率 33%
 const ARC_CHAIN_DAMAGE_RATIO := 0.2  # 弹射伤害倍率 20%
 const ARC_CHAIN_RANGE := 2           # 电弧弹射范围
 const ARC_HIT_DAMAGE := 8            # 电弧单次命中伤害

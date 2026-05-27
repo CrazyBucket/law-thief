@@ -26,6 +26,8 @@ var state: GameState = null:
 			_walk_phase.clear()
 			_strike_elapsed.clear()
 			_facing_screen_refs.clear()
+		if is_node_ready():
+			_update_origin()
 		call_deferred("_sync_unit_orientations")
 		queue_redraw()
 ## 为 true 时逻辑 (0,0) 显示在棋盘底部（等距原点对调，仅冒险地图）
@@ -35,16 +37,16 @@ var _board_origin: Vector2 = Vector2.ZERO
 var _animation_speed_scale: float = 1.0
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
-var _anim_queue: Array[Dictionary] = []  # 待播放动画队列
+var _anim_queue: Array[Dictionary] = [] # 待播放动画队列
 var _is_animating: bool = false
 
 var _pulse_time: float = 0.0
 
 # 移动动画：单位 uid → 当前屏幕偏移（相对于逻辑位置）
-var _move_offsets: Dictionary = {}  # uid → Vector2
+var _move_offsets: Dictionary = {} # uid → Vector2
 
 # 特效粒子
-var _particles: Array[Dictionary] = []  # {pos, color, life, max_life, velocity, type}
+var _particles: Array[Dictionary] = [] # {pos, color, life, max_life, velocity, type}
 
 var _strike_elapsed: Dictionary = {}
 var _orientation: Dictionary = {}
@@ -55,7 +57,7 @@ var _cached_puff_paths: PackedStringArray = PackedStringArray()
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _fx_textures: RefCounted = null
 # 抛射物动画：二次贝塞尔曲线飞行
-var _projectile: Dictionary = {}  # {from, to, ctrl, t, color} 空表示无飞行中抛射物
+var _projectile: Dictionary = {} # {from, to, ctrl, t, color} 空表示无飞行中抛射物
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
@@ -84,7 +86,9 @@ func _ready() -> void:
 
 
 func _update_origin() -> void:
-	_board_origin = IsoCoordinates.board_origin(size)
+	var board_sz := _board_size()
+	IsoCoordinates.tile_scale = IsoCoordinates.compute_tile_scale(size, board_sz)
+	_board_origin = IsoCoordinates.board_origin(size, board_sz)
 
 
 func _process(delta: float) -> void:
@@ -169,7 +173,7 @@ func _draw() -> void:
 		if unit != null:
 			_draw_unit(unit)
 	if hover_cell.x >= 0:
-		TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell))
+		TileRenderer.draw_hover_outline(self , grid_to_screen(hover_cell))
 	# 绘制粒子特效
 	_draw_particles()
 	_draw_projectile()
@@ -185,26 +189,26 @@ func _draw_highlight_outlines() -> void:
 		var closed: PackedVector2Array = corners.duplicate()
 		closed.append(corners[0])
 		var c := Color(1.0, 0.92, 0.3, 0.55 + pulse * 0.35)
-		draw_polyline(closed, c, 1.8, false)
+		draw_polyline(closed, c, IsoCoordinates.visual(1.8), false)
 	for grid in danger:
 		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
 		var closed: PackedVector2Array = corners.duplicate()
 		closed.append(corners[0])
 		var c := Color(1.0, 0.28, 0.28, 0.5 + pulse * 0.35)
-		draw_polyline(closed, c, 1.8, false)
+		draw_polyline(closed, c, IsoCoordinates.visual(1.8), false)
 	for grid in effect_list:
 		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
 		var closed: PackedVector2Array = corners.duplicate()
 		closed.append(corners[0])
 		var c := Color(1.0, 0.52, 0.15, 0.45 + pulse * 0.3)
-		draw_polyline(closed, c, 1.5, false)
+		draw_polyline(closed, c, IsoCoordinates.visual(1.5), false)
 
 
 func _draw_tile(grid: Vector2i) -> void:
 	var center := grid_to_screen(grid)
 	var tile := state.get_tile(grid)
 	var highlight := _tile_highlight(grid)
-	TileRenderer.draw_tile(self, center, tile, highlight)
+	TileRenderer.draw_tile(self , center, tile, highlight)
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
@@ -235,9 +239,9 @@ func _draw_unit(unit: UnitState) -> void:
 	var center := grid_to_screen(unit.pos)
 	var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
 	center += offset
-	var sprite_size := Vector2(62.0, 70.0)
-	var ground_nudge := Vector2(0.0, _UNIT_SPRITE_GROUND_OFFSET_Y)
-	var top_left := center + Vector2(-sprite_size.x * 0.5, -sprite_size.y + 2.0) + ground_nudge
+	var sprite_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
+	var ground_nudge := Vector2(0.0, IsoCoordinates.visual(_UNIT_SPRITE_GROUND_OFFSET_Y))
+	var top_left := center + Vector2(-sprite_size.x * 0.5, -sprite_size.y + IsoCoordinates.visual(2.0)) + ground_nudge
 	var facing := str(_orientation.get(unit.uid, _default_facing()))
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
 
@@ -256,7 +260,7 @@ func _draw_unit(unit: UnitState) -> void:
 	var sdw: Texture2D = _knight_sprites.texture_shadow() if _knight_sprites != null else null
 	if sdw != null:
 		var sh_sz := Vector2(sprite_size.x * 0.82, sprite_size.y * 0.24)
-		var sh_tl := center + Vector2(-sh_sz.x * 0.5, -2.0) + ground_nudge
+		var sh_tl := center + Vector2(-sh_sz.x * 0.5, -IsoCoordinates.visual(2.0)) + ground_nudge
 		draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.42))
 
 	if pose_tex != null:
@@ -265,12 +269,12 @@ func _draw_unit(unit: UnitState) -> void:
 		var corners := IsoCoordinates.diamond_corners(center)
 		var closed := corners.duplicate()
 		closed.append(corners[0])
-		draw_polyline(closed, Color(1, 1, 1, 0.9), 2.0, false)
+		draw_polyline(closed, Color(1, 1, 1, 0.9), IsoCoordinates.visual(2.0), false)
 	_draw_unit_statuses(unit, center + ground_nudge)
-	_draw_gem_diamonds(unit, center + Vector2(0, -sprite_size.y - 4) + ground_nudge)
-	_draw_hp_bar(center + Vector2(-18, 6), unit)
+	_draw_gem_diamonds(unit, center + Vector2(0, -sprite_size.y - IsoCoordinates.visual(4.0)) + ground_nudge)
+	_draw_hp_bar(center + IsoCoordinates.visual_vec(Vector2(-18, 6)), unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		_draw_intent_badge(center + Vector2(20, -sprite_size.y + 6) + ground_nudge, unit.intent)
+		_draw_intent_badge(center + Vector2(IsoCoordinates.visual(20.0), -sprite_size.y + IsoCoordinates.visual(6.0)) + ground_nudge, unit.intent)
 
 
 func _draw_unit_statuses(unit: UnitState, center: Vector2) -> void:
@@ -305,7 +309,7 @@ func _draw_unit_statuses(unit: UnitState, center: Vector2) -> void:
 					var py := -10.0 + fmod(phase * 15.0, 25.0)
 					draw_line(center + Vector2(-12 + i * 24, py), center + Vector2(-12 + i * 24, py + 6), Color(0.3, 0.6, 1.0, 0.6), 2.0)
 			Constants.STATUS_ARMOR:
-				draw_arc(center + Vector2(0, -25), 24.0, -PI*0.75, -PI*0.25, 8, Color(0.6, 0.6, 0.7, 0.8), 2.0)
+				draw_arc(center + Vector2(0, -25), 24.0, -PI * 0.75, -PI * 0.25, 8, Color(0.6, 0.6, 0.7, 0.8), 2.0)
 
 func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
 	var gems_to_draw: Array = []
@@ -318,7 +322,7 @@ func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
 		gems_to_draw.append({"slot": slot, "gem": gem})
 	if gems_to_draw.is_empty():
 		return
-	var spacing := 14.0
+	var spacing := IsoCoordinates.visual(14.0)
 	var start_x := anchor.x - (gems_to_draw.size() - 1) * spacing * 0.5
 	for i in range(gems_to_draw.size()):
 		var entry: Dictionary = gems_to_draw[i]
@@ -328,8 +332,8 @@ func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
 		var color: Color = UnitLooks.gem_color(gem).lerp(UnitLooks.slot_color(slot.slot_type), 0.25)
 		if slot.locked:
 			color = color.darkened(0.35)
-		_draw_small_diamond(pos, 11.0, 7.0, color)
-		draw_string(ThemeDB.fallback_font, pos + Vector2(-5, 3), UnitLooks.gem_symbol(gem), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.08, 0.08, 0.1))
+		_draw_small_diamond(pos, IsoCoordinates.visual(11.0), IsoCoordinates.visual(7.0), color)
+		draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(-5, 3)), UnitLooks.gem_symbol(gem), HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(9.0)), Color(0.08, 0.08, 0.1))
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
@@ -340,22 +344,23 @@ func _draw_small_diamond(center: Vector2, width: float, height: float, color: Co
 		center + Vector2(-width * 0.5, 0),
 	])
 	draw_colored_polygon(points, color)
-	draw_polyline(points, color.darkened(0.35), 1.2, true)
+	draw_polyline(points, color.darkened(0.35), IsoCoordinates.visual(1.2), true)
 
 
 func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
-	var width := 36.0
+	var width := IsoCoordinates.visual(36.0)
+	var bar_h := IsoCoordinates.visual(5.0)
 	var ratio := clampf(float(unit.hp) / float(maxi(unit.max_hp, 1)), 0.0, 1.0)
-	draw_rect(Rect2(center, Vector2(width, 5)), Color(0.12, 0.12, 0.16, 0.85))
+	draw_rect(Rect2(center, Vector2(width, bar_h)), Color(0.12, 0.12, 0.16, 0.85))
 	var fill_color := Color(0.25, 0.85, 0.45) if unit.team == Constants.TEAM_PLAYER else Color(0.9, 0.35, 0.45)
-	draw_rect(Rect2(center, Vector2(width * ratio, 5)), fill_color)
+	draw_rect(Rect2(center, Vector2(width * ratio, bar_h)), fill_color)
 	if not unit.statuses.is_empty():
-		const ICON_SIZE := 13.0
-		const GAP := 2.0
+		var icon_sz := IsoCoordinates.visual(13.0)
+		var gap := IsoCoordinates.visual(2.0)
 		var count := unit.statuses.size()
-		var row_w := float(count) * ICON_SIZE + float(maxi(0, count - 1)) * GAP
+		var row_w := float(count) * icon_sz + float(maxi(0, count - 1)) * gap
 		var row_x := center.x + (width - row_w) * 0.5
-		_draw_status_row(Vector2(row_x, center.y + 7.0), unit)
+		_draw_status_row(Vector2(row_x, center.y + IsoCoordinates.visual(7.0)), unit, icon_sz, gap)
 
 
 func _sync_unit_orientations() -> void:
@@ -380,7 +385,8 @@ func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
 
 
 func _pick_facing_for_screen_delta(screen_delta: Vector2) -> String:
-	if screen_delta.length_squared() < 4.0:
+	var facing_thresh := IsoCoordinates.visual(4.0)
+	if screen_delta.length_squared() < facing_thresh * facing_thresh:
 		return _default_facing()
 	_ensure_facing_screen_refs()
 	var dir := screen_delta.normalized()
@@ -428,16 +434,16 @@ func _default_facing() -> String:
 	return "DR"
 
 
-func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
-	const ICON_SIZE := 13.0
-	const GAP := 2.0
-	const FONT_SIZE := 9
-	const PAD_X := 3.0
-	const PAD_Y := 2.0
+func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0, gap: float = -1.0) -> void:
+	var ICON_SIZE := icon_size if icon_size > 0.0 else IsoCoordinates.visual(13.0)
+	var GAP := gap if gap > 0.0 else IsoCoordinates.visual(2.0)
+	var FONT_SIZE := int(IsoCoordinates.visual(9.0))
+	var PAD_X := IsoCoordinates.visual(3.0)
+	var PAD_Y := IsoCoordinates.visual(2.0)
 	var sorted: Array = StatusRegistry.sort_statuses(unit.statuses)
 	var cursor_x := origin.x
 	for status in sorted:
-		if StatusIcons.draw_icon(self, Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE):
+		if StatusIcons.draw_icon(self , Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE):
 			var badge_text: String = StatusRegistry.icon_badge(status)
 			if not badge_text.is_empty():
 				var font := ThemeDB.fallback_font
@@ -461,30 +467,30 @@ func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
 
 func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
 	var icon: String = IntentState.intent_icon(intent.type)
-	var badge_w: float = 26.0
+	var badge_w: float = IsoCoordinates.visual(26.0)
 	var has_dmg: bool = intent.damage > 0
 	if has_dmg:
-		badge_w = 38.0
-	var badge_size := Vector2(badge_w, 20.0)
+		badge_w = IsoCoordinates.visual(38.0)
+	var badge_size := Vector2(badge_w, IsoCoordinates.visual(20.0))
 	var border_color: Color = _intent_badge_color(intent.type)
 	draw_rect(Rect2(pos, badge_size), Color(0.08, 0.08, 0.12, 0.88))
-	draw_rect(Rect2(pos, badge_size), border_color, false, 1.2)
-	draw_string(ThemeDB.fallback_font, pos + Vector2(3, 14), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+	draw_rect(Rect2(pos, badge_size), border_color, false, IsoCoordinates.visual(1.2))
+	draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(3, 14)), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(13.0)), Color.WHITE)
 	if has_dmg:
-		draw_string(ThemeDB.fallback_font, pos + Vector2(18, 14), str(intent.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1.0, 0.78, 0.45))
+		draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(18, 14)), str(intent.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(10.0)), Color(1.0, 0.78, 0.45))
 
 
 func _intent_badge_color(intent_type: String) -> Color:
 	match intent_type:
-		"melee_attack":    return Color(0.95, 0.35, 0.35, 0.95)
-		"charge_explode":  return Color(1.0, 0.55, 0.1, 0.95)
-		"pull":            return Color(0.6, 0.35, 0.9, 0.95)
-		"poison_attack":   return Color(0.35, 0.85, 0.45, 0.95)
-		"arc_attack":      return Color(0.95, 0.9, 0.25, 0.95)
-		"fire_attack":     return Color(1.0, 0.45, 0.15, 0.95)
-		"ice_attack":      return Color(0.45, 0.85, 1.0, 0.95)
-		"extract":         return Color(0.95, 0.25, 0.75, 0.95)
-		"move":            return Color(0.45, 0.75, 0.95, 0.95)
+		"melee_attack": return Color(0.95, 0.35, 0.35, 0.95)
+		"charge_explode": return Color(1.0, 0.55, 0.1, 0.95)
+		"pull": return Color(0.6, 0.35, 0.9, 0.95)
+		"poison_attack": return Color(0.35, 0.85, 0.45, 0.95)
+		"arc_attack": return Color(0.95, 0.9, 0.25, 0.95)
+		"fire_attack": return Color(1.0, 0.45, 0.15, 0.95)
+		"ice_attack": return Color(0.45, 0.85, 1.0, 0.95)
+		"extract": return Color(0.95, 0.25, 0.75, 0.95)
+		"move": return Color(0.45, 0.75, 0.95, 0.95)
 		"lawless_extract", "lawless_attack", "lawless_move": return Color(0.9, 0.2, 0.2, 0.95)
 	return Color(0.55, 0.58, 0.68, 0.85)
 
@@ -577,9 +583,11 @@ func _push_sprite_sequence(cfg: Dictionary) -> bool:
 	var fps_val: float = float(cfg.get("fps", 26.0))
 	var draw_here: Variant = cfg.get("draw_size", Vector2(88.0, 88.0))
 	var draw_sz: Vector2 = draw_here if draw_here is Vector2 else Vector2(88.0, 88.0)
+	draw_sz = IsoCoordinates.visual_vec(draw_sz)
 	var tint: Color = cfg.get("tint", Color.WHITE)
 	var vel_here: Variant = cfg.get("velocity", Vector2.ZERO)
 	var vel2: Vector2 = vel_here if vel_here is Vector2 else Vector2.ZERO
+	vel2 = IsoCoordinates.visual_vec(vel2)
 	var extra_life := float(cfg.get("life_pad", 0.05))
 	var dur := float(packed_paths.size()) / maxf(fps_val, 0.01) + extra_life
 	_particles.append({
@@ -600,11 +608,11 @@ func _push_sprite_sequence(cfg: Dictionary) -> bool:
 ## 播放伤害/爆炸特效
 func play_damage_effect(grid: Vector2i, damage: int, is_crit: bool) -> void:
 	var hit_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_SMALL_HIT)
-	var center_scr: Vector2 = grid_to_screen(grid) + Vector2(0.0, -16.0)
+	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -16.0))
 	var used_pack := false
 	if _Vpf.is_pack_available() and not hit_paths.is_empty():
-		var dim_big := 72.0
-		var dim_small := 56.0
+		var dim_big := IsoCoordinates.visual(72.0)
+		var dim_small := IsoCoordinates.visual(56.0)
 		var dim := dim_small
 		if is_crit:
 			dim = dim_big
@@ -634,7 +642,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 	
 	# 加入一个居中的打击十字/星形特效（类型 hit_mark）
 	_particles.append({
-		"pos": center + Vector2(0, -15),
+		"pos": center + IsoCoordinates.visual_vec(Vector2(0, -15)),
 		"color": Color(1.0, 1.0, 1.0, 0.9) if not is_crit else Color(1.0, 0.4, 0.4, 1.0),
 		"life": 0.25,
 		"max_life": 0.25,
@@ -645,12 +653,12 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 	
 	for _i in range(count):
 		var angle: float = randf() * TAU
-		var speed: float = randf_range(60.0, 180.0)
+		var speed: float = randf_range(IsoCoordinates.visual(60.0), IsoCoordinates.visual(180.0))
 		var vel: Vector2 = Vector2(cos(angle), sin(angle)) * speed
 		var life: float = randf_range(0.3, 0.6)
 		var color: Color = base_color.lerp(Color.WHITE, randf() * 0.4)
 		_particles.append({
-			"pos": center + Vector2(randf_range(-8, 8), randf_range(-20, -5)),
+			"pos": center + Vector2(randf_range(-IsoCoordinates.visual(8.0), IsoCoordinates.visual(8.0)), randf_range(-IsoCoordinates.visual(20.0), -IsoCoordinates.visual(5.0))),
 			"color": color,
 			"life": life,
 			"max_life": life,
@@ -662,7 +670,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 ## 播放治疗特效
 func play_heal_effect(grid: Vector2i) -> void:
 	var heal_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_HEAL_CHARGE)
-	var center_scr: Vector2 = grid_to_screen(grid) + Vector2(0.0, -20.0)
+	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -20.0))
 	var used_pack := false
 	if _Vpf.is_pack_available() and not heal_paths.is_empty():
 		used_pack = _push_sprite_sequence({
@@ -675,9 +683,9 @@ func play_heal_effect(grid: Vector2i) -> void:
 			"life_pad": 0.04,
 		})
 	if not used_pack:
-		var center_legacy: Vector2 = grid_to_screen(grid) + Vector2(0, -20)
+		var center_legacy: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
 		for _i in range(8):
-			var vel: Vector2 = Vector2(randf_range(-20, 20), randf_range(-80, -40))
+			var vel: Vector2 = Vector2(randf_range(-IsoCoordinates.visual(20.0), IsoCoordinates.visual(20.0)), randf_range(-IsoCoordinates.visual(80.0), -IsoCoordinates.visual(40.0)))
 			var life: float = randf_range(0.4, 0.8)
 			_particles.append({
 				"pos": center_legacy + Vector2(randf_range(-12, 12), randf_range(0, 10)),
@@ -693,7 +701,7 @@ func play_heal_effect(grid: Vector2i) -> void:
 ## 播放宝石拔出/嵌入闪光
 func play_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	var sparkle_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_GEM_SPARK)
-	var center_scr: Vector2 = grid_to_screen(grid) + Vector2(0.0, -30.0)
+	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -30.0))
 	var pulse_tint: Color = Color.WHITE.lerp(gem_color, 0.55)
 	var used_pack := false
 	if _Vpf.is_pack_available() and not sparkle_paths.is_empty():
@@ -707,10 +715,10 @@ func play_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 			"life_pad": 0.03,
 		})
 	if not used_pack:
-		var center_legacy: Vector2 = grid_to_screen(grid) + Vector2(0, -30)
+		var center_legacy: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0, -30))
 		for _i in range(6):
 			var angle: float = randf() * TAU
-			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * randf_range(30, 80)
+			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * randf_range(IsoCoordinates.visual(30.0), IsoCoordinates.visual(80.0))
 			var life: float = randf_range(0.2, 0.5)
 			_particles.append({
 				"pos": center_legacy,
@@ -731,16 +739,16 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int) -> void:
 	for cell in BoardUtilsClass.cells_in_radius(anchor_grid, radius):
 		if not BoardUtilsClass.in_bounds(state, cell):
 			continue
-		var base: Vector2 = grid_to_screen(cell) + Vector2(0, -10)
+		var base: Vector2 = grid_to_screen(cell) + IsoCoordinates.visual_vec(Vector2(0, -10))
 		var placed_pack := false
 		if _Vpf.is_pack_available() and not puff_vfx.is_empty():
 			placed_pack = _push_sprite_sequence({
 				"paths": puff_vfx,
-				"pos": base + Vector2(randf_range(-12, 12), randf_range(-14, 6)),
+				"pos": base + Vector2(randf_range(-IsoCoordinates.visual(12.0), IsoCoordinates.visual(12.0)), randf_range(-IsoCoordinates.visual(14.0), IsoCoordinates.visual(6.0))),
 				"fps": 42.0,
 				"draw_size": Vector2(72.0, 72.0),
 				"tint": Color(0.38, 0.95, 0.52),
-				"velocity": Vector2(randf_range(-10, 10), randf_range(-22, -6)),
+				"velocity": Vector2(randf_range(-IsoCoordinates.visual(10.0), IsoCoordinates.visual(10.0)), randf_range(-IsoCoordinates.visual(22.0), -IsoCoordinates.visual(6.0))),
 				"life_pad": 0.03,
 			})
 		if not placed_pack:
@@ -749,10 +757,10 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int) -> void:
 				var life_here: float = randf_range(0.48, 0.62)
 				_particles.append({
 					"type": "sprite_seq",
-					"pos": base + Vector2(randf_range(-14, 14), randf_range(-18, 8)),
+					"pos": base + Vector2(randf_range(-IsoCoordinates.visual(14.0), IsoCoordinates.visual(14.0)), randf_range(-IsoCoordinates.visual(18.0), IsoCoordinates.visual(8.0))),
 					"life": life_here,
 					"max_life": life_here,
-					"velocity": Vector2(randf_range(-18, 18), randf_range(-32, -12)),
+					"velocity": Vector2(randf_range(-IsoCoordinates.visual(18.0), IsoCoordinates.visual(18.0)), randf_range(-IsoCoordinates.visual(32.0), -IsoCoordinates.visual(12.0))),
 					"frame_time": 0.0,
 					"fps": randf_range(16.0, 22.0),
 					"paths": puff_legacy,
@@ -765,7 +773,7 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int) -> void:
 ## 爆炸（宝石/敌人）：优先 VFX 包；缺失时沿用程序粒子。
 func play_explosion(grid: Vector2i) -> void:
 	var exp_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_EXPLOSION)
-	var center_scr: Vector2 = grid_to_screen(grid) + Vector2(0.0, -24.0)
+	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -24.0))
 	var ok := false
 	if _Vpf.is_pack_available() and not exp_paths.is_empty():
 		ok = _push_sprite_sequence({
@@ -849,8 +857,8 @@ func _draw_particles() -> void:
 				var thick := (3.0 * alpha + 1.0) * scale
 				draw_line(pos + Vector2(-len, -len), pos + Vector2(len, len), color, thick)
 				draw_line(pos + Vector2(-len, len), pos + Vector2(len, -len), color, thick)
-				draw_line(pos + Vector2(-len*1.2, 0), pos + Vector2(len*1.2, 0), color, thick * 0.6)
-				draw_line(pos + Vector2(0, -len*1.2), pos + Vector2(0, len*1.2), color, thick * 0.6)
+				draw_line(pos + Vector2(-len * 1.2, 0), pos + Vector2(len * 1.2, 0), color, thick * 0.6)
+				draw_line(pos + Vector2(0, -len * 1.2), pos + Vector2(0, len * 1.2), color, thick * 0.6)
 			"sprite_seq":
 				if _fx_textures == null:
 					continue
@@ -886,12 +894,11 @@ func _puff_sprite_paths() -> PackedStringArray:
 ## 播放玩家投射物：从 from_grid 飞向 to_grid，走贝塞尔弧线
 ## 落地后 emit animation_finished
 func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
-	var from_scr: Vector2 = grid_to_screen(from_grid) + Vector2(0, -20)
-	var to_scr: Vector2 = grid_to_screen(to_grid) + Vector2(0, -20)
+	var from_scr: Vector2 = grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
+	var to_scr: Vector2 = grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
 	var mid: Vector2 = (from_scr + to_scr) * 0.5
 	var dist: float = from_scr.distance_to(to_scr)
-	# 控制点向上偏移，距离越远弧度越明显
-	var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, 28.0, 90.0))
+	var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, IsoCoordinates.visual(28.0), IsoCoordinates.visual(90.0)))
 	_projectile = {
 		"from": from_scr,
 		"to": to_scr,
@@ -899,7 +906,7 @@ func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color =
 		"t": 0.0,
 		"color": proj_color,
 	}
-	var duration: float = _scaled_duration(clampf(dist / 520.0, 0.18, 0.38))
+	var duration: float = _scaled_duration(clampf(dist / IsoCoordinates.visual(520.0), 0.18, 0.38))
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_IN_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
@@ -946,16 +953,15 @@ func _draw_projectile() -> void:
 		var trail_pos: Vector2 = tinv * tinv * from + 2.0 * tinv * trail_t * ctrl + trail_t * trail_t * to
 		var trail_color: Color = color
 		trail_color.a = alpha
-		draw_line(pos, trail_pos, trail_color, maxf(3.0 - s * 1.5, 0.5))
+		draw_line(pos, trail_pos, trail_color, maxf(IsoCoordinates.visual(3.0) - s * IsoCoordinates.visual(1.5), IsoCoordinates.visual(0.5)))
 
-	# 弹头：菱形
 	var perp: Vector2 = Vector2(-tangent.y, tangent.x)
-	var tip: Vector2 = pos + tangent * 7.0
-	var tail_pt: Vector2 = pos - tangent * 5.0
-	var left_pt: Vector2 = pos + perp * 3.5
-	var right_pt: Vector2 = pos - perp * 3.5
+	var tip: Vector2 = pos + tangent * IsoCoordinates.visual(7.0)
+	var tail_pt: Vector2 = pos - tangent * IsoCoordinates.visual(5.0)
+	var left_pt: Vector2 = pos + perp * IsoCoordinates.visual(3.5)
+	var right_pt: Vector2 = pos - perp * IsoCoordinates.visual(3.5)
 	var pts := PackedVector2Array([tip, left_pt, tail_pt, right_pt])
 	draw_colored_polygon(pts, color)
 	var outline_color: Color = color.darkened(0.3)
 	outline_color.a = 0.85
-	draw_polyline(PackedVector2Array([tip, left_pt, tail_pt, right_pt, tip]), outline_color, 1.0)
+	draw_polyline(PackedVector2Array([tip, left_pt, tail_pt, right_pt, tip]), outline_color, IsoCoordinates.visual(1.0))

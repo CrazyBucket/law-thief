@@ -111,7 +111,7 @@ static func icon_badge(status: StatusInstance) -> String:
 static func tooltip(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON:
-			return "中毒：回合结束受到 %d 点真实伤害，层数递减" % status.stacks
+			return "中毒：回合结束受到 %d 点真实伤害，层数递减" % (status.stacks * Constants.POISON_FOG_DAMAGE)
 		Constants.STATUS_BURNING:
 			return "着火：回合结束受到 %d 点真实伤害，层数递减；处于火焰中层数x2" % status.stacks
 		Constants.STATUS_PARALYZED:
