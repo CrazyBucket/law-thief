@@ -1,6 +1,21 @@
 class_name GameState
 extends RefCounted
 
+# ─── 战斗生命周期信号 ─────────────────────────────────────────────────────────
+signal on_battle_start
+signal on_battle_end(result: String)
+signal on_turn_start(turn_index: int)
+signal on_turn_end(turn_index: int)
+
+# ─── 攻击流程信号 ─────────────────────────────────────────────────────────────
+signal on_attack_prepare(attacker_uid: String, target_uid: String, tags: Array)
+signal on_attack_hit(attacker_uid: String, target_uid: String, damage: int)
+
+# ─── 单位状态信号 ─────────────────────────────────────────────────────────────
+signal on_damage_taken(unit_uid: String, amount: int, reason: String)
+signal on_unit_die(unit_uid: String, killer_uid: String, reason: String)
+signal on_unit_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
+
 var version: int = 1
 var run_seed: int = 0
 var turn_index: int = 1

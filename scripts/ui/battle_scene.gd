@@ -4,6 +4,9 @@ const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
+const DamageTextManagerScript = preload("res://scripts/ui/damage_text_manager.gd")
+
+var _dmg_text: Node = null
 
 @onready var _board: Control = $BoardLayer/IsometricBoard
 @onready var _status_panel: PanelContainer = $HudLayer/StatusPanel
@@ -35,7 +38,6 @@ const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 @onready var _bottom_dock: PanelContainer = $HudLayer/BottomDock
 @onready var _move_btn: Button = $HudLayer/BottomDock/BottomBar/MoveGroup/MoveBtn
 @onready var _attack_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn
-@onready var _skill_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/SkillBtn
 @onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn
 @onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn
 @onready var _trigger_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn
@@ -65,6 +67,7 @@ func _ready() -> void:
 	_board.cell_hovered.connect(_on_cell_hovered)
 	_apply_ui_theme()
 	_create_slot_popup()
+	_create_damage_text_manager()
 	_create_level_console()
 	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
@@ -95,6 +98,11 @@ func _create_slot_popup() -> void:
 	_slot_popup.slot_selected.connect(_on_popup_slot_selected)
 	_slot_popup.tile_slot_selected.connect(_on_popup_tile_slot_selected)
 	_slot_popup.cancelled.connect(_on_popup_cancelled)
+
+
+func _create_damage_text_manager() -> void:
+	_dmg_text = DamageTextManagerScript.new()
+	get_tree().root.add_child(_dmg_text)
 
 
 func _create_level_console() -> void:
@@ -169,20 +177,12 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 					if from_pos.x >= 0:
 						_board.play_projectile(from_pos, to_pos)
 						await _board.animation_finished
-					# 消费 pipeline 产生的后续事件（爆炸、击退等）
+						await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 					var attack_events: Array = atk_res.get("attack_events", [])
 					for ev in attack_events:
 						await _play_anim_event(ev)
 					_player_animating = false
 					_refresh()
-		Constants.ACTION_SKILL:
-			_dismiss_popup()
-			var skill_result := _controller.try_skill(cell)
-			_show_result(skill_result)
-			if skill_result.get("ok", false):
-				var skill_events: Array = skill_result.get("events", [])
-				for ev in skill_events:
-					await _play_anim_event(ev)
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
@@ -333,7 +333,7 @@ func _run_enemy_phase_async() -> void:
 		var events: Array[Dictionary] = _controller.execute_single_enemy(enemy)
 		for ev in events:
 			await _play_anim_event(ev)
-		await get_tree().create_timer(_scaled_anim_time(0.2)).timeout
+		await get_tree().create_timer(_scaled_anim_time(0.35)).timeout
 		_board.queue_redraw()
 		_refresh()
 		_consume_enemy_turn(enemy.uid)
@@ -351,26 +351,38 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"move_step":
 			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
 			await _board.animation_finished
+			await get_tree().create_timer(_scaled_anim_time(0.06)).timeout
 		"damage":
 			var atk_uid: String = str(ev.get("attacker_uid", ""))
+			var dmg_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
+			var dmg_val: int = ev.get("damage", 1)
+			var is_crit: bool = ev.get("is_crit", false)
 			if atk_uid != "":
-				_board.start_strike_effect(atk_uid, ev.get("pos", Vector2i.ZERO))
-			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), ev.get("damage", 1), ev.get("is_crit", false))
-			await get_tree().create_timer(_scaled_anim_time(0.3)).timeout
+				_board.start_strike_effect(atk_uid, dmg_pos)
+				await get_tree().create_timer(_scaled_anim_time(0.12)).timeout
+			_board.play_damage_effect(dmg_pos, dmg_val, is_crit)
+			_spawn_damage_text(dmg_pos, dmg_val, is_crit, ev.get("reason", ""))
+			await get_tree().create_timer(_scaled_anim_time(0.38)).timeout
 		"explode":
 			var pos_ev: Vector2i = ev.get("pos", Vector2i.ZERO)
 			_board.play_explosion(pos_ev)
 			_board.queue_redraw()
-			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
 		"poison_burst":
 			var ppos: Variant = ev.get("pos", Vector2i.ZERO)
 			var prad_i: Variant = ev.get("radius", 1)
 			_board.play_poison_burst(ppos, int(prad_i))
-			await get_tree().create_timer(_scaled_anim_time(0.5)).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
 			_board.queue_redraw()
 		"gem_flash":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
-			await get_tree().create_timer(_scaled_anim_time(0.25)).timeout
+			await get_tree().create_timer(_scaled_anim_time(0.32)).timeout
+
+
+func _exit_tree() -> void:
+	if _dmg_text != null and is_instance_valid(_dmg_text):
+		_dmg_text.queue_free()
+		_dmg_text = null
 
 
 func _on_back_pressed() -> void:
@@ -674,35 +686,16 @@ func _refresh_action_buttons() -> void:
 	var can_act: bool = not _enemy_phase_running
 	_move_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_MOVE)
 	_attack_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_ATTACK)
-	_skill_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_SKILL)
 	_extract_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_EXTRACT)
 	_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT)
 	_trigger_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_TRIGGER)
 	_end_turn_btn.disabled = not can_act or _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER
 	BattleUiTheme.apply_button(_move_btn, "move", current == Constants.ACTION_MOVE)
 	BattleUiTheme.apply_button(_attack_btn, "combat", current == Constants.ACTION_ATTACK)
-	BattleUiTheme.apply_button(_skill_btn, "skill", current == Constants.ACTION_SKILL)
 	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
 	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
 	BattleUiTheme.apply_button(_trigger_btn, "gem", current == Constants.ACTION_TRIGGER)
 	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
-	if _controller.can_use_action(Constants.ACTION_SKILL):
-		var held := _controller.get_held_gem()
-		if held != null:
-			_skill_btn.text = "技能·%s" % _data_registry().get_gem_display_name(held)
-		else:
-			var player := _controller.state.get_player()
-			var red := player.get_slot(Constants.SLOT_RED) if player != null else null
-			if red != null and not red.gem_uid.is_empty():
-				var gem: GemState = _controller.state.gems.get(red.gem_uid, null)
-				if gem != null:
-					_skill_btn.text = "技能·%s" % _data_registry().get_gem_display_name(gem)
-				else:
-					_skill_btn.text = "技能"
-			else:
-				_skill_btn.text = "技能"
-	else:
-		_skill_btn.text = "技能"
 	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
 	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
 
@@ -766,6 +759,26 @@ func _on_anim_damage(grid: Vector2i, damage: int, is_crit: bool) -> void:
 
 func _on_anim_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	_board.play_gem_flash(grid, gem_color)
+
+
+func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: String) -> void:
+	if _dmg_text == null or value <= 0:
+		return
+	var board_global: Vector2 = _board.global_position
+	var cell_screen: Vector2 = _board.grid_to_screen(grid)
+	var world_pos: Vector2 = board_global + cell_screen + Vector2(0, -24)
+	var dmg_type: String
+	if is_crit:
+		dmg_type = DamageTextManagerScript.DMG_CRIT
+	elif reason == "spike":
+		dmg_type = DamageTextManagerScript.DMG_FIRE
+	elif reason == "poison":
+		dmg_type = DamageTextManagerScript.DMG_POISON
+	elif reason == "lawless_attack":
+		dmg_type = DamageTextManagerScript.DMG_TRUE
+	else:
+		dmg_type = DamageTextManagerScript.DMG_NORMAL
+	_dmg_text.spawn(world_pos, value, dmg_type)
 
 
 func _show_tutorial_intro() -> void:

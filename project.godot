@@ -32,11 +32,6 @@ I18nService="*res://scripts/services/i18n_service.gd"
 DebugService="*res://scripts/services/debug_service.gd"
 UnitLooks="*res://scripts/services/unit_looks.gd"
 
-[internationalization]
-
-locale/translations=PackedStringArray("res://localization/strings.zh_CN.translation", "res://localization/strings.en_US.translation")
-locale="zh_CN"
-
 [display]
 
 window/size/viewport_width=1600
@@ -74,6 +69,11 @@ end_turn={
 "deadzone": 0.5,
 "events": []
 }
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://localization/strings.zh_CN.translation", "res://localization/strings.en_US.translation")
+locale="zh_CN"
 
 [rendering]
 

@@ -128,8 +128,10 @@ func _play_intro_animation() -> void:
 	_tagline.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55, 0.8))
 
 
-func _on_tutorial_pressed() -> void:
-	_start_battle("tutorial_001")
+func _on_start_pressed() -> void:
+	var encounters: Array[String] = ["template_a", "template_b", "template_c", "template_d"]
+	var pick: String = encounters[randi() % encounters.size()]
+	_start_battle(pick)
 
 
 func _on_map_pressed() -> void:
@@ -141,24 +143,7 @@ func _on_map_pressed() -> void:
 	)
 
 
-func _on_template_a_pressed() -> void:
-	_start_battle("template_a")
-
-
-func _on_template_b_pressed() -> void:
-	_start_battle("template_b")
-
-
-func _on_template_c_pressed() -> void:
-	_start_battle("template_c")
-
-
-func _on_template_d_pressed() -> void:
-	_start_battle("template_d")
-
-
 func _start_battle(encounter_id: String) -> void:
-	# 淡出过渡
 	var tween := create_tween()
 	tween.tween_property(self, "modulate:a", 0.0, 0.25)
 	tween.tween_callback(func():

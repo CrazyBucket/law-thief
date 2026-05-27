@@ -94,3 +94,20 @@ const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫�
 const TILE_MOD_POISON_FOG := "poison_fog"
 const TILE_MOD_FIRE := "fire"
 const FIRE_DURATION := 2
+
+# ─── 单位语义标签 ──────────────────────────────────────────────────────────────
+# 通过 unit.has_tag() 查询，避免在业务逻辑中硬编码 unit_def_id 字符串
+const TAG_UNIT_BOMBER    := "unit:bomber"    # 自爆单位（携带爆炸宝石的特殊 AI 角色）
+const TAG_UNIT_TRAINING  := "unit:training"  # 训练场守卫（教学关专用，弱化单位）
+const TAG_UNIT_HEAVY     := "unit:heavy"     # 重甲单位（高血量、低速）
+const TAG_UNIT_MOBILE    := "unit:mobile"    # 高机动单位（速度优先、移动力高）
+const TAG_UNIT_RANGED    := "unit:ranged"    # 远程攻击单位（射程 > 1）
+const TAG_UNIT_TURRET    := "unit:turret"    # 炮台单位（零移动力，固定位置）
+const TAG_UNIT_THIEF     := "unit:thief"     # 窃取型单位（可主动拔取宝石）
+const TAG_UNIT_PULLER    := "unit:puller"    # 引力型单位（使用引力宝石）
+
+# ─── 地块语义标签 ──────────────────────────────────────────────────────────────
+# 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部
+const TAG_TILE_HAZARD       := "tile:hazard"       # 危险地块（进入时受到伤害）
+const TAG_TILE_CONDUCTIVE   := "tile:conductive"   # 导体地块（电弧/电击可连锁）
+const TAG_TILE_INTERACTIVE  := "tile:interactive"  # 可交互地块（有槽位，可嵌入宝石）

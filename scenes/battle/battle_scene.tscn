@@ -326,11 +326,6 @@ custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "攻击"
 
-[node name="SkillBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/CombatGroup"]
-custom_minimum_size = Vector2(88, 44)
-layout_mode = 2
-text = "技能"
-
 [node name="Sep2" type="VSeparator" parent="HudLayer/BottomDock/BottomBar"]
 layout_mode = 2
 
@@ -372,7 +367,6 @@ text = "返回"
 
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/MoveGroup/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/SkillBtn" to="." method="_on_action_pressed" binds= ["skill"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn" to="." method="_on_action_pressed" binds= ["trigger"]]

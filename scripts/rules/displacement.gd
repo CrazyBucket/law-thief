@@ -103,6 +103,7 @@ static func _push_directional(
 		var from_pos := unit.pos
 		unit.pos = next
 		TileRules.on_unit_moved_through(state, unit, next)
+		state.on_unit_move.emit(unit.uid, from_pos, next)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
 
 	if unit.pos != start_pos:

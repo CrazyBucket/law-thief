@@ -18,6 +18,7 @@ var statuses: Array = []
 var intent: IntentState = null
 var alive: bool = true
 var ai_profile_id: String = ""
+var tags: Array[String] = []
 
 
 static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector2i, def: Dictionary) -> UnitState:
@@ -33,6 +34,8 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 	unit.base_attack = def.get("base_attack", 1)
 	unit.armor = def.get("armor", 0)
 	unit.ai_profile_id = def.get("ai_profile_id", "melee_chase")
+	for tag in def.get("tags", []):
+		unit.add_tag(str(tag))
 	for slot_data in def.get("slots", []):
 		unit.slots.append(
 			SlotState.create(
@@ -78,3 +81,16 @@ func remove_status(status_id: String) -> void:
 
 func list_statuses() -> Array:
 	return _StatusRegistry.sort_statuses(statuses)
+
+
+func has_tag(tag: String) -> bool:
+	return tag in tags
+
+
+func add_tag(tag: String) -> void:
+	if tag not in tags:
+		tags.append(tag)
+
+
+func remove_tag(tag: String) -> void:
+	tags.erase(tag)

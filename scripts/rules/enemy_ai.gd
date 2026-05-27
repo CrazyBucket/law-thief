@@ -213,7 +213,7 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	# 拉到危险地块加分
 	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
 	var tile: TileState = state.get_tile(pull_dest)
-	if tile.tile_id == Constants.TILE_SPIKE:
+	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
 		score += float(Constants.SPIKE_DAMAGE) * _w(profile, "w_damage", 10.0)
 	if tile.has_modifier("poison_fog"):
 		score += _w(profile, "w_damage", 10.0) * 0.5
@@ -342,7 +342,7 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 static func _evaluate_tile_safety(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var score: float = 0.0
 	var tile: TileState = state.get_tile(pos)
-	if tile.tile_id == Constants.TILE_SPIKE:
+	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
 		score -= float(Constants.SPIKE_DAMAGE) * _w(profile, "w_self_damage", 8.0)
 	if tile.has_modifier("poison_fog"):
 		score -= float(Constants.POISON_FOG_DAMAGE) * _w(profile, "w_self_damage", 8.0)

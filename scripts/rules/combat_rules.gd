@@ -15,6 +15,7 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])
+	state.on_damage_taken.emit(unit.uid, final_amount, reason)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason)
 	return final_amount
@@ -26,6 +27,7 @@ static func apply_true_damage(state: GameState, unit: UnitState, amount: int, so
 		return 0
 	unit.hp -= amount
 	state.log("%s 受到 %d 点真实伤害 (%s)" % [unit.uid, amount, reason])
+	state.on_damage_taken.emit(unit.uid, amount, reason)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason)
 	return amount
@@ -35,16 +37,15 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 	unit.alive = false
 	unit.hp = 0
 	state.log("%s 被击败" % unit.uid)
+	state.on_unit_die.emit(unit.uid, source_uid, reason)
 	GemEffects.on_unit_death(state, unit)
 
 
-## 近战攻击（保留，供 AI 和需要严格 manhattan==1 检查的场景使用）
-static func attack(state: GameState, attacker: UnitState, target: UnitState) -> int:
+## 近战攻击（pipeline 版本）：返回 {ok, reason, events}
+static func melee_attack(state: GameState, attacker: UnitState, target: UnitState) -> Dictionary:
 	if not attacker.alive or not target.alive:
-		return 0
-	if BoardUtils.manhattan(attacker.pos, target.pos) != 1:
-		return 0
-	return apply_damage(state, target, attack_damage(state, attacker), attacker.uid, "attack")
+		return {"ok": false, "reason": "目标无效", "events": []}
+	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_MELEE])
 
 
 ## 远程攻击（pipeline 版本）：返回 {ok, reason, events}

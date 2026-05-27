@@ -1,0 +1,95 @@
+{
+  "gem_explosion": {
+    "display_name_key": "gem.explosion.name",
+    "symbol_key": "gem.explosion.symbol",
+    "symbol": "爆",
+    "color": [1.0, 0.45, 0.2, 1.0],
+    "rarity": "common",
+    "ability_profiles": {
+      "player_skill": "explosion",
+      "unit_red_active": "explosion",
+      "enemy_red_action": "explosion",
+      "blue_turn_start": "explosion",
+      "blue_damaged": "explosion",
+      "black_death": "explosion",
+      "tile_active": "explosion",
+      "tile_turn_start": "explosion"
+    }
+  },
+  "gem_poison": {
+    "display_name_key": "gem.poison.name",
+    "symbol_key": "gem.poison.symbol",
+    "symbol": "毒",
+    "color": [0.55, 0.9, 0.35, 1.0],
+    "rarity": "common",
+    "ability_profiles": {
+      "player_skill": "poison",
+      "unit_red_active": "poison",
+      "enemy_red_action": "poison",
+      "blue_damaged": "poison",
+      "blue_move_through": "poison",
+      "black_death": "poison",
+      "tile_active": "poison",
+      "tile_turn_start": "poison"
+    }
+  },
+  "gem_gravity": {
+    "display_name_key": "gem.gravity.name",
+    "symbol_key": "gem.gravity.symbol",
+    "symbol": "引",
+    "color": [0.35, 0.65, 1.0, 1.0],
+    "rarity": "rare",
+    "ability_profiles": {
+      "player_skill": "gravity",
+      "unit_red_active": "gravity",
+      "enemy_red_action": "gravity",
+      "blue_turn_start": "gravity",
+      "blue_damaged": "gravity",
+      "black_death": "gravity",
+      "tile_active": "gravity",
+      "tile_turn_start": "gravity"
+    }
+  },
+  "gem_conductive": {
+    "display_name_key": "gem.conductive.name",
+    "symbol_key": "gem.conductive.symbol",
+    "symbol": "电",
+    "color": [0.95, 0.9, 0.3, 1.0],
+    "rarity": "uncommon",
+    "ability_profiles": {
+      "player_skill": "arc",
+      "unit_red_active": "arc",
+      "enemy_red_action": "arc",
+      "blue_damaged": "arc",
+      "black_death": "arc"
+    }
+  },
+  "gem_fire": {
+    "display_name_key": "gem.fire.name",
+    "symbol_key": "gem.fire.symbol",
+    "symbol": "炎",
+    "color": [1.0, 0.35, 0.1, 1.0],
+    "rarity": "uncommon",
+    "ability_profiles": {
+      "player_skill": "fire_gem",
+      "unit_red_active": "fire_gem",
+      "enemy_red_action": "fire_gem",
+      "blue_damaged": "fire_gem",
+      "black_death": "fire_gem"
+    }
+  },
+  "gem_ice": {
+    "display_name_key": "gem.ice.name",
+    "symbol_key": "gem.ice.symbol",
+    "symbol": "冰",
+    "color": [0.6, 0.9, 1.0, 1.0],
+    "rarity": "uncommon",
+    "ability_profiles": {
+      "player_skill": "ice",
+      "unit_red_active": "ice",
+      "enemy_red_action": "ice",
+      "blue_damaged": "ice",
+      "black_death": "ice"
+    }
+  }
+}

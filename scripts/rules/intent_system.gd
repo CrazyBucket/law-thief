@@ -104,15 +104,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	# 第二步：执行行动
 	match intent.type:
 		"melee_attack":
-			var dealt := _execute_melee(state, unit, intent)
-			if dealt > 0:
-				anim_events.append({
-					"type": "damage",
-					"pos": intent.target_pos,
-					"damage": dealt,
-					"is_crit": false,
-					"attacker_uid": unit.uid,
-				})
+			anim_events.append_array(_execute_melee(state, unit, intent))
 		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack":
 			anim_events.append_array(GemEffects.on_red_action(state, unit, intent))
 		"extract":
@@ -142,13 +134,14 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	return anim_events
 
 
-static func _execute_melee(state: GameState, unit: UnitState, intent: IntentState) -> int:
+static func _execute_melee(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
-		return 0
-	if BoardUtils.manhattan(unit.pos, target.pos) != 1:
-		return 0
-	return CombatRules.attack(state, unit, target)
+		return [] as Array[Dictionary]
+	var result := CombatRules.melee_attack(state, unit, target)
+	if not result.get("ok", false):
+		return [] as Array[Dictionary]
+	return result.get("events", [] as Array[Dictionary])
 
 
 static func _execute_move(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
@@ -160,6 +153,7 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 		var from_pos := unit.pos
 		unit.pos = step
 		TileRules.on_unit_moved_through(state, unit, step)
+		state.on_unit_move.emit(unit.uid, from_pos, step)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": step})
 	TileRules.on_unit_entered(state, unit, previous)
 	return events

@@ -2,9 +2,9 @@ extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
-@onready var _title: Label = $Content/Title
-@onready var _body: Label = $Content/Body
-@onready var _continue_btn: Button = $Content/ContinueBtn
+@onready var _title: Label = $Content/VBox/Title
+@onready var _body: Label = $Content/VBox/Body
+@onready var _continue_btn: Button = $Content/VBox/ContinueBtn
 
 
 func _ready() -> void:

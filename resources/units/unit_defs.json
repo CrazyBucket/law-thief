@@ -1,0 +1,137 @@
+{
+  "unit_player": {
+    "display_name_key": "unit.player.name",
+    "max_hp": 6,
+    "move_points": 3,
+    "speed": 12,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "player",
+    "tags": [],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_bomber": {
+    "display_name_key": "unit.bomber.name",
+    "max_hp": 2,
+    "move_points": 3,
+    "speed": 11,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "bomber",
+    "tags": ["unit:bomber", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_training_guard": {
+    "display_name_key": "unit.training_guard.name",
+    "max_hp": 1,
+    "move_points": 1,
+    "speed": 8,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "tags": ["unit:training"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_heavy_guard": {
+    "display_name_key": "unit.heavy_guard.name",
+    "max_hp": 3,
+    "move_points": 1,
+    "speed": 7,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "guard",
+    "tags": ["unit:heavy"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_poison_bug": {
+    "display_name_key": "unit.poison_bug.name",
+    "max_hp": 2,
+    "move_points": 2,
+    "speed": 10,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "poison_roamer",
+    "tags": ["unit:mobile"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_gravity_eye": {
+    "display_name_key": "unit.gravity_eye.name",
+    "max_hp": 2,
+    "move_points": 0,
+    "speed": 9,
+    "base_attack": 0,
+    "armor": 0,
+    "ai_profile_id": "puller",
+    "tags": ["unit:puller", "unit:turret"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_grunt": {
+    "display_name_key": "unit.grunt.name",
+    "max_hp": 1,
+    "move_points": 2,
+    "speed": 9,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "tags": [],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_thief": {
+    "display_name_key": "unit.thief.name",
+    "max_hp": 2,
+    "move_points": 3,
+    "speed": 13,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "thief",
+    "tags": ["unit:thief", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_shock_tower": {
+    "display_name_key": "unit.shock_tower.name",
+    "max_hp": 3,
+    "move_points": 0,
+    "speed": 6,
+    "base_attack": 0,
+    "armor": 0,
+    "ai_profile_id": "turret",
+    "tags": ["unit:turret"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  }
+}

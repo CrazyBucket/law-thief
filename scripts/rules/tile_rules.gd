@@ -4,7 +4,7 @@ extends RefCounted
 
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i) -> void:
 	var tile := state.get_tile(unit.pos)
-	if tile.tile_id == Constants.TILE_SPIKE:
+	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
 		CombatRules.apply_damage(state, unit, Constants.SPIKE_DAMAGE, unit.uid, "spike")
 		_unlock_armor_locks(state, unit)
 	# 进入毒雾：立刻上一层毒

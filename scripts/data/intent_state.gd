@@ -11,6 +11,24 @@ var damage: int = 0
 var preview_text: String = ""
 
 
+static func intent_icon(intent_type: String) -> String:
+	match intent_type:
+		"melee_attack":  return "⚔"
+		"charge_explode": return "💣"
+		"pull":          return "🪝"
+		"poison_attack": return "☠"
+		"arc_attack":    return "⚡"
+		"fire_attack":   return "🔥"
+		"ice_attack":    return "❄"
+		"extract":       return "💎"
+		"move":          return "➡"
+		"lawless_extract": return "💢"
+		"lawless_attack":  return "💢"
+		"lawless_move":    return "💢"
+		"wait":          return "…"
+	return "?"
+
+
 static func wait(source_uid: String) -> IntentState:
 	var intent := IntentState.new()
 	intent.type = "wait"

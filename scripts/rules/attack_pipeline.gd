@@ -86,7 +86,12 @@ static func execute(
 	for tag in initial_tags:
 		ctx.add_tag(tag)
 
+	# 近战距离校验：TAG_MELEE 要求攻击者与目标曼哈顿距离恰好为 1
+	if ctx.has_tag(TAG_MELEE) and BoardUtils.manhattan(attacker.pos, target.pos) != 1:
+		return _fail("近战目标不在相邻格")
+
 	# 阶段 1：准备（修改范围、追加标签）
+	state.on_attack_prepare.emit(attacker.uid, target.uid, ctx.tags.duplicate())
 	_phase_prepare(ctx)
 	if not ctx.target.alive:
 		return _ok(ctx.events)
@@ -127,10 +132,17 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 
 static func _phase_hit(ctx: AttackContext) -> void:
 	# 调 apply_damage 统一走护甲/蓝槽/死亡逻辑
-	var reason := "ranged_attack" if ctx.has_tag(TAG_RANGED) else "attack"
+	var reason: String
+	if ctx.has_tag(TAG_RANGED):
+		reason = "ranged_attack"
+	elif ctx.has_tag(TAG_MELEE):
+		reason = "melee_attack"
+	else:
+		reason = "attack"
 	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, ctx.base_damage, ctx.attacker.uid, reason)
 	if dealt > 0:
 		ctx.push_damage_event(ctx.target.pos, dealt)
+		ctx.state.on_attack_hit.emit(ctx.attacker.uid, ctx.target.uid, dealt)
 	elif not ctx.has_tag(TAG_EXPLOSIVE):
 		return  # 护甲全吸收且无附带爆炸，直接结束
 

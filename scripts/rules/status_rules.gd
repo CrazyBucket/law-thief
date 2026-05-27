@@ -320,7 +320,7 @@ static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInsta
 
 static func _apply_tile_pillar_auras(state: GameState) -> void:
 	for tile in state.tiles.values():
-		if tile.tile_id == Constants.TILE_PILLAR:
+		if tile.tile_id == Constants.TILE_PILLAR and tile.has_tile_tag(Constants.TAG_TILE_INTERACTIVE):
 			TileEffects.tick_pillar_aura(state, tile)
 
 

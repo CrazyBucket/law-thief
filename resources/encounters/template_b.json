@@ -1,0 +1,15 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_gravity_eye", "pos": [4, 3]},
+    {"def_id": "unit_heavy_guard", "pos": [5, 5]},
+    {"def_id": "unit_poison_bug", "pos": [6, 2]}
+  ],
+  "tiles": [
+    {"pos": [4, 4], "tile_id": "tile_spike"},
+    {"pos": [5, 4], "tile_id": "tile_spike"},
+    {"pos": [6, 4], "tile_id": "tile_spike"},
+    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
+    {"pos": [7, 6], "tile_id": "tile_altar", "slots": [{"slot_type": "red"}]}
+  ]
+}

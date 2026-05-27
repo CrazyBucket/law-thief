@@ -18,6 +18,7 @@ func start_encounter(encounter_id: String, seed_value: int = 0) -> void:
 	state = _data_registry().create_battle_state(encounter_id, seed_value)
 	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
+	state.on_battle_start.emit()
 	_emit_changed()
 
 
@@ -53,6 +54,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		var from_pos := player.pos
 		player.pos = step
 		TileRules.on_unit_moved_through(state, player, step)
+		state.on_unit_move.emit(player.uid, from_pos, step)
 		move_events.append({"type": "move_step", "uid": player.uid, "from": from_pos, "to": step})
 	TileRules.on_unit_entered(state, player, previous)
 	state.player_moved = true
@@ -231,6 +233,7 @@ func check_tile_slot_action(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 func begin_enemy_phase() -> void:
 	if state == null or state.phase != Constants.PHASE_PLAYER:
 		return
+	state.on_turn_end.emit(state.turn_index)
 	state.phase = Constants.PHASE_ENEMY
 	_emit_changed()
 
@@ -263,6 +266,7 @@ func finish_enemy_phase() -> void:
 	state.player_acted = false
 	IntentSystem.refresh_all_intents(state)
 	state.log("敌方回合结束")
+	state.on_turn_start.emit(state.turn_index)
 	_check_battle_end()
 	_emit_changed()
 
@@ -482,7 +486,7 @@ func get_tutorial_hint() -> String:
 		var player := state.get_player()
 		var guard_near := false
 		for unit in state.get_alive_enemies():
-			if unit.unit_def_id == "unit_training_guard" and BoardUtils.manhattan(player.pos, unit.pos) <= Constants.INSERT_RANGE:
+			if unit.has_tag(Constants.TAG_UNIT_TRAINING) and BoardUtils.manhattan(player.pos, unit.pos) <= Constants.INSERT_RANGE:
 				guard_near = true
 				break
 		if guard_near:
@@ -677,12 +681,14 @@ func _check_battle_end() -> void:
 		state.phase = Constants.PHASE_ENDED
 		state.result = "lose"
 		state.log("战斗失败")
+		state.on_battle_end.emit("lose")
 		battle_ended.emit("lose")
 		return
 	if state.get_alive_enemies().is_empty():
 		state.phase = Constants.PHASE_ENDED
 		state.result = "win"
 		state.log("战斗胜利")
+		state.on_battle_end.emit("win")
 		battle_ended.emit("win")
 
 

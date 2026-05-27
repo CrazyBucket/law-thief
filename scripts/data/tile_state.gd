@@ -68,3 +68,14 @@ func tick_modifiers() -> void:
 			updated["duration"] = next_duration
 			remaining.append(updated)
 	modifiers = remaining
+
+
+func has_tile_tag(tag: String) -> bool:
+	match tag:
+		Constants.TAG_TILE_HAZARD:
+			return tile_id == Constants.TILE_SPIKE
+		Constants.TAG_TILE_CONDUCTIVE:
+			return tile_id == Constants.TILE_WATER
+		Constants.TAG_TILE_INTERACTIVE:
+			return tile_id == Constants.TILE_ALTAR or tile_id == Constants.TILE_PILLAR
+	return false

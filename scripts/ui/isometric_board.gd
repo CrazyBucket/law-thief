@@ -38,6 +38,8 @@ var _animation_speed_scale: float = 1.0
 var _anim_queue: Array[Dictionary] = []  # 待播放动画队列
 var _is_animating: bool = false
 
+var _pulse_time: float = 0.0
+
 # 移动动画：单位 uid → 当前屏幕偏移（相对于逻辑位置）
 var _move_offsets: Dictionary = {}  # uid → Vector2
 
@@ -86,7 +88,9 @@ func _update_origin() -> void:
 
 
 func _process(delta: float) -> void:
-	var visuals_dirty := false
+	_pulse_time += delta
+	var has_highlights: bool = not highlights.is_empty()
+	var visuals_dirty := has_highlights
 	var scaled_dt := delta * _animation_speed_scale
 	for mv_uid in _move_offsets.keys():
 		if _strike_elapsed.has(mv_uid):
@@ -159,6 +163,7 @@ func _draw() -> void:
 		return
 	for grid in _sorted_cells():
 		_draw_tile(grid)
+	_draw_highlight_outlines()
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
 		if unit != null:
@@ -168,6 +173,31 @@ func _draw() -> void:
 	# 绘制粒子特效
 	_draw_particles()
 	_draw_projectile()
+
+
+func _draw_highlight_outlines() -> void:
+	var targets: Array = highlights.get("targets", [])
+	var danger: Array = highlights.get("danger", [])
+	var effect_list: Array = highlights.get("effect_preview", [])
+	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
+	for grid in targets:
+		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
+		var closed: PackedVector2Array = corners.duplicate()
+		closed.append(corners[0])
+		var c := Color(1.0, 0.92, 0.3, 0.55 + pulse * 0.35)
+		draw_polyline(closed, c, 1.8, false)
+	for grid in danger:
+		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
+		var closed: PackedVector2Array = corners.duplicate()
+		closed.append(corners[0])
+		var c := Color(1.0, 0.28, 0.28, 0.5 + pulse * 0.35)
+		draw_polyline(closed, c, 1.8, false)
+	for grid in effect_list:
+		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
+		var closed: PackedVector2Array = corners.duplicate()
+		closed.append(corners[0])
+		var c := Color(1.0, 0.52, 0.15, 0.45 + pulse * 0.3)
+		draw_polyline(closed, c, 1.5, false)
 
 
 func _draw_tile(grid: Vector2i) -> void:
@@ -183,16 +213,21 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	var paths: Array = highlights.get("paths", [])
 	var danger: Array = highlights.get("danger", [])
 	var effect_list: Array = highlights.get("effect_preview", [])
-	if grid in reachable:
-		return Color(0.35, 0.85, 1.0, 0.42)
+	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
 	if grid in targets:
-		return Color(1.0, 0.95, 0.35, 0.48)
+		var a: float = 0.52 + pulse * 0.22
+		return Color(1.0, 0.9, 0.25, a)
 	if grid in effect_list:
-		return Color(1.0, 0.5, 0.15, 0.45)
+		var a: float = 0.48 + pulse * 0.2
+		return Color(1.0, 0.48, 0.12, a)
 	if grid in danger:
-		return Color(1.0, 0.25, 0.25, 0.45)
+		var a: float = 0.42 + pulse * 0.22
+		return Color(1.0, 0.2, 0.2, a)
+	if grid in reachable:
+		var a: float = 0.32 + pulse * 0.14
+		return Color(0.3, 0.88, 1.0, a)
 	if grid in paths:
-		return Color(0.95, 0.65, 0.2, 0.28)
+		return Color(0.95, 0.65, 0.2, 0.24 + pulse * 0.1)
 	return Color.TRANSPARENT
 
 
@@ -234,7 +269,7 @@ func _draw_unit(unit: UnitState) -> void:
 	_draw_gem_diamonds(unit, center + Vector2(0, -sprite_size.y - 4) + ground_nudge)
 	_draw_hp_bar(center + Vector2(-18, 6), unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		_draw_intent_badge(center + Vector2(20, -sprite_size.y + 6) + ground_nudge, unit.intent.preview_text)
+		_draw_intent_badge(center + Vector2(20, -sprite_size.y + 6) + ground_nudge, unit.intent)
 
 
 func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
@@ -389,12 +424,34 @@ func _draw_status_row(origin: Vector2, unit: UnitState) -> void:
 			cursor_x += chip_w + GAP
 
 
-func _draw_intent_badge(pos: Vector2, text: String) -> void:
-	var short := text.substr(0, mini(4, text.length()))
-	var badge_size := Vector2(36, 16)
-	draw_rect(Rect2(pos, badge_size), Color(0.12, 0.12, 0.16, 0.85))
-	draw_rect(Rect2(pos, badge_size), Color(0.95, 0.75, 0.25, 0.9), false, 1.0)
-	draw_string(ThemeDB.fallback_font, pos + Vector2(4, 12), short, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.95, 0.9, 0.7))
+func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
+	var icon: String = IntentState.intent_icon(intent.type)
+	var badge_w: float = 26.0
+	var has_dmg: bool = intent.damage > 0
+	if has_dmg:
+		badge_w = 38.0
+	var badge_size := Vector2(badge_w, 20.0)
+	var border_color: Color = _intent_badge_color(intent.type)
+	draw_rect(Rect2(pos, badge_size), Color(0.08, 0.08, 0.12, 0.88))
+	draw_rect(Rect2(pos, badge_size), border_color, false, 1.2)
+	draw_string(ThemeDB.fallback_font, pos + Vector2(3, 14), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)
+	if has_dmg:
+		draw_string(ThemeDB.fallback_font, pos + Vector2(18, 14), str(intent.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1.0, 0.78, 0.45))
+
+
+func _intent_badge_color(intent_type: String) -> Color:
+	match intent_type:
+		"melee_attack":    return Color(0.95, 0.35, 0.35, 0.95)
+		"charge_explode":  return Color(1.0, 0.55, 0.1, 0.95)
+		"pull":            return Color(0.6, 0.35, 0.9, 0.95)
+		"poison_attack":   return Color(0.35, 0.85, 0.45, 0.95)
+		"arc_attack":      return Color(0.95, 0.9, 0.25, 0.95)
+		"fire_attack":     return Color(1.0, 0.45, 0.15, 0.95)
+		"ice_attack":      return Color(0.45, 0.85, 1.0, 0.95)
+		"extract":         return Color(0.95, 0.25, 0.75, 0.95)
+		"move":            return Color(0.45, 0.75, 0.95, 0.95)
+		"lawless_extract", "lawless_attack", "lawless_move": return Color(0.9, 0.2, 0.2, 0.95)
+	return Color(0.55, 0.58, 0.68, 0.85)
 
 
 func _gui_input(event: InputEvent) -> void:

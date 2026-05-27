@@ -142,7 +142,7 @@ static func can_use_skill_at(state: GameState, player: UnitState, target_pos: Ve
 			return target_pos == player.pos
 		"water_tile":
 			var tile := state.get_tile(target_pos)
-			return tile.tile_id == Constants.TILE_WATER
+			return tile.has_tile_tag(Constants.TAG_TILE_CONDUCTIVE)
 		"enemy_unit":
 			var target_unit := state.get_unit_at(target_pos)
 			return target_unit != null and target_unit.uid != player.uid

@@ -34,6 +34,10 @@ func _ready() -> void:
 	_register_gem_defs()
 	_register_unit_defs()
 	_register_encounters()
+	# JSON 覆盖：若外部文件存在则合并/替换硬编码数据
+	_load_gem_defs_from_json()
+	_load_unit_defs_from_json()
+	_load_encounters_from_json()
 
 
 func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState:
@@ -509,6 +513,7 @@ func _register_unit_defs() -> void:
 			"speed": 11,
 			"base_attack": 1,
 			"ai_profile_id": "bomber",
+			"tags": [Constants.TAG_UNIT_BOMBER, Constants.TAG_UNIT_MOBILE],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -522,6 +527,7 @@ func _register_unit_defs() -> void:
 			"speed": 8,
 			"base_attack": 1,
 			"ai_profile_id": "melee_chase",
+			"tags": [Constants.TAG_UNIT_TRAINING],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -535,6 +541,7 @@ func _register_unit_defs() -> void:
 			"speed": 7,
 			"base_attack": 1,
 			"ai_profile_id": "guard",
+			"tags": [Constants.TAG_UNIT_HEAVY],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -548,6 +555,7 @@ func _register_unit_defs() -> void:
 			"speed": 10,
 			"base_attack": 1,
 			"ai_profile_id": "poison_roamer",
+			"tags": [Constants.TAG_UNIT_MOBILE],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -561,6 +569,7 @@ func _register_unit_defs() -> void:
 			"speed": 9,
 			"base_attack": 0,
 			"ai_profile_id": "puller",
+			"tags": [Constants.TAG_UNIT_PULLER, Constants.TAG_UNIT_TURRET],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -574,6 +583,7 @@ func _register_unit_defs() -> void:
 			"speed": 9,
 			"base_attack": 1,
 			"ai_profile_id": "melee_chase",
+			"tags": [],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -587,6 +597,7 @@ func _register_unit_defs() -> void:
 			"speed": 13,
 			"base_attack": 1,
 			"ai_profile_id": "thief",
+			"tags": [Constants.TAG_UNIT_THIEF, Constants.TAG_UNIT_MOBILE],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -600,6 +611,7 @@ func _register_unit_defs() -> void:
 			"speed": 6,
 			"base_attack": 0,
 			"ai_profile_id": "turret",
+			"tags": [Constants.TAG_UNIT_TURRET],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
@@ -804,3 +816,101 @@ func _deep_merge_dict(base: Dictionary, overrides: Dictionary) -> Dictionary:
 		else:
 			merged[key] = override_value
 	return merged
+
+
+# ─── JSON 外部数据加载 ────────────────────────────────────────────────────────
+
+func _load_gem_defs_from_json() -> void:
+	var path := "res://resources/gems/gem_defs.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		return
+	for gem_id in raw.keys():
+		var entry: Dictionary = raw[gem_id]
+		if entry.has("color"):
+			var c: Array = entry["color"]
+			entry["color"] = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]) if c.size() > 3 else 1.0)
+		if _gem_defs.has(gem_id):
+			_gem_defs[gem_id] = _deep_merge_dict(_gem_defs[gem_id], entry)
+		else:
+			_gem_defs[gem_id] = entry
+
+
+func _load_unit_defs_from_json() -> void:
+	var path := "res://resources/units/unit_defs.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		return
+	for unit_id in raw.keys():
+		var entry: Dictionary = raw[unit_id]
+		if _unit_defs.has(unit_id):
+			_unit_defs[unit_id] = _deep_merge_dict(_unit_defs[unit_id], entry)
+		else:
+			_unit_defs[unit_id] = entry
+
+
+func _load_encounters_from_json() -> void:
+	var dir := DirAccess.open("res://resources/encounters/")
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while not file_name.is_empty():
+		if not dir.current_is_dir() and file_name.ends_with(".json"):
+			var encounter_id := file_name.get_basename()
+			var path := "res://resources/encounters/" + file_name
+			var raw := _read_json_file(path)
+			if not raw.is_empty():
+				_encounters[encounter_id] = _parse_encounter_json(raw)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+
+
+func _parse_encounter_json(raw: Dictionary) -> Dictionary:
+	var result := raw.duplicate(true)
+	# player_spawn: [x, y] → Vector2i
+	if result.has("player_spawn"):
+		var sp: Array = result["player_spawn"]
+		result["player_spawn"] = Vector2i(int(sp[0]), int(sp[1]))
+	# enemies: pos [x, y] → Vector2i
+	if result.has("enemies"):
+		var enemies: Array = result["enemies"]
+		for i in range(enemies.size()):
+			var e: Dictionary = enemies[i].duplicate(true)
+			if e.has("pos"):
+				var p: Array = e["pos"]
+				e["pos"] = Vector2i(int(p[0]), int(p[1]))
+			enemies[i] = e
+		result["enemies"] = enemies
+	# tiles: pos [x, y] → Vector2i
+	if result.has("tiles"):
+		var tiles: Array = result["tiles"]
+		for i in range(tiles.size()):
+			var t: Dictionary = tiles[i].duplicate(true)
+			if t.has("pos"):
+				var p: Array = t["pos"]
+				t["pos"] = Vector2i(int(p[0]), int(p[1]))
+			tiles[i] = t
+		result["tiles"] = tiles
+	return result
+
+
+func _read_json_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("DataRegistry: cannot open %s" % path)
+		return {}
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	var err := json.parse(text)
+	if err != OK:
+		push_warning("DataRegistry: JSON parse error in %s — %s" % [path, json.get_error_message()])
+		return {}
+	var data: Variant = json.get_data()
+	if data is Dictionary:
+		return data as Dictionary
+	push_warning("DataRegistry: expected JSON object in %s" % path)
+	return {}
