@@ -91,6 +91,8 @@ static func short_label(status: StatusInstance) -> String:
 			return "暴露"
 		Constants.STATUS_LAWLESS:
 			return "失律"
+		Constants.STATUS_VULNERABLE:
+			return "易伤"
 	return display_name(status.status_id)
 
 
@@ -128,6 +130,8 @@ static func tooltip(status: StatusInstance) -> String:
 			return "暴露：重甲锁槽已被破开"
 		Constants.STATUS_LAWLESS:
 			return "失律：追逐被窃走的宝石"
+		Constants.STATUS_VULNERABLE:
+			return "易伤：受到伤害 +50%，剩余 %d 回合" % status.duration
 	return display_name(status.status_id)
 
 
@@ -234,6 +238,14 @@ static var _DEFS: Dictionary = {
 		"display_name": "迟滞",
 		"type": TYPE_DEBUFF,
 		"color": Color(0.6, 0.85, 1.0),
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_TURN_END,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_VULNERABLE: {
+		"display_name": "易伤",
+		"type": TYPE_DEBUFF,
+		"color": Color(1.0, 0.45, 0.45),
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,

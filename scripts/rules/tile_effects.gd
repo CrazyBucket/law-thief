@@ -3,13 +3,6 @@ extends RefCounted
 ## 地块槽位效果 — 统一走 GemEffects hook 分发
 
 
-static func on_altar_activated(state: GameState, tile: TileState, gem: GemState) -> void:
-	for slot in tile.slots:
-		if slot.gem_uid == gem.uid:
-			GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
-			return
-
-
 static func on_pillar_activated(state: GameState, tile: TileState, gem: GemState) -> void:
 	for slot in tile.slots:
 		if slot.gem_uid == gem.uid:

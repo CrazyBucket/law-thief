@@ -6,6 +6,9 @@ const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display
 const SIDE_DEPTH := 10.0
 
 
+static func _time_sec() -> float:
+	return float(Time.get_ticks_msec()) / 1000.0
+
 static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlight_color: Color = Color.TRANSPARENT) -> void:
 	var palette: Dictionary = _palette(tile)
 	var top_color: Color = palette["top"]
@@ -13,8 +16,10 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 		top_color = top_color.lerp(highlight_color, highlight_color.a)
 	_draw_block(canvas, center, top_color, palette["left"], palette["right"])
 	_draw_tile_detail(canvas, center, tile)
-	if tile.has_modifier("poison_fog"):
-		_draw_overlay(canvas, center, Color(0.35, 0.92, 0.4, 0.38))
+	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle"):
+		_draw_poison_fog(canvas, center)
+	if tile.has_modifier("fire"):
+		_draw_fire(canvas, center)
 
 
 static func draw_hover_outline(canvas: Control, center: Vector2) -> void:
@@ -76,6 +81,8 @@ static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState)
 			_draw_water(canvas, center, tile.edge_mask)
 		Constants.TILE_FLOOR:
 			_draw_floor_noise(canvas, center, tile.floor_variant)
+		Constants.TILE_PILLAR:
+			_draw_pillar(canvas, center)
 
 
 static func _draw_spikes(canvas: Control, center: Vector2) -> void:
@@ -159,3 +166,45 @@ static func _palette(tile: TileState) -> Dictionary:
 				"left": base_color.darkened(0.18),
 				"right": base_color.darkened(0.1),
 			}
+
+static func _draw_pillar(canvas: Control, center: Vector2) -> void:
+	# 机关柱，画一个带有槽位暗示的柱子
+	var base := center + Vector2(0, -5)
+	var pts := PackedVector2Array([
+		base + Vector2(-12, 0),
+		base + Vector2(-12, -25),
+		base + Vector2(0, -32),
+		base + Vector2(12, -25),
+		base + Vector2(12, 0),
+		base + Vector2(0, 6)
+	])
+	canvas.draw_colored_polygon(pts, Color(0.2, 0.25, 0.3))
+	canvas.draw_polyline(pts, Color(0.1, 0.15, 0.2), 2.0, true)
+	
+	var t := _time_sec()
+	var pulse := sin(t * 3.0) * 0.5 + 0.5
+	canvas.draw_circle(base + Vector2(0, -18), 5.0, Color(0.2, 0.6, 1.0, 0.5 + pulse * 0.5))
+
+
+static func _draw_fire(canvas: Control, center: Vector2) -> void:
+	var t := _time_sec()
+	var offset := Vector2(0, -10)
+	for i in range(5):
+		var phase := t * (3.0 + i * 0.5) + i * 1.2
+		var px := sin(phase) * 12.0
+		var py := -fmod(phase * 15.0, 25.0)
+		var p_center := center + offset + Vector2(px, py)
+		var size := maxf(2.0, 10.0 - py * 0.4)
+		var color := Color(1.0, 0.5 + py * 0.02, 0.1, 0.8 - py * 0.03)
+		canvas.draw_circle(p_center, size, color)
+
+
+static func _draw_poison_fog(canvas: Control, center: Vector2) -> void:
+	var t := _time_sec()
+	_draw_overlay(canvas, center, Color(0.35, 0.92, 0.4, 0.25))
+	for i in range(6):
+		var phase := t * 1.5 + i * 2.1
+		var px := sin(phase * 1.3) * 18.0
+		var py := cos(phase * 0.9) * 8.0 - 5.0
+		var r := 4.0 + sin(phase * 2.0) * 2.0
+		canvas.draw_circle(center + Vector2(px, py), r, Color(0.2, 0.8, 0.3, 0.6))

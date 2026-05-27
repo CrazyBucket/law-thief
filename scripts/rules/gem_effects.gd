@@ -22,7 +22,6 @@ const ABILITY_BLUE_TURN_START := "blue_turn_start"
 const ABILITY_BLUE_DAMAGED := "blue_damaged"
 const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
 const ABILITY_BLACK_DEATH := "black_death"
-const ABILITY_TILE_ACTIVE := "tile_active"
 const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
@@ -44,17 +43,11 @@ static func run_tile_hooks(state: GameState, tile: TileState, slot_type: String,
 
 static func on_tile_gem_inserted(state: GameState, tile: TileState, slot: SlotState, gem: GemState) -> void:
 	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	if tile.tile_id == Constants.TILE_ALTAR and slot.slot_type == Constants.SLOT_RED:
-		state.log("祭坛激活！宝石 %s 释放能量" % gem_name)
-		_run_slot_hook(state, tile, slot, TIMING_ACTIVE, {})
-	elif tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
+	if tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
 		state.log("机关柱激活！宝石 %s 产生光环" % gem_name)
 
 
 static func trigger_tile_gem(state: GameState, tile: TileState, slot: SlotState) -> bool:
-	if tile.tile_id == Constants.TILE_ALTAR and slot.slot_type == Constants.SLOT_RED:
-		state.log("触发 %s 地块的 %s" % [tile.tile_id, _gem_id(state, slot)])
-		return _run_slot_hook(state, tile, slot, TIMING_ACTIVE, {})
 	if tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
 		state.log("触发 %s 地块的 %s" % [tile.tile_id, _gem_id(state, slot)])
 		return _run_slot_hook(state, tile, slot, TIMING_TURN_START, {})
@@ -622,31 +615,10 @@ static func _run_unit_contact_effect(state: GameState, owner: UnitState, gem: Ge
 
 static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotState, gem: GemState, timing: String) -> bool:
 	match timing:
-		TIMING_ACTIVE:
-			if slot.slot_type != Constants.SLOT_RED or tile.tile_id != Constants.TILE_ALTAR:
-				return false
-			return _run_tile_active_effect(state, tile, slot, gem)
 		TIMING_TURN_START:
 			if slot.slot_type != Constants.SLOT_BLUE or tile.tile_id != Constants.TILE_PILLAR:
 				return false
 			return _run_tile_turn_start_effect(state, tile, gem)
-	return false
-
-
-static func _run_tile_active_effect(state: GameState, tile: TileState, _slot: SlotState, gem: GemState) -> bool:
-	match _ability_profile(gem, ABILITY_TILE_ACTIVE):
-		"explosion":
-			for unit in state.units.values():
-				if unit.alive and unit.team == Constants.TEAM_ENEMY:
-					CombatRules.apply_damage(state, unit, 1, "", "altar_explosion")
-			return true
-		"poison":
-			for cell in BoardUtils.cells_in_radius(tile.pos, 2):
-				TileRules.create_poison_fog(state, cell)
-			return true
-		"gravity":
-			pull_around(state, tile.pos, 4, 1)
-			return true
 	return false
 
 

@@ -79,16 +79,23 @@ static func _push_directional(
 	skip_gem_hooks: bool = false
 ) -> void:
 	var start_pos := unit.pos
+	var remaining := steps
+	var i := 0
 
-	for _i in range(steps):
+	while i < remaining:
 		var next := _resolve_next_cell(unit.pos, reference_pos, dir)
 		if next == unit.pos:
-			break  # 无法继续移动（同位）
+			break
 
 		if not BoardUtils.in_bounds(state, next):
-			# 撞边界：结算碰撞伤害后停止
 			if collision_damage > 0:
 				_deal_collision_damage(state, unit, source_uid, collision_damage, "wall_collision", events)
+			break
+
+		# 实体碰撞检测（石块、地刺、油桶）
+		var entity := state.get_entity_at(next)
+		if entity != null and entity.alive and entity.blocks_movement():
+			EntityRules.on_unit_collide_entity(state, unit, entity, source_uid, events)
 			break
 
 		var blocker: UnitState = state.get_unit_at(next)
@@ -105,6 +112,13 @@ static func _push_directional(
 		TileRules.on_unit_moved_through(state, unit, next)
 		state.on_unit_move.emit(unit.uid, from_pos, next)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
+
+		# 冰面：额外 +1 格滑行（remaining 扩大，不消耗本格步数）
+		var moved_tile := state.get_tile(next)
+		if moved_tile.has_ground_tag(Constants.GROUND_TAG_ICE):
+			remaining += 1
+
+		i += 1
 
 	if unit.pos != start_pos:
 		# 统一坐标变化入口：离开火焰时清零 burning

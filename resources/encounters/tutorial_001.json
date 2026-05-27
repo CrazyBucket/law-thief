@@ -5,7 +5,6 @@
     {"def_id": "unit_training_guard", "pos": [3, 5]}
   ],
   "tiles": [
-    {"pos": [2, 5], "tile_id": "tile_spike"},
-    {"pos": [5, 3], "tile_id": "tile_altar", "slots": [{"slot_type": "red"}]}
+    {"pos": [2, 5], "tile_id": "tile_spike"}
   ]
 }

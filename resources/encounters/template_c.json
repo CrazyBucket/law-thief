@@ -10,7 +10,6 @@
     {"pos": [3, 4], "tile_id": "tile_water"},
     {"pos": [4, 4], "tile_id": "tile_water"},
     {"pos": [3, 5], "tile_id": "tile_water"},
-    {"pos": [4, 5], "tile_id": "tile_water"},
-    {"pos": [2, 1], "tile_id": "tile_altar", "slots": [{"slot_type": "red"}]}
+    {"pos": [4, 5], "tile_id": "tile_water"}
   ]
 }

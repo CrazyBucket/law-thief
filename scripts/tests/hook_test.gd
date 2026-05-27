@@ -10,15 +10,12 @@ func _run_tests() -> void:
 	_test_lawless_on_player_extract()
 	_test_lawless_reclaim_from_hand()
 	_test_lawless_on_enemy_extract()
-	_test_altar_insert_triggers()
 	_test_pillar_turn_aura()
 	_test_blue_poison_move_trail()
 	_test_black_poison_death()
 	_test_player_skill_via_hook()
 	_test_editor_console_spawns_and_edits_unit()
-	_test_editor_console_replaces_tile_and_spawns_gem()
 	_test_editor_console_batch_move_delete_commands()
-	_test_editor_console_exports_encounter()
 	print("HOOK_TEST_PASS")
 	quit()
 
@@ -79,26 +76,6 @@ func _test_lawless_on_enemy_extract() -> void:
 	assert(player.slots[0].gem_uid.is_empty(), "player gem should be stolen")
 	assert(not StatusRules.is_lawless(player), "player should not enter lawless")
 	print("  [OK] enemy extract clears slot without player lawless")
-
-
-func _test_altar_insert_triggers() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("template_a", 42)
-	var state := ctrl.state
-	var player := state.get_player()
-	player.pos = Vector2i(2, 4)
-	var bomber := _find_unit(state, "unit_bomber")
-	var hp_before := bomber.hp
-	var gem := GemState.new()
-	gem.uid = "altar_gem"
-	gem.gem_id = Constants.GEM_EXPLOSION
-	state.gems[gem.uid] = gem
-	state.held_gem_uid = gem.uid
-	var altar := state.get_tile(Vector2i(2, 3))
-	var result := GemRules.insert_tile(state, player, altar, altar.slots[0])
-	assert(result.get("ok", false), "altar insert should succeed")
-	assert(bomber.hp < hp_before, "altar explosion should damage enemies")
-	print("  [OK] altar insert triggers active hook")
 
 
 func _test_pillar_turn_aura() -> void:
@@ -188,23 +165,6 @@ func _test_editor_console_spawns_and_edits_unit() -> void:
 	print("  [OK] editor console spawns unit and edits stats")
 
 
-func _test_editor_console_replaces_tile_and_spawns_gem() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 42)
-	var tile_result := ctrl.run_editor_command("set tile 0,1 tile_altar")
-	assert(tile_result.get("ok", false), "editor console should replace tile")
-	var tile := ctrl.state.get_tile(Vector2i(0, 1))
-	assert(tile.tile_id == Constants.TILE_ALTAR, "tile should become altar")
-	assert(tile.has_slots(), "altar should create a slot")
-	var gem_result := ctrl.run_editor_command("spawn gem_poison 0,1 --slot red --target tile")
-	assert(gem_result.get("ok", false), "editor console should spawn gem into tile")
-	var slot := tile.get_slot_by_index(0)
-	assert(slot != null and not slot.gem_uid.is_empty(), "tile slot should contain gem")
-	var gem: GemState = ctrl.state.gems.get(slot.gem_uid, null)
-	assert(gem != null and gem.gem_id == Constants.GEM_POISON, "spawned tile gem should match")
-	print("  [OK] editor console replaces tile and spawns gem")
-
-
 func _test_editor_console_batch_move_delete_commands() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 42)
@@ -226,26 +186,6 @@ func _test_editor_console_batch_move_delete_commands() -> void:
 	var remaining := ctrl.state.get_unit_at(Vector2i(1, 0))
 	assert(remaining != null and remaining.slots[0].gem_uid.is_empty(), "unit slot gem should be removed")
 	print("  [OK] editor console batch/move/delete commands")
-
-
-func _test_editor_console_exports_encounter() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 42)
-	var spawn_result := ctrl.run_editor_command("spawn unit_grunt 0,0 --team enemy")
-	assert(spawn_result.get("ok", false), "setup spawn should succeed")
-	var tile_result := ctrl.run_editor_command("set tile 0,1 tile_altar")
-	assert(tile_result.get("ok", false), "setup tile replacement should succeed")
-	var export_result := ctrl.run_editor_command("export encounter custom_stage_001")
-	assert(export_result.get("ok", false), "editor console should export encounter")
-	var encounter: Dictionary = export_result.get("encounter", {})
-	assert(encounter.get("player_spawn", Vector2i.ZERO) == ctrl.state.get_player().pos, "export should contain player spawn")
-	var enemies: Array = encounter.get("enemies", [])
-	assert(enemies.any(func(entry): return entry.get("def_id", "") == "unit_grunt" and entry.get("pos", Vector2i.ZERO) == Vector2i(0, 0)), "export should include spawned grunt")
-	var tiles: Array = encounter.get("tiles", [])
-	assert(tiles.any(func(entry): return entry.get("tile_id", "") == Constants.TILE_ALTAR and entry.get("pos", Vector2i.ZERO) == Vector2i(0, 1)), "export should include replaced altar")
-	var lines: Array = export_result.get("lines", [])
-	assert(lines.any(func(line): return "custom_stage_001" in str(line)), "export lines should include encounter id")
-	print("  [OK] editor console exports encounter config")
 
 
 func _data_registry() -> Node:

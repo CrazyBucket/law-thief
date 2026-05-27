@@ -140,7 +140,6 @@ func get_tile_ids() -> Array[String]:
 		Constants.TILE_FLOOR,
 		Constants.TILE_SPIKE,
 		Constants.TILE_WATER,
-		Constants.TILE_ALTAR,
 		Constants.TILE_PILLAR,
 	]
 
@@ -495,10 +494,10 @@ func _register_unit_defs() -> void:
 	_unit_defs = {
 		"unit_player": {
 			"display_name_key": "unit.player.name",
-			"max_hp": 6,
+			"max_hp": 60,
 			"move_points": 3,
 			"speed": 12,
-			"base_attack": 1,
+			"base_attack": 10,
 			"ai_profile_id": "player",
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
@@ -508,10 +507,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_bomber": {
 			"display_name_key": "unit.bomber.name",
-			"max_hp": 2,
+			"max_hp": 20,
 			"move_points": 3,
 			"speed": 11,
-			"base_attack": 1,
+			"base_attack": 6,
 			"ai_profile_id": "bomber",
 			"tags": [Constants.TAG_UNIT_BOMBER, Constants.TAG_UNIT_MOBILE],
 			"slots": [
@@ -522,10 +521,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_training_guard": {
 			"display_name_key": "unit.training_guard.name",
-			"max_hp": 1,
+			"max_hp": 20,
 			"move_points": 1,
 			"speed": 8,
-			"base_attack": 1,
+			"base_attack": 6,
 			"ai_profile_id": "melee_chase",
 			"tags": [Constants.TAG_UNIT_TRAINING],
 			"slots": [
@@ -536,10 +535,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_heavy_guard": {
 			"display_name_key": "unit.heavy_guard.name",
-			"max_hp": 3,
+			"max_hp": 30,
 			"move_points": 1,
 			"speed": 7,
-			"base_attack": 1,
+			"base_attack": 8,
 			"ai_profile_id": "guard",
 			"tags": [Constants.TAG_UNIT_HEAVY],
 			"slots": [
@@ -550,10 +549,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_poison_bug": {
 			"display_name_key": "unit.poison_bug.name",
-			"max_hp": 2,
+			"max_hp": 20,
 			"move_points": 2,
 			"speed": 10,
-			"base_attack": 1,
+			"base_attack": 6,
 			"ai_profile_id": "poison_roamer",
 			"tags": [Constants.TAG_UNIT_MOBILE],
 			"slots": [
@@ -564,7 +563,7 @@ func _register_unit_defs() -> void:
 		},
 		"unit_gravity_eye": {
 			"display_name_key": "unit.gravity_eye.name",
-			"max_hp": 2,
+			"max_hp": 25,
 			"move_points": 0,
 			"speed": 9,
 			"base_attack": 0,
@@ -578,10 +577,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_grunt": {
 			"display_name_key": "unit.grunt.name",
-			"max_hp": 1,
+			"max_hp": 20,
 			"move_points": 2,
 			"speed": 9,
-			"base_attack": 1,
+			"base_attack": 6,
 			"ai_profile_id": "melee_chase",
 			"tags": [],
 			"slots": [
@@ -592,10 +591,10 @@ func _register_unit_defs() -> void:
 		},
 		"unit_thief": {
 			"display_name_key": "unit.thief.name",
-			"max_hp": 2,
+			"max_hp": 20,
 			"move_points": 3,
 			"speed": 13,
-			"base_attack": 1,
+			"base_attack": 6,
 			"ai_profile_id": "thief",
 			"tags": [Constants.TAG_UNIT_THIEF, Constants.TAG_UNIT_MOBILE],
 			"slots": [
@@ -606,7 +605,7 @@ func _register_unit_defs() -> void:
 		},
 		"unit_shock_tower": {
 			"display_name_key": "unit.shock_tower.name",
-			"max_hp": 3,
+			"max_hp": 30,
 			"move_points": 0,
 			"speed": 6,
 			"base_attack": 0,
@@ -631,7 +630,6 @@ func _register_encounters() -> void:
 			],
 			"tiles": [
 				{"pos": Vector2i(2, 5), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(5, 3), "tile_id": Constants.TILE_ALTAR, "slots": [{"slot_type": Constants.SLOT_RED}]},
 			],
 		},
 		"template_a": {
@@ -644,7 +642,6 @@ func _register_encounters() -> void:
 			"tiles": [
 				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(6, 3), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(2, 3), "tile_id": Constants.TILE_ALTAR, "slots": [{"slot_type": Constants.SLOT_RED}]},
 				{"pos": Vector2i(7, 5), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
@@ -660,7 +657,6 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(5, 4), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(6, 4), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(2, 2), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
-				{"pos": Vector2i(7, 6), "tile_id": Constants.TILE_ALTAR, "slots": [{"slot_type": Constants.SLOT_RED}]},
 			],
 		},
 		"template_c": {
@@ -676,7 +672,6 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(4, 4), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(4, 5), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(2, 1), "tile_id": Constants.TILE_ALTAR, "slots": [{"slot_type": Constants.SLOT_RED}]},
 			],
 		},
 		"template_d": {
@@ -694,7 +689,6 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(2, 4), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(5, 6), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(6, 6), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(1, 1), "tile_id": Constants.TILE_ALTAR, "slots": [{"slot_type": Constants.SLOT_RED}]},
 				{"pos": Vector2i(7, 3), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
@@ -739,8 +733,6 @@ func _ability_slots_for_display(slot_type: String, context: String) -> Array[Str
 					return [ABILITY_UNIT_RED_ACTIVE]
 				"enemy_active":
 					return [ABILITY_ENEMY_RED_ACTION]
-				"altar":
-					return [ABILITY_TILE_ACTIVE]
 		Constants.SLOT_BLUE:
 			match context:
 				"unit_blue":
@@ -779,8 +771,6 @@ func _tile_display_name_key(tile_id: String) -> String:
 			return "tile.spike.name"
 		Constants.TILE_WATER:
 			return "tile.water.name"
-		Constants.TILE_ALTAR:
-			return "tile.altar.name"
 		Constants.TILE_PILLAR:
 			return "tile.pillar.name"
 		_:

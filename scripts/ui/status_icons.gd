@@ -82,6 +82,7 @@ static func _use_builtin_fallback() -> void:
 		Constants.STATUS_SLUGGISH: Vector2i(0, 3),
 		Constants.STATUS_LAWLESS: Vector2i(6, 4),
 		Constants.STATUS_SLOWED: Vector2i(1, 4),
+		Constants.STATUS_VULNERABLE: Vector2i(3, 4),
 	}
 
 

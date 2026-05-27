@@ -12,6 +12,8 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 	if final_amount <= 0:
 		state.log("%s 的护甲吸收了 %d 点伤害 (%s)" % [unit.uid, amount, reason])
 		return 0
+	if StatusRules.is_vulnerable(unit):
+		final_amount = int(final_amount * 1.5)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])

@@ -25,6 +25,7 @@ var player_uid: String = ""
 var units: Dictionary = {}
 var gems: Dictionary = {}
 var tiles: Dictionary = {}
+var entities: Dictionary = {}  # uid → EntityState
 var held_gem_uid: String = ""
 var player_moved: bool = false
 var player_acted: bool = false
@@ -68,3 +69,18 @@ func get_tile(pos: Vector2i) -> TileState:
 
 func tile_key(pos: Vector2i) -> String:
 	return "%d,%d" % [pos.x, pos.y]
+
+
+func get_entity_at(pos: Vector2i) -> EntityState:
+	for entity in entities.values():
+		if entity.alive and entity.pos == pos:
+			return entity
+	return null
+
+
+func add_entity(entity: EntityState) -> void:
+	entities[entity.uid] = entity
+
+
+func remove_entity(uid: String) -> void:
+	entities.erase(uid)

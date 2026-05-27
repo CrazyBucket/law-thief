@@ -388,8 +388,6 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			lines.append("尖刺地块：进入受到 %d 伤害" % Constants.SPIKE_DAMAGE)
 		Constants.TILE_WATER:
 			lines.append("水洼：导电连锁区域")
-		Constants.TILE_ALTAR:
-			lines.append("祭坛：嵌入宝石触发全场效果")
 		Constants.TILE_PILLAR:
 			lines.append("机关柱：嵌入宝石产生持续光环")
 	if tile.has_modifier("poison_fog"):
@@ -623,8 +621,6 @@ func _unit_slot_context(unit: UnitState, slot: SlotState) -> String:
 
 
 func _tile_slot_context(tile: TileState) -> String:
-	if tile.tile_id == Constants.TILE_ALTAR:
-		return "altar"
 	if tile.tile_id == Constants.TILE_PILLAR:
 		return "pillar"
 	return ""
@@ -1399,8 +1395,6 @@ func _clear_slot_gem(slot: SlotState) -> void:
 
 func _default_tile_slot_defs(tile_id: String) -> Array:
 	match tile_id:
-		Constants.TILE_ALTAR:
-			return [{"slot_type": Constants.SLOT_RED}]
 		Constants.TILE_PILLAR:
 			return [{"slot_type": Constants.SLOT_BLUE}]
 		_:
@@ -1667,7 +1661,7 @@ func _editor_help_lines() -> Array[String]:
 		"    - units spawn on the board; gems auto-detect unit/tile unless overridden",
 		"    - example: /spawn unit_bomber 2,4 --team enemy",
 		"    - example: /spawn gem_poison 2,4 --slot red --target tile",
-		"    - example: /spawn tile_altar 4,4",
+		"    - example: /spawn tile_pillar 4,4",
 		"  /spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",
 		"    - example: /spawn-many unit_grunt 0,0 1,0 2,0 --team enemy",
 		"  /move [unit] <from_pos> <to_pos>",

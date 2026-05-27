@@ -163,6 +163,22 @@ static func apply_sluggish(
 	})
 
 
+static func apply_vulnerable(
+	state: GameState,
+	unit: UnitState,
+	duration: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_VULNERABLE, {
+		"duration": duration,
+		"source_uid": source_uid,
+	})
+
+
+static func is_vulnerable(unit: UnitState) -> bool:
+	return unit.has_status(Constants.STATUS_VULNERABLE)
+
+
 ## 返回缓速扣减后的实际移动力（最低1）
 static func effective_move_points(unit: UnitState, base: int) -> int:
 	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
@@ -196,12 +212,14 @@ static func tick_turn_start(state: GameState) -> void:
 
 
 ## 分阶段 turn_end，严格执行以下顺序：
-## 1. 地块结算：poison_fog/fire 的 on_stay_end（上毒/上火）
+## 1. 地块停留结算：overlay 对停留单位施加状态（毒雾上毒、火焰上火、毒水洼上毒）
 ## 2. 接触结算：相邻接触 (CONTACT_ADJACENT)
-## 3. 状态预处理：burning 在火焰中层数 x2
+## 3. 状态预处理：地块修正 status 参数（burning 在火焰中翻倍）
 ## 4. 状态 Tick：统一扣毒/火伤害，层数 -1
-## 5. 地块 modifier 倒计时
-## 6. 死亡清理（已在 apply_damage 中处理，此处仅触发 pillar aura）
+## 5. 油桶着火检测
+## 6. 地块 modifier 倒计时
+## 7. 火焰蔓延 + 草地生长
+## 8. Pillar 光环
 static func tick_turn_end(state: GameState) -> void:
 	# 阶段 1：地块停留结算
 	for unit in state.units.values():
@@ -212,11 +230,11 @@ static func tick_turn_end(state: GameState) -> void:
 	# 阶段 2：接触结算（相邻）
 	_ContactResolver.resolve_adjacent(state)
 
-	# 阶段 3：状态预处理（火焰中 burning x2）
+	# 阶段 3：状态预处理（由 overlay 修正 status 参数）
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		_pretick_burning(state, unit)
+		_pretick_overlay_status_modifiers(state, unit)
 
 	# 阶段 4：状态 Tick（poison/burning/armor 等）
 	for unit in state.units.values():
@@ -224,31 +242,52 @@ static func tick_turn_end(state: GameState) -> void:
 			continue
 		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END)
 
-	# 阶段 5：地块 modifier 倒计时
+	# 阶段 5：油桶着火检测
+	EntityRules.tick_barrels_in_fire(state)
+
+	# 阶段 6：地块 modifier 倒计时
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
 		tile.tick_modifiers()
+
+	# 阶段 7：火焰蔓延 + 草地随机生长
+	TileRules.spread_fire(state)
+	_tick_grass_growth(state)
+
+	# 阶段 8：Pillar 光环
 	_apply_tile_pillar_auras(state)
 
 
-## 地块停留效果（毒雾上毒，火焰上火）
+## 地块停留效果（通过 TileRules 的进入效果表统一分发）
 static func _tick_tile_stay(state: GameState, unit: UnitState) -> void:
 	var tile := state.get_tile(unit.pos)
-	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
-		apply_poison(state, unit, 1, 2)
-	if tile.has_modifier(Constants.TILE_MOD_FIRE):
-		apply_burning(state, unit, 1)
+	TileRules._apply_enter_effects(state, unit, tile)
 
 
-## burning 预处理：单位处于火焰地块时，层数 x2
-static func _pretick_burning(state: GameState, unit: UnitState) -> void:
-	var burning: StatusInstance = unit.get_status(Constants.STATUS_BURNING)
-	if burning == null:
-		return
+## overlay 对 status 参数的预处理表
+## key: [status_id, modifier_type]  value: Callable(status) → void
+static var _OVERLAY_STATUS_PRETICK: Array = [
+	# 处于火焰中：burning 层数 ×2
+	[Constants.STATUS_BURNING, Constants.TILE_MOD_FIRE,
+		func(status: StatusInstance, state: GameState, unit: UnitState) -> void:
+			status.stacks = status.stacks * 2
+			state.log("%s 处于火焰中，burning 层数翻倍为 %d" % [unit.uid, status.stacks])],
+]
+
+
+## 通用 overlay-status 预处理：遍历表格，无需针对每种状态单独写函数
+static func _pretick_overlay_status_modifiers(state: GameState, unit: UnitState) -> void:
 	var tile := state.get_tile(unit.pos)
-	if tile.has_modifier(Constants.TILE_MOD_FIRE):
-		burning.stacks = burning.stacks * 2
-		state.log("%s 处于火焰中，burning 层数翻倍为 %d" % [unit.uid, burning.stacks])
+	for entry in _OVERLAY_STATUS_PRETICK:
+		var status_id: String = entry[0]
+		var modifier_type: String = entry[1]
+		var callback: Callable = entry[2]
+		if not tile.has_modifier(modifier_type):
+			continue
+		var status: StatusInstance = unit.get_status(status_id)
+		if status == null:
+			continue
+		callback.call(status, state, unit)
 
 
 static func _apply(state: GameState, unit: UnitState, status_id: String, params: Dictionary) -> void:
@@ -316,6 +355,15 @@ static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInsta
 			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "poison")
 		Constants.STATUS_BURNING:
 			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "burning")
+
+
+## 草地随机生长为草丛
+static func _tick_grass_growth(state: GameState) -> void:
+	for tile in state.tiles.values():
+		if tile.tile_id == Constants.TILE_GRASS and randf() < Constants.GRASS_GROW_CHANCE:
+			tile.tile_id = Constants.TILE_BUSH
+			tile._init_ground_tags()
+			state.log("草地 %s 长成草丛" % [tile.pos])
 
 
 static func _apply_tile_pillar_auras(state: GameState) -> void:

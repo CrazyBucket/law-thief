@@ -9,7 +9,6 @@
     {"pos": [4, 4], "tile_id": "tile_spike"},
     {"pos": [5, 4], "tile_id": "tile_spike"},
     {"pos": [6, 4], "tile_id": "tile_spike"},
-    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
-    {"pos": [7, 6], "tile_id": "tile_altar", "slots": [{"slot_type": "red"}]}
+    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]}
   ]
 }

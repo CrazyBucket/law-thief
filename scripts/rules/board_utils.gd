@@ -47,6 +47,9 @@ static func is_passable(state: GameState, pos: Vector2i, ignore_uid: String = ""
 	var unit := state.get_unit_at(pos)
 	if unit != null and unit.uid != ignore_uid:
 		return false
+	var entity := state.get_entity_at(pos)
+	if entity != null and entity.alive and entity.blocks_movement():
+		return false
 	return true
 
 
@@ -71,11 +74,12 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 	match tile.tile_id:
 		Constants.TILE_SPIKE:
 			cost += float(Constants.SPIKE_DAMAGE) * float(profile.get("spike_damage_weight", 2.0))
-		Constants.TILE_WATER:
-			cost += float(profile.get("water_cost_bias", 0.0))
 		_:
 			pass
-	if tile.has_modifier("poison_fog"):
+	# 水洼（含毒水洼）：移动消耗 +1
+	if tile.has_ground_tag(Constants.GROUND_TAG_WATER) or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
+		cost += 1.0 + float(profile.get("water_cost_bias", 0.0))
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
 		cost += float(Constants.POISON_FOG_DAMAGE) * float(profile.get("poison_damage_weight", 2.0))
 	return maxf(cost, _MIN_STEP_COST)
 

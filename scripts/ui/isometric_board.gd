@@ -266,11 +266,46 @@ func _draw_unit(unit: UnitState) -> void:
 		var closed := corners.duplicate()
 		closed.append(corners[0])
 		draw_polyline(closed, Color(1, 1, 1, 0.9), 2.0, false)
+	_draw_unit_statuses(unit, center + ground_nudge)
 	_draw_gem_diamonds(unit, center + Vector2(0, -sprite_size.y - 4) + ground_nudge)
 	_draw_hp_bar(center + Vector2(-18, 6), unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		_draw_intent_badge(center + Vector2(20, -sprite_size.y + 6) + ground_nudge, unit.intent)
 
+
+func _draw_unit_statuses(unit: UnitState, center: Vector2) -> void:
+	if unit.statuses.is_empty():
+		return
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	for status in unit.statuses:
+		match status.status_id:
+			Constants.STATUS_BURNING:
+				for i in range(3):
+					var phase := t * (4.0 + i * 0.7) + i * 2.0
+					var px := sin(phase) * 16.0
+					var py := -20.0 - fmod(phase * 20.0, 30.0)
+					var size := maxf(2.0, 8.0 - (py + 20.0) * -0.2)
+					draw_circle(center + Vector2(px, py), size, Color(1.0, 0.4, 0.1, 0.6))
+			Constants.STATUS_POISON:
+				var px := sin(t * 2.0) * 14.0
+				var py := -25.0 + cos(t * 3.0) * 8.0
+				draw_circle(center + Vector2(px, py), 6.0, Color(0.4, 0.9, 0.2, 0.7))
+				draw_circle(center + Vector2(-px, py - 10.0), 4.0, Color(0.4, 0.9, 0.2, 0.7))
+			Constants.STATUS_PARALYZED:
+				if fmod(t * 10.0, 1.0) > 0.5:
+					draw_polyline(PackedVector2Array([
+						center + Vector2(-15, -30),
+						center + Vector2(-5, -20),
+						center + Vector2(5, -35),
+						center + Vector2(15, -25)
+					]), Color(0.9, 0.9, 0.2, 0.8), 2.0)
+			Constants.STATUS_WET:
+				for i in range(2):
+					var phase := t * 2.0 + i * 3.14
+					var py := -10.0 + fmod(phase * 15.0, 25.0)
+					draw_line(center + Vector2(-12 + i * 24, py), center + Vector2(-12 + i * 24, py + 6), Color(0.3, 0.6, 1.0, 0.6), 2.0)
+			Constants.STATUS_ARMOR:
+				draw_arc(center + Vector2(0, -25), 24.0, -PI*0.75, -PI*0.25, 8, Color(0.6, 0.6, 0.7, 0.8), 2.0)
 
 func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
 	var gems_to_draw: Array = []
@@ -596,6 +631,18 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 	var base_color := Color(1.0, 0.65, 0.2)
 	if is_crit:
 		base_color = Color(1.0, 0.3, 0.15)
+	
+	# 加入一个居中的打击十字/星形特效（类型 hit_mark）
+	_particles.append({
+		"pos": center + Vector2(0, -15),
+		"color": Color(1.0, 1.0, 1.0, 0.9) if not is_crit else Color(1.0, 0.4, 0.4, 1.0),
+		"life": 0.25,
+		"max_life": 0.25,
+		"velocity": Vector2.ZERO,
+		"type": "hit_mark",
+		"scale": 1.5 if is_crit else 1.0
+	})
+	
 	for _i in range(count):
 		var angle: float = randf() * TAU
 		var speed: float = randf_range(60.0, 180.0)
@@ -795,6 +842,15 @@ func _draw_particles() -> void:
 				var ring_color: Color = color
 				ring_color.a = alpha * 0.7
 				draw_arc(pos, radius_px, 0, TAU, 24, ring_color, 2.5 * alpha + 0.5)
+			"hit_mark":
+				var scale := float(p.get("scale", 1.0))
+				var expand := (1.0 - alpha) * 10.0 * scale
+				var len := (20.0 + expand) * scale
+				var thick := (3.0 * alpha + 1.0) * scale
+				draw_line(pos + Vector2(-len, -len), pos + Vector2(len, len), color, thick)
+				draw_line(pos + Vector2(-len, len), pos + Vector2(len, -len), color, thick)
+				draw_line(pos + Vector2(-len*1.2, 0), pos + Vector2(len*1.2, 0), color, thick * 0.6)
+				draw_line(pos + Vector2(0, -len*1.2), pos + Vector2(0, len*1.2), color, thick * 0.6)
 			"sprite_seq":
 				if _fx_textures == null:
 					continue
