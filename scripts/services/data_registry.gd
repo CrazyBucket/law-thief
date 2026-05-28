@@ -2,7 +2,6 @@ extends Node
 
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 
-const ABILITY_PLAYER_SKILL := "player_skill"
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -237,11 +236,6 @@ func get_gem_ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 	return str(ability_profiles.get(ability_slot, ""))
 
 
-func get_player_skill_target_mode(gem_ref: Variant) -> String:
-	var profile: Dictionary = _effect_profile(get_gem_ability_profile(gem_ref, ABILITY_PLAYER_SKILL))
-	return str(profile.get("player_skill_target_mode", "any_cell"))
-
-
 func get_gem_effect_description(gem_ref: Variant, slot_type: String, context: String) -> String:
 	var parts: Array[String] = []
 	for ability_slot in _ability_slots_for_display(slot_type, context):
@@ -288,7 +282,6 @@ func _next_uid(prefix: String) -> String:
 func _register_gem_effect_profiles() -> void:
 	_gem_effect_profiles = {
 		"explosion": {
-			"player_skill_target_mode": "any_cell",
 			"enemy_intent": {
 				"type": "charge_explode",
 				"preview_key": "gem.intent.charge_explode",
@@ -296,7 +289,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": Constants.EXPLOSION_DAMAGE,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.explosion.player_skill", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
 				ABILITY_BLUE_TURN_START: {"key": "gem.effect.explosion.blue_turn_start"},
@@ -306,7 +298,6 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"poison": {
-			"player_skill_target_mode": "any_cell",
 			"enemy_intent": {
 				"type": "poison_attack",
 				"damage_mode": "base_attack",
@@ -314,7 +305,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.poison.player_skill"},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.poison.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.poison.enemy_red_action"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.poison.blue_damaged"},
@@ -324,7 +314,6 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"gravity": {
-			"player_skill_target_mode": "enemy_unit",
 			"enemy_intent": {
 				"type": "pull",
 				"preview_key": "gem.intent.pull",
@@ -332,7 +321,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.gravity.player_skill", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
 				ABILITY_BLUE_TURN_START: {"key": "gem.effect.gravity.blue_turn_start"},
@@ -342,7 +330,6 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"arc": {
-			"player_skill_target_mode": "water_tile",
 			"enemy_intent": {
 				"type": "arc_attack",
 				"preview_key": "gem.intent.arc_attack",
@@ -350,7 +337,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.arc.player_skill"},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.arc.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.arc.enemy_red_action"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.arc.blue_damaged"},
@@ -358,7 +344,6 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"fire_gem": {
-			"player_skill_target_mode": "any_cell",
 			"enemy_intent": {
 				"type": "fire_attack",
 				"preview_key": "gem.intent.fire_attack",
@@ -366,7 +351,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.fire_gem.player_skill"},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.fire_gem.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.fire_gem.enemy_red_action"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.fire_gem.blue_damaged"},
@@ -374,7 +358,6 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"ice": {
-			"player_skill_target_mode": "enemy_unit",
 			"enemy_intent": {
 				"type": "ice_attack",
 				"preview_key": "gem.intent.ice_attack",
@@ -382,7 +365,6 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_PLAYER_SKILL: {"key": "gem.effect.ice.player_skill"},
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.ice.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.ice.enemy_red_action"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.ice.blue_damaged"},
@@ -401,8 +383,7 @@ func _register_gem_defs() -> void:
 			"color": Color(1.0, 0.45, 0.2),
 			"rarity": "common",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "explosion",
-				ABILITY_UNIT_RED_ACTIVE: "explosion",
+					ABILITY_UNIT_RED_ACTIVE: "explosion",
 				ABILITY_ENEMY_RED_ACTION: "explosion",
 				ABILITY_BLUE_TURN_START: "explosion",
 				ABILITY_BLUE_DAMAGED: "explosion",
@@ -418,8 +399,7 @@ func _register_gem_defs() -> void:
 			"color": Color(0.55, 0.9, 0.35),
 			"rarity": "common",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "poison",
-				ABILITY_UNIT_RED_ACTIVE: "poison",
+					ABILITY_UNIT_RED_ACTIVE: "poison",
 				ABILITY_ENEMY_RED_ACTION: "poison",
 				ABILITY_BLUE_DAMAGED: "poison",
 				ABILITY_BLACK_DEATH: "poison",
@@ -434,8 +414,7 @@ func _register_gem_defs() -> void:
 			"color": Color(0.35, 0.65, 1.0),
 			"rarity": "rare",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "gravity",
-				ABILITY_UNIT_RED_ACTIVE: "gravity",
+					ABILITY_UNIT_RED_ACTIVE: "gravity",
 				ABILITY_ENEMY_RED_ACTION: "gravity",
 				ABILITY_BLUE_TURN_START: "gravity",
 				ABILITY_BLUE_DAMAGED: "gravity",
@@ -451,8 +430,7 @@ func _register_gem_defs() -> void:
 			"color": Color(0.95, 0.9, 0.3),
 			"rarity": "uncommon",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "arc",
-				ABILITY_UNIT_RED_ACTIVE: "arc",
+					ABILITY_UNIT_RED_ACTIVE: "arc",
 				ABILITY_ENEMY_RED_ACTION: "arc",
 				ABILITY_BLUE_DAMAGED: "arc",
 				ABILITY_BLACK_DEATH: "arc",
@@ -465,8 +443,7 @@ func _register_gem_defs() -> void:
 			"color": Color(1.0, 0.35, 0.1),
 			"rarity": "uncommon",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "fire_gem",
-				ABILITY_UNIT_RED_ACTIVE: "fire_gem",
+					ABILITY_UNIT_RED_ACTIVE: "fire_gem",
 				ABILITY_ENEMY_RED_ACTION: "fire_gem",
 				ABILITY_BLUE_DAMAGED: "fire_gem",
 				ABILITY_BLACK_DEATH: "fire_gem",
@@ -479,8 +456,7 @@ func _register_gem_defs() -> void:
 			"color": Color(0.6, 0.9, 1.0),
 			"rarity": "uncommon",
 			"ability_profiles": {
-				ABILITY_PLAYER_SKILL: "ice",
-				ABILITY_UNIT_RED_ACTIVE: "ice",
+					ABILITY_UNIT_RED_ACTIVE: "ice",
 				ABILITY_ENEMY_RED_ACTION: "ice",
 				ABILITY_BLUE_DAMAGED: "ice",
 				ABILITY_BLACK_DEATH: "ice",
@@ -726,8 +702,6 @@ func _ability_slots_for_display(slot_type: String, context: String) -> Array[Str
 	match slot_type:
 		Constants.SLOT_RED:
 			match context:
-				"player_skill":
-					return [ABILITY_PLAYER_SKILL]
 				"player_trigger":
 					return [ABILITY_UNIT_RED_ACTIVE]
 				"enemy_active":

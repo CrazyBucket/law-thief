@@ -61,3 +61,15 @@ func take_damage(amount: int) -> int:
 		hp = 0
 		alive = false
 	return amount
+
+
+func clone() -> EntityState:
+	var entity := EntityState.new()
+	entity.uid = uid
+	entity.entity_id = entity_id
+	entity.pos = pos
+	entity.hp = hp
+	entity.max_hp = max_hp
+	entity.alive = alive
+	entity.tags = tags.duplicate()
+	return entity

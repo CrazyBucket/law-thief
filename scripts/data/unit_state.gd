@@ -94,3 +94,26 @@ func add_tag(tag: String) -> void:
 
 func remove_tag(tag: String) -> void:
 	tags.erase(tag)
+
+
+func clone() -> UnitState:
+	var unit := UnitState.new()
+	unit.uid = uid
+	unit.unit_def_id = unit_def_id
+	unit.team = team
+	unit.pos = pos
+	unit.hp = hp
+	unit.max_hp = max_hp
+	unit.move_points = move_points
+	unit.speed = speed
+	unit.base_attack = base_attack
+	unit.armor = armor
+	unit.intent = intent.clone() if intent != null else null
+	unit.alive = alive
+	unit.ai_profile_id = ai_profile_id
+	unit.tags = tags.duplicate()
+	for slot in slots:
+		unit.slots.append(slot.clone() if slot != null else null)
+	for status in statuses:
+		unit.statuses.append(status.clone() if status != null else null)
+	return unit

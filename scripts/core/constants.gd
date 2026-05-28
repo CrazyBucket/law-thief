@@ -46,7 +46,6 @@ const LOCK_ARMOR := "armor_lock"
 
 const ACTION_MOVE := "move"
 const ACTION_ATTACK := "attack"
-const ACTION_SKILL := "skill"
 const ACTION_EXTRACT := "extract"
 const ACTION_INSERT := "insert"
 const ACTION_TRIGGER := "trigger"
@@ -57,12 +56,11 @@ const ATTACK_RANGE := 3
 const EXTRACT_RANGE := 3
 const INSERT_RANGE := 3
 const TRIGGER_RANGE := 3
-const SKILL_RANGE := 3
-
 const EXPLOSION_DAMAGE := 12
 const EXPLOSION_RADIUS := 1
 const EXPLOSION_CROSS_DAMAGE := 1   # 爆炸宝石命中时十字扩散伤害
 const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 chebyshev 范围）
+const BOMBER_DASH_RANGE := 2        # 爆炸兵每次自爆前冲刺的最大步数
 const GRAVITY_COLLISION_DAMAGE := 3
 const KNOCKBACK_COLLISION_DAMAGE := 3  # 击退撞墙/撞单位碰撞伤害
 const SPIKE_DAMAGE := 5

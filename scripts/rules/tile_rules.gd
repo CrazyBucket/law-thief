@@ -100,6 +100,7 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = int(merged.get("duration", 0)) + add_turns
 		tile.modifiers[i] = merged
+		_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_POISON_FOG, add_turns)
 	_apply_enter_effects_to_occupant(state, pos, tile)

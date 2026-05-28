@@ -12,10 +12,8 @@ const TIMING_FORCED_MOVE := "forced_move"   # 被强制位移时（击退、引�
 const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻击）
 
 const MODE_TRIGGER := "trigger"
-const MODE_SKILL := "skill"
 const MODE_ENEMY := "enemy"
 
-const ABILITY_PLAYER_SKILL := "player_skill"
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -47,14 +45,14 @@ static func on_tile_gem_inserted(state: GameState, tile: TileState, slot: SlotSt
 		state.log("机关柱激活！宝石 %s 产生光环" % gem_name)
 
 
-static func trigger_tile_gem(state: GameState, tile: TileState, slot: SlotState) -> bool:
+static func trigger_tile_gem(state: GameState, tile: TileState, slot: SlotState, out_events: Array[Dictionary] = []) -> bool:
 	if tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
 		state.log("触发 %s 地块的 %s" % [tile.tile_id, _gem_id(state, slot)])
-		return _run_slot_hook(state, tile, slot, TIMING_TURN_START, {})
+		return _run_slot_hook(state, tile, slot, TIMING_TURN_START, {"events": out_events})
 	return false
 
 
-static func trigger_gem(state: GameState, owner_uid: String, slot: SlotState) -> bool:
+static func trigger_gem(state: GameState, owner_uid: String, slot: SlotState, out_events: Array[Dictionary] = [], target_uid: String = "") -> bool:
 	if slot.slot_type != Constants.SLOT_RED:
 		return false
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
@@ -63,52 +61,11 @@ static func trigger_gem(state: GameState, owner_uid: String, slot: SlotState) ->
 	var owner: UnitState = state.units.get(owner_uid, null)
 	if owner == null:
 		return false
-	return _run_slot_hook(state, owner, slot, TIMING_ACTIVE, {})
+	return _run_slot_hook(state, owner, slot, TIMING_ACTIVE, {"events": out_events, "target_uid": target_uid})
 
 
 static func on_unit_death(state: GameState, unit: UnitState, out_events: Array[Dictionary] = []) -> void:
 	_run_death_hooks_with_events(state, unit, out_events)
-
-
-## 玩家使用红槽技能：对目标位置/单位施放，效果因宝石而异
-## 返回动画事件列表
-static func player_use_skill(state: GameState, player: UnitState, target_pos: Vector2i) -> Array[Dictionary]:
-	var slot := player.get_slot(Constants.SLOT_RED)
-	if slot == null or slot.gem_uid.is_empty():
-		return [] as Array[Dictionary]
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return [] as Array[Dictionary]
-	var skill_events: Array[Dictionary] = []
-	var hook_ctx := {
-		"mode": MODE_SKILL,
-		"target_pos": target_pos,
-		"events": skill_events,
-	}
-	if not _run_slot_hook(state, player, slot, TIMING_ACTIVE, hook_ctx):
-		return [] as Array[Dictionary]
-	state.log("玩家使用技能: %s" % _data_registry().get_gem_display_name(gem))
-	skill_events.append_array(_build_player_skill_events(gem, player, target_pos))
-	return skill_events
-
-
-static func _build_player_skill_events(gem: GemState, player: UnitState, target_pos: Vector2i) -> Array[Dictionary]:
-	var events: Array[Dictionary] = []
-	match _ability_profile(gem, ABILITY_PLAYER_SKILL):
-		"explosion":
-			events.append({"type": "explode", "pos": target_pos, "radius": Constants.EXPLOSION_RADIUS})
-		"poison":
-			events.append({"type": "poison_burst", "pos": target_pos, "radius": 1})
-		"gravity":
-			events.append({"type": "gem_flash", "pos": player.pos, "color": _data_registry().get_gem_color(gem)})
-		"arc", "fire_gem", "ice":
-			events.append({"type": "gem_flash", "pos": target_pos, "color": _data_registry().get_gem_color(gem)})
-	return events
-
-
-## 获取玩家红槽技能的描述
-static func get_skill_description(gem_ref: Variant) -> String:
-	return _data_registry().get_gem_effect_description(gem_ref, Constants.SLOT_RED, "player_skill")
 
 
 static func get_slot_effect_description(gem_ref: Variant, slot_type: String, context: String) -> String:
@@ -135,29 +92,6 @@ static func unit_has_red_arc(state: GameState, unit: UnitState) -> bool:
 	if gem == null:
 		return false
 	return _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == "arc"
-
-
-## 检查玩家是否能对目标使用技能
-static func can_use_skill_at(state: GameState, player: UnitState, target_pos: Vector2i) -> bool:
-	var slot := player.get_slot(Constants.SLOT_RED)
-	if slot == null or slot.gem_uid.is_empty():
-		return false
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return false
-	if BoardUtils.manhattan(player.pos, target_pos) > Constants.SKILL_RANGE:
-		return false
-	match _player_skill_target_mode(gem):
-		"self":
-			return target_pos == player.pos
-		"water_tile":
-			var tile := state.get_tile(target_pos)
-			return tile.has_tile_tag(Constants.TAG_TILE_CONDUCTIVE)
-		"enemy_unit":
-			var target_unit := state.get_unit_at(target_pos)
-			return target_unit != null and target_unit.uid != player.uid
-		_:
-			return true
 
 
 static func on_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
@@ -364,7 +298,7 @@ static func _run_slot_hook(state: GameState, owner: Variant, slot: SlotState, ti
 	if gem == null:
 		return false
 	if owner is TileState:
-		return _run_tile_slot_hook(state, owner as TileState, slot, gem, timing)
+		return _run_tile_slot_hook(state, owner as TileState, slot, gem, timing, ctx)
 	if owner is UnitState:
 		return _run_unit_slot_hook(state, owner as UnitState, slot, gem, timing, ctx)
 	return false
@@ -402,83 +336,59 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: SlotState, gem: GemState, ctx: Dictionary) -> bool:
 	var mode: String = ctx.get("mode", MODE_TRIGGER)
 	var ability_slot := ABILITY_UNIT_RED_ACTIVE
-	if mode == MODE_SKILL:
-		ability_slot = ABILITY_PLAYER_SKILL
-	elif mode == MODE_ENEMY:
+	if mode == MODE_ENEMY:
 		ability_slot = ABILITY_ENEMY_RED_ACTION
+	var out_events: Array[Dictionary] = _events_from_ctx(ctx)
 	match _ability_profile(gem, ability_slot):
 		"explosion":
 			match mode:
 				MODE_TRIGGER:
-					explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid)
-				MODE_SKILL:
-					explode_at(state, ctx.get("target_pos", owner.pos), Constants.EXPLOSION_DAMAGE, owner.uid)
+					out_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
+					out_events.append_array(explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid))
 				MODE_ENEMY:
 					_execute_charge_explosion(state, owner, ctx.get("target_uid", ""))
 			return true
 		"poison":
 			match mode:
 				MODE_TRIGGER:
+					out_events.append({"type": "poison_burst", "pos": owner.pos, "radius": 0})
 					TileRules.create_poison_fog(state, owner.pos)
-				MODE_SKILL:
-					var skill_anchor: Vector2i = ctx.get("target_pos", owner.pos)
-					for cell in BoardUtils.cells_in_radius(skill_anchor, 1):
-						TileRules.create_poison_fog(state, cell)
-						var occ: UnitState = state.get_unit_at(cell)
-						if occ != null and occ.alive and occ.team != owner.team:
-							StatusRules.apply_poison(state, occ, 1, Constants.POISON_SKILL_DEBUFF_TURNS)
 				MODE_ENEMY:
 					_execute_poison_attack(state, owner, ctx.get("target_uid", ""))
 			return true
 		"gravity":
 			match mode:
 				MODE_TRIGGER:
-					pull_around(state, owner.pos, 2, 1, owner.uid)
-				MODE_SKILL:
-					var target_unit := state.get_unit_at(ctx.get("target_pos", owner.pos))
-					if target_unit != null and target_unit.uid != owner.uid:
-						pull_unit_toward_with_events(state, target_unit, owner.pos, 2, owner.uid)
-						StatusRules.apply_rooted(state, target_unit, 2)
+					out_events.append({"type": "gem_flash", "pos": owner.pos, "color": _data_registry().get_gem_color(gem)})
+					for unit in state.units.values():
+						if not unit.alive or unit.uid == owner.uid:
+							continue
+						if BoardUtils.chebyshev(owner.pos, unit.pos) > 2:
+							continue
+						out_events.append_array(pull_unit_toward_with_events(state, unit, owner.pos, 1, owner.uid))
 				MODE_ENEMY:
 					_execute_pull_events(state, owner, ctx.get("target_uid", ""))
 			return true
 		"arc":
-			var out_events: Array[Dictionary] = _events_from_ctx(ctx)
-			var arc_anchor: Vector2i = ctx.get("target_pos", owner.pos)
-			match mode:
-				MODE_TRIGGER, MODE_ENEMY:
-					var trigger_tile := state.get_tile(arc_anchor)
-					if trigger_tile != null and trigger_tile.has_tile_tag(Constants.TAG_TILE_WATER):
-						apply_water_conduction(state, arc_anchor, owner, out_events)
-					else:
-						var arc_target: UnitState = state.get_unit_at(arc_anchor)
-						if arc_target == null:
-							arc_target = state.units.get(ctx.get("target_uid", ""), null)
-						if arc_target != null and arc_target.alive:
-							var arc_base := CombatRules.attack_damage(state, owner)
-							_arc_to(state, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events)
-							apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
-				MODE_SKILL:
-					var skill_tile := state.get_tile(arc_anchor)
-					if skill_tile != null and skill_tile.has_tile_tag(Constants.TAG_TILE_WATER):
-						apply_water_conduction(state, arc_anchor, owner, out_events)
-					else:
-						var skill_victim := state.get_unit_at(arc_anchor)
-						if skill_victim != null and skill_victim.alive and skill_victim.uid != owner.uid:
-							var skill_base := CombatRules.attack_damage(state, owner)
-							_arc_to(state, skill_victim, owner.uid, _calc_arc_damage(skill_base), out_events)
-							apply_arc_bounce_from_victim(state, skill_victim, owner, skill_base, out_events)
+			var arc_target_uid: String = ctx.get("target_uid", "")
+			var arc_anchor: Vector2i = owner.pos
+			var arc_target: UnitState = state.units.get(arc_target_uid, null)
+			if arc_target != null:
+				arc_anchor = arc_target.pos
+			var trigger_tile := state.get_tile(arc_anchor)
+			if trigger_tile != null and trigger_tile.has_tile_tag(Constants.TAG_TILE_WATER):
+				apply_water_conduction(state, arc_anchor, owner, out_events)
+			else:
+				if arc_target != null and arc_target.alive:
+					var arc_base := CombatRules.attack_damage(state, owner)
+					_arc_to(state, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events)
+					apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
 			return true
 		"fire_gem":
 			match mode:
 				MODE_TRIGGER:
+					out_events.append({"type": "fire_burst", "pos": owner.pos})
 					TileRules.create_fire(state, owner.pos)
-				MODE_SKILL:
-					var fire_target_pos: Vector2i = ctx.get("target_pos", owner.pos)
-					TileRules.create_fire(state, fire_target_pos)
-					var fire_occ := state.get_unit_at(fire_target_pos)
-					if fire_occ != null and fire_occ.alive and fire_occ.team != owner.team:
-						StatusRules.apply_burning(state, fire_occ, 1, owner.uid)
 				MODE_ENEMY:
 					var fire_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
 					if fire_t != null and fire_t.alive:
@@ -487,11 +397,8 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: Sl
 		"ice":
 			match mode:
 				MODE_TRIGGER:
+					out_events.append({"type": "frost_pulse", "pos": owner.pos})
 					StatusRules.apply_slowed(state, owner, 1, owner.uid)
-				MODE_SKILL:
-					var ice_target := state.get_unit_at(ctx.get("target_pos", owner.pos))
-					if ice_target != null and ice_target.uid != owner.uid:
-						apply_ice_hit_effect(state, ice_target, owner.uid)
 				MODE_ENEMY:
 					var ice_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
 					if ice_t != null and ice_t.alive:
@@ -565,7 +472,11 @@ static func _run_unit_death_effect_with_events(state: GameState, owner: UnitStat
 			out_events.append_array(evs)
 			return true
 		"poison":
-			_transfer_debuffs_to_random_units(state, owner, 1)
+			out_events.append({"type": "poison_burst", "pos": owner.pos, "radius": 1})
+			for cell in BoardUtils.cells_in_radius(owner.pos, 1):
+				if not BoardUtils.in_bounds(state, cell):
+					continue
+				TileRules.create_poison_fog(state, cell)
 			return true
 		"gravity":
 			# 死亡时将 3x3 范围内单位拉向自身（产生 move_step 事件）
@@ -638,29 +549,42 @@ static func _run_unit_contact_effect(state: GameState, owner: UnitState, gem: Ge
 	return false
 
 
-static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotState, gem: GemState, timing: String) -> bool:
+static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotState, gem: GemState, timing: String, ctx: Dictionary = {}) -> bool:
 	match timing:
 		TIMING_TURN_START:
 			if slot.slot_type != Constants.SLOT_BLUE or tile.tile_id != Constants.TILE_PILLAR:
 				return false
-			return _run_tile_turn_start_effect(state, tile, gem)
+			return _run_tile_turn_start_effect(state, tile, gem, ctx)
 	return false
 
 
-static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: GemState) -> bool:
+static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: GemState, ctx: Dictionary = {}) -> bool:
+	var out_events: Array[Dictionary] = _events_from_ctx(ctx)
 	match _ability_profile(gem, ABILITY_TILE_TURN_START):
 		"poison":
+			out_events.append({"type": "poison_burst", "pos": tile.pos, "radius": 2})
 			for unit in state.units.values():
 				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= 2:
-					StatusRules.apply_poison(state, unit)
+					StatusRules.apply_poison(state, unit, 1, 2, tile.tile_id)
 			return true
 		"explosion":
+			out_events.append({"type": "explode", "pos": tile.pos, "radius": 1})
 			for unit in state.units.values():
 				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= 1:
-					CombatRules.apply_damage(state, unit, 1, "", "pillar_burn")
+					var dealt := CombatRules.apply_damage(state, unit, 1, "", "pillar_burn")
+					if dealt > 0:
+						out_events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
 			return true
 		"gravity":
-			pull_around(state, tile.pos, 2, 1)
+			out_events.append({"type": "gem_flash", "pos": tile.pos, "color": _data_registry().get_gem_color(gem)})
+			for unit in state.units.values():
+				if not unit.alive:
+					continue
+				if unit.pos == tile.pos:
+					continue
+				if BoardUtils.chebyshev(tile.pos, unit.pos) > 2:
+					continue
+				out_events.append_array(pull_unit_toward_with_events(state, unit, tile.pos, 1))
 			return true
 	return false
 
@@ -671,10 +595,6 @@ static func _gem_id(state: GameState, slot: SlotState) -> String:
 	if gem == null:
 		return ""
 	return _data_registry().get_gem_display_name(gem)
-
-
-static func _player_skill_target_mode(gem_ref: Variant) -> String:
-	return _data_registry().get_player_skill_target_mode(gem_ref)
 
 
 static func _enemy_red_action_kind(gem_ref: Variant) -> String:

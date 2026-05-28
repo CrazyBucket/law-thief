@@ -121,3 +121,17 @@ func has_tile_tag(tag: String) -> bool:
 		Constants.TAG_TILE_WATER:
 			return has_ground_tag(Constants.GROUND_TAG_WATER)
 	return false
+
+
+func clone() -> TileState:
+	var tile := TileState.new()
+	tile.pos = pos
+	tile.tile_id = tile_id
+	tile.modifiers = modifiers.duplicate(true)
+	tile.edge_mask = edge_mask
+	tile.edge_variant = edge_variant
+	tile.floor_variant = floor_variant
+	tile.ground_tags = ground_tags.duplicate()
+	for slot in slots:
+		tile.slots.append(slot.clone() if slot != null else null)
+	return tile

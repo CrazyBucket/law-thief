@@ -14,3 +14,13 @@ static func create(uid: String, gem_id: String, def_overrides: Dictionary = {}) 
 	gem.gem_id = gem_id
 	gem.def_overrides = def_overrides.duplicate(true)
 	return gem
+
+
+func clone() -> GemState:
+	var gem := GemState.new()
+	gem.uid = uid
+	gem.gem_id = gem_id
+	gem.owner_uid = owner_uid
+	gem.slot_index = slot_index
+	gem.def_overrides = def_overrides.duplicate(true)
+	return gem

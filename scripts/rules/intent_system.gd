@@ -156,7 +156,7 @@ static func _build_skill_intent(
 		if target != null:
 			var dash_from: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
 			var charge_path := BoardUtils.path_toward(
-				state, dash_from, target.pos, 2, unit.uid, {}, cell_blockers
+				state, dash_from, target.pos, Constants.BOMBER_DASH_RANGE, unit.uid, {}, cell_blockers
 			)
 			for step in charge_path:
 				intent.path.append(step)

@@ -48,6 +48,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	if path.is_empty():
 		return _fail("无法规划路径")
 
+	var presentation_state := state.clone()
 	var previous := player.pos
 	var move_events: Array[Dictionary] = []
 	for step in path:
@@ -63,6 +64,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
 	result["move_events"] = move_events
+	result["presentation_state"] = presentation_state
 	return result
 
 
@@ -91,15 +93,19 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail("不能攻击自己")
 	if BoardUtils.manhattan(player.pos, target_pos) > Constants.ATTACK_RANGE:
 		return _fail("目标超出射程")
+	var presentation_state := state.clone()
 	var from_pos := player.pos
 	var to_pos := target_pos
-	var attack_events: Array = []
+	var attack_events: Array[Dictionary] = []
 	var target := state.get_unit_at(target_pos)
 	if target != null and target.alive:
 		var atk_result := CombatRules.ranged_attack(state, player, target)
 		if not atk_result.get("ok", false):
 			return _fail(atk_result.get("reason", "无法攻击"))
-		attack_events = atk_result.get("events", [] as Array[Dictionary])
+		attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
+		var red_slot := player.get_slot(Constants.SLOT_RED)
+		if red_slot != null and not red_slot.gem_uid.is_empty():
+			GemEffects.trigger_gem(state, player.uid, red_slot, attack_events, target.uid)
 	else:
 		var tile := state.get_tile(target_pos)
 		if (
@@ -107,7 +113,6 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 			and tile.has_tile_tag(Constants.TAG_TILE_WATER)
 			and GemEffects.unit_has_red_arc(state, player)
 		):
-			attack_events = [] as Array[Dictionary]
 			GemEffects.apply_water_conduction(state, target_pos, player, attack_events)
 			state.log("玩家电击水域 %s" % target_pos)
 		else:
@@ -120,28 +125,8 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		"from_pos": from_pos,
 		"to_pos": to_pos,
 		"attack_events": attack_events,
+		"presentation_state": presentation_state,
 	})
-
-
-func try_skill(target_pos: Vector2i) -> Dictionary:
-	if state == null or state.phase != Constants.PHASE_PLAYER:
-		return _fail("不是玩家回合")
-	if state.player_acted:
-		return _fail("本回合已行动")
-	var player := state.get_player()
-	if player == null:
-		return _fail("玩家不存在")
-	var red_slot := player.get_slot(Constants.SLOT_RED)
-	if red_slot == null or red_slot.gem_uid.is_empty():
-		return _fail("红槽没有宝石")
-	if not GemEffects.can_use_skill_at(state, player, target_pos):
-		return _fail("无法对该位置使用技能")
-	var events := GemEffects.player_use_skill(state, player, target_pos)
-	state.player_acted = true
-	_check_battle_end()
-	IntentSystem.refresh_all_intents(state)
-	_emit_changed()
-	return _ok({"events": events})
 
 
 func try_extract(target_uid: String, slot_index: int) -> Dictionary:
@@ -184,8 +169,12 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	var slot := target.get_slot_by_index(slot_index)
 	if slot == null:
 		return _fail("槽位无效")
-	var result := GemRules.trigger(state, player, target, slot)
+	var presentation_state := state.clone()
+	var events: Array[Dictionary] = []
+	var result := GemRules.trigger(state, player, target, slot, events)
 	if result.get("ok", false):
+		result["events"] = events
+		result["presentation_state"] = presentation_state
 		_check_battle_end()
 		_emit_changed()
 	return result
@@ -234,8 +223,12 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	var slot := tile.get_slot_by_index(slot_index)
 	if slot == null:
 		return _fail("槽位无效")
-	var result := GemRules.trigger_tile(state, player, tile, slot)
+	var presentation_state := state.clone()
+	var events: Array[Dictionary] = []
+	var result := GemRules.trigger_tile(state, player, tile, slot, events)
 	if result.get("ok", false):
+		result["events"] = events
+		result["presentation_state"] = presentation_state
 		_check_battle_end()
 		_emit_changed()
 	return result
@@ -273,19 +266,29 @@ func begin_enemy_phase() -> void:
 
 ## 执行单个敌人的意图，返回动画事件列表
 ## 由 battle_scene 逐个调用，每次调用之间 await 动画完成
-func execute_single_enemy(enemy: UnitState) -> Array[Dictionary]:
+func execute_single_enemy(enemy: UnitState) -> Dictionary:
+	var presentation_state := state.clone()
 	if not enemy.alive:
-		return [] as Array[Dictionary]
+		return {
+			"events": [] as Array[Dictionary],
+			"presentation_state": presentation_state,
+		}
 	if enemy.has_status(Constants.STATUS_PARALYZED):
 		enemy.remove_status(Constants.STATUS_PARALYZED)
 		state.log("%s 因麻痹跳过回合" % enemy.uid)
 		_emit_changed()
-		return [] as Array[Dictionary]
+		return {
+			"events": [] as Array[Dictionary],
+			"presentation_state": presentation_state,
+		}
 	IntentSystem.refresh_unit_intent(state, enemy)
 	var events := IntentSystem.execute_intent(state, enemy)
 	_check_battle_end()
 	_emit_changed()
-	return events
+	return {
+		"events": events,
+		"presentation_state": presentation_state,
+	}
 
 
 ## 结束敌方回合，进入下一个玩家回合
@@ -336,14 +339,6 @@ func can_use_action(action: String) -> bool:
 			return not state.player_moved
 		Constants.ACTION_ATTACK, Constants.ACTION_TRIGGER:
 			return not state.player_acted
-		Constants.ACTION_SKILL:
-			if state.player_acted:
-				return false
-			var player := state.get_player()
-			if player == null:
-				return false
-			var red_slot := player.get_slot(Constants.SLOT_RED)
-			return red_slot != null and not red_slot.gem_uid.is_empty()
 		Constants.ACTION_EXTRACT:
 			return state.held_gem_uid.is_empty()
 		Constants.ACTION_INSERT:
@@ -391,8 +386,6 @@ func get_highlights() -> Dictionary:
 	elif selected_action == Constants.ACTION_ATTACK and not state.player_acted:
 		result["targets"] = _attack_target_cells(player)
 		result["effect_preview"] = _attack_effect_preview(player.pos)
-	elif selected_action == Constants.ACTION_SKILL and can_use_action(Constants.ACTION_SKILL):
-		result["targets"] = _skill_target_cells(player)
 	elif selected_action == Constants.ACTION_TRIGGER and not state.player_acted:
 		result["targets"] = _gem_target_cells(player)
 	elif selected_action == Constants.ACTION_EXTRACT and can_use_action(Constants.ACTION_EXTRACT):
@@ -492,15 +485,6 @@ func get_action_hint() -> String:
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
 			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE
-		Constants.ACTION_SKILL:
-			var player := state.get_player()
-			if player != null:
-				var red_slot := player.get_slot(Constants.SLOT_RED)
-				if red_slot != null and not red_slot.gem_uid.is_empty():
-					var gem: GemState = state.gems.get(red_slot.gem_uid, null)
-					if gem != null:
-						return "技能：%s（消耗行动）" % _data_registry().get_gem_effect_description(gem, Constants.SLOT_RED, "player_skill")
-			return "技能：红槽为空"
 		Constants.ACTION_EXTRACT:
 			return "拔出：点击目标 → 选槽位（免费）"
 		Constants.ACTION_INSERT:
@@ -532,27 +516,6 @@ func get_tutorial_hint() -> String:
 	if held == null and state.player_acted:
 		return "行动已用，点「结束回合」"
 	return "目标：偷爆炸 → 塞死亡槽 → 补刀引爆"
-
-
-func _skill_target_cells(player: UnitState) -> Array:
-	var cells: Array = []
-	var red_slot := player.get_slot(Constants.SLOT_RED)
-	if red_slot == null or red_slot.gem_uid.is_empty():
-		return cells
-	var gem: GemState = state.gems.get(red_slot.gem_uid, null)
-	if gem == null:
-		return cells
-	# 自我施放技能只高亮自己
-	if _data_registry().get_player_skill_target_mode(gem) == "self":
-		cells.append(player.pos)
-		return cells
-	# 其他技能高亮范围内所有有效格子
-	for x in range(Constants.BOARD_SIZE.x):
-		for y in range(Constants.BOARD_SIZE.y):
-			var pos := Vector2i(x, y)
-			if GemEffects.can_use_skill_at(state, player, pos):
-				cells.append(pos)
-	return cells
 
 
 func _can_attack_target(player: UnitState, target: UnitState) -> bool:
@@ -662,18 +625,11 @@ func _slot_preview_line_tile(tile: TileState, slot: SlotState, index: int) -> St
 
 
 func _unit_slot_context(unit: UnitState, slot: SlotState) -> String:
-	match slot.slot_type:
-		Constants.SLOT_RED:
-			return "enemy_active" if unit.team == Constants.TEAM_ENEMY else "player_trigger"
-		Constants.SLOT_BLUE:
-			return "unit_blue"
-	return ""
+	return RulesIndex.slot_inspect_context(unit, slot)
 
 
 func _tile_slot_context(tile: TileState) -> String:
-	if tile.tile_id == Constants.TILE_PILLAR:
-		return "pillar"
-	return ""
+	return RulesIndex.tile_inspect_context(tile)
 
 
 func _attack_effect_preview(player_pos: Vector2i) -> Array:

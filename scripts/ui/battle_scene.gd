@@ -56,9 +56,13 @@ var _enemy_turn_queue: Array[String] = []
 var _slot_popup: Control = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
+var _display_state: GameState = null
+var _presentation_playing: bool = false
+var _refresh_deferred: bool = false
+var _pending_battle_result: String = ""
 
 func _ready() -> void:
-	_controller.state_changed.connect(_refresh)
+	_controller.state_changed.connect(_on_controller_state_changed)
 	_controller.battle_ended.connect(_on_battle_ended)
 	_controller.anim_move.connect(_on_anim_move)
 	_controller.anim_damage.connect(_on_anim_damage)
@@ -102,7 +106,7 @@ func _create_slot_popup() -> void:
 
 func _create_damage_text_manager() -> void:
 	_dmg_text = DamageTextManagerScript.new()
-	get_tree().root.add_child(_dmg_text)
+	get_tree().root.add_child.call_deferred(_dmg_text)
 
 
 func _create_level_console() -> void:
@@ -156,12 +160,14 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			var move_result := _controller.try_move(cell)
 			if move_result.get("ok", false):
 				_player_animating = true
+				_presentation_playing = true
+				_refresh_deferred = false
+				_start_presentation(move_result.get("presentation_state", _controller.state.clone()))
 				_board.set_highlights({})
 				var events: Array = move_result.get("move_events", [])
-				for ev in events:
-					await _play_anim_event(ev)
+				await _play_presented_events(events)
 				_player_animating = false
-				_refresh()
+				_finish_presentation()
 			else:
 				_show_result(move_result)
 		Constants.ACTION_ATTACK:
@@ -174,15 +180,17 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
 				var to_pos: Vector2i = atk_res.get("to_pos", cell)
 				_player_animating = true
+				_presentation_playing = true
+				_refresh_deferred = false
+				_start_presentation(atk_res.get("presentation_state", _controller.state.clone()))
 				if from_pos.x >= 0:
 					_board.play_projectile(from_pos, to_pos)
 					await _board.animation_finished
 					await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 				var attack_events: Array = atk_res.get("attack_events", [])
-				for ev in attack_events:
-					await _play_anim_event(ev)
+				await _play_presented_events(attack_events)
 				_player_animating = false
-				_refresh()
+				_finish_presentation()
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
@@ -250,8 +258,9 @@ func _show_tile_slot_popup(tile: TileState, cell: Vector2i) -> void:
 
 
 func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
+	var action := _controller.selected_action
 	var result: Dictionary
-	match _controller.selected_action:
+	match action:
 		Constants.ACTION_EXTRACT:
 			result = _controller.try_extract_tile(tile_pos, slot_index)
 		Constants.ACTION_INSERT:
@@ -263,19 +272,29 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 	_dismiss_popup()
 	_show_result(result)
 	if result.get("ok", false):
-		match _controller.selected_action:
+		match action:
 			Constants.ACTION_EXTRACT:
 				_controller.select_action(Constants.ACTION_INSERT)
 				_message_label.text = "已从地块拔出，点击目标嵌入"
 			Constants.ACTION_INSERT:
 				_controller.select_action(Constants.ACTION_ATTACK)
 				_message_label.text = "已嵌入地块，可攻击或触发"
+			Constants.ACTION_TRIGGER:
+				_player_animating = true
+				_presentation_playing = true
+				_refresh_deferred = false
+				_start_presentation(result.get("presentation_state", _controller.state.clone()))
+				var trigger_events: Array = result.get("events", [])
+				await _play_presented_events(trigger_events)
+				_player_animating = false
+				_finish_presentation()
 	_refresh()
 
 
 func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
+	var action := _controller.selected_action
 	var result: Dictionary
-	match _controller.selected_action:
+	match action:
 		Constants.ACTION_EXTRACT:
 			result = _controller.try_extract(unit_uid, slot_index)
 		Constants.ACTION_INSERT:
@@ -287,13 +306,22 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 	_dismiss_popup()
 	_show_result(result)
 	if result.get("ok", false):
-		match _controller.selected_action:
+		match action:
 			Constants.ACTION_EXTRACT:
 				_controller.select_action(Constants.ACTION_INSERT)
 				_message_label.text = "已拔出，点击目标嵌入（免费）"
 			Constants.ACTION_INSERT:
 				_controller.select_action(Constants.ACTION_ATTACK)
 				_message_label.text = "已嵌入，可攻击或触发"
+			Constants.ACTION_TRIGGER:
+				_player_animating = true
+				_presentation_playing = true
+				_refresh_deferred = false
+				_start_presentation(result.get("presentation_state", _controller.state.clone()))
+				var trigger_events: Array = result.get("events", [])
+				await _play_presented_events(trigger_events)
+				_player_animating = false
+				_finish_presentation()
 	_refresh()
 
 
@@ -330,12 +358,14 @@ func _run_enemy_phase_async() -> void:
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
-		var events: Array[Dictionary] = _controller.execute_single_enemy(enemy)
-		for ev in events:
-			await _play_anim_event(ev)
+		_presentation_playing = true
+		_refresh_deferred = false
+		var execution: Dictionary = _controller.execute_single_enemy(enemy)
+		_start_presentation(execution.get("presentation_state", _controller.state.clone()))
+		var events: Array[Dictionary] = execution.get("events", [])
+		await _play_presented_events(events)
 		await get_tree().create_timer(_scaled_anim_time(0.35)).timeout
-		_board.queue_redraw()
-		_refresh()
+		_finish_presentation()
 		_consume_enemy_turn(enemy.uid)
 		_refresh_turn_queue()
 	if _controller.state.phase != Constants.PHASE_ENDED:
@@ -377,6 +407,19 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"gem_flash":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
 			await get_tree().create_timer(_scaled_anim_time(0.32)).timeout
+		"projectile_deflect":
+			_board.play_projectile(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), Color(0.78, 0.92, 1.0))
+			await _board.animation_finished
+			await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+		"lightning", "arc":
+			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)
+			await get_tree().create_timer(_scaled_anim_time(0.22)).timeout
+		"frost_pulse":
+			_board.play_heal_effect(ev.get("pos", Vector2i.ZERO))
+			await get_tree().create_timer(_scaled_anim_time(0.28)).timeout
+		"fire_burst":
+			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
+			await get_tree().create_timer(_scaled_anim_time(0.4)).timeout
 
 
 func _exit_tree() -> void:
@@ -394,11 +437,10 @@ func _on_back_pressed() -> void:
 
 
 func _on_battle_ended(result: String) -> void:
-	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
-	_hint_label.text = ""
-	_phase_badge.text = "结束"
-	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
-	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
+	if _presentation_playing:
+		_pending_battle_result = result
+		return
+	_apply_battle_end(result)
 
 
 func _show_result(result: Dictionary) -> void:
@@ -432,6 +474,93 @@ func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
+func _view_state() -> GameState:
+	return _display_state if _display_state != null else _controller.state
+
+
+func _on_controller_state_changed() -> void:
+	if _presentation_playing:
+		_refresh_deferred = true
+		return
+	_refresh()
+
+
+func _start_presentation(state_before: GameState) -> void:
+	_display_state = state_before
+	_board.set_battle_state(_display_state)
+	_board.selected_unit_uid = _inspect_uid
+	_board.queue_redraw()
+
+
+func _finish_presentation() -> void:
+	_display_state = null
+	_presentation_playing = false
+	_refresh_deferred = false
+	_board.set_battle_state(_controller.state)
+	_refresh()
+	_flush_pending_battle_end()
+
+
+func _play_presented_events(events: Array) -> void:
+	for ev in events:
+		_prime_event_state(ev)
+		await _play_anim_event(ev)
+		_apply_event_state(ev)
+		_board.queue_redraw()
+
+
+func _prime_event_state(ev: Dictionary) -> void:
+	if _display_state == null:
+		return
+	match str(ev.get("type", "")):
+		"move_step":
+			var uid := str(ev.get("uid", ""))
+			var unit: UnitState = _display_state.units.get(uid, null)
+			if unit != null:
+				unit.pos = ev.get("to", unit.pos)
+
+
+func _apply_event_state(ev: Dictionary) -> void:
+	if _display_state == null:
+		return
+	match str(ev.get("type", "")):
+		"damage":
+			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
+			var victim := _display_state.get_unit_at(pos)
+			if victim == null:
+				return
+			victim.hp = maxi(0, victim.hp - int(ev.get("damage", 0)))
+			if victim.hp <= 0:
+				victim.alive = false
+		"poison_burst":
+			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
+			var poison_radius: int = int(ev.get("radius", 1))
+			for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
+				if not BoardUtils.in_bounds(_display_state, cell):
+					continue
+				TileRules.create_poison_fog(_display_state, cell)
+		"fire_burst":
+			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
+		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc":
+			pass
+
+
+func _flush_pending_battle_end() -> void:
+	if _pending_battle_result.is_empty():
+		return
+	var result := _pending_battle_result
+	_pending_battle_result = ""
+	_apply_battle_end(result)
+
+
+func _apply_battle_end(result: String) -> void:
+	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
+	_hint_label.text = ""
+	_phase_badge.text = "结束"
+	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
+	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
+
+
 func _on_toggle_panel() -> void:
 	_panel_visible = not _panel_visible
 	_status_panel.visible = _panel_visible
@@ -440,7 +569,7 @@ func _on_toggle_panel() -> void:
 
 
 func _refresh() -> void:
-	var state := _controller.state
+	var state := _view_state()
 	if state == null:
 		return
 	var player := state.get_player()
@@ -511,7 +640,7 @@ func _refresh_unit_roster() -> void:
 	for child in _unit_roster.get_children():
 		_unit_roster.remove_child(child)
 		child.free()
-	var state := _controller.state
+	var state := _view_state()
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
@@ -588,7 +717,7 @@ func _slot_icons(unit: UnitState, state: GameState) -> String:
 
 
 func _refresh_inspect() -> void:
-	var state := _controller.state
+	var state := _view_state()
 	for child in _slot_box.get_children():
 		child.queue_free()
 	if _inspect_uid.is_empty():
@@ -665,12 +794,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 
 
 func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
-	match slot.slot_type:
-		Constants.SLOT_RED:
-			return "enemy_active" if unit.team == Constants.TEAM_ENEMY else "player_trigger"
-		Constants.SLOT_BLUE:
-			return "unit_blue"
-	return ""
+	return RulesIndex.slot_inspect_context(unit, slot)
 
 
 func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState) -> String:
@@ -701,7 +825,7 @@ func _refresh_action_buttons() -> void:
 
 
 func _refresh_combat_log() -> void:
-	var state := _controller.state
+	var state := _view_state()
 	if state == null:
 		_log_label.text = ""
 		return
@@ -852,7 +976,7 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 
 
 func _refresh_turn_queue() -> void:
-	var state := _controller.state
+	var state := _view_state()
 	if state == null:
 		return
 	for child in _queue_row.get_children():
@@ -871,7 +995,7 @@ func _refresh_turn_queue() -> void:
 
 
 func _get_active_turn_uid() -> String:
-	var state := _controller.state
+	var state := _view_state()
 	if state == null:
 		return ""
 	if state.phase == Constants.PHASE_PLAYER:
@@ -883,7 +1007,7 @@ func _get_active_turn_uid() -> String:
 
 
 func _build_turn_timeline_uids(active_uid: String, max_items: int) -> Array[String]:
-	var state := _controller.state
+	var state := _view_state()
 	if state == null:
 		return []
 	var units: Array = []

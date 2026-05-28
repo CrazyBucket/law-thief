@@ -31,6 +31,22 @@ func _test_bomber_adjacent_explosion() -> void:
 	print("  [OK] bomber adjacent explosion deals damage (%d -> %d)" % [hp_before, player.hp])
 
 
+func _test_bomber_diagonal_explosion() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var bomber := _find(state, "unit_bomber")
+	var player := state.get_player()
+	bomber.pos = player.pos + Vector2i(1, 1)
+	assert(BoardUtils.manhattan(bomber.pos, player.pos) == 2, "setup diagonal adjacency")
+	assert(BoardUtils.chebyshev(bomber.pos, player.pos) == 1, "player should be in blast radius")
+	var hp_before := player.hp
+	var events := GemEffects.on_red_action(state, bomber, IntentState.charge_explode(bomber.uid, player.uid))
+	assert(player.hp < hp_before, "diagonal self-destruct should still damage player")
+	assert(not events.is_empty(), "should emit explosion events")
+	print("  [OK] diagonal bomber explosion (%d -> %d)" % [hp_before, player.hp])
+
+
 func _test_armor_blocks_explosion() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
@@ -48,22 +64,6 @@ func _test_armor_blocks_explosion() -> void:
 			blocked = true
 	assert(blocked, "armor block should be logged")
 	print("  [OK] armor blocks explosion with log")
-
-
-func _test_bomber_diagonal_explosion() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001")
-	var state := ctrl.state
-	var bomber := _find(state, "unit_bomber")
-	var player := state.get_player()
-	bomber.pos = player.pos + Vector2i(1, 1)
-	assert(BoardUtils.manhattan(bomber.pos, player.pos) == 2, "setup diagonal adjacency")
-	assert(BoardUtils.chebyshev(bomber.pos, player.pos) == 1, "player should be in blast radius")
-	var hp_before := player.hp
-	var events := GemEffects.on_red_action(state, bomber, _make_explode_intent(state, player.uid))
-	assert(player.hp < hp_before, "diagonal self-destruct should still damage player")
-	assert(not events.is_empty(), "should emit explosion events")
-	print("  [OK] diagonal bomber explosion (%d -> %d)" % [hp_before, player.hp])
 
 
 func _test_melee_attack() -> void:
@@ -85,11 +85,3 @@ func _find(state: GameState, def_id: String) -> UnitState:
 		if unit.unit_def_id == def_id:
 			return unit
 	return null
-
-
-func _make_explode_intent(state: GameState, target_uid: String) -> IntentState:
-	var intent := IntentState.new()
-	intent.type = "charge_explode"
-	intent.target_uid = target_uid
-	intent.source_uid = target_uid
-	return intent

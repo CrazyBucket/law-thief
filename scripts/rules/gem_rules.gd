@@ -76,11 +76,17 @@ static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitSta
 	return _ok()
 
 
-static func trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
+static func trigger(
+	state: GameState,
+	actor: UnitState,
+	target_unit: UnitState,
+	slot: SlotState,
+	out_events: Array[Dictionary] = []
+) -> Dictionary:
 	var check := can_trigger(state, actor, target_unit, slot)
 	if not check.get("ok", false):
 		return check
-	if not GemEffects.trigger_gem(state, target_unit.uid, slot):
+	if not GemEffects.trigger_gem(state, target_unit.uid, slot, out_events):
 		return _fail("该槽位不支持主动触发")
 	IntentSystem.refresh_all_intents(state)
 	state.player_acted = true
@@ -164,14 +170,20 @@ static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState
 	return _ok()
 
 
-static func trigger_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
+static func trigger_tile(
+	state: GameState,
+	actor: UnitState,
+	tile: TileState,
+	slot: SlotState,
+	out_events: Array[Dictionary] = []
+) -> Dictionary:
 	var check := can_trigger_tile(state, actor, tile, slot)
 	if not check.get("ok", false):
 		return check
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
-	if not GemEffects.trigger_tile_gem(state, tile, slot):
+	if not GemEffects.trigger_tile_gem(state, tile, slot, out_events):
 		return _fail("该槽位不支持主动触发")
 	state.player_acted = true
 	return _ok()

@@ -196,8 +196,8 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 	var results: Array = []
 	# 自爆工兵：冲刺 2 格后爆炸，需要靠近玩家
 	var dist_to_player: int = BoardUtils.manhattan(from_pos, player.pos)
-	# 冲刺距离 2，爆炸半径 1，所以距离 <= 3 就有可能炸到
-	if dist_to_player > 3:
+	var max_threat_range: int = Constants.BOMBER_DASH_RANGE + Constants.EXPLOSION_RADIUS
+	if dist_to_player > max_threat_range:
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -206,10 +206,9 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 	candidate.action_target_uid = player.uid
 
 	var score: float = 0.0
-	# 能炸到玩家的概率越高分越高
-	if dist_to_player <= 1:
-		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0) * 2.0  # 必炸
-	elif dist_to_player <= 3:
+	if dist_to_player <= Constants.EXPLOSION_RADIUS:
+		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0) * 2.0
+	elif dist_to_player <= max_threat_range:
 		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0)
 
 	# 自爆兵不在乎自己死

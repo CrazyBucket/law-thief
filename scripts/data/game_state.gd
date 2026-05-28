@@ -84,3 +84,28 @@ func add_entity(entity: EntityState) -> void:
 
 func remove_entity(uid: String) -> void:
 	entities.erase(uid)
+
+
+func clone() -> GameState:
+	var snapshot := GameState.new()
+	snapshot.version = version
+	snapshot.run_seed = run_seed
+	snapshot.turn_index = turn_index
+	snapshot.phase = phase
+	snapshot.board_size = board_size
+	snapshot.player_uid = player_uid
+	snapshot.held_gem_uid = held_gem_uid
+	snapshot.player_moved = player_moved
+	snapshot.player_acted = player_acted
+	snapshot.combat_log = combat_log.duplicate(true)
+	snapshot.encounter_id = encounter_id
+	snapshot.result = result
+	for uid in units.keys():
+		snapshot.units[uid] = units[uid].clone()
+	for uid in gems.keys():
+		snapshot.gems[uid] = gems[uid].clone()
+	for key in tiles.keys():
+		snapshot.tiles[key] = tiles[key].clone()
+	for uid in entities.keys():
+		snapshot.entities[uid] = entities[uid].clone()
+	return snapshot

@@ -23,3 +23,14 @@ static func create(
 	status.source_uid = source_uid
 	status.payload = payload.duplicate()
 	return status
+
+
+func clone() -> StatusInstance:
+	var status := StatusInstance.new()
+	status.status_id = status_id
+	status.value = value
+	status.stacks = stacks
+	status.duration = duration
+	status.source_uid = source_uid
+	status.payload = payload.duplicate(true)
+	return status

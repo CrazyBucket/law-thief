@@ -13,7 +13,7 @@ func _run_tests() -> void:
 	_test_pillar_turn_aura()
 	_test_blue_poison_contact()
 	_test_black_poison_death()
-	_test_player_skill_via_hook()
+	_test_red_gem_triggers_on_attack()
 	_test_water_conduction_hits_unit_standing_in_water()
 	_test_editor_console_spawns_and_edits_unit()
 	_test_editor_console_batch_move_delete_commands()
@@ -135,22 +135,24 @@ func _test_black_poison_death() -> void:
 	print("  [OK] black poison death hook")
 
 
-func _test_player_skill_via_hook() -> void:
+func _test_red_gem_triggers_on_attack() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
 	var guard := _find_unit(state, "unit_training_guard")
 	var gem := GemState.new()
-	gem.uid = "skill_hook_gem"
+	gem.uid = "attack_red_gem"
 	gem.gem_id = Constants.GEM_EXPLOSION
 	state.gems[gem.uid] = gem
 	player.slots[0].gem_uid = gem.uid
 	var hp_before := guard.hp
-	var events := GemEffects.player_use_skill(state, player, guard.pos)
-	assert(not events.is_empty(), "skill should return events")
-	assert(guard.hp < hp_before, "skill hook should deal damage")
-	print("  [OK] player skill routed through active hook")
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "attack should succeed")
+	assert(guard.hp < hp_before, "red gem should trigger on attack hit")
+	var events: Array = result.get("attack_events", [])
+	assert(not events.is_empty(), "attack should return events")
+	print("  [OK] red gem explosion triggers on attack hit")
 
 
 func _test_water_conduction_hits_unit_standing_in_water() -> void:

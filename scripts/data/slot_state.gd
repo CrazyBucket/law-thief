@@ -17,6 +17,16 @@ static func create(slot_type: String, gem_uid: String = "", locked: bool = false
 	return slot
 
 
+func clone() -> SlotState:
+	var slot := SlotState.new()
+	slot.slot_type = slot_type
+	slot.gem_uid = gem_uid
+	slot.locked = locked
+	slot.lock_type = lock_type
+	slot.unlock_until_turn = unlock_until_turn
+	return slot
+
+
 func is_empty() -> bool:
 	return gem_uid.is_empty()
 
