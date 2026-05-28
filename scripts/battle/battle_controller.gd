@@ -61,6 +61,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	TileRules.on_unit_entered(state, player, previous)
 	state.player_moved = true
 	state.log("玩家移动到 %s" % target_pos)
+	IntentSystem.refresh_all_intents(state)
 	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
@@ -92,7 +93,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail("玩家不存在")
 	if target_pos == player.pos:
 		return _fail("不能攻击自己")
-	if BoardUtils.manhattan(player.pos, target_pos) > Constants.ATTACK_RANGE:
+	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
 		return _fail("目标超出射程")
 	var presentation_state := state.clone()
 	var from_pos := player.pos
@@ -105,7 +106,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 			return _fail(atk_result.get("reason", "无法攻击"))
 		attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
 		var red_slot := player.get_slot(Constants.SLOT_RED)
-		if red_slot != null and not red_slot.gem_uid.is_empty():
+		if red_slot != null and not red_slot.gem_uid.is_empty() and not GemEffects.unit_has_red_explosion(state, player):
 			GemEffects.trigger_gem(state, player.uid, red_slot, attack_events, target.uid)
 	else:
 		var tile := state.get_tile(target_pos)
@@ -116,6 +117,11 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		):
 			GemEffects.apply_water_conduction(state, target_pos, player, attack_events)
 			state.log("玩家电击水域 %s" % target_pos)
+		elif GemEffects.unit_has_red_explosion(state, player):
+			attack_events.append_array(
+				GemEffects.explode_cross_at(state, target_pos, player.uid, 0, Constants.EXPLOSION_CROSS_DAMAGE, false)
+			)
+			state.log("玩家射击空地 %s 触发十字爆炸" % target_pos)
 		else:
 			state.log("玩家射击空地 %s" % target_pos)
 	state.player_acted = true
@@ -397,7 +403,9 @@ func get_highlights() -> Dictionary:
 		if enemy.intent == null:
 			continue
 		result["paths"] = result["paths"] + enemy.intent.path
-		if enemy.intent.type in ["charge_explode", "shock"]:
+		if enemy.intent.type in ["charge_explode", "black_suicide"]:
+			result["danger"] = result["danger"] + enemy.intent.affected_cells
+		elif not enemy.intent.affected_cells.is_empty():
 			result["danger"] = result["danger"] + enemy.intent.affected_cells
 	return result
 
@@ -439,7 +447,7 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			if not state.player_moved and StatusRules.can_move(player) and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
-			if cell != player.pos and BoardUtils.manhattan(player.pos, cell) <= Constants.ATTACK_RANGE:
+			if cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
 				if tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
 					lines.append("→ 点击电击水域（相连水域及边缘潮湿单位导电）")
 				else:
@@ -502,18 +510,18 @@ func get_tutorial_hint() -> String:
 		return ""
 	var held := get_held_gem()
 	if held == null and not state.player_acted:
-		return "① 拔出：点击自爆工兵 → 选红槽偷走爆炸（免费）"
+		return "① 拔出：点击炸弹鼠 → 选红槽偷走爆炸（免费）"
 	if held != null and not state.player_acted:
 		var player := state.get_player()
 		var guard_near := false
 		for unit in state.get_alive_enemies():
-			if unit.has_tag(Constants.TAG_UNIT_TRAINING) and BoardUtils.manhattan(player.pos, unit.pos) <= Constants.INSERT_RANGE:
+			if unit.has_tag(Constants.TAG_UNIT_PATROL_GUARD) and BoardUtils.manhattan(player.pos, unit.pos) <= Constants.INSERT_RANGE:
 				guard_near = true
 				break
 		if guard_near:
-			return "② 嵌入：点击守卫 → 选黑槽塞入爆炸（免费）\n③ 攻击：点击守卫补刀 → 触发死亡爆炸"
+			return "② 嵌入：点击巡路甲兵 → 选黑槽塞入爆炸（免费）\n③ 攻击：点击巡路甲兵补刀 → 触发死亡爆炸"
 		else:
-			return "② 移动靠近守卫 → 嵌入黑槽 → 攻击补刀"
+			return "② 移动靠近巡路甲兵 → 嵌入黑槽 → 攻击补刀"
 	if held == null and state.player_acted:
 		return "行动已用，点「结束回合」"
 	return "目标：偷爆炸 → 塞死亡槽 → 补刀引爆"
@@ -524,7 +532,7 @@ func _can_attack_target(player: UnitState, target: UnitState) -> bool:
 		return false
 	if target.uid == player.uid:
 		return false
-	return BoardUtils.manhattan(player.pos, target.pos) <= Constants.ATTACK_RANGE
+	return BoardUtils.can_unit_reach_unit(player, target, Constants.ATTACK_RANGE)
 
 
 func _attack_target_cells(player: UnitState) -> Array:
@@ -534,7 +542,7 @@ func _attack_target_cells(player: UnitState) -> Array:
 			var pos := Vector2i(x, y)
 			if pos == player.pos:
 				continue
-			if BoardUtils.manhattan(player.pos, pos) <= Constants.ATTACK_RANGE:
+			if BoardUtils.can_unit_attack_cell(player, state, pos, Constants.ATTACK_RANGE):
 				cells.append(pos)
 	return cells
 
@@ -545,10 +553,12 @@ func _gem_target_cells(player: UnitState) -> Array:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		if BoardUtils.manhattan(player.pos, unit.pos) > Constants.EXTRACT_RANGE:
+		if BoardUtils.distance_between_units(player, unit) > Constants.EXTRACT_RANGE:
 			continue
 		if not _valid_slot_indices(unit, selected_action).is_empty():
-			cells.append(unit.pos)
+			for cell in unit.occupied_cells():
+				if not cell in cells:
+					cells.append(cell)
 	# 地块目标（祭坛、机关柱等有槽位的地块）
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
@@ -641,7 +651,7 @@ func _attack_effect_preview(player_pos: Vector2i) -> Array:
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == player.uid:
 			continue
-		if BoardUtils.manhattan(player_pos, unit.pos) > Constants.ATTACK_RANGE:
+		if not BoardUtils.can_unit_reach_unit(player, unit, Constants.ATTACK_RANGE):
 			continue
 		if unit.hp > 1:
 			continue
@@ -991,7 +1001,7 @@ func _run_editor_delete_unit(tokens: Array, start_index: int) -> Dictionary:
 	if unit.uid == state.player_uid:
 		return _fail("cannot remove the player; use `set spawn` instead")
 	_clear_unit_gems(unit)
-	state.units.erase(unit.uid)
+	state.unregister_unit(unit)
 	if selected_unit_uid == unit.uid:
 		selected_unit_uid = state.player_uid
 	return _finalize_editor_mutation("removed unit %s at %s" % [unit.unit_def_id, pos])
@@ -1713,7 +1723,7 @@ func _editor_help_lines() -> Array[String]:
 	return [
 		"Editor CLI (F9)",
 		"Commands start with /. Bare names like help still work.",
-		"IDs are string resource keys (unit_bomber, gem_poison, tile_water), not numeric.",
+		"IDs are string resource keys (unit_bomb_rat, gem_poison, tile_water), not numeric.",
 		"Runtime unit_uid / gem_uid are also strings; list only shows definition ids.",
 		"",
 		"Catalogs:",
@@ -1725,11 +1735,11 @@ func _editor_help_lines() -> Array[String]:
 		"  /spawn <object_id> <pos> [--team enemy|player]",
 		"    - object_id can be a unit id, gem id, or tile id",
 		"    - units spawn on the board; gems auto-detect unit/tile unless overridden",
-		"    - example: /spawn unit_bomber 2,4 --team enemy",
+		"    - example: /spawn unit_bomb_rat 2,4 --team enemy",
 		"    - example: /spawn gem_poison 2,4 --slot red --target tile",
 		"    - example: /spawn tile_pillar 4,4",
 		"  /spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",
-		"    - example: /spawn-many unit_grunt 0,0 1,0 2,0 --team enemy",
+		"    - example: /spawn-many unit_patrol_guard 0,0 1,0 2,0 --team enemy",
 		"  /move [unit] <from_pos> <to_pos>",
 		"    - example: /move 2,4 3,4",
 		"  /remove unit <pos>",

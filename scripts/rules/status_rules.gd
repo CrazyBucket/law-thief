@@ -99,6 +99,31 @@ static func get_lawless_gem_uid(unit: UnitState) -> String:
 	return status.payload.get("target_gem_uid", "")
 
 
+static func apply_bomb_rat_plunder(state: GameState, unit: UnitState, phase: int) -> void:
+	_apply(state, unit, Constants.STATUS_BOMB_RAT_PLUNDER, {
+		"duration": 0,
+		"payload": {"phase": phase},
+	})
+
+
+static func clear_bomb_rat_plunder(unit: UnitState) -> void:
+	unit.remove_status(Constants.STATUS_BOMB_RAT_PLUNDER)
+
+
+static func get_bomb_rat_plunder_phase(unit: UnitState) -> int:
+	var status: StatusInstance = unit.get_status(Constants.STATUS_BOMB_RAT_PLUNDER)
+	if status == null:
+		return -1
+	return int(status.payload.get("phase", -1))
+
+
+static func set_bomb_rat_plunder_phase(unit: UnitState, phase: int) -> void:
+	var status: StatusInstance = unit.get_status(Constants.STATUS_BOMB_RAT_PLUNDER)
+	if status == null:
+		return
+	status.payload["phase"] = phase
+
+
 static func can_move(unit: UnitState) -> bool:
 	for status in unit.statuses:
 		if _StatusRegistry.blocks_movement(status.status_id):

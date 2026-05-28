@@ -14,6 +14,8 @@ var preview_text: String = ""
 static func intent_icon(intent_type: String) -> String:
 	match intent_type:
 		"melee_attack":  return "⚔"
+		"slam_attack":   return "🔨"
+		"ranged_attack": return "🏹"
 		"charge_explode": return "💣"
 		"pull":          return "🪝"
 		"poison_attack": return "☠"
@@ -25,6 +27,9 @@ static func intent_icon(intent_type: String) -> String:
 		"lawless_extract": return "💢"
 		"lawless_attack":  return "💢"
 		"lawless_move":    return "💢"
+		"black_suicide": return "💀"
+		"bomb_rat_plunder_wait": return "😶"
+		"bomb_rat_plunder_steal": return "💢"
 		"wait":          return "…"
 	return "?"
 

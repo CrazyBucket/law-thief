@@ -8,7 +8,7 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	print("=== Hook System Test ===")
 	_test_lawless_on_player_extract()
-	_test_lawless_reclaim_from_hand()
+	_test_patrol_guard_lawless_rampage()
 	_test_lawless_on_enemy_extract()
 	_test_pillar_turn_aura()
 	_test_blue_poison_contact()
@@ -25,36 +25,32 @@ func _test_lawless_on_player_extract() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
-	var bomber := _find_unit(state, "unit_bomber")
+	var guard := _find_unit(state, "unit_patrol_guard")
+	_force_red_gem(state, guard, Constants.GEM_EXPLOSION)
 	var player := state.get_player()
-	var gem_uid: String = bomber.slots[0].gem_uid
-	var result := GemRules.extract(state, player, bomber, bomber.slots[0])
+	var gem_uid: String = guard.slots[0].gem_uid
+	var result := GemRules.extract(state, player, guard, guard.slots[0])
 	assert(result.get("ok", false), "extract should succeed")
-	assert(StatusRules.is_lawless(bomber), "bomber should enter lawless")
-	assert(StatusRules.get_lawless_gem_uid(bomber) == gem_uid, "lawless should track stolen gem")
+	assert(StatusRules.is_lawless(guard), "patrol guard should enter lawless")
+	assert(StatusRules.get_lawless_gem_uid(guard) == gem_uid, "lawless should track stolen gem")
 	print("  [OK] lawless on player extract")
 
 
-func _test_lawless_reclaim_from_hand() -> void:
+func _test_patrol_guard_lawless_rampage() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
-	var bomber := _find_unit(state, "unit_bomber")
+	var guard := _find_unit(state, "unit_patrol_guard")
+	_force_red_gem(state, guard, Constants.GEM_EXPLOSION)
 	var player := state.get_player()
-	player.pos = bomber.pos + Vector2i(1, 0)
-	var gem_uid: String = bomber.slots[0].gem_uid
-	GemRules.extract(state, player, bomber, bomber.slots[0])
-	assert(StatusRules.is_lawless(bomber), "bomber should enter lawless")
-	assert(state.held_gem_uid == gem_uid, "stolen gem should be in player hand")
-	bomber.pos = player.pos
-	var intent := IntentSystem._lawless_intent(state, bomber)
-	assert(intent.type == "lawless_extract", "adjacent bomber should try to reclaim gem")
-	var events := IntentSystem.execute_intent(state, bomber)
-	assert(not StatusRules.is_lawless(bomber), "lawless should clear after reclaim")
-	assert(bomber.slots[0].gem_uid == gem_uid, "gem should return to bomber red slot")
-	assert(state.held_gem_uid.is_empty(), "player hand should be empty after reclaim")
-	assert(not events.is_empty(), "reclaim should emit animation events")
-	print("  [OK] lawless reclaim gem from player hand")
+	player.pos = guard.pos + Vector2i(1, 0)
+	GemRules.extract(state, player, guard, guard.slots[0])
+	assert(StatusRules.is_lawless(guard), "patrol guard should enter lawless")
+	assert(guard.get_status(Constants.STATUS_VULNERABLE) != null, "patrol guard should be vulnerable")
+	guard.pos = player.pos
+	IntentSystem.refresh_all_intents(state)
+	assert(guard.intent.preview_text.begins_with("暴走"), "lawless patrol guard should blind rampage")
+	print("  [OK] patrol guard lawless blind rampage intent")
 
 
 func _test_lawless_on_enemy_extract() -> void:
@@ -69,11 +65,11 @@ func _test_lawless_on_enemy_extract() -> void:
 	gem.slot_index = 0
 	state.gems[gem.uid] = gem
 	player.slots[0].gem_uid = gem.uid
-	var thief := _find_unit(state, "unit_bomber")
-	thief.pos = player.pos + Vector2i(1, 0)
+	var enemy := _find_unit(state, "unit_bomb_rat")
+	enemy.pos = player.pos + Vector2i(1, 0)
 	var intent := IntentState.new()
 	intent.target_uid = player.uid
-	IntentSystem._execute_extract(state, thief, intent)
+	IntentSystem._execute_extract(state, enemy, intent)
 	assert(player.slots[0].gem_uid.is_empty(), "player gem should be stolen")
 	assert(not StatusRules.is_lawless(player), "player should not enter lawless")
 	print("  [OK] enemy extract clears slot without player lawless")
@@ -85,7 +81,8 @@ func _test_pillar_turn_aura() -> void:
 	var state := ctrl.state
 	var player := state.get_player()
 	player.pos = Vector2i(7, 5)
-	var bug := _find_unit(state, "unit_poison_bug")
+	var bug := _find_unit(state, "unit_patrol_guard")
+	bug.pos = Vector2i(6, 5)
 	var gem := GemState.new()
 	gem.uid = "pillar_poison"
 	gem.gem_id = Constants.GEM_POISON
@@ -104,7 +101,7 @@ func _test_blue_poison_contact() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
-	var guard := _find_unit(state, "unit_training_guard")
+	var guard := _find_unit(state, "unit_patrol_guard")
 	var gem := GemState.new()
 	gem.uid = "blue_poison_contact"
 	gem.gem_id = Constants.GEM_POISON
@@ -121,7 +118,7 @@ func _test_black_poison_death() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
-	var guard := _find_unit(state, "unit_training_guard")
+	var guard := _find_unit(state, "unit_patrol_guard")
 	var gem := GemState.new()
 	gem.uid = "black_poison"
 	gem.gem_id = Constants.GEM_POISON
@@ -140,7 +137,7 @@ func _test_red_gem_triggers_on_attack() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
-	var guard := _find_unit(state, "unit_training_guard")
+	var guard := _find_unit(state, "unit_patrol_guard")
 	var gem := GemState.new()
 	gem.uid = "attack_red_gem"
 	gem.gem_id = Constants.GEM_EXPLOSION
@@ -161,13 +158,13 @@ func _test_water_conduction_hits_unit_standing_in_water() -> void:
 	var state := ctrl.state
 	var player := state.get_player()
 	assert(ctrl.run_editor_command("move 1,6 2,5").get("ok", false), "move player in range of water")
-	assert(ctrl.run_editor_command("spawn unit_grunt 3,4 --team enemy").get("ok", false), "spawn enemy in water")
+	assert(ctrl.run_editor_command("spawn unit_patrol_guard 4,5 --team enemy").get("ok", false), "spawn enemy in water")
 	assert(ctrl.run_editor_command("spawn gem_conductive 2,5 --slot red").get("ok", false), "give player arc gem")
-	var guard := state.get_unit_at(Vector2i(3, 4))
+	var guard := state.get_unit_at(Vector2i(4, 5))
 	assert(guard != null, "enemy should stand on water")
 	assert(StatusRules.is_wet(guard), "standing in water should apply wet")
 	var hp_before := guard.hp
-	var atk := ctrl.try_attack_cell(Vector2i(4, 4))
+	var atk := ctrl.try_attack_cell(Vector2i(4, 5))
 	assert(atk.get("ok", false), "attack water should succeed")
 	assert(guard.hp < hp_before, "enemy in water should take arc damage from water shock")
 	print("  [OK] water conduction hits unit standing in water")
@@ -176,11 +173,11 @@ func _test_water_conduction_hits_unit_standing_in_water() -> void:
 func _test_editor_console_spawns_and_edits_unit() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 42)
-	var spawn_result := ctrl.run_editor_command("spawn unit_bomber 0,0 --team enemy")
+	var spawn_result := ctrl.run_editor_command("spawn unit_bomb_rat 0,0 --team enemy")
 	assert(spawn_result.get("ok", false), "editor console should spawn unit")
 	var spawned := ctrl.state.get_unit_at(Vector2i(0, 0))
 	assert(spawned != null, "spawned unit should exist at target cell")
-	assert(spawned.unit_def_id == "unit_bomber", "spawned unit def should match")
+	assert(spawned.unit_def_id == "unit_bomb_rat", "spawned unit def should match")
 	var edit_result := ctrl.run_editor_command("set stat 0,0 hp 9")
 	assert(edit_result.get("ok", false), "editor console should edit unit hp")
 	assert(spawned.hp == 9, "spawned unit hp should update")
@@ -190,24 +187,39 @@ func _test_editor_console_spawns_and_edits_unit() -> void:
 func _test_editor_console_batch_move_delete_commands() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 42)
-	var batch_result := ctrl.run_editor_command("spawn-many unit_grunt 0,0 1,0 --team enemy")
+	var batch_result := ctrl.run_editor_command("spawn-many unit_patrol_guard 7,0 6,0 --team enemy")
 	assert(batch_result.get("ok", false), "editor console should batch spawn units")
-	assert(ctrl.state.get_unit_at(Vector2i(0, 0)) != null, "batch spawn should create first unit")
-	assert(ctrl.state.get_unit_at(Vector2i(1, 0)) != null, "batch spawn should create second unit")
-	var move_result := ctrl.run_editor_command("move 0,0 0,1")
+	assert(ctrl.state.get_unit_at(Vector2i(7, 0)) != null, "batch spawn should create first unit")
+	assert(ctrl.state.get_unit_at(Vector2i(6, 0)) != null, "batch spawn should create second unit")
+	var move_result := ctrl.run_editor_command("move 7,0 7,1")
 	assert(move_result.get("ok", false), "editor console should move unit")
-	var moved := ctrl.state.get_unit_at(Vector2i(0, 1))
-	assert(moved != null and moved.unit_def_id == "unit_grunt", "moved unit should arrive at destination")
-	var delete_unit_result := ctrl.run_editor_command("remove unit 0,1")
+	var moved := ctrl.state.get_unit_at(Vector2i(7, 1))
+	assert(moved != null and moved.unit_def_id == "unit_patrol_guard", "moved unit should arrive at destination")
+	var delete_unit_result := ctrl.run_editor_command("remove unit 7,1")
 	assert(delete_unit_result.get("ok", false), "editor console should delete unit")
-	assert(ctrl.state.get_unit_at(Vector2i(0, 1)) == null, "deleted unit should be removed")
-	var gem_spawn_result := ctrl.run_editor_command("spawn gem_explosion 1,0 --slot red --target unit")
+	assert(ctrl.state.get_unit_at(Vector2i(7, 1)) == null, "deleted unit should be removed")
+	var gem_spawn_result := ctrl.run_editor_command("spawn gem_explosion 6,0 --slot red --target unit")
 	assert(gem_spawn_result.get("ok", false), "editor console should create gem before deletion")
-	var delete_gem_result := ctrl.run_editor_command("remove gem 1,0 --slot red --target unit")
+	var delete_gem_result := ctrl.run_editor_command("remove gem 6,0 --slot red --target unit")
 	assert(delete_gem_result.get("ok", false), "editor console should delete gem")
-	var remaining := ctrl.state.get_unit_at(Vector2i(1, 0))
+	var remaining := ctrl.state.get_unit_at(Vector2i(6, 0))
 	assert(remaining != null and remaining.slots[0].gem_uid.is_empty(), "unit slot gem should be removed")
 	print("  [OK] editor console batch/move/delete commands")
+
+
+func _force_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
+	var reg: Node = _data_registry()
+	var slot := unit.get_slot(Constants.SLOT_RED)
+	if slot == null:
+		return
+	if not slot.gem_uid.is_empty():
+		state.gems.erase(slot.gem_uid)
+	var gem_uid: String = reg.next_runtime_uid("gem")
+	var gem: GemState = reg.create_gem_instance(gem_uid, gem_id, {})
+	state.gems[gem_uid] = gem
+	slot.gem_uid = gem_uid
+	gem.owner_uid = unit.uid
+	gem.slot_index = unit.slots.find(slot)
 
 
 func _data_registry() -> Node:

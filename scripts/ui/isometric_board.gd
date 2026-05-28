@@ -451,6 +451,8 @@ func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
 func _intent_badge_color(intent_type: String) -> Color:
 	match intent_type:
 		"melee_attack": return Color(0.95, 0.35, 0.35, 0.95)
+		"slam_attack": return Color(0.55, 0.85, 0.45, 0.95)
+		"ranged_attack": return Color(0.75, 0.82, 0.55, 0.95)
 		"charge_explode": return Color(1.0, 0.55, 0.1, 0.95)
 		"pull": return Color(0.6, 0.35, 0.9, 0.95)
 		"poison_attack": return Color(0.35, 0.85, 0.45, 0.95)
@@ -460,6 +462,9 @@ func _intent_badge_color(intent_type: String) -> Color:
 		"extract": return Color(0.95, 0.25, 0.75, 0.95)
 		"move": return Color(0.45, 0.75, 0.95, 0.95)
 		"lawless_extract", "lawless_attack", "lawless_move": return Color(0.9, 0.2, 0.2, 0.95)
+		"black_suicide": return Color(0.35, 0.35, 0.42, 0.95)
+		"bomb_rat_plunder_wait": return Color(0.7, 0.7, 0.75, 0.95)
+		"bomb_rat_plunder_steal": return Color(0.95, 0.35, 0.35, 0.95)
 	return Color(0.55, 0.58, 0.68, 0.85)
 
 

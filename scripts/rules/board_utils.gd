@@ -333,7 +333,19 @@ static func unit_footprint_passable(
 	return true
 
 
-## 计算两个单位之间的最短曼哈顿距离（坑3：多格受击距离语义）
+static func are_units_adjacent(unit_a: UnitState, unit_b: UnitState) -> bool:
+	return distance_between_units(unit_a, unit_b) == 1
+
+
+static func footprint_cells_at(footprint: Vector2i, anchor: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for dx in range(footprint.x):
+		for dy in range(footprint.y):
+			cells.append(anchor + Vector2i(dx, dy))
+	return cells
+
+
+## 计算两个单位之间的最短曼哈顿距离（多格单位取占格间最小值）
 static func distance_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
 	if unit_a.footprint_size == Vector2i(1, 1) and unit_b.footprint_size == Vector2i(1, 1):
 		return manhattan(unit_a.pos, unit_b.pos)
@@ -344,6 +356,38 @@ static func distance_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
 			if d < min_dist:
 				min_dist = d
 	return min_dist
+
+
+## 占格间最短切比雪夫距离（分裂宝石「周围 N 格」等范围判定）
+static func chebyshev_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
+	if unit_a.footprint_size == Vector2i(1, 1) and unit_b.footprint_size == Vector2i(1, 1):
+		return chebyshev(unit_a.pos, unit_b.pos)
+	var min_dist: int = 999999
+	for ca in unit_a.occupied_cells():
+		for cb in unit_b.occupied_cells():
+			var d := chebyshev(ca, cb)
+			if d < min_dist:
+				min_dist = d
+	return min_dist
+
+
+static func is_within_surround(unit: UnitState, other: UnitState, radius: int) -> bool:
+	return chebyshev_between_units(unit, other) <= radius
+
+
+static func is_within_manhattan_range_of_cell(from_pos: Vector2i, cell: Vector2i, max_range: int) -> bool:
+	return manhattan(from_pos, cell) <= max_range
+
+
+static func can_unit_reach_unit(attacker: UnitState, target: UnitState, max_range: int) -> bool:
+	return distance_between_units(attacker, target) <= max_range
+
+
+static func can_unit_attack_cell(attacker: UnitState, state: GameState, cell: Vector2i, max_range: int) -> bool:
+	var target := state.get_unit_at(cell)
+	if target != null and target.alive and target.uid != attacker.uid:
+		return can_unit_reach_unit(attacker, target, max_range)
+	return is_within_manhattan_range_of_cell(attacker.pos, cell, max_range)
 
 
 ## 检查 unit 的整个 footprint 向 direction 平移一步后是否合法（用于推拉校验）

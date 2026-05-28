@@ -3,6 +3,7 @@ extends RefCounted
 
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
+const GemEffectsScript = preload("res://scripts/rules/gem_effects.gd")
 
 # ─── 攻击标签集合 ────────────────────────────────────────────────────────────
 # 标签用于各阶段之间传递语义，宝石/规则通过检查/追加标签影响流程
@@ -78,17 +79,18 @@ static func execute(
 	state: GameState,
 	attacker: UnitState,
 	target: UnitState,
-	initial_tags: Array[String] = []
+	initial_tags: Array[String] = [],
+	payload: Dictionary = {}
 ) -> Dictionary:
 	if not attacker.alive or not target.alive:
 		return _fail("目标或攻击者无效")
 
 	var ctx := AttackContext.new(state, attacker, target)
+	ctx.payload = payload.duplicate()
 	for tag in initial_tags:
 		ctx.add_tag(tag)
 
-	# 近战距离校验：TAG_MELEE 要求攻击者与目标曼哈顿距离恰好为 1
-	if ctx.has_tag(TAG_MELEE) and BoardUtils.manhattan(attacker.pos, target.pos) != 1:
+	if ctx.has_tag(TAG_MELEE) and not BoardUtils.are_units_adjacent(attacker, target):
 		return _fail("近战目标不在相邻格")
 
 	# 阶段 1：准备（修改范围、追加标签）
@@ -123,6 +125,12 @@ static func _phase_prepare(ctx: AttackContext) -> void:
 
 static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	ctx.base_damage = CombatRules.attack_damage(ctx.state, ctx.attacker)
+	var charge_bonus: int = int(ctx.payload.get("charge_bonus", 0))
+	if charge_bonus > 0:
+		ctx.base_damage += charge_bonus
+	var bonus_damage: int = int(ctx.payload.get("bonus_damage", 0))
+	if bonus_damage > 0:
+		ctx.base_damage += bonus_damage
 	if ctx.has_tag(TAG_SPLIT_SHOT):
 		ctx.base_damage = maxi(1, int(ctx.base_damage * Constants.SPLIT_ATTACK_DAMAGE_RATIO))
 	# 护甲抵扣由 CombatRules.apply_damage 统一处理；
@@ -134,14 +142,18 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 
 
 static func _phase_hit(ctx: AttackContext) -> void:
-	# 调 apply_damage 统一走护甲/蓝槽/死亡逻辑
-	var reason: String
-	if ctx.has_tag(TAG_RANGED):
-		reason = "ranged_attack"
-	elif ctx.has_tag(TAG_MELEE):
-		reason = "melee_attack"
-	else:
-		reason = "attack"
+	if ctx.payload.get("force_miss", false):
+		ctx.state.log("%s 的攻击未命中 %s" % [ctx.attacker.uid, ctx.target.uid])
+		ctx.push_event({"type": "miss", "pos": ctx.target.pos, "attacker_uid": ctx.attacker.uid})
+		return
+	var reason: String = str(ctx.payload.get("damage_reason", ""))
+	if reason.is_empty():
+		if ctx.has_tag(TAG_RANGED):
+			reason = "ranged_attack"
+		elif ctx.has_tag(TAG_MELEE):
+			reason = "melee_attack"
+		else:
+			reason = "attack"
 	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, ctx.base_damage, ctx.attacker.uid, reason)
 	if dealt > 0:
 		ctx.push_damage_event(ctx.target.pos, dealt)
@@ -155,11 +167,10 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	# 命中瞬间：宝石附着效果（中毒等）
 	_gem_hooks_on_hit(ctx)
 
-	# 击退：命中后将目标推离 1 格
-	if ctx.has_tag(TAG_KNOCKBACK) and ctx.target.alive:
+	# 击退：非爆炸宝石近战才推离主目标；爆炸宝石仅震开十字四邻
+	if ctx.has_tag(TAG_KNOCKBACK) and not ctx.has_tag(TAG_EXPLOSIVE) and ctx.target.alive:
 		_Displacement.knockback(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 
-	# 爆炸：命中点十字范围
 	if ctx.has_tag(TAG_EXPLOSIVE):
 		_apply_cross_explosion(ctx)
 
@@ -215,7 +226,6 @@ static func _gem_hooks_prepare(ctx: AttackContext) -> void:
 				match _ability_profile(gem, GemEffects.ABILITY_UNIT_RED_ACTIVE):
 					"explosion":
 						ctx.add_tag(TAG_EXPLOSIVE)
-						ctx.add_tag(TAG_KNOCKBACK)
 					"gravity":
 						ctx.add_tag(TAG_PULL)
 					"poison":
@@ -274,25 +284,17 @@ static func _gem_hooks_on_kill(ctx: AttackContext) -> void:
 
 # ─── 爆炸辅助 ────────────────────────────────────────────────────────────
 
-## 命中点十字爆炸（4邻格，不含命中格自身的再次伤害）
 static func _apply_cross_explosion(ctx: AttackContext) -> void:
-	var center := ctx.target.pos
-	ctx.push_explode_event(center, 0)
-	ctx.state.log("爆炸宝石命中触发十字爆炸于 %s" % center)
-	for cell in BoardUtils.neighbors4(center):
-		if not BoardUtils.in_bounds(ctx.state, cell):
-			continue
-		var hit_unit := ctx.state.get_unit_at(cell)
-		if hit_unit == null or not hit_unit.alive:
-			continue
-		if hit_unit.uid == ctx.attacker.uid:
-			continue
-		var dealt := CombatRules.apply_damage(ctx.state, hit_unit, Constants.EXPLOSION_CROSS_DAMAGE, ctx.attacker.uid, "explosion_cross")
-		if dealt > 0:
-			ctx.push_damage_event(hit_unit.pos, dealt)
-		# 爆炸冲击波：将命中格单位推离爆炸中心（skip_gem_hooks=true 防止链式触发）
-		if hit_unit.alive:
-			_Displacement.knockback(ctx.state, hit_unit, center, 1, ctx.attacker.uid, ctx.events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
+	var cross_events := GemEffectsScript.explode_cross_at(
+		ctx.state,
+		ctx.target.pos,
+		ctx.attacker.uid,
+		0,
+		Constants.EXPLOSION_CROSS_DAMAGE,
+		false
+	)
+	for ev in cross_events:
+		ctx.events.append(ev)
 
 
 # ─── 内部工具 ────────────────────────────────────────────────────────────

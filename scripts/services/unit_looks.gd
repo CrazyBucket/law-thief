@@ -4,12 +4,10 @@ const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd"
 
 const _BODY_COLORS := {
 	"unit_player": Color(0.2, 0.78, 0.45),
-	"unit_bomber": Color(0.9, 0.28, 0.28),
-	"unit_training_guard": Color(0.62, 0.68, 0.72),
-	"unit_heavy_guard": Color(0.45, 0.52, 0.58),
-	"unit_poison_bug": Color(0.62, 0.28, 0.78),
-	"unit_gravity_eye": Color(0.28, 0.55, 0.92),
-	"unit_grunt": Color(0.92, 0.55, 0.22),
+	"unit_bomb_rat": Color(0.95, 0.62, 0.18),
+	"unit_patrol_guard": Color(0.55, 0.62, 0.78),
+	"unit_stone_bow_guard": Color(0.48, 0.52, 0.55),
+	"unit_fission_slime": Color(0.35, 0.88, 0.55),
 }
 
 var _face_texture_cache: Dictionary = {}

@@ -1,6 +1,10 @@
 class_name GemRules
 extends RefCounted
 
+const BombRatRules = preload("res://scripts/rules/bomb_rat_rules.gd")
+const PatrolGuardRules = preload("res://scripts/rules/patrol_guard_rules.gd")
+const StoneBowGuardRules = preload("res://scripts/rules/stone_bow_guard_rules.gd")
+
 
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if not slot.is_operable(state.turn_index):
@@ -9,7 +13,7 @@ static func can_extract(state: GameState, actor: UnitState, target_unit: UnitSta
 		return _fail("槽位为空")
 	if not state.held_gem_uid.is_empty():
 		return _fail("手中已有宝石")
-	if BoardUtils.manhattan(actor.pos, target_unit.pos) > Constants.EXTRACT_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > Constants.EXTRACT_RANGE:
 		return _fail("超出范围")
 	return _ok()
 
@@ -27,7 +31,14 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	slot.gem_uid = ""
 	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, _data_registry().get_gem_display_name(gem)])
 	if slot.slot_type == Constants.SLOT_RED and target_unit.team == Constants.TEAM_ENEMY:
-		StatusRules.apply_lawless(state, target_unit, gem.uid)
+		if PatrolGuardRules.is_patrol_guard(target_unit):
+			PatrolGuardRules.on_red_gem_stolen(state, target_unit, gem.uid)
+		elif StoneBowGuardRules.is_stone_bow_guard(target_unit):
+			StoneBowGuardRules.on_red_gem_stolen(state, target_unit, gem.uid)
+		else:
+			StatusRules.apply_lawless(state, target_unit, gem.uid)
+	if BombRatRules.is_bomb_rat(target_unit):
+		BombRatRules.sync_plunder_state(state, target_unit)
 	IntentSystem.refresh_all_intents(state)
 	return _ok({"gem_uid": gem.uid})
 
@@ -39,7 +50,7 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 		return _fail("槽位被锁定")
 	if not slot.is_empty():
 		return _fail("槽位已被占用")
-	if BoardUtils.manhattan(actor.pos, target_unit.pos) > Constants.INSERT_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > Constants.INSERT_RANGE:
 		return _fail("超出范围")
 	return _ok()
 
@@ -57,6 +68,10 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
 	if StatusRules.is_lawless(target_unit) and StatusRules.get_lawless_gem_uid(target_unit) == gem.uid:
+		if PatrolGuardRules.is_patrol_guard(target_unit):
+			PatrolGuardRules.on_lawless_recovered(target_unit)
+		elif StoneBowGuardRules.is_stone_bow_guard(target_unit):
+			StoneBowGuardRules.on_lawless_recovered(target_unit)
 		StatusRules.clear_lawless(target_unit)
 	IntentSystem.refresh_all_intents(state)
 	return _ok()
@@ -71,7 +86,7 @@ static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitSta
 		return _fail("槽位为空")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
-	if BoardUtils.manhattan(actor.pos, target_unit.pos) > Constants.TRIGGER_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > Constants.TRIGGER_RANGE:
 		return _fail("超出范围")
 	return _ok()
 

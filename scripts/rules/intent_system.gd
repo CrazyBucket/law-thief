@@ -1,5 +1,10 @@
 class_name IntentSystem
 extends RefCounted
+
+const BombRatRules = preload("res://scripts/rules/bomb_rat_rules.gd")
+const PatrolGuardRules = preload("res://scripts/rules/patrol_guard_rules.gd")
+const StoneBowGuardRules = preload("res://scripts/rules/stone_bow_guard_rules.gd")
+const FissionSlimeRules = preload("res://scripts/rules/fission_slime_rules.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 ## 敌人回合执行时按照预计算的意图行动
@@ -13,7 +18,7 @@ static func refresh_all_intents(state: GameState) -> void:
 			continue
 		var start_pos: Vector2i = enemy.pos
 		enemy.intent = _compute_intent_from_ai(state, enemy, cell_blockers)
-		_apply_planned_occupancy(state, cell_blockers, enemy.uid, start_pos, intent_end_pos(enemy, enemy.intent))
+		_apply_planned_occupancy(state, cell_blockers, enemy, start_pos, intent_end_pos(enemy, enemy.intent))
 
 
 ## 按当前棋盘重算单个敌人意图（敌方回合逐个行动前调用）
@@ -26,8 +31,10 @@ static func refresh_unit_intent(state: GameState, unit: UnitState) -> void:
 static func build_cell_occupancy(state: GameState) -> Dictionary:
 	var occupancy: Dictionary = {}
 	for unit in state.units.values():
-		if unit.alive:
-			occupancy[state.tile_key(unit.pos)] = unit.uid
+		if not unit.alive:
+			continue
+		for cell in unit.occupied_cells():
+			occupancy[state.tile_key(cell)] = unit.uid
 	return occupancy
 
 
@@ -44,14 +51,16 @@ static func intent_end_pos(unit: UnitState, intent: IntentState) -> Vector2i:
 static func _apply_planned_occupancy(
 	state: GameState,
 	cell_blockers: Dictionary,
-	uid: String,
-	old_pos: Vector2i,
-	new_pos: Vector2i
+	unit: UnitState,
+	old_anchor: Vector2i,
+	new_anchor: Vector2i
 ) -> void:
-	var old_key := state.tile_key(old_pos)
-	if str(cell_blockers.get(old_key, "")) == uid:
-		cell_blockers.erase(old_key)
-	cell_blockers[state.tile_key(new_pos)] = uid
+	for cell in BoardUtils.footprint_cells_at(unit.footprint_size, old_anchor):
+		var old_key := state.tile_key(cell)
+		if str(cell_blockers.get(old_key, "")) == unit.uid:
+			cell_blockers.erase(old_key)
+	for cell in BoardUtils.footprint_cells_at(unit.footprint_size, new_anchor):
+		cell_blockers[state.tile_key(cell)] = unit.uid
 
 
 static func _sorted_enemies_for_planning(state: GameState) -> Array:
@@ -76,30 +85,69 @@ static func _compute_intent_from_ai(
 	unit: UnitState,
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
-	# 失律状态特殊处理（被偷红宝石后的混乱行为）
+	if StatusRules.is_lawless(unit) and PatrolGuardRules.is_patrol_guard(unit):
+		return _patrol_guard_blind_rampage_intent(state, unit, cell_blockers)
+
+	if StatusRules.is_lawless(unit) and StoneBowGuardRules.is_stone_bow_guard(unit):
+		var faulty_decision := EnemyAI.decide(state, unit, cell_blockers)
+		var faulty_intent := enemy_intent_from_decision(state, unit, faulty_decision, cell_blockers)
+		if faulty_intent.type != "wait":
+			faulty_intent.preview_text = "盲射·%s" % faulty_intent.preview_text
+		return faulty_intent
+
 	if StatusRules.is_lawless(unit):
 		return _lawless_intent(state, unit)
 
-	# 使用 Utility AI 决策
+	if BombRatRules.is_bomb_rat(unit):
+		return BombRatRules.compute_intent(state, unit, cell_blockers)
+
+	if FissionSlimeRules.is_fission_slime(unit):
+		return FissionSlimeRules.compute_intent(state, unit, cell_blockers)
+
+	if StoneBowGuardRules.is_stone_bow_guard(unit):
+		var bow_decision: Dictionary = StoneBowGuardRules.decide(state, unit, cell_blockers)
+		return enemy_intent_from_decision(state, unit, bow_decision, cell_blockers)
+
 	var decision := EnemyAI.decide(state, unit, cell_blockers)
+	return enemy_intent_from_decision(state, unit, decision, cell_blockers)
+
+
+static func enemy_intent_from_decision(
+	state: GameState,
+	unit: UnitState,
+	decision: Dictionary,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
 	var action: EnemyAI.ActionCandidate = decision.get("action", null)
 	var move_path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
-
 	if action == null:
 		return IntentState.wait(unit.uid)
 
-	# 将 AI 决策转化为 IntentState（供 UI 预览）
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid
 	intent.path = move_path
 
 	match action.type:
+		EnemyAI.ActionType.RANGED_ATTACK:
+			intent.type = "ranged_attack"
+			intent.target_uid = action.action_target_uid
+			intent.target_pos = action.move_target
+			_apply_explosion_intent_cells(state, unit, intent)
+			_apply_stone_bow_ranged_preview(state, unit, move_path, intent)
+
 		EnemyAI.ActionType.ATTACK:
 			intent.type = "melee_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
-			intent.damage = CombatRules.attack_damage(state, unit)
-			intent.preview_text = "近战攻击 (%d)" % intent.damage
+			_apply_explosion_intent_cells(state, unit, intent)
+			if PatrolGuardRules.is_patrol_guard(unit):
+				intent.damage = PatrolGuardRules.melee_damage_preview(state, unit, unit.pos, move_path)
+				var bonus: int = PatrolGuardRules.charge_bonus_from_path(unit.pos, move_path)
+				var label := "冲锋" if bonus > 0 else "近战"
+				intent.preview_text = "%s攻击 (%d)" % [label, intent.damage]
+			else:
+				intent.damage = CombatRules.attack_damage(state, unit)
+				intent.preview_text = "近战攻击 (%d)" % intent.damage
 
 		EnemyAI.ActionType.SKILL_RED:
 			var red_slot := unit.get_slot(Constants.SLOT_RED)
@@ -132,6 +180,48 @@ static func _compute_intent_from_ai(
 	return intent
 
 
+static func _apply_explosion_intent_cells(state: GameState, unit: UnitState, intent: IntentState) -> void:
+	if not GemEffects.unit_has_red_explosion(state, unit):
+		return
+	var target: UnitState = state.units.get(intent.target_uid, null)
+	if target == null or not target.alive:
+		return
+	intent.affected_cells = GemEffects.cross_explosion_cells(target.pos)
+
+
+static func _apply_stone_bow_ranged_preview(
+	state: GameState,
+	unit: UnitState,
+	move_path: Array[Vector2i],
+	intent: IntentState
+) -> void:
+	if not StoneBowGuardRules.is_stone_bow_guard(unit):
+		intent.damage = CombatRules.attack_damage(state, unit)
+		intent.preview_text = "远程射击 (%d)" % intent.damage
+		return
+	intent.damage = StoneBowGuardRules.ranged_damage_preview(state, unit)
+	var range: int = StoneBowGuardRules.attack_range_for(unit.pos, move_path)
+	if StoneBowGuardRules.is_deployed(unit.pos, move_path):
+		intent.preview_text = "架设射击 %d格 (%d)" % [range, intent.damage]
+	else:
+		intent.preview_text = "射击 %d格 (%d)" % [range, intent.damage]
+
+
+static func _patrol_guard_blind_rampage_intent(
+	state: GameState,
+	unit: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
+	var saved_mp: int = unit.move_points
+	unit.move_points = PatrolGuardRules.rampage_move_points(unit)
+	var decision: Dictionary = EnemyAI.decide(state, unit, cell_blockers)
+	unit.move_points = saved_mp
+	var intent: IntentState = enemy_intent_from_decision(state, unit, decision, cell_blockers)
+	if intent.type != "wait":
+		intent.preview_text = "暴走·%s" % intent.preview_text
+	return intent
+
+
 static func _build_skill_intent(
 	state: GameState,
 	unit: UnitState,
@@ -156,7 +246,7 @@ static func _build_skill_intent(
 		if target != null:
 			var dash_from: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
 			var charge_path := BoardUtils.path_toward(
-				state, dash_from, target.pos, Constants.BOMBER_DASH_RANGE, unit.uid, {}, cell_blockers
+				state, dash_from, target.pos, Constants.CHARGE_EXPLODE_DASH_RANGE, unit.uid, {}, cell_blockers
 			)
 			for step in charge_path:
 				intent.path.append(step)
@@ -178,20 +268,29 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	if intent == null:
 		return anim_events
 
-	# 第一步：执行移动（逐格记录动画事件）
+	var move_start_pos: Vector2i = unit.pos
 	if not intent.path.is_empty():
 		var move_events := _execute_move(state, unit, intent)
 		anim_events.append_array(move_events)
 
-	# 第二步：执行行动
 	match intent.type:
 		"melee_attack":
-			anim_events.append_array(_execute_melee(state, unit, intent))
+			anim_events.append_array(_execute_melee(state, unit, intent, move_start_pos))
+		"slam_attack":
+			anim_events.append_array(FissionSlimeRules.execute_slam(state, unit, intent))
+		"ranged_attack":
+			anim_events.append_array(_execute_ranged(state, unit, intent, move_start_pos))
 		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack":
 			anim_events.append_array(GemEffects.on_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)
 			anim_events.append({"type": "gem_flash", "pos": intent.target_pos, "color": Color(0.9, 0.2, 0.2)})
+		"black_suicide":
+			anim_events.append_array(BombRatRules.execute_black_suicide(state, unit))
+		"bomb_rat_plunder_wait":
+			BombRatRules.execute_plunder_wait(unit)
+		"bomb_rat_plunder_steal":
+			anim_events.append_array(BombRatRules.execute_plunder_steal(state, unit, intent))
 		"lawless_move":
 			pass  # 移动已在上面执行
 		"lawless_attack":
@@ -216,11 +315,43 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	return anim_events
 
 
-static func _execute_melee(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
+static func _execute_melee(
+	state: GameState,
+	unit: UnitState,
+	intent: IntentState,
+	move_start_pos: Vector2i
+) -> Array[Dictionary]:
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
-	var result := CombatRules.melee_attack(state, unit, target)
+	var charge_bonus: int = 0
+	if PatrolGuardRules.is_patrol_guard(unit):
+		charge_bonus = PatrolGuardRules.charge_bonus_from_path(move_start_pos, intent.path)
+	var result := CombatRules.melee_attack(state, unit, target, charge_bonus)
+	if not result.get("ok", false):
+		return [] as Array[Dictionary]
+	return result.get("events", [] as Array[Dictionary])
+
+
+static func _execute_ranged(
+	state: GameState,
+	unit: UnitState,
+	intent: IntentState,
+	move_start_pos: Vector2i
+) -> Array[Dictionary]:
+	var target: UnitState = state.units.get(intent.target_uid, null)
+	if target == null or not target.alive:
+		return [] as Array[Dictionary]
+	var max_range: int = Constants.ATTACK_RANGE
+	if StoneBowGuardRules.is_stone_bow_guard(unit):
+		max_range = StoneBowGuardRules.attack_range_for(move_start_pos, intent.path)
+	var payload: Dictionary = {}
+	var bonus: int = StoneBowGuardRules.bonus_damage(unit)
+	if bonus > 0:
+		payload["bonus_damage"] = bonus
+	if StoneBowGuardRules.is_faulty_blind_shot(unit) and not StoneBowGuardRules.roll_hit(state, unit.uid):
+		payload["force_miss"] = true
+	var result := CombatRules.ranged_attack(state, unit, target, max_range, payload)
 	if not result.get("ok", false):
 		return [] as Array[Dictionary]
 	return result.get("events", [] as Array[Dictionary])
@@ -232,9 +363,8 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 		return events
 	var previous := unit.pos
 	for step in intent.path:
-		var blocker := state.get_unit_at(step)
-		if blocker != null and blocker.uid != unit.uid:
-			state.log("%s 移动受阻：%s 已被占据" % [unit.uid, step])
+		if not BoardUtils.unit_footprint_passable(state, unit, step, unit.uid):
+			state.log("%s 移动受阻：%s 无法落脚" % [unit.uid, step])
 			break
 		var from_pos := unit.pos
 		state.move_unit(unit, step)
@@ -262,7 +392,14 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 		gem.slot_index = -1
 		slot.gem_uid = ""
 		if slot.slot_type == Constants.SLOT_RED and target.team == Constants.TEAM_ENEMY:
-			StatusRules.apply_lawless(state, target, gem.uid)
+			if PatrolGuardRules.is_patrol_guard(target):
+				PatrolGuardRules.on_red_gem_stolen(state, target, gem.uid)
+			elif StoneBowGuardRules.is_stone_bow_guard(target):
+				StoneBowGuardRules.on_red_gem_stolen(state, target, gem.uid)
+			else:
+				StatusRules.apply_lawless(state, target, gem.uid)
+		if BombRatRules.is_bomb_rat(target):
+			BombRatRules.sync_plunder_state(state, target)
 		state.log("%s 窃取了 %s 的宝石 %s" % [unit.uid, target.uid, _data_registry().get_gem_display_name(gem)])
 		refresh_all_intents(state)
 		break

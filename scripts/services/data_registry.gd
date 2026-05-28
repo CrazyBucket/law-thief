@@ -60,14 +60,18 @@ func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState
 	state.units[state.player_uid] = player
 	for enemy_data in encounter.get("enemies", []):
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
-		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_grunt")].duplicate(true)
+		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
 		var base_slots: Array = def.get("slots", [])
 		def["slots"] = []
+		var spawn_gem_slots: Array = def.get("spawn_gem_slots", [])
 		for slot_data in base_slots:
 			var slot_entry: Dictionary = slot_data.duplicate(true)
-			# 若遭遇模板未指定宝石，则随机分配一个
-			if not slot_entry.has("gem_id"):
-				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_" + str(slot_entry.get("slot_type", "")))
+			var slot_type := str(slot_entry.get("slot_type", ""))
+			var should_roll_gem := not slot_entry.has("gem_id")
+			if should_roll_gem and not spawn_gem_slots.is_empty():
+				should_roll_gem = slot_type in spawn_gem_slots
+			if should_roll_gem:
+				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_" + slot_type)
 				if not roll_gem_id.is_empty():
 					slot_entry["gem_id"] = roll_gem_id
 			if slot_entry.has("gem_id"):
@@ -80,11 +84,12 @@ func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState
 			def["slots"].append(slot_entry)
 		var enemy := UnitState.from_def(
 			enemy_uid,
-			enemy_data.get("def_id", "unit_grunt"),
+			enemy_data.get("def_id", "unit_bomb_rat"),
 			Constants.TEAM_ENEMY,
 			enemy_data.get("pos", Vector2i.ZERO),
 			def
 		)
+		_apply_unit_spawn_variants(enemy, def)
 		for i in range(enemy.slots.size()):
 			var slot: SlotState = enemy.slots[i]
 			if not slot.gem_uid.is_empty():
@@ -279,6 +284,14 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 func _next_uid(prefix: String) -> String:
 	_uid_counter += 1
 	return "%s_%d" % [prefix, _uid_counter]
+
+
+func _apply_unit_spawn_variants(unit: UnitState, def: Dictionary) -> void:
+	if not def.has("hp_roll_max"):
+		return
+	var bonus := RngService.roll_int("unit_spawn_hp_%s" % unit.unit_def_id, 0, int(def.get("hp_roll_max", 0)))
+	unit.hp = int(def.get("max_hp", 1)) + bonus
+	unit.max_hp = unit.hp
 
 
 func _register_gem_effect_profiles() -> void:
@@ -510,132 +523,66 @@ func _register_unit_defs() -> void:
 				{"slot_type": Constants.SLOT_BLACK},
 			],
 		},
-		"unit_bomber": {
-			"display_name_key": "unit.bomber.name",
-			"max_hp": 20,
-			"move_points": 3,
-			"speed": 11,
-			"base_attack": 6,
-			"ai_profile_id": "bomber",
-			"tags": [Constants.TAG_UNIT_BOMBER, Constants.TAG_UNIT_MOBILE],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_training_guard": {
-			"display_name_key": "unit.training_guard.name",
-			"max_hp": 20,
-			"move_points": 1,
-			"speed": 8,
-			"base_attack": 6,
-			"ai_profile_id": "melee_chase",
-			"tags": [Constants.TAG_UNIT_TRAINING],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_heavy_guard": {
-			"display_name_key": "unit.heavy_guard.name",
-			"max_hp": 30,
-			"move_points": 1,
-			"speed": 7,
-			"base_attack": 8,
-			"ai_profile_id": "guard",
-			"tags": [Constants.TAG_UNIT_HEAVY],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_poison_bug": {
-			"display_name_key": "unit.poison_bug.name",
-			"max_hp": 20,
-			"move_points": 2,
-			"speed": 10,
-			"base_attack": 6,
-			"ai_profile_id": "poison_roamer",
-			"tags": [Constants.TAG_UNIT_MOBILE],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_gravity_eye": {
-			"display_name_key": "unit.gravity_eye.name",
-			"max_hp": 25,
-			"move_points": 0,
-			"speed": 9,
-			"base_attack": 0,
-			"ai_profile_id": "puller",
-			"tags": [Constants.TAG_UNIT_PULLER, Constants.TAG_UNIT_TURRET],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_grunt": {
-			"display_name_key": "unit.grunt.name",
-			"max_hp": 20,
-			"move_points": 2,
-			"speed": 9,
-			"base_attack": 6,
-			"ai_profile_id": "melee_chase",
-			"tags": [],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_thief": {
-			"display_name_key": "unit.thief.name",
-			"max_hp": 20,
-			"move_points": 3,
+		"unit_bomb_rat": {
+			"display_name_key": "unit.bomb_rat.name",
+			"max_hp": 10,
+			"hp_roll_max": Constants.BOMB_RAT_HP_ROLL_MAX,
+			"move_points": 4,
 			"speed": 13,
+			"base_attack": 4,
+			"ai_profile_id": "bomb_rat",
+			"spawn_gem_slots": [Constants.SLOT_BLACK],
+			"tags": [Constants.TAG_UNIT_BOMB_RAT, Constants.TAG_UNIT_MOBILE],
+			"slots": [
+				{"slot_type": Constants.SLOT_RED},
+				{"slot_type": Constants.SLOT_BLUE},
+				{"slot_type": Constants.SLOT_BLACK},
+			],
+		},
+		"unit_patrol_guard": {
+			"display_name_key": "unit.patrol_guard.name",
+			"max_hp": 24,
+			"hp_roll_max": Constants.PATROL_GUARD_HP_ROLL_MAX,
+			"move_points": 3,
+			"speed": 9,
 			"base_attack": 6,
-			"ai_profile_id": "thief",
-			"tags": [Constants.TAG_UNIT_THIEF, Constants.TAG_UNIT_MOBILE],
+			"ai_profile_id": "melee_chase",
+			"tags": [Constants.TAG_UNIT_PATROL_GUARD],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
 				{"slot_type": Constants.SLOT_BLACK},
 			],
 		},
-		"unit_shock_tower": {
-			"display_name_key": "unit.shock_tower.name",
-			"max_hp": 30,
-			"move_points": 0,
-			"speed": 6,
-			"base_attack": 0,
-			"ai_profile_id": "turret",
-			"tags": [Constants.TAG_UNIT_TURRET],
+		"unit_stone_bow_guard": {
+			"display_name_key": "unit.stone_bow_guard.name",
+			"max_hp": 14,
+			"hp_roll_max": Constants.STONE_BOW_HP_ROLL_MAX,
+			"move_points": 2,
+			"speed": 8,
+			"base_attack": 4,
+			"ai_profile_id": "stone_bow",
+			"tags": [Constants.TAG_UNIT_STONE_BOW_GUARD, Constants.TAG_UNIT_RANGED],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
 				{"slot_type": Constants.SLOT_BLACK},
 			],
 		},
-		"unit_slime_large": {
-			"display_name_key": "unit.slime_large.name",
-			"max_hp": 60,
+		"unit_fission_slime": {
+			"display_name_key": "unit.fission_slime.name",
+			"max_hp": 22,
+			"hp_roll_max": Constants.FISSION_SLIME_HP_ROLL_MAX,
 			"move_points": 2,
 			"speed": 7,
-			"base_attack": 12,
-			"armor": 2,
+			"base_attack": 4,
 			"ai_profile_id": "melee_chase",
 			"footprint_size": Vector2i(2, 2),
-			"tags": [],
+			"tags": [Constants.TAG_UNIT_FISSION_SLIME],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
+				{"slot_type": Constants.SLOT_BLUE, "gem_id": Constants.GEM_SPLIT},
+				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT},
 			],
 		},
 	}
@@ -646,19 +593,43 @@ func _register_encounters() -> void:
 		"tutorial_001": {
 			"player_spawn": Vector2i(3, 2),
 			"enemies": [
-				{"def_id": "unit_bomber", "pos": Vector2i(2, 4)},
-				{"def_id": "unit_training_guard", "pos": Vector2i(3, 5)},
+				{"def_id": "unit_bomb_rat", "pos": Vector2i(2, 4)},
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(3, 5)},
 			],
 			"tiles": [
 				{"pos": Vector2i(2, 5), "tile_id": Constants.TILE_SPIKE},
 			],
 		},
+		"bomb_rat_test": {
+			"player_spawn": Vector2i(3, 2),
+			"enemies": [
+				{"def_id": "unit_bomb_rat", "pos": Vector2i(1, 4)},
+			],
+		},
+		"patrol_guard_test": {
+			"player_spawn": Vector2i(3, 2),
+			"enemies": [
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(0, 2)},
+			],
+		},
+		"stone_bow_test": {
+			"player_spawn": Vector2i(1, 2),
+			"enemies": [
+				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(5, 2)},
+			],
+		},
+		"fission_slime_test": {
+			"player_spawn": Vector2i(0, 2),
+			"enemies": [
+				{"def_id": "unit_fission_slime", "pos": Vector2i(4, 3)},
+			],
+		},
 		"template_a": {
 			"player_spawn": Vector2i(1, 6),
 			"enemies": [
-				{"def_id": "unit_bomber", "pos": Vector2i(4, 2)},
-				{"def_id": "unit_heavy_guard", "pos": Vector2i(5, 4)},
-				{"def_id": "unit_poison_bug", "pos": Vector2i(6, 6)},
+				{"def_id": "unit_bomb_rat", "pos": Vector2i(4, 2)},
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 4)},
+				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 6)},
 			],
 			"tiles": [
 				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_SPIKE},
@@ -669,9 +640,9 @@ func _register_encounters() -> void:
 		"template_b": {
 			"player_spawn": Vector2i(1, 6),
 			"enemies": [
-				{"def_id": "unit_gravity_eye", "pos": Vector2i(4, 3)},
-				{"def_id": "unit_heavy_guard", "pos": Vector2i(5, 5)},
-				{"def_id": "unit_poison_bug", "pos": Vector2i(6, 2)},
+				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 2)},
+				{"def_id": "unit_fission_slime", "pos": Vector2i(3, 3)},
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 5)},
 			],
 			"tiles": [
 				{"pos": Vector2i(4, 4), "tile_id": Constants.TILE_SPIKE},
@@ -683,10 +654,10 @@ func _register_encounters() -> void:
 		"template_c": {
 			"player_spawn": Vector2i(1, 6),
 			"enemies": [
-				{"def_id": "unit_poison_bug", "pos": Vector2i(5, 2)},
-				{"def_id": "unit_gravity_eye", "pos": Vector2i(6, 4)},
-				{"def_id": "unit_grunt", "pos": Vector2i(4, 6)},
-				{"def_id": "unit_grunt", "pos": Vector2i(6, 6)},
+				{"def_id": "unit_bomb_rat", "pos": Vector2i(5, 2)},
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(4, 6)},
+				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 4)},
+				{"def_id": "unit_fission_slime", "pos": Vector2i(3, 3)},
 			],
 			"tiles": [
 				{"pos": Vector2i(3, 4), "tile_id": Constants.TILE_WATER},
@@ -698,11 +669,10 @@ func _register_encounters() -> void:
 		"template_d": {
 			"player_spawn": Vector2i(1, 6),
 			"enemies": [
-				{"def_id": "unit_shock_tower", "pos": Vector2i(6, 1)},
-				{"def_id": "unit_thief", "pos": Vector2i(5, 3)},
-				{"def_id": "unit_heavy_guard", "pos": Vector2i(4, 4)},
-				{"def_id": "unit_grunt", "pos": Vector2i(3, 5)},
-				{"def_id": "unit_grunt", "pos": Vector2i(5, 5)},
+				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 1)},
+				{"def_id": "unit_bomb_rat", "pos": Vector2i(5, 3)},
+				{"def_id": "unit_patrol_guard", "pos": Vector2i(4, 4)},
+				{"def_id": "unit_fission_slime", "pos": Vector2i(2, 2)},
 			],
 			"tiles": [
 				{"pos": Vector2i(2, 3), "tile_id": Constants.TILE_WATER},

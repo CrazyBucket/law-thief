@@ -18,7 +18,7 @@ func _ready() -> void:
 	_input.text_submitted.connect(_on_input_submitted)
 	_input.gui_input.connect(_on_input_gui_input)
 	append_log("> /help", "#6bdc8e")
-	append_log("资源 id 为字符串（如 unit_bomber、gem_poison），不是数字。", "#7a9a82")
+	append_log("资源 id 为字符串（如 unit_bomb_rat、gem_poison），不是数字。", "#7a9a82")
 
 
 func open() -> void:

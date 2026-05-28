@@ -11,6 +11,7 @@ func _run_tests() -> void:
 	_test_attack_without_red_gem()
 	_test_explosion_triggers_on_attack_hit()
 	_test_poison_triggers_on_attack_hit()
+	_test_explosion_on_empty_cell()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -23,7 +24,7 @@ func _test_attack_without_red_gem() -> void:
 	var player := state.get_player()
 	var guard: UnitState = null
 	for unit in state.units.values():
-		if unit.unit_def_id == "unit_training_guard":
+		if unit.unit_def_id == "unit_patrol_guard":
 			guard = unit
 			break
 	assert(guard != null, "guard should exist")
@@ -49,7 +50,7 @@ func _test_explosion_triggers_on_attack_hit() -> void:
 	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
 	var guard: UnitState = null
 	for unit in state.units.values():
-		if unit.unit_def_id == "unit_training_guard":
+		if unit.unit_def_id == "unit_patrol_guard":
 			guard = unit
 			break
 	assert(guard != null, "guard should exist")
@@ -78,7 +79,7 @@ func _test_poison_triggers_on_attack_hit() -> void:
 	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
 	var guard: UnitState = null
 	for unit in state.units.values():
-		if unit.unit_def_id == "unit_training_guard":
+		if unit.unit_def_id == "unit_patrol_guard":
 			guard = unit
 			break
 	assert(guard != null, "guard should exist")
@@ -88,6 +89,35 @@ func _test_poison_triggers_on_attack_hit() -> void:
 	var has_poison := events.any(func(e): return e.get("type", "") == "poison_burst")
 	assert(has_poison, "poison gem should produce poison_burst event on hit")
 	print("  [OK] poison gem triggered on attack hit")
+
+
+func _test_explosion_on_empty_cell() -> void:
+	print("--- Test: Explosion red gem triggers on empty cell ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_explosion_empty"
+	gem.gem_id = Constants.GEM_EXPLOSION
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	var empty := player.pos + Vector2i(2, 0)
+	if state.get_unit_at(empty) != null:
+		empty = player.pos + Vector2i(0, 2)
+	var result := ctrl.try_attack_cell(empty)
+	assert(result.get("ok", false), "attack empty should succeed")
+	var events: Array = result.get("attack_events", [])
+	var explode_ev: Dictionary = {}
+	for ev in events:
+		if ev.get("type", "") == "explode":
+			explode_ev = ev
+			break
+	assert(not explode_ev.is_empty(), "should emit explode on empty cell")
+	assert(explode_ev.get("pattern", "") == "cross", "should be cross pattern")
+	var cells: Array = explode_ev.get("cells", [])
+	assert(cells.size() == 5, "cross should cover 5 cells, got %d" % cells.size())
+	print("  [OK] explosion on empty cell")
 
 
 func _data_registry() -> Node:

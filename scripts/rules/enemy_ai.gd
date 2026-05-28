@@ -1,5 +1,7 @@
 class_name EnemyAI
 extends RefCounted
+
+const StoneBowGuardRules = preload("res://scripts/rules/stone_bow_guard_rules.gd")
 ## 分值评估系统 (Utility AI)
 ## 核心思路：遍历所有合法行动 → 模拟执行 → 打分 → 选最高分
 ## 怪物行动经济：每回合 1 次移动 + 1 次行动（攻击/技能）
@@ -9,6 +11,7 @@ extends RefCounted
 enum ActionType {
 	MOVE,           # 移动到某格
 	ATTACK,         # 近战攻击
+	RANGED_ATTACK,  # 远程射击
 	SKILL_RED,      # 红槽宝石技能（冲刺爆炸、拉人、毒攻等）
 	EXTRACT,        # 拔出宝石
 	WAIT,           # 原地等待
@@ -64,14 +67,15 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 
 static func _is_blocked_destination(
 	state: GameState,
-	pos: Vector2i,
-	uid: String,
+	anchor: Vector2i,
+	unit: UnitState,
 	cell_blockers: Dictionary
 ) -> bool:
-	var key := state.tile_key(pos)
-	if not cell_blockers.has(key):
-		return false
-	return str(cell_blockers[key]) != uid
+	for cell in BoardUtils.footprint_cells_at(unit.footprint_size, anchor):
+		var key := state.tile_key(cell)
+		if cell_blockers.has(key) and str(cell_blockers[key]) != unit.uid:
+			return true
+	return false
 
 
 # ─── 生成所有候选行动 ─────────────────────────────────────────────────────
@@ -95,28 +99,29 @@ static func _generate_all_candidates(
 	reachable.append(enemy.pos)  # 原地也是选项
 
 	for move_pos in reachable:
-		if _is_blocked_destination(state, move_pos, enemy.uid, cell_blockers):
+		if _is_blocked_destination(state, move_pos, enemy, cell_blockers):
 			continue
 		# --- 在每个可达位置评估可执行的行动 ---
 
 		# 1. 近战攻击
-		var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
-		candidates.append_array(attack_candidates)
+		if profile.get("ranged_only", false):
+			pass
+		else:
+			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
+			candidates.append_array(attack_candidates)
+		if profile.get("can_ranged_attack", false) and not StoneBowGuardRules.is_stone_bow_guard(enemy):
+			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, move_pos, profile)
+			candidates.append_array(ranged_candidates)
 
 		# 2. 红槽技能（如果有红宝石）
 		var skill_candidates: Array = _evaluate_red_skill_from(state, enemy, move_pos, profile)
 		candidates.append_array(skill_candidates)
 
-		# 3. 拔出宝石（偷窃型怪物）
-		if profile.get("can_extract", false):
-			var extract_candidates: Array = _evaluate_extract_from(state, enemy, move_pos, profile)
-			candidates.append_array(extract_candidates)
-
-	# 4. 纯移动（不攻击，只靠近目标）
+	# 3. 纯移动（不攻击，只靠近目标）
 	var move_only: Array = _evaluate_move_only(state, enemy, reachable, profile, cell_blockers)
 	candidates.append_array(move_only)
 
-	# 5. 原地等待（兜底）
+	# 4. 原地等待（兜底）
 	var wait := ActionCandidate.new()
 	wait.type = ActionType.WAIT
 	wait.move_target = enemy.pos
@@ -164,6 +169,50 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 	return results
 
 
+static func _evaluate_ranged_attacks_from(
+	state: GameState,
+	enemy: UnitState,
+	from_pos: Vector2i,
+	profile: Dictionary
+) -> Array:
+	var results: Array = []
+	var player: UnitState = state.get_player()
+	if player == null or not player.alive:
+		return results
+	var moved: bool = from_pos != enemy.pos
+	var range_path: Array = [] if not moved else [from_pos]
+	var max_range: int = Constants.ATTACK_RANGE
+	if StoneBowGuardRules.is_stone_bow_guard(enemy):
+		max_range = StoneBowGuardRules.attack_range_for(enemy.pos, range_path)
+	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
+	if dist < 1 or dist > max_range:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.RANGED_ATTACK
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var damage_dealt: int = CombatRules.attack_damage(state, enemy)
+	if StoneBowGuardRules.is_stone_bow_guard(enemy):
+		damage_dealt = StoneBowGuardRules.ranged_damage_preview(state, enemy)
+	var score: float = float(damage_dealt) * _w(profile, "w_damage", 10.0)
+	if player.hp <= damage_dealt:
+		score += _w(profile, "w_kill_player", 200.0)
+	if not moved and StoneBowGuardRules.is_stone_bow_guard(enemy):
+		score += _w(profile, "w_deploy_bonus", 12.0)
+	var move_dist: int = BoardUtils.manhattan(enemy.pos, from_pos)
+	score -= float(move_dist) * _w(profile, "w_move_cost", 0.5)
+	score += _evaluate_tile_safety(state, from_pos, profile)
+	if profile.get("prefer_distance", false):
+		score += float(dist) * _w(profile, "w_keep_distance", 3.0) * 0.3
+	candidate.score = score
+	var range_label := str(max_range)
+	if not moved and StoneBowGuardRules.is_stone_bow_guard(enemy):
+		range_label = "%d架设" % max_range
+	candidate.description = "在%s远程射击(%s格)" % [str(from_pos), range_label]
+	results.append(candidate)
+	return results
+
+
 # ─── 评估红槽技能 ─────────────────────────────────────────────────────────
 static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_pos: Vector2i, profile: Dictionary) -> Array:
 	var results: Array = []
@@ -196,9 +245,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 # ─── 爆炸技能评分 ─────────────────────────────────────────────────────────
 static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	# 自爆工兵：冲刺 2 格后爆炸，需要靠近玩家
 	var dist_to_player: int = BoardUtils.manhattan(from_pos, player.pos)
-	var max_threat_range: int = Constants.BOMBER_DASH_RANGE + Constants.EXPLOSION_RADIUS
+	var max_threat_range: int = Constants.CHARGE_EXPLODE_DASH_RANGE + Constants.EXPLOSION_RADIUS
 	if dist_to_player > max_threat_range:
 		return results
 
@@ -213,10 +261,9 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 	elif dist_to_player <= max_threat_range:
 		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0)
 
-	# 自爆兵不在乎自己死
 	score += _w(profile, "w_self_sacrifice", 0.0)
 
-	# 如果能同时炸到多个目标加分
+	# 友军误伤扣分
 	for cell in BoardUtils.cells_in_radius(player.pos, Constants.EXPLOSION_RADIUS):
 		var unit: UnitState = state.get_unit_at(cell)
 		if unit != null and unit.alive:
@@ -315,44 +362,6 @@ static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	return results
 
 
-# ─── 评估拔出宝石 ─────────────────────────────────────────────────────────
-static func _evaluate_extract_from(state: GameState, enemy: UnitState, from_pos: Vector2i, profile: Dictionary) -> Array:
-	var results: Array = []
-	# 遍历范围内所有单位的槽位
-	for unit in state.units.values():
-		if not unit.alive or unit.uid == enemy.uid:
-			continue
-		if BoardUtils.manhattan(from_pos, unit.pos) > Constants.EXTRACT_RANGE:
-			continue
-		for i in range(unit.slots.size()):
-			var slot: SlotState = unit.slots[i]
-			if slot.gem_uid.is_empty() or slot.locked:
-				continue
-			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			if gem == null:
-				continue
-
-			var candidate := ActionCandidate.new()
-			candidate.type = ActionType.EXTRACT
-			candidate.move_target = from_pos
-			candidate.action_target_uid = unit.uid
-			candidate.slot_index = i
-
-			var score: float = _w(profile, "w_extract_base", 20.0)
-			# 偷玩家的宝石更有价值
-			if unit.team == Constants.TEAM_PLAYER:
-				score += _w(profile, "w_steal_player", 30.0)
-			# 偷红槽宝石（核心能力）价值最高
-			if slot.slot_type == Constants.SLOT_RED:
-				score += _w(profile, "w_steal_red", 25.0)
-
-			candidate.score = score
-			candidate.description = "拔出%s的%s宝石" % [unit.uid, _data_registry().get_gem_display_name(gem)]
-			results.append(candidate)
-
-	return results
-
-
 # ─── 评估纯移动（不攻击） ─────────────────────────────────────────────────
 static func _evaluate_move_only(
 	state: GameState,
@@ -370,7 +379,7 @@ static func _evaluate_move_only(
 	for pos in reachable:
 		if pos == enemy.pos:
 			continue  # 原地不算移动
-		if _is_blocked_destination(state, pos, enemy.uid, cell_blockers):
+		if _is_blocked_destination(state, pos, enemy, cell_blockers):
 			continue
 
 		var candidate := ActionCandidate.new()

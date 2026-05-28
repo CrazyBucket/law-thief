@@ -90,10 +90,10 @@ godot --headless --path . --script res://scripts/tests/encounter_load_test.gd
 示例：
 
 ```text
-spawn unit_bomber 2,4 --team enemy
+spawn unit_bomb_rat 2,4 --team enemy
 spawn gem_poison 2,4 --slot red --target tile
 spawn tile_altar 4,4
-spawn-many unit_grunt 0,0 1,0 2,0 --team enemy
+spawn-many unit_patrol_guard 0,0 1,0 2,0 --team enemy
 move 2,4 3,4
 remove unit 3,4
 remove gem 2,4 --slot red --target unit
@@ -111,7 +111,7 @@ godot --headless --path . --script res://scripts/tests/hook_test.gd
 
 ## MVP 内容
 
-- 8×8 棋盘、单角色、6 种怪物、6 种宝石、2 种地块
+- 8×8 棋盘、单角色、4 种怪物、6 种宝石、2 种地块
 - 三色槽位：红（行为）/ 蓝（属性）/ 黑（死亡）
 - 操作：移动、攻击、拔出、嵌入、触发
 - 敌人意图预览、危险格高亮

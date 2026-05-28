@@ -27,6 +27,7 @@ const GEM_SPLIT := "gem_split"
 
 const SPLIT_ATTACK_DAMAGE_RATIO := 0.7     # 红槽：三发伤害倍率
 const SPLIT_DAMAGE_REDIRECT_RATIO := 0.5   # 蓝槽：转移伤害比例（原单位受剩余50%）
+const SPLIT_SURROUND_RADIUS := 1           # 蓝槽：转移范围（占格外圈切比雪夫距离）
 const SPLIT_STAT_RATIO := 0.3              # 黑槽：分身全属性倍率
 const SPLIT_DEATH_HP_MERGE_DIVISOR := 2    # 黑槽：战斗结算时分身血量之和除以此值
 
@@ -66,7 +67,7 @@ const EXPLOSION_DAMAGE := 12
 const EXPLOSION_RADIUS := 1
 const EXPLOSION_CROSS_DAMAGE := 1   # 爆炸宝石命中时十字扩散伤害
 const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 chebyshev 范围）
-const BOMBER_DASH_RANGE := 2        # 爆炸兵每次自爆前冲刺的最大步数
+const CHARGE_EXPLODE_DASH_RANGE := 2  # 红槽冲刺爆炸：自爆前最大冲刺格数
 const GRAVITY_COLLISION_DAMAGE := 3
 const KNOCKBACK_COLLISION_DAMAGE := 3  # 击退撞墙/撞单位碰撞伤害
 const SPIKE_DAMAGE := 5
@@ -93,6 +94,7 @@ const STATUS_ARMOR := "armor"
 const STATUS_ROOTED := "rooted"
 const STATUS_EXPOSED := "exposed"
 const STATUS_LAWLESS := "lawless"
+const STATUS_BOMB_RAT_PLUNDER := "bomb_rat_plunder"  # 炸弹鼠无律掠夺阶段
 const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
 const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被推入地刺时附加
 
@@ -133,16 +135,35 @@ const TAG_TILE_ICE       := "tile:ice"
 const TAG_TILE_WATER     := "tile:water"      # 水洼（含毒水洼）
 
 # ─── 单位语义标签 ──────────────────────────────────────────────────────────────
-# 通过 unit.has_tag() 查询，避免在业务逻辑中硬编码 unit_def_id 字符串
-const TAG_UNIT_BOMBER    := "unit:bomber"    # 自爆单位（携带爆炸宝石的特殊 AI 角色）
-const TAG_UNIT_TRAINING  := "unit:training"  # 训练场守卫（教学关专用，弱化单位）
-const TAG_UNIT_HEAVY     := "unit:heavy"     # 重甲单位（高血量、低速）
-const TAG_UNIT_MOBILE    := "unit:mobile"    # 高机动单位（速度优先、移动力高）
-const TAG_UNIT_RANGED    := "unit:ranged"    # 远程攻击单位（射程 > 1）
-const TAG_UNIT_TURRET    := "unit:turret"    # 炮台单位（零移动力，固定位置）
-const TAG_UNIT_THIEF     := "unit:thief"     # 窃取型单位（可主动拔取宝石）
-const TAG_UNIT_PULLER    := "unit:puller"    # 引力型单位（使用引力宝石）
-const TAG_UNIT_SPLIT_CLONE := "unit:split_clone"  # 分裂宝石产生的分身
+const TAG_UNIT_BOMB_RAT := "unit:bomb_rat"
+const TAG_UNIT_PATROL_GUARD := "unit:patrol_guard"
+const TAG_UNIT_STONE_BOW_GUARD := "unit:stone_bow_guard"
+const TAG_UNIT_FISSION_SLIME := "unit:fission_slime"
+const TAG_UNIT_MOBILE := "unit:mobile"
+const TAG_UNIT_RANGED := "unit:ranged"
+const TAG_UNIT_SPLIT_CLONE := "unit:split_clone"
+
+const BOMB_RAT_HP_ROLL_MAX := 5
+
+const PATROL_GUARD_HP_ROLL_MAX := 4
+const PATROL_GUARD_CHARGE_BONUS := 2
+const PATROL_GUARD_CHARGE_MIN_STEPS := 2
+const PATROL_GUARD_RAMPAGE_MOVE_BONUS := 1
+
+const STONE_BOW_HP_ROLL_MAX := 3
+const STONE_BOW_ATTACK_RANGE := 3
+const STONE_BOW_DEPLOY_RANGE_BONUS := 1
+const STONE_BOW_FAULTY_MISS_CHANCE := 0.5
+const STONE_BOW_FAULTY_DAMAGE_BONUS := 1
+const STONE_BOW_KITE_IDEAL_RANGE := 3      # 风筝理想射击距离
+const STONE_BOW_KITE_MIN_RANGE := 2        # 低于此距离优先后撤
+
+const FISSION_SLIME_HP_ROLL_MAX := 6
+const FISSION_SLIME_SPLIT_STAT_RATIO := 0.5
+const FISSION_SLIME_SLAM_PUSH_STEPS := 1
+const DAMAGE_REASON_SLAM := "slam_attack"
+const DISPLACEMENT_CHAIN_MAX_DEPTH := 8
+const DISPLACEMENT_LANDING_SCAN := 6
 
 # ─── 地块语义标签 ──────────────────────────────────────────────────────────────
 # 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部

@@ -88,6 +88,12 @@ func kill_unit(unit: UnitState) -> void:
 	unit.alive = false
 
 
+## 从战场移除单位（编辑器删除等，非战斗击杀）
+func unregister_unit(unit: UnitState) -> void:
+	_remove_unit_from_occupancy(unit)
+	units.erase(unit.uid)
+
+
 # ─── 查询接口 ─────────────────────────────────────────────────────────────────
 
 func get_unit_at(pos: Vector2i) -> UnitState:

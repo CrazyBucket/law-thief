@@ -46,19 +46,33 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 
 
 ## 近战攻击（pipeline 版本）：返回 {ok, reason, events}
-static func melee_attack(state: GameState, attacker: UnitState, target: UnitState) -> Dictionary:
+static func melee_attack(
+	state: GameState,
+	attacker: UnitState,
+	target: UnitState,
+	charge_bonus: int = 0
+) -> Dictionary:
 	if not attacker.alive or not target.alive:
 		return {"ok": false, "reason": "目标无效", "events": []}
-	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_MELEE])
+	var payload: Dictionary = {}
+	if charge_bonus > 0:
+		payload["charge_bonus"] = charge_bonus
+	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_MELEE], payload)
 
 
 ## 远程攻击（pipeline 版本）：返回 {ok, reason, events}
-static func ranged_attack(state: GameState, attacker: UnitState, target: UnitState) -> Dictionary:
+static func ranged_attack(
+	state: GameState,
+	attacker: UnitState,
+	target: UnitState,
+	max_range: int = Constants.ATTACK_RANGE,
+	payload: Dictionary = {}
+) -> Dictionary:
 	if not attacker.alive or not target.alive:
 		return {"ok": false, "reason": "目标无效", "events": []}
-	if BoardUtils.manhattan(attacker.pos, target.pos) > Constants.ATTACK_RANGE:
+	if BoardUtils.distance_between_units(attacker, target) > max_range:
 		return {"ok": false, "reason": "目标超出射程", "events": []}
-	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_RANGED])
+	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_RANGED], payload)
 
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
