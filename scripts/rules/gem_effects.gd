@@ -80,6 +80,39 @@ static func get_armor_bonus(_state: GameState, _unit: UnitState) -> int:
 	return 0
 
 
+## 分裂宝石蓝槽伤害拦截：将伤害的 50% 转移给 3x3 内随机单位，原单位只受 50%
+## 返回原单位实际应受的伤害量（已经被修改）
+static func intercept_damage_for_split(state: GameState, unit: UnitState, source_uid: String, reason: String, damage: int) -> int:
+	if damage <= 0:
+		return damage
+	# 检查蓝槽是否装有分裂宝石
+	var has_split_blue := false
+	for slot in unit.slots:
+		if slot.slot_type != Constants.SLOT_BLUE or slot.gem_uid.is_empty() or slot.locked:
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null and _ability_profile(gem, ABILITY_BLUE_DAMAGED) == "split":
+			has_split_blue = true
+			break
+	if not has_split_blue:
+		return damage
+	# 转移伤害：50% 转给 3x3 内随机单位
+	var redirect_amount := int(damage * Constants.SPLIT_DAMAGE_REDIRECT_RATIO)
+	var remaining := damage - redirect_amount
+	if redirect_amount > 0:
+		var candidates: Array[UnitState] = []
+		for other in state.units.values():
+			if not other.alive or other.uid == unit.uid:
+				continue
+			if BoardUtils.chebyshev(unit.pos, other.pos) <= 1:
+				candidates.append(other)
+		if not candidates.is_empty():
+			var redirect_target: UnitState = candidates[randi() % candidates.size()]
+			state.log("%s 分裂宝石将 %d 点伤害转移给 %s" % [unit.uid, redirect_amount, redirect_target.uid])
+			CombatRules.apply_damage(state, redirect_target, redirect_amount, source_uid, "split_redirect")
+	return remaining
+
+
 static func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 	return _data_registry().get_enemy_red_intent_meta(gem_ref, damage)
 
@@ -194,6 +227,14 @@ static func _run_enemy_red_action(state: GameState, unit: UnitState, slot: SlotS
 			if arc_target.alive:
 				apply_arc_bounce_from_victim(state, arc_target, unit, arc_base, arc_events)
 			return arc_events
+		"split_attack":
+			var split_t: UnitState = state.units.get(target_uid, null)
+			if split_t == null or not split_t.alive:
+				return [] as Array[Dictionary]
+			if BoardUtils.manhattan(unit.pos, split_t.pos) > Constants.ATTACK_RANGE:
+				return [] as Array[Dictionary]
+			var split_result := CombatRules.ranged_attack(state, unit, split_t)
+			return split_result.get("events", [] as Array[Dictionary])
 	return [] as Array[Dictionary]
 
 
@@ -252,7 +293,8 @@ static func pull_unit_toward_with_events(
 			events.append_array(_apply_gravity_collision(state, unit, blocker, source_uid))
 			break
 		var from_pos := unit.pos
-		unit.pos = next
+		unit.facing = UnitState.facing_from_step(from_pos, next)
+		state.move_unit(unit, next)
 		TileRules.on_unit_moved_through(state, unit, next)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
 		current = next
@@ -404,6 +446,12 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: Sl
 					if ice_t != null and ice_t.alive:
 						apply_ice_hit_effect(state, ice_t, owner.uid)
 			return true
+		"split":
+			# 红槽触发：以 AttackPipeline 打出 V 字三发（TAG_SPLIT_SHOT 已在 pipeline 处理）
+			# 玩家触发时目标 uid 由 ctx 传入，由 battle_controller try_attack_cell 调用
+			# 实际伤害通过 AttackPipeline.execute 完成，此处无需额外处理
+			# MODE_ENEMY 分支由 _run_enemy_red_action 处理
+			return true
 	return false
 
 
@@ -449,6 +497,9 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 			if source != null and source.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
 				var rebound_events: Array[Dictionary] = []
 				_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), rebound_events)
+			return true
+		"split":
+			# 实际伤害拦截在 CombatRules.apply_damage 层已完成，此处只声明响应
 			return true
 	return false
 
@@ -518,6 +569,9 @@ static func _run_unit_death_effect_with_events(state: GameState, owner: UnitStat
 				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
 					StatusRules.apply_sluggish(state, unit, owner.uid)
 					out_events.append({"type": "frost_pulse", "pos": unit.pos})
+			return true
+		"split":
+			_spawn_split_clones(state, owner, out_events)
 			return true
 	return false
 
@@ -811,6 +865,120 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 		copy.value = debuff.value
 		StatusRegistry.apply_to_unit(target, copy)
 		state.log("%s 死亡将 %s 转给 %s" % [owner.uid, StatusRegistry.display_name(debuff.status_id), target.uid])
+
+
+## ─── 分裂（split）黑槽：死亡生成两个分身 ────────────────────────────────────
+
+## 找 owner 周围（或更远）第一个空地
+static func _find_empty_neighbor_cells(state: GameState, origin: Vector2i, count: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	# 按 chebyshev 距离从近到远搜索
+	for radius in range(1, 5):
+		for cell in BoardUtils.cells_in_radius(origin, radius):
+			if not BoardUtils.in_bounds(state, cell):
+				continue
+			if state.get_unit_at(cell) != null:
+				continue
+			if not result.has(cell):
+				result.append(cell)
+			if result.size() >= count:
+				return result
+	return result
+
+
+## 槽位均匀分配：将 slots 按 slot_type 轮流分到两组
+static func _partition_slots_for_clones(slots: Array) -> Array:
+	# 返回 [slots_a, slots_b]，按槽位顺序逐个交替分配
+	var group_a: Array = []
+	var group_b: Array = []
+	for i in range(slots.size()):
+		if i % 2 == 0:
+			group_a.append(slots[i])
+		else:
+			group_b.append(slots[i])
+	return [group_a, group_b]
+
+
+## 创建分身单位并注册到 state
+static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: Vector2i, slot_group: Array) -> UnitState:
+	var reg: Node = _data_registry()
+	var clone_uid := reg.call("_next_uid", "split_clone")
+	var clone := UnitState.new()
+	clone.uid = clone_uid
+	clone.unit_def_id = owner.unit_def_id
+	clone.team = owner.team
+	clone.pos = spawn_pos
+	clone.facing = owner.facing
+	clone.alive = true
+	clone.ai_profile_id = owner.ai_profile_id
+	clone.split_origin_uid = owner.uid
+	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
+	# 属性30%（向上取整），speed 不变（由调用方保留）
+	var ratio := Constants.SPLIT_STAT_RATIO
+	clone.base_attack = ceili(owner.base_attack * ratio)
+	clone.armor = ceili(owner.armor * ratio)
+	clone.move_points = ceili(owner.move_points * ratio)
+	clone.speed = owner.speed  # speed 不降低（影响行动顺序）
+	var clone_max_hp := ceili(owner.max_hp * ratio)
+	clone.max_hp = clone_max_hp
+	clone.hp = clone_max_hp
+
+	# 复制槽位：按分配到的原槽复制槽类型和宝石（新宝石 uid）
+	for slot_data in slot_group:
+		var slot_type: String = slot_data.slot_type
+		var new_slot := SlotState.create(slot_type)
+		var orig_gem_uid: String = slot_data.gem_uid
+		if not orig_gem_uid.is_empty():
+			# 为分身复制宝石（新 uid，相同 gem_id 和 overrides）
+			var orig_gem: GemState = state.gems.get(orig_gem_uid, null)
+			if orig_gem != null:
+				var new_gem_uid := reg.call("_next_uid", "gem")
+				var cloned_gem := GemState.create(new_gem_uid, orig_gem.gem_id, orig_gem.def_overrides.duplicate(true))
+				cloned_gem.owner_uid = clone_uid
+				state.gems[new_gem_uid] = cloned_gem
+				new_slot.gem_uid = new_gem_uid
+		clone.slots.append(new_slot)
+
+	# 黑槽强制插入 [分裂] 宝石（Disabled & Locked）
+	# 若此槽组中没有黑槽，则补一个黑槽并插入
+	var has_black_slot := false
+	for slot in clone.slots:
+		if slot.slot_type == Constants.SLOT_BLACK:
+			has_black_slot = true
+			# 替换黑槽宝石为新 [分裂] 宝石
+			var split_gem_uid := reg.call("_next_uid", "gem")
+			var split_gem := GemState.create(split_gem_uid, Constants.GEM_SPLIT, {})
+			split_gem.owner_uid = clone_uid
+			state.gems[split_gem_uid] = split_gem
+			slot.gem_uid = split_gem_uid
+			slot.locked = true
+			slot.lock_type = "split_disabled"
+			break
+	if not has_black_slot:
+		# 没有黑槽时补一个黑槽
+		var split_gem_uid := reg.call("_next_uid", "gem")
+		var split_gem := GemState.create(split_gem_uid, Constants.GEM_SPLIT, {})
+		split_gem.owner_uid = clone_uid
+		state.gems[split_gem_uid] = split_gem
+		var black_slot := SlotState.create(Constants.SLOT_BLACK, split_gem_uid, true, "split_disabled")
+		clone.slots.append(black_slot)
+
+	state.register_unit(clone)
+	return clone
+
+
+## 生成两个分身：找空地、分槽、创建单位
+static func _spawn_split_clones(state: GameState, owner: UnitState, out_events: Array[Dictionary]) -> void:
+	var spawn_cells := _find_empty_neighbor_cells(state, owner.pos, 2)
+	if spawn_cells.is_empty():
+		state.log("%s 分裂失败：周围没有空地" % owner.uid)
+		return
+	var slot_groups := _partition_slots_for_clones(owner.slots)
+	var count := mini(2, spawn_cells.size())
+	for i in range(count):
+		var clone := _create_split_clone(state, owner, spawn_cells[i], slot_groups[i])
+		out_events.append({"type": "split_spawn", "pos": spawn_cells[i], "uid": clone.uid})
+		state.log("%s 分裂生成分身 %s 于 %s" % [owner.uid, clone.uid, spawn_cells[i]])
 
 
 

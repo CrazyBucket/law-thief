@@ -7,6 +7,7 @@ var uid: String = ""
 var unit_def_id: String = ""
 var team: String = ""
 var pos: Vector2i = Vector2i.ZERO
+var facing: String = "DR"
 var hp: int = 1
 var max_hp: int = 1
 var move_points: int = 1
@@ -19,6 +20,8 @@ var intent: IntentState = null
 var alive: bool = true
 var ai_profile_id: String = ""
 var tags: Array[String] = []
+var split_origin_uid: String = ""  # 若此单位是分裂分身，记录原体 uid
+var footprint_size: Vector2i = Vector2i(1, 1)
 
 
 static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector2i, def: Dictionary) -> UnitState:
@@ -34,6 +37,11 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 	unit.base_attack = def.get("base_attack", 1)
 	unit.armor = def.get("armor", 0)
 	unit.ai_profile_id = def.get("ai_profile_id", "melee_chase")
+	var fp = def.get("footprint_size", null)
+	if fp is Vector2i:
+		unit.footprint_size = fp
+	elif fp is Array and fp.size() == 2:
+		unit.footprint_size = Vector2i(int(fp[0]), int(fp[1]))
 	for tag in def.get("tags", []):
 		unit.add_tag(str(tag))
 	for slot_data in def.get("slots", []):
@@ -46,6 +54,15 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 			)
 		)
 	return unit
+
+
+## pos 为锚点（左上角），返回 footprint 覆盖的所有格子
+func occupied_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for dx in range(footprint_size.x):
+		for dy in range(footprint_size.y):
+			cells.append(pos + Vector2i(dx, dy))
+	return cells
 
 
 func get_slot(slot_type: String) -> SlotState:
@@ -96,12 +113,21 @@ func remove_tag(tag: String) -> void:
 	tags.erase(tag)
 
 
+static func facing_from_step(from: Vector2i, to: Vector2i) -> String:
+	var dx := to.x - from.x
+	var dy := to.y - from.y
+	if absi(dx) >= absi(dy):
+		return "DR" if dx > 0 else "UL"
+	return "DL" if dy > 0 else "UR"
+
+
 func clone() -> UnitState:
 	var unit := UnitState.new()
 	unit.uid = uid
 	unit.unit_def_id = unit_def_id
 	unit.team = team
 	unit.pos = pos
+	unit.facing = facing
 	unit.hp = hp
 	unit.max_hp = max_hp
 	unit.move_points = move_points
@@ -112,6 +138,8 @@ func clone() -> UnitState:
 	unit.alive = alive
 	unit.ai_profile_id = ai_profile_id
 	unit.tags = tags.duplicate()
+	unit.split_origin_uid = split_origin_uid
+	unit.footprint_size = footprint_size
 	for slot in slots:
 		unit.slots.append(slot.clone() if slot != null else null)
 	for status in statuses:

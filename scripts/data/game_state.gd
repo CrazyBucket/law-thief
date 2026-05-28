@@ -32,6 +32,8 @@ var player_acted: bool = false
 var combat_log: Array[String] = []
 var encounter_id: String = ""
 var result: String = ""
+# O(1) 占格索引：tile_key → UnitState；单位移动/生成/死亡时通过封装方法同步
+var _cell_occupancy: Dictionary = {}
 
 
 func log(message: String) -> void:
@@ -43,10 +45,61 @@ func get_player() -> UnitState:
 	return units.get(player_uid, null)
 
 
-func get_unit_at(pos: Vector2i) -> UnitState:
+# ─── 占格索引维护 ─────────────────────────────────────────────────────────────
+
+## 重建占格索引（初始化或批量操作后调用）
+func rebuild_occupancy() -> void:
+	_cell_occupancy.clear()
 	for unit in units.values():
-		if unit.alive and unit.pos == pos:
-			return unit
+		if not unit.alive:
+			continue
+		for cell in unit.occupied_cells():
+			_cell_occupancy[tile_key(cell)] = unit
+
+
+func _remove_unit_from_occupancy(unit: UnitState) -> void:
+	for cell in unit.occupied_cells():
+		var key := tile_key(cell)
+		if _cell_occupancy.get(key) == unit:
+			_cell_occupancy.erase(key)
+
+
+func _add_unit_to_occupancy(unit: UnitState) -> void:
+	for cell in unit.occupied_cells():
+		_cell_occupancy[tile_key(cell)] = unit
+
+
+## 封装单位移动，同步占格索引
+func move_unit(unit: UnitState, new_pos: Vector2i) -> void:
+	_remove_unit_from_occupancy(unit)
+	unit.pos = new_pos
+	_add_unit_to_occupancy(unit)
+
+
+## 注册新单位到占格索引（单位生成时调用，替代直接写 units[uid] = unit）
+func register_unit(unit: UnitState) -> void:
+	units[unit.uid] = unit
+	_add_unit_to_occupancy(unit)
+
+
+## 标记单位死亡并撤销占格索引
+func kill_unit(unit: UnitState) -> void:
+	_remove_unit_from_occupancy(unit)
+	unit.alive = false
+
+
+# ─── 查询接口 ─────────────────────────────────────────────────────────────────
+
+func get_unit_at(pos: Vector2i) -> UnitState:
+	if not _cell_occupancy.is_empty():
+		return _cell_occupancy.get(tile_key(pos), null)
+	# 索引未建立时（clone 快照）回退到遍历
+	for unit in units.values():
+		if not unit.alive:
+			continue
+		for cell in unit.occupied_cells():
+			if cell == pos:
+				return unit
 	return null
 
 
@@ -108,4 +161,5 @@ func clone() -> GameState:
 		snapshot.tiles[key] = tiles[key].clone()
 	for uid in entities.keys():
 		snapshot.entities[uid] = entities[uid].clone()
+	# clone 快照不携带占格索引，走回退遍历分支（只读，无需高性能）
 	return snapshot

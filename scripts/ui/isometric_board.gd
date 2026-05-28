@@ -22,13 +22,11 @@ var state: GameState = null:
 		state = value
 		var next_id := value.get_instance_id() if value != null else 0
 		if next_id != prev_id:
-			_orientation.clear()
 			_walk_phase.clear()
 			_strike_elapsed.clear()
 			_facing_screen_refs.clear()
 		if is_node_ready():
 			_update_origin()
-		call_deferred("_sync_unit_orientations")
 		queue_redraw()
 ## 为 true 时逻辑 (0,0) 显示在棋盘底部（等距原点对调，仅冒险地图）
 var invert_origin: bool = false
@@ -49,7 +47,6 @@ var _move_offsets: Dictionary = {} # uid → Vector2
 var _particles: Array[Dictionary] = [] # {pos, color, life, max_life, velocity, type}
 
 var _strike_elapsed: Dictionary = {}
-var _orientation: Dictionary = {}
 var _walk_phase: Dictionary = {}
 
 var _cached_puff_paths: PackedStringArray = PackedStringArray()
@@ -168,13 +165,15 @@ func _draw() -> void:
 	for grid in _sorted_cells():
 		_draw_tile(grid)
 	_draw_highlight_outlines()
+	# 多格单位在 sorted_cells 中会被多次命中；用 Set 勿重复绘制
+	var drawn_uids: Dictionary = {}
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
-		if unit != null:
+		if unit != null and not drawn_uids.has(unit.uid):
+			drawn_uids[unit.uid] = true
 			_draw_unit(unit)
 	if hover_cell.x >= 0:
 		TileRenderer.draw_hover_outline(self , grid_to_screen(hover_cell))
-	# 绘制粒子特效
 	_draw_particles()
 	_draw_projectile()
 
@@ -236,13 +235,24 @@ func _tile_highlight(grid: Vector2i) -> Color:
 
 
 func _draw_unit(unit: UnitState) -> void:
-	var center := grid_to_screen(unit.pos)
+	# 坑2：多格单位的视觉中心（及 Y-Sort 锚点）必须是 footprint 右下角格的屏幕坐标
+	# 而非左上角锚点，否则站在大单位右下方的小单位会被错误遮挡
+	var fp := unit.footprint_size
+	var visual_anchor_grid := unit.pos + fp - Vector2i(1, 1)  # footprint 右下角格
+	var center := grid_to_screen(visual_anchor_grid)
+	# 多格时水平中心取 footprint 宽度的屏幕跨度中点
+	if fp != Vector2i(1, 1):
+		var anchor_left := grid_to_screen(unit.pos)
+		center.x = (anchor_left.x + center.x) * 0.5
 	var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
 	center += offset
 	var sprite_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
+	# 多格单位 sprite 按 footprint 宽度等比放大
+	if fp != Vector2i(1, 1):
+		sprite_size *= Vector2(float(fp.x), float(fp.y)).length() * 0.8
 	var ground_nudge := Vector2(0.0, IsoCoordinates.visual(_UNIT_SPRITE_GROUND_OFFSET_Y))
 	var top_left := center + Vector2(-sprite_size.x * 0.5, -sprite_size.y + IsoCoordinates.visual(2.0)) + ground_nudge
-	var facing := str(_orientation.get(unit.uid, _default_facing()))
+	var facing := unit.facing
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
 
 	var pose_tex: Texture2D = null
@@ -363,34 +373,14 @@ func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 		_draw_status_row(Vector2(row_x, center.y + IsoCoordinates.visual(7.0)), unit, icon_sz, gap)
 
 
-func _sync_unit_orientations() -> void:
-	if state == null or _knight_sprites == null:
-		return
-	var player := state.get_player()
-	for unit in state.units.values():
-		if not unit.alive:
-			continue
-		if _move_offsets.has(unit.uid) or _strike_elapsed.has(unit.uid):
-			continue
-		var target_pos := _facing_target_pos(unit, player)
-		if target_pos == _INVALID_GRID:
-			_orientation[unit.uid] = _default_facing()
-		else:
-			_orientation[unit.uid] = _facing_from_grid_pos(unit.pos, target_pos)
-
-
 func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
+	_ensure_facing_screen_refs()
 	var screen_delta := grid_to_screen(to_grid) - grid_to_screen(from_grid)
-	return _pick_facing_for_screen_delta(screen_delta)
-
-
-func _pick_facing_for_screen_delta(screen_delta: Vector2) -> String:
 	var facing_thresh := IsoCoordinates.visual(4.0)
 	if screen_delta.length_squared() < facing_thresh * facing_thresh:
-		return _default_facing()
-	_ensure_facing_screen_refs()
+		return "DR"
 	var dir := screen_delta.normalized()
-	var best_name := "Forward"
+	var best_name := "DR"
 	var best_dot := -2.0
 	for facing_name in _facing_screen_refs.keys():
 		var ref: Vector2 = _facing_screen_refs[facing_name]
@@ -410,28 +400,6 @@ func _ensure_facing_screen_refs() -> void:
 		var v := grid_to_screen(step) - origin_screen
 		if v.length_squared() > 0.01:
 			_facing_screen_refs[facing_name] = v.normalized()
-
-
-func _facing_target_pos(unit: UnitState, _player: UnitState) -> Vector2i:
-	return _nearest_hostile_pos(unit)
-
-
-func _nearest_hostile_pos(unit: UnitState) -> Vector2i:
-	var best := _INVALID_GRID
-	var best_dist_sq := 999999999.0
-	var unit_screen := grid_to_screen(unit.pos)
-	for other in state.units.values():
-		if not other.alive or other.uid == unit.uid or other.team == unit.team:
-			continue
-		var dist_sq := unit_screen.distance_squared_to(grid_to_screen(other.pos))
-		if dist_sq < best_dist_sq:
-			best_dist_sq = dist_sq
-			best = other.pos
-	return best
-
-
-func _default_facing() -> String:
-	return "DR"
 
 
 func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0, gap: float = -1.0) -> void:
@@ -516,14 +484,17 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 	var attacker: UnitState = state.units.get(attacker_uid, null)
 	if attacker == null:
 		return
-	_orientation[attacker_uid] = _facing_from_grid_pos(attacker.pos, victim_cell)
+	attacker.facing = _facing_from_grid_pos(attacker.pos, victim_cell)
 	_strike_elapsed[attacker_uid] = 0.0
 	queue_redraw()
 
 
 ## 播放移动动画：单位从 from_pos 滑动到 to_pos
 func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
-	_orientation[unit_uid] = _facing_from_grid_pos(from_pos, to_pos)
+	if state != null:
+		var mover: UnitState = state.units.get(unit_uid, null)
+		if mover != null:
+			mover.facing = _facing_from_grid_pos(from_pos, to_pos)
 	_walk_phase[unit_uid] = 0.0
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)

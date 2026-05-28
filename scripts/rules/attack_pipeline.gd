@@ -21,6 +21,7 @@ const TAG_SLOW_ON_HIT  := "slow_on_hit"   # 命中附缓速/冻结
 const TAG_FORCED_MOVE  := "forced_move"   # 强制位移类来源（引力、击退等）
 const TAG_PIERCING     := "piercing"      # 穿甲
 const TAG_NO_KILL_PROC := "no_kill_proc"  # 击杀后不触发死亡效果
+const TAG_SPLIT_SHOT   := "split_shot"    # V字三发（分裂宝石红槽）
 
 
 # ─── 攻击上下文 ──────────────────────────────────────────────────────────────
@@ -122,6 +123,8 @@ static func _phase_prepare(ctx: AttackContext) -> void:
 
 static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	ctx.base_damage = CombatRules.attack_damage(ctx.state, ctx.attacker)
+	if ctx.has_tag(TAG_SPLIT_SHOT):
+		ctx.base_damage = maxi(1, int(ctx.base_damage * Constants.SPLIT_ATTACK_DAMAGE_RATIO))
 	# 护甲抵扣由 CombatRules.apply_damage 统一处理；
 	# 此处仅预估 final_damage 供后续阶段判断是否触发附加效果
 	var armor := CombatRules.current_armor(ctx.state, ctx.target)
@@ -190,6 +193,10 @@ static func _phase_post_attack(ctx: AttackContext) -> void:
 	if ctx.has_tag(TAG_PULL) and not killed:
 		_Displacement.pull_toward(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 
+	# 分裂宝石红槽：V字两翼追加伤害
+	if ctx.has_tag(TAG_SPLIT_SHOT):
+		_apply_split_wings(ctx)
+
 	if killed and not ctx.has_tag(TAG_NO_KILL_PROC):
 		_gem_hooks_on_kill(ctx)
 
@@ -219,6 +226,8 @@ static func _gem_hooks_prepare(ctx: AttackContext) -> void:
 						ctx.add_tag(TAG_FIRE_ON_HIT)
 					"ice":
 						ctx.add_tag(TAG_SLOW_ON_HIT)
+					"split":
+						ctx.add_tag(TAG_SPLIT_SHOT)
 
 
 ## 偏转检测：目标蓝槽引力宝石将远程攻击偏转到周围随机单位；无单位则落地
@@ -287,6 +296,35 @@ static func _apply_cross_explosion(ctx: AttackContext) -> void:
 
 
 # ─── 内部工具 ────────────────────────────────────────────────────────────
+
+## V字两翼：以攻击方向的垂直方向各偏一格，在中心弹射程-1处各打一发
+static func _apply_split_wings(ctx: AttackContext) -> void:
+	var attacker_pos := ctx.attacker.pos
+	var target_pos := ctx.target.pos
+	# 计算主攻击方向（取主轴分量，等距4方向）
+	var delta := target_pos - attacker_pos
+	var forward: Vector2i
+	if absi(delta.x) >= absi(delta.y):
+		forward = Vector2i(signi(delta.x), 0)
+	else:
+		forward = Vector2i(0, signi(delta.y))
+	# 两翼落点 = 前进(range-1)步 + 垂直方向各偏1格
+	var perp := Vector2i(forward.y, -forward.x)  # 顺时针90°
+	var wing_advance := Constants.ATTACK_RANGE - 1
+	var wing_a := attacker_pos + forward * wing_advance + perp
+	var wing_b := attacker_pos + forward * wing_advance - perp
+	var wing_damage := maxi(1, int(ctx.base_damage * Constants.SPLIT_ATTACK_DAMAGE_RATIO))
+	for wing_pos in [wing_a, wing_b]:
+		if not BoardUtils.in_bounds(ctx.state, wing_pos):
+			continue
+		var wing_target := ctx.state.get_unit_at(wing_pos)
+		if wing_target == null or not wing_target.alive or wing_target.uid == ctx.attacker.uid:
+			continue
+		var dealt := CombatRules.apply_damage(ctx.state, wing_target, wing_damage, ctx.attacker.uid, "split_wing")
+		if dealt > 0:
+			ctx.push_damage_event(wing_target.pos, dealt)
+			ctx.state.on_attack_hit.emit(ctx.attacker.uid, wing_target.uid, dealt)
+
 
 static func _ability_profile(gem: GemState, ability_slot: String) -> String:
 	return _data_registry().get_gem_ability_profile(gem, ability_slot)

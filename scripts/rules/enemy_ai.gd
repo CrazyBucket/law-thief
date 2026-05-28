@@ -188,6 +188,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
 		"arc_attack":
 			results.append_array(_score_arc_skill(state, enemy, from_pos, player, profile))
+		"split_attack":
+			results.append_array(_score_split_skill(state, enemy, from_pos, player, profile))
 	return results
 
 
@@ -293,6 +295,22 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 			score += base * Constants.ARC_CHAIN_DAMAGE_RATIO * _w(profile, "w_damage", 10.0) * 0.5
 	candidate.score = score
 	candidate.description = "电击"
+	results.append(candidate)
+	return results
+
+
+static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) > Constants.ATTACK_RANGE:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var base := float(CombatRules.attack_damage(state, enemy)) * Constants.SPLIT_ATTACK_DAMAGE_RATIO
+	var score: float = base * _w(profile, "w_damage", 10.0)
+	candidate.score = score
+	candidate.description = "分裂射击"
 	results.append(candidate)
 	return results
 

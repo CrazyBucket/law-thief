@@ -53,7 +53,8 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var move_events: Array[Dictionary] = []
 	for step in path:
 		var from_pos := player.pos
-		player.pos = step
+		player.facing = UnitState.facing_from_step(from_pos, step)
+		state.move_unit(player, step)
 		TileRules.on_unit_moved_through(state, player, step)
 		state.on_unit_move.emit(player.uid, from_pos, step)
 		move_events.append({"type": "move_step", "uid": player.uid, "from": from_pos, "to": step})
@@ -683,6 +684,9 @@ func _death_gem_preview_cells(origin: Vector2i, gem_ref: Variant) -> Array:
 func _check_battle_end() -> void:
 	var player := state.get_player()
 	if player == null or not player.alive:
+		# 玩家死亡时：检查是否有存活的分裂分身可继承
+		if _try_inherit_split_clone():
+			return
 		state.phase = Constants.PHASE_ENDED
 		state.result = "lose"
 		state.log("战斗失败")
@@ -690,11 +694,59 @@ func _check_battle_end() -> void:
 		battle_ended.emit("lose")
 		return
 	if state.get_alive_enemies().is_empty():
+		# 战斗胜利时：若玩家是分裂分身，将 HP 调整为所有同源分身 HP 之和 / 2
+		_merge_split_clone_hp()
 		state.phase = Constants.PHASE_ENDED
 		state.result = "win"
 		state.log("战斗胜利")
 		state.on_battle_end.emit("win")
 		battle_ended.emit("win")
+
+
+## 玩家死亡后，寻找存活的同队分裂分身作为继承人，并合并所有分身 HP
+## 返回 true 表示成功继承（玩家未真正失败），false 表示无分身可继承
+func _try_inherit_split_clone() -> bool:
+	var survivors: Array = []
+	for unit in state.units.values():
+		if unit.alive and unit.team == Constants.TEAM_PLAYER and unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			survivors.append(unit)
+	if survivors.is_empty():
+		return false
+	# 将所有分身 HP 合并 / 2，选第一个作为新 player
+	var total_hp := 0
+	for clone in survivors:
+		total_hp += clone.hp
+	var merged_hp := maxi(1, total_hp / Constants.SPLIT_DEATH_HP_MERGE_DIVISOR)
+	var heir: UnitState = survivors[0]
+	heir.hp = mini(merged_hp, heir.max_hp)
+	# 其余分身合并进 heir（撤销占格索引）
+	for i in range(1, survivors.size()):
+		var other: UnitState = survivors[i]
+		other.hp = 0
+		state.kill_unit(other)
+	state.player_uid = heir.uid
+	state.log("分身合并：继承人 %s HP=%d" % [heir.uid, heir.hp])
+	return true
+
+
+## 战斗胜利时：如果玩家是分裂分身，将所有同源分身 HP 合并后 / 2 给玩家
+func _merge_split_clone_hp() -> void:
+	var player := state.get_player()
+	if player == null or not player.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+		return
+	var origin_uid := player.split_origin_uid
+	var all_clones: Array = []
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		if unit.split_origin_uid == origin_uid or unit.uid == player.uid:
+			all_clones.append(unit)
+	var total_hp := 0
+	for clone in all_clones:
+		total_hp += clone.hp
+	var merged_hp := maxi(1, total_hp / Constants.SPLIT_DEATH_HP_MERGE_DIVISOR)
+	player.hp = mini(merged_hp, player.max_hp)
+	state.log("战斗结算：分身血量合并 %d / %d = %d" % [total_hp, Constants.SPLIT_DEATH_HP_MERGE_DIVISOR, merged_hp])
 
 
 func _emit_changed() -> void:
@@ -923,7 +975,7 @@ func _run_editor_spawn_unit(tokens: Array, start_index: int) -> Dictionary:
 			return _fail("unknown team: %s" % tokens[next_index])
 	var unit_uid: String = _data_registry().next_runtime_uid("runtime_unit")
 	var unit := UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry().get_unit_def(unit_def_id))
-	state.units[unit_uid] = unit
+	state.register_unit(unit)
 	TileRules.sync_standing_ground_effects(state, unit)
 	return _finalize_editor_mutation("spawned %s at %s for team %s" % [unit_def_id, pos, team], false, {"unit_uid": unit_uid})
 
@@ -965,7 +1017,7 @@ func _run_editor_move_unit(tokens: Array, start_index: int) -> Dictionary:
 	var occupant := state.get_unit_at(to_pos)
 	if occupant != null and occupant.uid != unit.uid:
 		return _fail("destination is occupied: %s" % to_pos)
-	unit.pos = to_pos
+	state.move_unit(unit, to_pos)
 	TileRules.on_unit_entered(state, unit, from_pos)
 	var move_message := "moved %s from %s to %s" % [unit.unit_def_id, from_pos, to_pos]
 	if unit.uid == state.player_uid:
@@ -1004,7 +1056,7 @@ func _run_editor_batch_spawn_unit(tokens: Array, start_index: int) -> Dictionary
 	for pos in positions:
 		var unit_uid: String = _data_registry().next_runtime_uid("runtime_unit")
 		var unit := UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry().get_unit_def(unit_def_id))
-		state.units[unit_uid] = unit
+		state.register_unit(unit)
 		created_uids.append(unit_uid)
 	return _finalize_editor_mutation("spawned %d instances of %s for team %s" % [created_uids.size(), unit_def_id, team], false, {"unit_uids": created_uids})
 
@@ -1142,11 +1194,14 @@ func _run_editor_set_unit_stat(tokens: Array, start_index: int) -> Dictionary:
 			var alive_parse := _editor_parse_bool(raw_value)
 			if not alive_parse.get("ok", false):
 				return _fail("alive only supports true or false")
-			unit.alive = alive_parse.get("value", false)
-			if unit.alive and unit.hp <= 0:
+			var new_alive: bool = alive_parse.get("value", false)
+			if new_alive and not unit.alive:
+				unit.alive = true
 				unit.hp = maxi(1, unit.max_hp)
-			elif not unit.alive:
+				state._add_unit_to_occupancy(unit)
+			elif not new_alive and unit.alive:
 				unit.hp = 0
+				state.kill_unit(unit)
 	return _finalize_editor_mutation("set %s.%s = %s" % [unit.unit_def_id, field, raw_value])
 
 
@@ -1163,7 +1218,7 @@ func _run_editor_set_player_spawn(tokens: Array, start_index: int) -> Dictionary
 	var occupant := state.get_unit_at(pos)
 	if occupant != null and occupant.uid != player.uid:
 		return _fail("destination is occupied: %s" % pos)
-	player.pos = pos
+	state.move_unit(player, pos)
 	return _finalize_editor_mutation("set player spawn to %s" % pos)
 
 

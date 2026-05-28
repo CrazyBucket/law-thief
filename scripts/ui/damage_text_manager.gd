@@ -17,9 +17,9 @@ const DMG_TRUE    := "true"
 # ─── 颜色与样式字典 ──────────────────────────────────────────────────────────
 const _STYLES: Dictionary = {
 	DMG_NORMAL: {
-		"color":   Color(0.96, 0.96, 1.00, 1.0),
+		"color":   Color(0.95, 0.30, 0.30, 1.0),
 		"scale":   1.0,
-		"size":    16,
+		"size":    20,
 		"bold":    false,
 	},
 	DMG_CRIT: {
@@ -104,7 +104,11 @@ func spawn(screen_pos: Vector2, value: int, dmg_type: String = DMG_NORMAL) -> vo
 		font = ThemeDB.fallback_font as FontFile
 	if font != null:
 		label.add_theme_font_override("font", font)
-	var font_size: int = style.get("size", 16)
+	var base_size: int = style.get("size", 20)
+	var font_size: int = base_size
+	if dmg_type == DMG_NORMAL or dmg_type == DMG_CRIT:
+		var bonus: int = int(sqrt(float(value)) * 1.8)
+		font_size = mini(base_size + bonus, base_size + 14)
 	label.add_theme_font_size_override("font_size", font_size)
 
 	# 文本 & 颜色

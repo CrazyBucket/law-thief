@@ -23,6 +23,12 @@ const GEM_GRAVITY := "gem_gravity"
 const GEM_CONDUCTIVE := "gem_conductive"
 const GEM_FIRE := "gem_fire"
 const GEM_ICE := "gem_ice"
+const GEM_SPLIT := "gem_split"
+
+const SPLIT_ATTACK_DAMAGE_RATIO := 0.7     # 红槽：三发伤害倍率
+const SPLIT_DAMAGE_REDIRECT_RATIO := 0.5   # 蓝槽：转移伤害比例（原单位受剩余50%）
+const SPLIT_STAT_RATIO := 0.3              # 黑槽：分身全属性倍率
+const SPLIT_DEATH_HP_MERGE_DIVISOR := 2    # 黑槽：战斗结算时分身血量之和除以此值
 
 const TILE_FLOOR := "tile_floor"
 const TILE_SPIKE := "tile_spike"
@@ -136,6 +142,7 @@ const TAG_UNIT_RANGED    := "unit:ranged"    # 远程攻击单位（射程 > 1�
 const TAG_UNIT_TURRET    := "unit:turret"    # 炮台单位（零移动力，固定位置）
 const TAG_UNIT_THIEF     := "unit:thief"     # 窃取型单位（可主动拔取宝石）
 const TAG_UNIT_PULLER    := "unit:puller"    # 引力型单位（使用引力宝石）
+const TAG_UNIT_SPLIT_CLONE := "unit:split_clone"  # 分裂宝石产生的分身
 
 # ─── 地块语义标签 ──────────────────────────────────────────────────────────────
 # 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部

@@ -97,3 +97,10 @@ gem.effect.ice.unit_red_active,触发：自身获得缓速,Trigger: apply slowed
 gem.effect.ice.enemy_red_action,寒冰攻击 ({damage}),Ice attack ({damage})
 gem.effect.ice.blue_damaged,被动：接触敌人叠加缓速,Passive: inflict slowed on contact
 gem.effect.ice.black_death,死亡：周围单位获得迟滞,Death: apply sluggish to nearby units
+gem.split.name,分裂,Split
+gem.split.symbol,裂,Split
+gem.intent.split_attack,分裂射击 ({damage}x3),Split Shot ({damage}x3)
+gem.effect.split.unit_red_active,触发：V字三发，每发 70% 伤害,Trigger: 3-way V-shot each dealing 70% damage
+gem.effect.split.enemy_red_action,分裂射击 ({damage}x3),Split Shot ({damage}x3)
+gem.effect.split.blue_damaged,被动：受击时 50% 伤害转移至周围随机单位,Passive: redirect 50% of incoming damage to a random unit in 3x3
+gem.effect.split.black_death,死亡：在空地生成两个全属性 30% 的分身,Death: spawn two clones with 30% stats on empty cells

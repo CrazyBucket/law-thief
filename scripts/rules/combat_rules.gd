@@ -14,6 +14,8 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		return 0
 	if StatusRules.is_vulnerable(unit):
 		final_amount = int(final_amount * 1.5)
+	# 分裂宝石蓝槽：拦截伤害，将一部分转移给周围随机单位
+	final_amount = GemEffects.intercept_damage_for_split(state, unit, source_uid, reason, final_amount)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])
@@ -36,8 +38,8 @@ static func apply_true_damage(state: GameState, unit: UnitState, amount: int, so
 
 
 static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, reason: String) -> void:
-	unit.alive = false
 	unit.hp = 0
+	state.kill_unit(unit)  # 撤销占格索引并标记 alive = false
 	state.log("%s 被击败" % unit.uid)
 	state.on_unit_die.emit(unit.uid, source_uid, reason)
 	GemEffects.on_unit_death(state, unit)

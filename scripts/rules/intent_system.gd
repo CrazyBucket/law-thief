@@ -187,7 +187,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	match intent.type:
 		"melee_attack":
 			anim_events.append_array(_execute_melee(state, unit, intent))
-		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack":
+		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack":
 			anim_events.append_array(GemEffects.on_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)
@@ -237,7 +237,7 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 			state.log("%s 移动受阻：%s 已被占据" % [unit.uid, step])
 			break
 		var from_pos := unit.pos
-		unit.pos = step
+		state.move_unit(unit, step)
 		TileRules.on_unit_moved_through(state, unit, step)
 		state.on_unit_move.emit(unit.uid, from_pos, step)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": step})

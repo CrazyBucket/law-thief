@@ -131,6 +131,7 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 
 ## A* 寻路：从 from_pos 到 to_pos，最多消耗 max_steps 步移动力
 ## 返回路径（不含起点），如果无法到达则返回在 max_steps 内最接近目标的路径
+## moving_unit 不为 null 时启用多格 footprint 通道宽度校验（坑1）
 static func astar_path(
 	state: GameState,
 	from_pos: Vector2i,
@@ -138,12 +139,14 @@ static func astar_path(
 	max_steps: int,
 	ignore_uid: String = "",
 	cost_profile: Dictionary = {},
-	cell_blockers: Dictionary = {}
+	cell_blockers: Dictionary = {},
+	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
 	if from_pos == to_pos:
 		return [] as Array[Vector2i]
 	var profile := path_cost_profile(cost_profile)
 	var allow_partial: bool = bool(profile.get("allow_partial_path", true))
+	var use_footprint: bool = moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
 
 	var open_set: Array[Vector2i] = [from_pos]
 	var g_costs: Dictionary = {from_pos: 0.0}
@@ -179,8 +182,13 @@ static func astar_path(
 				continue
 			if not in_bounds(state, neighbor):
 				continue
-			if not is_passable(state, neighbor, ignore_uid, cell_blockers):
-				continue
+			# 多格单位：整体 footprint 都必须可通行（坑1 通道宽度）
+			if use_footprint:
+				if not unit_footprint_passable(state, moving_unit, neighbor, ignore_uid, cell_blockers):
+					continue
+			else:
+				if not is_passable(state, neighbor, ignore_uid, cell_blockers):
+					continue
 
 			var step_cost: float = _step_cost_with_profile(state, neighbor, profile)
 			var tentative_g: float = current_g + step_cost
@@ -224,6 +232,7 @@ static func astar_path(
 
 ## path_toward: 使用 A* 寻路（替代旧的贪心直线算法）
 ## 用于敌人 AI 移动——目标可能被占据（如玩家位置），寻路到最近可达点
+## moving_unit 不为 null 时传递给 astar_path 做 footprint 通道宽度校验
 static func path_toward(
 	state: GameState,
 	from_pos: Vector2i,
@@ -231,7 +240,8 @@ static func path_toward(
 	max_steps: int,
 	ignore_uid: String = "",
 	cost_profile: Dictionary = {},
-	cell_blockers: Dictionary = {}
+	cell_blockers: Dictionary = {},
+	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
 	# 如果目标被占据，寻路到目标的邻接格中最近的那个
 	if not is_passable(state, to_pos, ignore_uid, cell_blockers):
@@ -248,20 +258,23 @@ static func path_toward(
 				best_neighbor = adj
 		if best_neighbor == from_pos:
 			return [] as Array[Vector2i]
-		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile, cell_blockers)
-	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers)
+		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
+	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
 
 
 ## Dijkstra BFS 可达格子（考虑地块代价）
+## moving_unit 不为 null 时对多格单位校验 footprint 全通行（坑1）
 static func reachable_cells(
 	state: GameState,
 	start: Vector2i,
 	move_points: int,
 	ignore_uid: String = "",
 	cost_profile: Dictionary = {},
-	cell_blockers: Dictionary = {}
+	cell_blockers: Dictionary = {},
+	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
 	var profile := path_cost_profile(cost_profile)
+	var use_footprint: bool = moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
 	var visited: Dictionary = {start: 0.0}
 	var queue: Array[Vector2i] = [start]
 	var result: Array[Vector2i] = []
@@ -284,8 +297,13 @@ static func reachable_cells(
 		for neighbor in neighbors4(current):
 			if not in_bounds(state, neighbor):
 				continue
-			if not is_passable(state, neighbor, ignore_uid, cell_blockers):
-				continue
+			# 多格单位：整体 footprint 通道宽度校验
+			if use_footprint:
+				if not unit_footprint_passable(state, moving_unit, neighbor, ignore_uid, cell_blockers):
+					continue
+			else:
+				if not is_passable(state, neighbor, ignore_uid, cell_blockers):
+					continue
 			var cost: float = _step_cost_with_profile(state, neighbor, profile)
 			var new_dist: float = dist + cost
 			if new_dist > float(move_points):
@@ -295,6 +313,48 @@ static func reachable_cells(
 			visited[neighbor] = new_dist
 			queue.append(neighbor)
 	return result
+
+
+## ─── 多格单位（footprint）专用工具 ──────────────────────────────────────────
+
+## 检查 unit 的整个 footprint 从 anchor_pos 出发是否全部可通行
+## anchor_pos 为目标锚点（左上角），ignore_uid 为该单位自身（排除自占）
+static func unit_footprint_passable(
+	state: GameState,
+	unit: UnitState,
+	anchor_pos: Vector2i,
+	ignore_uid: String = "",
+	cell_blockers: Dictionary = {}
+) -> bool:
+	for dx in range(unit.footprint_size.x):
+		for dy in range(unit.footprint_size.y):
+			if not is_passable(state, anchor_pos + Vector2i(dx, dy), ignore_uid, cell_blockers):
+				return false
+	return true
+
+
+## 计算两个单位之间的最短曼哈顿距离（坑3：多格受击距离语义）
+static func distance_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
+	if unit_a.footprint_size == Vector2i(1, 1) and unit_b.footprint_size == Vector2i(1, 1):
+		return manhattan(unit_a.pos, unit_b.pos)
+	var min_dist: int = 999999
+	for ca in unit_a.occupied_cells():
+		for cb in unit_b.occupied_cells():
+			var d := manhattan(ca, cb)
+			if d < min_dist:
+				min_dist = d
+	return min_dist
+
+
+## 检查 unit 的整个 footprint 向 direction 平移一步后是否合法（用于推拉校验）
+static func can_unit_push_to(
+	state: GameState,
+	unit: UnitState,
+	direction: Vector2i,
+	cell_blockers: Dictionary = {}
+) -> bool:
+	var new_anchor := unit.pos + direction
+	return unit_footprint_passable(state, unit, new_anchor, unit.uid, cell_blockers)
 
 
 ## 旧接口保留兼容：贪心单步（仅 pull 技能等内部使用）

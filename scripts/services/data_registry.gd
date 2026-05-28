@@ -95,6 +95,8 @@ func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState
 	BoardMapGenerator.build(state, encounter)
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
+	# 所有单位就位后建立 O(1) 占格索引（多格单位 footprint 一并注册）
+	state.rebuild_occupancy()
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
 
@@ -371,6 +373,20 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.ice.black_death"},
 			},
 		},
+		"split": {
+			"enemy_intent": {
+				"type": "split_attack",
+				"preview_key": "gem.intent.split_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.split.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.split.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.split.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.split.black_death"},
+			},
+		},
 	}
 
 
@@ -460,6 +476,20 @@ func _register_gem_defs() -> void:
 				ABILITY_ENEMY_RED_ACTION: "ice",
 				ABILITY_BLUE_DAMAGED: "ice",
 				ABILITY_BLACK_DEATH: "ice",
+			},
+		},
+		Constants.GEM_SPLIT: {
+			"display_name_key": "gem.split.name",
+			"symbol_key": "gem.split.symbol",
+			"symbol": "裂",
+			"color": Color(0.85, 0.5, 1.0),
+			"rarity": "epic",
+			"allow_random_pool": true,
+			"ability_profiles": {
+				ABILITY_UNIT_RED_ACTIVE: "split",
+				ABILITY_ENEMY_RED_ACTION: "split",
+				ABILITY_BLUE_DAMAGED: "split",
+				ABILITY_BLACK_DEATH: "split",
 			},
 		},
 	}
@@ -586,6 +616,22 @@ func _register_unit_defs() -> void:
 			"base_attack": 0,
 			"ai_profile_id": "turret",
 			"tags": [Constants.TAG_UNIT_TURRET],
+			"slots": [
+				{"slot_type": Constants.SLOT_RED},
+				{"slot_type": Constants.SLOT_BLUE},
+				{"slot_type": Constants.SLOT_BLACK},
+			],
+		},
+		"unit_slime_large": {
+			"display_name_key": "unit.slime_large.name",
+			"max_hp": 60,
+			"move_points": 2,
+			"speed": 7,
+			"base_attack": 12,
+			"armor": 2,
+			"ai_profile_id": "melee_chase",
+			"footprint_size": Vector2i(2, 2),
+			"tags": [],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},

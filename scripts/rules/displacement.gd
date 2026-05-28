@@ -81,26 +81,48 @@ static func _push_directional(
 	var start_pos := unit.pos
 	var remaining := steps
 	var i := 0
+	var is_large := unit.footprint_size != Vector2i(1, 1)
 
 	while i < remaining:
-		var next := _resolve_next_cell(unit.pos, reference_pos, dir)
+		var step_vec := _step_vector(unit.pos, reference_pos, dir)
+		var next := unit.pos + step_vec
 		if next == unit.pos:
 			break
 
-		if not BoardUtils.in_bounds(state, next):
+		# 边界检查（多格单位检查整个 footprint 是否越界）
+		var next_in_bounds := true
+		if is_large:
+			for dx in range(unit.footprint_size.x):
+				for dy in range(unit.footprint_size.y):
+					if not BoardUtils.in_bounds(state, next + Vector2i(dx, dy)):
+						next_in_bounds = false
+						break
+		else:
+			next_in_bounds = BoardUtils.in_bounds(state, next)
+
+		if not next_in_bounds:
 			if collision_damage > 0:
 				_deal_collision_damage(state, unit, source_uid, collision_damage, "wall_collision", events)
 			break
 
-		# 实体碰撞检测（石块、地刺、油桶）
+		# 实体碰撞（只对锚点格检测，大单位也触发同类逻辑）
 		var entity := state.get_entity_at(next)
 		if entity != null and entity.alive and entity.blocks_movement():
 			EntityRules.on_unit_collide_entity(state, unit, entity, source_uid, events)
 			break
 
-		var blocker: UnitState = state.get_unit_at(next)
+		# 碰撞检测：多格单位检查整个 footprint，找第一个阻挡者
+		var blocker: UnitState = null
+		if is_large:
+			for cell in _footprint_at(unit, next):
+				var b := state.get_unit_at(cell)
+				if b != null and b.uid != unit.uid:
+					blocker = b
+					break
+		else:
+			blocker = state.get_unit_at(next)
+
 		if blocker != null:
-			# 撞单位：双方碰撞伤害 + 接触钩子
 			if collision_damage > 0:
 				_deal_collision_damage(state, unit, source_uid, collision_damage, "knockback_collision", events)
 				_deal_collision_damage(state, blocker, unit.uid, collision_damage, "knockback_collision", events)
@@ -108,7 +130,8 @@ static func _push_directional(
 			break
 
 		var from_pos := unit.pos
-		unit.pos = next
+		unit.facing = UnitState.facing_from_step(from_pos, next)
+		state.move_unit(unit, next)
 		TileRules.on_unit_moved_through(state, unit, next)
 		state.on_unit_move.emit(unit.uid, from_pos, next)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
@@ -121,31 +144,42 @@ static func _push_directional(
 		i += 1
 
 	if unit.pos != start_pos:
-		# 统一坐标变化入口：离开火焰时清零 burning
 		TileRules.on_unit_position_changed(state, unit, start_pos)
 		TileRules.on_unit_entered(state, unit, start_pos)
 		if not skip_gem_hooks:
 			GemEffects.on_forced_displacement(state, unit, events)
 
 
-## 计算下一格坐标
-static func _resolve_next_cell(current: Vector2i, reference: Vector2i, dir: Direction) -> Vector2i:
+## 返回该方向的单步向量（不含当前位置，供 +step_vec 使用）
+static func _step_vector(current: Vector2i, reference: Vector2i, dir: Direction) -> Vector2i:
 	match dir:
 		Direction.AWAY:
-			# 推离 reference：delta 方向取反
-			return current + _away_step(current, reference)
+			return _away_step(current, reference)
 		Direction.TOWARD:
-			# 拉向 reference
-			return current + _toward_step(current, reference)
+			return _toward_step(current, reference)
 		Direction.NORTH:
-			return current + Vector2i(0, -1)
+			return Vector2i(0, -1)
 		Direction.SOUTH:
-			return current + Vector2i(0, 1)
+			return Vector2i(0, 1)
 		Direction.EAST:
-			return current + Vector2i(1, 0)
+			return Vector2i(1, 0)
 		Direction.WEST:
-			return current + Vector2i(-1, 0)
-	return current
+			return Vector2i(-1, 0)
+	return Vector2i.ZERO
+
+
+## 旧接口保留兼容（避免外部调用断层）
+static func _resolve_next_cell(current: Vector2i, reference: Vector2i, dir: Direction) -> Vector2i:
+	return current + _step_vector(current, reference, dir)
+
+
+## 返回 unit footprint 移到 anchor_pos 时覆盖的所有格子
+static func _footprint_at(unit: UnitState, anchor_pos: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for dx in range(unit.footprint_size.x):
+		for dy in range(unit.footprint_size.y):
+			cells.append(anchor_pos + Vector2i(dx, dy))
+	return cells
 
 
 ## 推离方向步长（优先主轴分量）
