@@ -48,6 +48,7 @@ var _encounter_id: String = "tutorial_001"
 
 var _inspect_uid: String = ""
 var _hover_cell: Vector2i = Vector2i(-1, -1)
+var _timeline_hover_uid: String = ""
 var _panel_visible: bool = true
 var _enemy_phase_running: bool = false
 var _player_animating: bool = false
@@ -60,6 +61,16 @@ var _display_state: GameState = null
 var _presentation_playing: bool = false
 var _refresh_deferred: bool = false
 var _pending_battle_result: String = ""
+var _preview_panel_tween: Tween = null
+var _preview_visible_target: bool = false
+var _preview_fade_serial: int = 0
+var _relic_reward_overlay: Node = null
+
+## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
+const _ENCOUNTER_RELIC_SOURCE := {
+	"NORMAL_COMBAT": "normal_chest",
+	"ELITE_COMBAT":  "elite_combat",
+}
 
 func _ready() -> void:
 	_controller.state_changed.connect(_on_controller_state_changed)
@@ -70,6 +81,9 @@ func _ready() -> void:
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
 	_apply_ui_theme()
+	_preview_panel.visible = false
+	_preview_panel.modulate.a = 0.0
+	_wire_hover_interactions()
 	_create_slot_popup()
 	_create_damage_text_manager()
 	_create_level_console()
@@ -126,10 +140,11 @@ func setup(encounter_id: String) -> void:
 
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
-	_controller.start_encounter(encounter_id)
-	_inspect_uid = ""
+	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
+	_inspect_uid = _controller.selected_unit_uid
 	_controller.select_action("")
 	_refresh()
+	_board.init_unit_orientations()
 	if encounter_id == "tutorial_001":
 		_show_tutorial_intro()
 
@@ -211,17 +226,57 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 	_hover_cell = cell if valid else Vector2i(-1, -1)
 	if not valid:
-		_preview_panel.visible = false
+		_hide_preview_panel()
 		_board.set_hover(Vector2i(-1, -1))
+		if _timeline_hover_uid.is_empty():
+			_board.set_timeline_hover_unit("")
 		return
 	_board.set_hover(cell)
+	if _timeline_hover_uid.is_empty():
+		var hovered_unit := _view_state().get_unit_at(cell)
+		_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
 	var preview: Dictionary = _controller.get_cell_preview(cell)
 	_preview_title.text = preview.get("title", "")
 	_preview_body.text = _format_preview_body(preview.get("body", ""))
-	_preview_panel.visible = true
 	var mouse: Vector2 = get_viewport().get_mouse_position()
+	_show_preview_panel(mouse)
+
+
+func _show_preview_panel(mouse: Vector2) -> void:
 	_preview_panel.position = mouse + Vector2(18, 18)
 	_clamp_preview_panel()
+	_set_preview_panel_visible(true)
+
+
+func _hide_preview_panel() -> void:
+	_set_preview_panel_visible(false)
+
+
+func _set_preview_panel_visible(shown: bool) -> void:
+	if _preview_visible_target == shown:
+		if shown and not _preview_panel.visible:
+			_preview_panel.visible = true
+		return
+	_preview_visible_target = shown
+	_preview_fade_serial += 1
+	var fade_serial := _preview_fade_serial
+	if _preview_panel_tween != null:
+		_preview_panel_tween.kill()
+	_preview_panel_tween = create_tween()
+	_preview_panel_tween.set_trans(Tween.TRANS_QUAD)
+	_preview_panel_tween.set_ease(Tween.EASE_OUT)
+	if shown:
+		_preview_panel.visible = true
+		_preview_panel_tween.tween_property(_preview_panel, "modulate:a", 1.0, 0.12)
+	else:
+		_preview_panel_tween.tween_property(_preview_panel, "modulate:a", 0.0, 0.24)
+		_preview_panel_tween.tween_callback(_finalize_preview_panel_hide.bind(fade_serial))
+
+
+func _finalize_preview_panel_hide(fade_serial: int) -> void:
+	if fade_serial != _preview_fade_serial or _preview_visible_target:
+		return
+	_preview_panel.visible = false
 
 
 func _format_preview_body(body: String) -> String:
@@ -447,7 +502,11 @@ func _show_result(result: Dictionary) -> void:
 	if result.get("ok", false):
 		_message_label.text = _controller.get_action_hint()
 	else:
-		_message_label.text = result.get("reason", "无法执行")
+		var reason: String = result.get("reason", "")
+		if reason.is_empty():
+			reason = "无法执行"
+		push_warning("BattleScene: action failed — %s" % reason)
+		_message_label.text = reason
 
 
 func _on_console_submitted(command: String) -> void:
@@ -558,7 +617,159 @@ func _apply_battle_end(result: String) -> void:
 	_hint_label.text = ""
 	_phase_badge.text = "结束"
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
+	if result == "win" and RunService.is_run_active():
+		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
+			AdventureService.pending_room_type.to_upper(), "normal_chest"
+		))
+		var room_id := GameService.pending_room_id
+		var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
+		if not offer.is_empty():
+			_show_relic_reward(offer, result)
+			return
+	_finish_battle_and_navigate(result)
+
+
+func _show_relic_reward(offer: Array[String], battle_result: String) -> void:
+	var overlay := _build_relic_overlay(offer, battle_result)
+	_relic_reward_overlay = overlay
+	add_child(overlay)
+
+
+func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
+	var canvas := CanvasLayer.new()
+	canvas.layer = 80
+
+	var root_ctrl := Control.new()
+	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(root_ctrl)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.05, 0.08, 0.82)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(bg)
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	vbox.add_theme_constant_override("separation", 16)
+	root_ctrl.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "选择遗物"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var cards_row := HBoxContainer.new()
+	cards_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(cards_row)
+
+	for relic_id in offer:
+		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+		var rarity: String = DataRegistry.get_relic_rarity(relic_id)
+		var card := _build_relic_card(relic_id, def, rarity, battle_result)
+		cards_row.add_child(card)
+
+	var skip_btn := Button.new()
+	skip_btn.text = "跳过"
+	skip_btn.add_theme_font_size_override("font_size", 14)
+	skip_btn.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	skip_btn.pressed.connect(func() -> void:
+		_on_relic_chosen("", battle_result)
+	)
+	vbox.add_child(skip_btn)
+
+	return canvas
+
+
+func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
+	var panel := PanelContainer.new()
+	var rarity_color := _rarity_color(rarity)
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
+	panel.custom_minimum_size = Vector2(180, 220)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	panel.add_child(vb)
+
+	var name_lbl := Label.new()
+	name_lbl.text = str(def.get("name", relic_id))
+	name_lbl.add_theme_font_size_override("font_size", 16)
+	name_lbl.add_theme_color_override("font_color", rarity_color)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(name_lbl)
+
+	var rarity_lbl := Label.new()
+	rarity_lbl.text = "[%s]" % rarity
+	rarity_lbl.add_theme_font_size_override("font_size", 11)
+	rarity_lbl.add_theme_color_override("font_color", rarity_color.darkened(0.15))
+	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(rarity_lbl)
+
+	var desc_lbl := RichTextLabel.new()
+	var desc_text := str(def.get("desc", ""))
+	if desc_text.is_empty():
+		desc_text = _build_effect_hint(def)
+	desc_lbl.bbcode_enabled = false
+	desc_lbl.text = desc_text
+	desc_lbl.add_theme_font_size_override("normal_font_size", 12)
+	desc_lbl.add_theme_color_override("default_color", BattleUiTheme.TEXT_HINT)
+	desc_lbl.custom_minimum_size = Vector2(160, 80)
+	desc_lbl.fit_content = true
+	vb.add_child(desc_lbl)
+
+	var pick_btn := Button.new()
+	pick_btn.text = "选择"
+	pick_btn.add_theme_font_size_override("font_size", 14)
+	pick_btn.pressed.connect(func() -> void:
+		_on_relic_chosen(relic_id, battle_result)
+	)
+	vb.add_child(pick_btn)
+
+	return panel
+
+
+func _build_effect_hint(def: Dictionary) -> String:
+	var lines: Array[String] = []
+	for effect in def.get("effects", []):
+		if not effect is Dictionary:
+			continue
+		if effect.has("on"):
+			lines.append("%s → %s" % [effect.get("on", ""), effect.get("action", "")])
+		elif effect.has("modifier"):
+			lines.append("mod: %s" % effect.get("modifier", ""))
+	if lines.is_empty():
+		return "（暂无描述）"
+	return "\n".join(lines)
+
+
+func _rarity_color(rarity: String) -> Color:
+	match rarity:
+		"common":    return Color("#c8cad4")
+		"rare":      return Color("#6ec6f5")
+		"epic":      return Color("#c77dff")
+		"legendary": return Color("#ffd166")
+		"boss":      return Color("#ff6b6b")
+		_:           return Color("#c8cad4")
+
+
+func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
+	if not relic_id.is_empty():
+		RunService.acquire_relic(relic_id)
+	if _relic_reward_overlay != null:
+		_relic_reward_overlay.queue_free()
+		_relic_reward_overlay = null
+	_finish_battle_and_navigate(battle_result)
+
+
+func _finish_battle_and_navigate(result: String) -> void:
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
+	if GameService.adventure_return:
+		GameService.adventure_return = false
+		get_tree().change_scene_to_file("res://scenes/map/adventure_map.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
 
 func _on_toggle_panel() -> void:
@@ -619,6 +830,8 @@ func _refresh() -> void:
 
 	_board.set_battle_state(state)
 	_board.selected_unit_uid = _inspect_uid
+	_board.set_timeline_hover_unit(_timeline_hover_uid)
+	_board.set_active_turn_unit(_get_active_turn_uid())
 	_board.set_highlights(_controller.get_highlights())
 	if not _enemy_phase_running:
 		_enemy_turn_queue.clear()
@@ -639,7 +852,7 @@ func _refresh_player_status_row(player: UnitState) -> void:
 func _refresh_unit_roster() -> void:
 	for child in _unit_roster.get_children():
 		_unit_roster.remove_child(child)
-		child.free()
+		child.queue_free()
 	var state := _view_state()
 	for unit in state.units.values():
 		if not unit.alive:
@@ -651,8 +864,11 @@ func _refresh_unit_roster() -> void:
 func _create_unit_card(unit: UnitState, state: GameState) -> Control:
 	var card := PanelContainer.new()
 	var selected := unit.uid == _inspect_uid
+	var hovered := unit.uid == _timeline_hover_uid
 	var accent := Color(0.95, 0.35, 0.35) if unit.team == Constants.TEAM_ENEMY else BattleUiTheme.PHASE_PLAYER
-	card.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent if selected else BattleUiTheme.BORDER.darkened(0.1)))
+	if hovered:
+		accent = BattleUiTheme.TEXT_GOLD
+	card.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent if selected or hovered else BattleUiTheme.BORDER.darkened(0.1)))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	card.add_child(row)
@@ -666,6 +882,7 @@ func _create_unit_card(unit: UnitState, state: GameState) -> Control:
 	row.add_child(icon)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 3)
 	row.add_child(info)
 	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
 	var title := Label.new()
@@ -689,16 +906,42 @@ func _create_unit_card(unit: UnitState, state: GameState) -> Control:
 		info.add_child(intent_label)
 	var btn := Button.new()
 	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.pressed.connect(func(): _select_unit(unit.uid))
+	btn.pressed.connect(_select_unit.bind(unit.uid))
+	btn.mouse_entered.connect(_set_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
+	btn.mouse_exited.connect(_clear_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
 	card.add_child(btn)
-	card.custom_minimum_size = Vector2(0, 56)
+	card.custom_minimum_size = Vector2(0, 60)
 	return card
 
 
 func _select_unit(uid: String) -> void:
 	_inspect_uid = uid
+	_controller.selected_unit_uid = uid
 	_refresh()
+
+
+func _set_timeline_hover(uid: String) -> void:
+	if _timeline_hover_uid == uid:
+		return
+	_timeline_hover_uid = uid
+	_board.set_timeline_hover_unit(uid)
+	_refresh_turn_queue()
+	call_deferred("_refresh_unit_roster")
+
+
+func _clear_timeline_hover(uid: String = "") -> void:
+	if not uid.is_empty() and _timeline_hover_uid != uid:
+		return
+	if _timeline_hover_uid.is_empty() and _hover_cell.x < 0:
+		return
+	_timeline_hover_uid = ""
+	var hovered_unit := _view_state().get_unit_at(_hover_cell) if _hover_cell.x >= 0 else null
+	_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
+	_refresh_turn_queue()
+	call_deferred("_refresh_unit_roster")
 
 
 func _slot_icons(unit: UnitState, state: GameState) -> String:
@@ -982,6 +1225,7 @@ func _refresh_turn_queue() -> void:
 	for child in _queue_row.get_children():
 		child.queue_free()
 	var active_uid: String = _get_active_turn_uid()
+	var focus_uid := _timeline_hover_uid if not _timeline_hover_uid.is_empty() else active_uid
 	var active_unit: UnitState = state.units.get(active_uid, null)
 	if active_unit != null:
 		var active_name: String = _data_registry().get_unit_display_name(active_unit.unit_def_id)
@@ -991,7 +1235,7 @@ func _refresh_turn_queue() -> void:
 	for uid in _build_turn_timeline_uids(active_uid, 8):
 		var unit: UnitState = state.units.get(uid, null)
 		if unit != null and unit.alive:
-			_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid))
+			_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid, uid == focus_uid))
 
 
 func _get_active_turn_uid() -> String:
@@ -1035,28 +1279,65 @@ func _build_turn_timeline_uids(active_uid: String, max_items: int) -> Array[Stri
 	return timeline
 
 
-func _create_timeline_avatar(unit: UnitState, is_active: bool) -> Control:
-	var root := VBoxContainer.new()
-	root.custom_minimum_size = Vector2(48, 54)
-	root.alignment = BoxContainer.ALIGNMENT_CENTER
+func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool) -> Control:
+	var root := Control.new()
+	root.custom_minimum_size = Vector2(58, 76)
+	var stack := VBoxContainer.new()
+	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(stack)
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(40, 40)
-	var accent := BattleUiTheme.TEXT_GOLD if is_active else BattleUiTheme.BORDER
+	frame.custom_minimum_size = Vector2(44, 44)
+	var team_color := BattleUiTheme.PHASE_PLAYER if unit.team == Constants.TEAM_PLAYER else BattleUiTheme.PHASE_ENEMY
+	var accent := BattleUiTheme.BORDER
+	if is_hovered:
+		accent = BattleUiTheme.TEXT_GOLD
+	elif is_active:
+		accent = team_color
 	frame.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
-	root.add_child(frame)
+	stack.add_child(frame)
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(32, 32)
+	icon.custom_minimum_size = Vector2(34, 34)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
+	icon.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
 	frame.add_child(icon)
+	if is_active:
+		var arrow := Label.new()
+		arrow.text = "▼"
+		arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		arrow.add_theme_font_size_override("font_size", 12)
+		arrow.add_theme_color_override("font_color", team_color)
+		stack.add_child(arrow)
+	var hp_label := Label.new()
+	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hp_label.text = "%d/%d" % [unit.hp, unit.max_hp]
+	hp_label.add_theme_font_size_override("font_size", 9)
+	hp_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	stack.add_child(hp_label)
 	var speed_label := Label.new()
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	speed_label.text = "%d" % unit.speed
 	speed_label.add_theme_font_size_override("font_size", 10)
-	speed_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD if is_active else BattleUiTheme.TEXT_MUTED)
-	root.add_child(speed_label)
+	speed_label.add_theme_color_override("font_color", team_color if is_active else (BattleUiTheme.TEXT_GOLD if is_hovered else BattleUiTheme.TEXT_MUTED))
+	stack.add_child(speed_label)
+	var hover_btn := Button.new()
+	hover_btn.flat = true
+	hover_btn.focus_mode = Control.FOCUS_NONE
+	hover_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	hover_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hover_btn.mouse_entered.connect(_set_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
+	hover_btn.mouse_exited.connect(_clear_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
+	hover_btn.pressed.connect(_select_unit.bind(unit.uid))
+	root.add_child(hover_btn)
 	return root
+
+
+func _wire_hover_interactions() -> void:
+	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _trigger_btn, _end_turn_btn, _toggle_panel_btn]:
+		button.focus_mode = Control.FOCUS_NONE
 
 
 func _style_chip(label: Label, highlight: bool, color: Color) -> void:

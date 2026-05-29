@@ -23,6 +23,7 @@
     "base_attack": 4,
     "armor": 0,
     "ai_profile_id": "bomb_rat",
+    "behavior_id": "bomb_rat",
     "spawn_gem_slots": ["black"],
     "tags": ["unit:bomb_rat", "unit:mobile"],
     "slots": [
@@ -40,6 +41,7 @@
     "base_attack": 6,
     "armor": 0,
     "ai_profile_id": "melee_chase",
+    "behavior_id": "patrol_guard",
     "tags": ["unit:patrol_guard"],
     "slots": [
       {"slot_type": "red"},
@@ -56,6 +58,7 @@
     "base_attack": 4,
     "armor": 0,
     "ai_profile_id": "stone_bow",
+    "behavior_id": "stone_bow_guard",
     "tags": ["unit:stone_bow_guard", "unit:ranged"],
     "slots": [
       {"slot_type": "red"},
@@ -72,6 +75,7 @@
     "base_attack": 4,
     "armor": 0,
     "ai_profile_id": "melee_chase",
+    "behavior_id": "fission_slime",
     "footprint_size": [2, 2],
     "tags": ["unit:fission_slime"],
     "slots": [

@@ -387,7 +387,7 @@ static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInsta
 ## 草地随机生长为草丛
 static func _tick_grass_growth(state: GameState) -> void:
 	for tile in state.tiles.values():
-		if tile.tile_id == Constants.TILE_GRASS and randf() < Constants.GRASS_GROW_CHANCE:
+		if tile.tile_id == Constants.TILE_GRASS and RngService.chance("tile_grass_grow_%s" % str(tile.pos), Constants.GRASS_GROW_CHANCE):
 			tile.tile_id = Constants.TILE_BUSH
 			tile._init_ground_tags()
 			state.log("草地 %s 长成草丛" % [tile.pos])

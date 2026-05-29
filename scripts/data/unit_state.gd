@@ -19,6 +19,7 @@ var statuses: Array = []
 var intent: IntentState = null
 var alive: bool = true
 var ai_profile_id: String = ""
+var behavior_id: String = ""
 var tags: Array[String] = []
 var split_origin_uid: String = ""  # 若此单位是分裂分身，记录原体 uid
 var footprint_size: Vector2i = Vector2i(1, 1)
@@ -37,6 +38,7 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 	unit.base_attack = def.get("base_attack", 1)
 	unit.armor = def.get("armor", 0)
 	unit.ai_profile_id = def.get("ai_profile_id", "melee_chase")
+	unit.behavior_id = def.get("behavior_id", unit.ai_profile_id if not unit.ai_profile_id.is_empty() else "generic_melee")
 	var fp = def.get("footprint_size", null)
 	if fp is Vector2i:
 		unit.footprint_size = fp
@@ -121,6 +123,21 @@ static func facing_from_step(from: Vector2i, to: Vector2i) -> String:
 	return "DL" if dy > 0 else "UR"
 
 
+static func facing_from_unit_to_cell(unit: UnitState, to_cell: Vector2i) -> String:
+	if unit.footprint_size == Vector2i(1, 1):
+		return facing_from_step(unit.pos, to_cell)
+	var closest_cell := unit.pos
+	var min_dist := 99999
+	for cell in unit.occupied_cells():
+		var dist := absi(cell.x - to_cell.x) + absi(cell.y - to_cell.y)
+		if dist < min_dist:
+			min_dist = dist
+			closest_cell = cell
+	if min_dist == 0:
+		return unit.facing
+	return facing_from_step(closest_cell, to_cell)
+
+
 func clone() -> UnitState:
 	var unit := UnitState.new()
 	unit.uid = uid
@@ -137,6 +154,7 @@ func clone() -> UnitState:
 	unit.intent = intent.clone() if intent != null else null
 	unit.alive = alive
 	unit.ai_profile_id = ai_profile_id
+	unit.behavior_id = behavior_id
 	unit.tags = tags.duplicate()
 	unit.split_origin_uid = split_origin_uid
 	unit.footprint_size = footprint_size

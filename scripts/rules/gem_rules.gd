@@ -1,9 +1,7 @@
 class_name GemRules
 extends RefCounted
 
-const BombRatRules = preload("res://scripts/rules/bomb_rat_rules.gd")
-const PatrolGuardRules = preload("res://scripts/rules/patrol_guard_rules.gd")
-const StoneBowGuardRules = preload("res://scripts/rules/stone_bow_guard_rules.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 
 
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -30,15 +28,10 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	gem.slot_index = -1
 	slot.gem_uid = ""
 	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, _data_registry().get_gem_display_name(gem)])
-	if slot.slot_type == Constants.SLOT_RED and target_unit.team == Constants.TEAM_ENEMY:
-		if PatrolGuardRules.is_patrol_guard(target_unit):
-			PatrolGuardRules.on_red_gem_stolen(state, target_unit, gem.uid)
-		elif StoneBowGuardRules.is_stone_bow_guard(target_unit):
-			StoneBowGuardRules.on_red_gem_stolen(state, target_unit, gem.uid)
-		else:
-			StatusRules.apply_lawless(state, target_unit, gem.uid)
-	if BombRatRules.is_bomb_rat(target_unit):
-		BombRatRules.sync_plunder_state(state, target_unit)
+	_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot.slot_type, gem.uid)
+	RelicEffectRegistry.fire_event("after_extract", state, {
+		"unit_uid": actor.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+	})
 	IntentSystem.refresh_all_intents(state)
 	return _ok({"gem_uid": gem.uid})
 
@@ -67,12 +60,10 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	slot.gem_uid = gem.uid
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
-	if StatusRules.is_lawless(target_unit) and StatusRules.get_lawless_gem_uid(target_unit) == gem.uid:
-		if PatrolGuardRules.is_patrol_guard(target_unit):
-			PatrolGuardRules.on_lawless_recovered(target_unit)
-		elif StoneBowGuardRules.is_stone_bow_guard(target_unit):
-			StoneBowGuardRules.on_lawless_recovered(target_unit)
-		StatusRules.clear_lawless(target_unit)
+	_behavior_for(target_unit).on_gem_inserted(state, target_unit, gem.uid)
+	RelicEffectRegistry.fire_event("after_insert", state, {
+		"unit_uid": target_unit.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+	})
 	IntentSystem.refresh_all_intents(state)
 	return _ok()
 
@@ -202,6 +193,10 @@ static func trigger_tile(
 		return _fail("该槽位不支持主动触发")
 	state.player_acted = true
 	return _ok()
+
+
+static func _behavior_for(unit: UnitState) -> GDScript:
+	return BehaviorRegistry.get_behavior(unit.behavior_id)
 
 
 static func _ok(payload: Dictionary = {}) -> Dictionary:

@@ -2,10 +2,6 @@ class_name PatrolGuardRules
 extends RefCounted
 
 
-static func is_patrol_guard(unit: UnitState) -> bool:
-	return unit.has_tag(Constants.TAG_UNIT_PATROL_GUARD)
-
-
 static func on_red_gem_stolen(state: GameState, unit: UnitState, gem_uid: String) -> void:
 	StatusRules.apply_lawless(state, unit, gem_uid)
 	StatusRules.apply_vulnerable(state, unit, 0)

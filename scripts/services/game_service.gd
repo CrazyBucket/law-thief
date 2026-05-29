@@ -1,6 +1,7 @@
 extends Node
 
 var pending_encounter_id: String = "tutorial_001"
+var pending_room_id: String = ""
 var adventure_return: bool = false
 
 

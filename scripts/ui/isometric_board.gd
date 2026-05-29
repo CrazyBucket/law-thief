@@ -6,6 +6,7 @@ const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
 const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd")
 const BoardFxTexturesClass := preload("res://scripts/ui/board_fx_textures.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
+const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 
@@ -16,6 +17,12 @@ signal animation_finished()
 var highlights: Dictionary = {}
 var hover_cell: Vector2i = Vector2i(-1, -1)
 var selected_unit_uid: String = ""
+var timeline_hover_unit_uid: String = ""
+var active_turn_unit_uid: String = ""
+var _nameplate_alpha_by_uid: Dictionary = {}
+var _hover_outline_alpha_by_uid: Dictionary = {}
+var _selection_outline_alpha_by_uid: Dictionary = {}
+var _active_aura_alpha_by_uid: Dictionary = {}
 var state: GameState = null:
 	set(value):
 		var prev_id := state.get_instance_id() if state != null else 0
@@ -25,6 +32,10 @@ var state: GameState = null:
 			_walk_phase.clear()
 			_strike_elapsed.clear()
 			_facing_screen_refs.clear()
+			_nameplate_alpha_by_uid.clear()
+			_hover_outline_alpha_by_uid.clear()
+			_selection_outline_alpha_by_uid.clear()
+			_active_aura_alpha_by_uid.clear()
 		if is_node_ready():
 			_update_origin()
 		queue_redraw()
@@ -53,6 +64,7 @@ var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _fx_textures: RefCounted = null
+var _soft_gradient_tex: Texture2D = null
 # 抛射物动画：二次贝塞尔曲线飞行
 var _projectile: Dictionary = {} # {from, to, ctrl, t, color} 空表示无飞行中抛射物
 
@@ -90,9 +102,11 @@ func _update_origin() -> void:
 
 func _process(delta: float) -> void:
 	_pulse_time += delta
-	var has_highlights: bool = not highlights.is_empty()
-	var visuals_dirty := has_highlights
 	var scaled_dt := delta * _animation_speed_scale
+	var has_highlights: bool = not highlights.is_empty()
+	var visuals_dirty := _update_overlay_fades(delta)
+	if has_highlights or not active_turn_unit_uid.is_empty():
+		visuals_dirty = true
 	for mv_uid in _move_offsets.keys():
 		if _strike_elapsed.has(mv_uid):
 			continue
@@ -131,8 +145,113 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+func _update_overlay_fades(delta: float) -> bool:
+	var name_targets: Array[String] = []
+	var hover_targets: Array[String] = []
+	var selection_targets: Array[String] = []
+	var active_targets: Array[String] = []
+	if state != null:
+		for unit: UnitState in state.units.values():
+			if not unit.alive:
+				continue
+			var uid := unit.uid
+			if uid == selected_unit_uid or uid == timeline_hover_unit_uid:
+				name_targets.append(uid)
+			if uid == timeline_hover_unit_uid:
+				hover_targets.append(uid)
+			if uid == selected_unit_uid:
+				selection_targets.append(uid)
+			if uid == active_turn_unit_uid:
+				active_targets.append(uid)
+	var dirty := false
+	dirty = _step_unit_fade(_nameplate_alpha_by_uid, name_targets, delta) or dirty
+	dirty = _step_unit_fade(_hover_outline_alpha_by_uid, hover_targets, delta) or dirty
+	dirty = _step_unit_fade(_selection_outline_alpha_by_uid, selection_targets, delta) or dirty
+	dirty = _step_unit_fade(_active_aura_alpha_by_uid, active_targets, delta) or dirty
+	return dirty
+
+
+func _step_unit_fade(store: Dictionary, target_uids: Array[String], delta: float) -> bool:
+	var targets: Dictionary = {}
+	for uid in target_uids:
+		targets[uid] = true
+	var tracked: Dictionary = {}
+	for uid in store.keys():
+		tracked[uid] = true
+	for uid in targets.keys():
+		tracked[uid] = true
+	var dirty := false
+	for uid_value in tracked.keys():
+		var uid := str(uid_value)
+		var current := float(store.get(uid, 0.0))
+		var target := 1.0 if targets.has(uid) else 0.0
+		var speed := 12.0 if target > current else 4.5
+		var next := move_toward(current, target, delta * speed)
+		if absf(next - current) > 0.0001:
+			dirty = true
+		if next <= 0.001 and target <= 0.0:
+			store.erase(uid)
+		else:
+			store[uid] = next
+	return dirty
+
+
 func set_battle_state(new_state: GameState) -> void:
 	state = new_state
+
+
+func init_unit_orientations() -> void:
+	_sync_unit_orientations()
+
+
+func _sync_unit_orientations() -> void:
+	if state == null:
+		return
+	var player_cells: Array[Vector2i] = []
+	var enemy_cells: Array[Vector2i] = []
+	for unit: UnitState in state.units.values():
+		if not unit.alive:
+			continue
+		var center := _get_unit_screen_center(unit)
+		if unit.team == Constants.TEAM_PLAYER:
+			player_cells.append(Vector2i(int(center.x), int(center.y)))
+		else:
+			enemy_cells.append(Vector2i(int(center.x), int(center.y)))
+	if player_cells.is_empty() or enemy_cells.is_empty():
+		return
+	var player_centroid := _screen_centroid(player_cells)
+	var enemy_centroid := _screen_centroid(enemy_cells)
+	for unit: UnitState in state.units.values():
+		if not unit.alive:
+			continue
+		var from_screen := _get_unit_screen_center(unit)
+		var target_screen := enemy_centroid if unit.team == Constants.TEAM_PLAYER else player_centroid
+		unit.facing = _facing_from_screen_delta(from_screen, target_screen, unit.facing)
+
+
+func _screen_centroid(screen_points: Array[Vector2i]) -> Vector2:
+	var sum := Vector2.ZERO
+	for p in screen_points:
+		sum += Vector2(p)
+	return sum / screen_points.size()
+
+
+func _facing_from_screen_delta(from_screen: Vector2, to_screen: Vector2, fallback: String) -> String:
+	_ensure_facing_screen_refs()
+	var screen_delta := to_screen - from_screen
+	var facing_thresh := IsoCoordinates.visual(4.0)
+	if screen_delta.length_squared() < facing_thresh * facing_thresh:
+		return fallback
+	var dir := screen_delta.normalized()
+	var best_name := fallback
+	var best_dot := -2.0
+	for facing_name in _facing_screen_refs.keys():
+		var ref: Vector2 = _facing_screen_refs[facing_name]
+		var dot := dir.dot(ref)
+		if dot > best_dot:
+			best_dot = dot
+			best_name = facing_name
+	return best_name
 
 
 func set_highlights(new_highlights: Dictionary) -> void:
@@ -142,6 +261,16 @@ func set_highlights(new_highlights: Dictionary) -> void:
 
 func set_hover(cell: Vector2i) -> void:
 	hover_cell = cell
+	queue_redraw()
+
+
+func set_timeline_hover_unit(uid: String) -> void:
+	timeline_hover_unit_uid = uid
+	queue_redraw()
+
+
+func set_active_turn_unit(uid: String) -> void:
+	active_turn_unit_uid = uid
 	queue_redraw()
 
 
@@ -273,77 +402,100 @@ func _draw_unit(unit: UnitState) -> void:
 		var sh_tl := center + Vector2(-sh_sz.x * 0.5, -IsoCoordinates.visual(2.0)) + ground_nudge
 		draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.42))
 
+	var aura_alpha := float(_active_aura_alpha_by_uid.get(unit.uid, 0.0))
+	if aura_alpha > 0.01:
+		_draw_active_turn_aura(unit, center + Vector2(0, IsoCoordinates.visual(2.0)), aura_alpha)
 	if pose_tex != null:
 		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
-	if unit.uid == selected_unit_uid:
-		var corners := IsoCoordinates.diamond_corners(center)
+	var hp_bar_pos := center + IsoCoordinates.visual_vec(Vector2(-18, 6))
+	var name_alpha := float(_nameplate_alpha_by_uid.get(unit.uid, 0.0))
+	var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
+	var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
+	if hover_alpha > 0.01:
+		_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.15, hover_alpha)
+	if selection_alpha > 0.01:
+		_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.08, selection_alpha)
+	if name_alpha > 0.01:
+		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
+	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
+	_draw_hp_bar(hp_bar_pos, unit)
+	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
+		_draw_intent_badge(center + Vector2(0, -sprite_size.y + IsoCoordinates.visual(8.0)) + ground_nudge, unit.intent)
+
+
+func _draw_unit_focus_outline(
+	unit: UnitState,
+	color: Color,
+	line_width: float,
+	offset: Vector2 = Vector2.ZERO,
+	fill_alpha: float = 0.1,
+	alpha: float = 1.0
+) -> void:
+	if alpha <= 0.01:
+		return
+	var outline := color
+	outline.a *= alpha
+	for cell in unit.occupied_cells():
+		var corners := IsoCoordinates.diamond_corners(grid_to_screen(cell) + offset)
+		var fill := outline
+		fill.a = fill_alpha * alpha
+		draw_colored_polygon(corners, fill)
 		var closed := corners.duplicate()
 		closed.append(corners[0])
-		draw_polyline(closed, Color(1, 1, 1, 0.9), IsoCoordinates.visual(2.0), false)
-	_draw_unit_statuses(unit, center + ground_nudge)
-	_draw_gem_diamonds(unit, center + Vector2(0, -sprite_size.y - IsoCoordinates.visual(4.0)) + ground_nudge)
-	_draw_hp_bar(center + IsoCoordinates.visual_vec(Vector2(-18, 6)), unit)
-	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		_draw_intent_badge(center + Vector2(IsoCoordinates.visual(20.0), -sprite_size.y + IsoCoordinates.visual(6.0)) + ground_nudge, unit.intent)
+		draw_polyline(closed, outline, line_width, false)
 
 
-func _draw_unit_statuses(unit: UnitState, center: Vector2) -> void:
+func _draw_active_turn_aura(unit: UnitState, center: Vector2, alpha: float = 1.0) -> void:
+	if alpha <= 0.01:
+		return
+	var pulse := sin(_pulse_time * 4.2) * 0.5 + 0.5
+	var base_color := BattleUiTheme.PHASE_PLAYER if unit.team == Constants.TEAM_PLAYER else BattleUiTheme.PHASE_ENEMY
+	var size_scale := maxf(float(unit.footprint_size.x + unit.footprint_size.y) * 0.5, 1.0)
+	var radius_x := IsoCoordinates.visual(20.0 + 8.0 * (size_scale - 1.0))
+	var radius_y := IsoCoordinates.visual(8.0 + 4.0 * (size_scale - 1.0))
+	var outer_scale := 1.05 + pulse * 0.16
+	var fill_color := base_color
+	fill_color.a = (0.12 + pulse * 0.12) * alpha
+	var outer_color := base_color.lightened(0.18)
+	outer_color.a = (0.52 + pulse * 0.28) * alpha
+	var inner_color := base_color.lightened(0.08)
+	inner_color.a = (0.35 + pulse * 0.18) * alpha
+	_draw_ellipse(center, radius_x * outer_scale, radius_y * outer_scale, fill_color, outer_color, IsoCoordinates.visual(2.0))
+	_draw_ellipse(center, radius_x * 0.82, radius_y * 0.82, Color.TRANSPARENT, inner_color, IsoCoordinates.visual(1.2))
+
+
+func _draw_unit_nameplate(unit: UnitState, anchor: Vector2, alpha: float = 1.0) -> void:
+	if alpha <= 0.01:
+		return
+	var font := ThemeDB.fallback_font
+	var font_size := int(IsoCoordinates.visual(9.0))
+	var text: String = _data_registry().get_unit_display_name(unit.unit_def_id)
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var backdrop_center := Vector2(anchor.x, anchor.y - text_size.y * 0.38)
+	var radius_x := text_size.x * 0.5 + IsoCoordinates.visual(5.0)
+	var radius_y := maxf(text_size.y * 0.56, IsoCoordinates.visual(5.0))
+	_draw_soft_backdrop(backdrop_center, radius_x, radius_y, Color(0.0, 0.0, 0.0, 0.82 * alpha))
+	var text_color := BattleUiTheme.TEXT
+	text_color.a *= alpha
+	var shadow_color := Color(0.0, 0.0, 0.0, 0.96 * alpha)
+	_draw_text_with_shadow(
+		font,
+		Vector2(anchor.x - text_size.x * 0.5, anchor.y - 1.0),
+		text,
+		font_size,
+		text_color,
+		shadow_color
+	)
+
+
+func _draw_unit_statuses(unit: UnitState, origin: Vector2) -> void:
 	if unit.statuses.is_empty():
 		return
-	var t := float(Time.get_ticks_msec()) / 1000.0
-	for status in unit.statuses:
-		match status.status_id:
-			Constants.STATUS_BURNING:
-				for i in range(3):
-					var phase := t * (4.0 + i * 0.7) + i * 2.0
-					var px := sin(phase) * 16.0
-					var py := -20.0 - fmod(phase * 20.0, 30.0)
-					var size := maxf(2.0, 8.0 - (py + 20.0) * -0.2)
-					draw_circle(center + Vector2(px, py), size, Color(1.0, 0.4, 0.1, 0.6))
-			Constants.STATUS_POISON:
-				var px := sin(t * 2.0) * 14.0
-				var py := -25.0 + cos(t * 3.0) * 8.0
-				draw_circle(center + Vector2(px, py), 6.0, Color(0.4, 0.9, 0.2, 0.7))
-				draw_circle(center + Vector2(-px, py - 10.0), 4.0, Color(0.4, 0.9, 0.2, 0.7))
-			Constants.STATUS_PARALYZED:
-				if fmod(t * 10.0, 1.0) > 0.5:
-					draw_polyline(PackedVector2Array([
-						center + Vector2(-15, -30),
-						center + Vector2(-5, -20),
-						center + Vector2(5, -35),
-						center + Vector2(15, -25)
-					]), Color(0.9, 0.9, 0.2, 0.8), 2.0)
-			Constants.STATUS_WET:
-				for i in range(2):
-					var phase := t * 2.0 + i * 3.14
-					var py := -10.0 + fmod(phase * 15.0, 25.0)
-					draw_line(center + Vector2(-12 + i * 24, py), center + Vector2(-12 + i * 24, py + 6), Color(0.3, 0.6, 1.0, 0.6), 2.0)
-			Constants.STATUS_ARMOR:
-				draw_arc(center + Vector2(0, -25), 24.0, -PI * 0.75, -PI * 0.25, 8, Color(0.6, 0.6, 0.7, 0.8), 2.0)
+	_draw_status_row(origin, unit, IsoCoordinates.visual(12.0), IsoCoordinates.visual(2.0), IsoCoordinates.visual(44.0))
 
-func _draw_gem_diamonds(unit: UnitState, anchor: Vector2) -> void:
-	var gems_to_draw: Array = []
-	for slot in unit.slots:
-		if slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
-		if gem == null:
-			continue
-		gems_to_draw.append({"slot": slot, "gem": gem})
-	if gems_to_draw.is_empty():
-		return
-	var spacing := IsoCoordinates.visual(14.0)
-	var start_x := anchor.x - (gems_to_draw.size() - 1) * spacing * 0.5
-	for i in range(gems_to_draw.size()):
-		var entry: Dictionary = gems_to_draw[i]
-		var slot: SlotState = entry["slot"]
-		var gem: GemState = entry["gem"]
-		var pos := Vector2(start_x + i * spacing, anchor.y)
-		var color: Color = UnitLooks.gem_color(gem).lerp(UnitLooks.slot_color(slot.slot_type), 0.25)
-		if slot.locked:
-			color = color.darkened(0.35)
-		_draw_small_diamond(pos, IsoCoordinates.visual(11.0), IsoCoordinates.visual(7.0), color)
-		draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(-5, 3)), UnitLooks.gem_symbol(gem), HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(9.0)), Color(0.08, 0.08, 0.1))
+
+func _draw_gem_diamonds(_unit: UnitState, _anchor: Vector2) -> void:
+	return
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
@@ -364,13 +516,18 @@ func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 	draw_rect(Rect2(center, Vector2(width, bar_h)), Color(0.12, 0.12, 0.16, 0.85))
 	var fill_color := Color(0.25, 0.85, 0.45) if unit.team == Constants.TEAM_PLAYER else Color(0.9, 0.35, 0.45)
 	draw_rect(Rect2(center, Vector2(width * ratio, bar_h)), fill_color)
-	if not unit.statuses.is_empty():
-		var icon_sz := IsoCoordinates.visual(13.0)
-		var gap := IsoCoordinates.visual(2.0)
-		var count := unit.statuses.size()
-		var row_w := float(count) * icon_sz + float(maxi(0, count - 1)) * gap
-		var row_x := center.x + (width - row_w) * 0.5
-		_draw_status_row(Vector2(row_x, center.y + IsoCoordinates.visual(7.0)), unit, icon_sz, gap)
+	var font := ThemeDB.fallback_font
+	var font_size := int(IsoCoordinates.visual(7.0))
+	var hp_text := "%d/%d" % [unit.hp, unit.max_hp]
+	var text_size := font.get_string_size(hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	_draw_text_with_shadow(
+		font,
+		Vector2(center.x + (width - text_size.x) * 0.5, center.y + bar_h - IsoCoordinates.visual(0.5)),
+		hp_text,
+		font_size,
+		Color(0.98, 0.98, 1.0),
+		Color(0.04, 0.04, 0.08, 0.96)
+	)
 
 
 func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
@@ -379,6 +536,34 @@ func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
 	var facing_thresh := IsoCoordinates.visual(4.0)
 	if screen_delta.length_squared() < facing_thresh * facing_thresh:
 		return "DR"
+	var dir := screen_delta.normalized()
+	var best_name := "DR"
+	var best_dot := -2.0
+	for facing_name in _facing_screen_refs.keys():
+		var ref: Vector2 = _facing_screen_refs[facing_name]
+		var dot := dir.dot(ref)
+		if dot > best_dot:
+			best_dot = dot
+			best_name = facing_name
+	return best_name
+
+
+func _get_unit_screen_center(unit: UnitState) -> Vector2:
+	var cells := unit.occupied_cells()
+	var total_screen := Vector2.ZERO
+	for cell in cells:
+		total_screen += grid_to_screen(cell)
+	return total_screen / cells.size()
+
+
+func _facing_from_unit_to_cell(unit: UnitState, to_grid: Vector2i) -> String:
+	_ensure_facing_screen_refs()
+	var from_screen := _get_unit_screen_center(unit)
+	var to_screen := grid_to_screen(to_grid)
+	var screen_delta := to_screen - from_screen
+	var facing_thresh := IsoCoordinates.visual(4.0)
+	if screen_delta.length_squared() < facing_thresh * facing_thresh:
+		return unit.facing
 	var dir := screen_delta.normalized()
 	var best_name := "DR"
 	var best_dot := -2.0
@@ -402,50 +587,146 @@ func _ensure_facing_screen_refs() -> void:
 			_facing_screen_refs[facing_name] = v.normalized()
 
 
-func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0, gap: float = -1.0) -> void:
+func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0, gap: float = -1.0, max_width: float = -1.0) -> void:
 	var ICON_SIZE := icon_size if icon_size > 0.0 else IsoCoordinates.visual(13.0)
 	var GAP := gap if gap > 0.0 else IsoCoordinates.visual(2.0)
-	var FONT_SIZE := int(IsoCoordinates.visual(9.0))
+	var FONT_SIZE := int(IsoCoordinates.visual(7.0))
 	var PAD_X := IsoCoordinates.visual(3.0)
 	var PAD_Y := IsoCoordinates.visual(2.0)
+	var WRAP_WIDTH := max_width if max_width > 0.0 else 999999.0
 	var sorted: Array = StatusRegistry.sort_statuses(unit.statuses)
-	var cursor_x := origin.x
+	var cursor := Vector2.ZERO
+	var row_h := ICON_SIZE + GAP
 	for status in sorted:
-		if StatusIcons.draw_icon(self , Vector2(cursor_x, origin.y), status.status_id, ICON_SIZE):
+		var draw_pos := origin + cursor
+		var item_w := ICON_SIZE
+		var item_h := ICON_SIZE
+		if not StatusIcons.has_icon(status.status_id):
+			var label: String = StatusRegistry.short_label(status)
+			var label_size := ThemeDB.fallback_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+			item_w = label_size.x + PAD_X * 2.0
+			item_h = FONT_SIZE + PAD_Y * 2.0
+		if cursor.x > 0.0 and cursor.x + item_w > WRAP_WIDTH:
+			cursor.x = 0.0
+			cursor.y += row_h
+			draw_pos = origin + cursor
+		if StatusIcons.draw_icon(self, draw_pos, status.status_id, ICON_SIZE):
 			var badge_text: String = StatusRegistry.icon_badge(status)
 			if not badge_text.is_empty():
-				var font := ThemeDB.fallback_font
-				var badge_x := cursor_x + ICON_SIZE - font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
-				draw_string(font, Vector2(badge_x, origin.y + ICON_SIZE - 1.0), badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0.98, 0.98, 1.0))
-			cursor_x += ICON_SIZE + GAP
+				var badge_size := ThemeDB.fallback_font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+				_draw_text_with_shadow(
+					ThemeDB.fallback_font,
+					Vector2(draw_pos.x + ICON_SIZE - badge_size.x - IsoCoordinates.visual(0.5), draw_pos.y + ICON_SIZE - IsoCoordinates.visual(1.0)),
+					badge_text,
+					FONT_SIZE,
+					Color(0.98, 0.98, 1.0),
+					Color(0.02, 0.02, 0.04, 0.96)
+				)
 		else:
 			var font := ThemeDB.fallback_font
-			var label: String = StatusRegistry.short_label(status)
-			var text_w: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+			var fallback_label: String = StatusRegistry.short_label(status)
+			var text_w: float = font.get_string_size(fallback_label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 			var chip_w := text_w + PAD_X * 2.0
 			var chip_h := FONT_SIZE + PAD_Y * 2.0
 			var color: Color = StatusRegistry.status_color(status.status_id)
 			var bg := color.darkened(0.5)
 			bg.a = 0.88
-			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), bg)
-			draw_rect(Rect2(Vector2(cursor_x, origin.y), Vector2(chip_w, chip_h)), color.lightened(0.1), false, 1.0)
-			draw_string(font, Vector2(cursor_x + PAD_X, origin.y + PAD_Y + FONT_SIZE - 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, Color(0.95, 0.96, 0.98))
-			cursor_x += chip_w + GAP
+			draw_rect(Rect2(draw_pos, Vector2(chip_w, chip_h)), bg)
+			draw_rect(Rect2(draw_pos, Vector2(chip_w, chip_h)), color.lightened(0.1), false, 1.0)
+			_draw_text_with_shadow(
+				font,
+				Vector2(draw_pos.x + PAD_X, draw_pos.y + PAD_Y + FONT_SIZE - 1.0),
+				fallback_label,
+				FONT_SIZE,
+				Color(0.95, 0.96, 0.98),
+				Color(0.02, 0.02, 0.04, 0.96)
+			)
+		cursor.x += item_w + GAP
+
+
+func _draw_text_with_shadow(
+	font: Font,
+	position: Vector2,
+	text: String,
+	font_size: int,
+	color: Color,
+	shadow_color: Color
+) -> void:
+	for shadow_offset in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+		draw_string(font, position + IsoCoordinates.visual_vec(shadow_offset), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, shadow_color)
+	draw_string(font, position, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+
+func _draw_ellipse(center: Vector2, radius_x: float, radius_y: float, fill_color: Color, outline_color: Color, line_width: float) -> void:
+	var points := PackedVector2Array()
+	for i in range(24):
+		var angle := TAU * float(i) / 24.0
+		points.append(center + Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
+	if fill_color.a > 0.0:
+		draw_colored_polygon(points, fill_color)
+	var closed := points.duplicate()
+	closed.append(points[0])
+	draw_polyline(closed, outline_color, line_width, false)
+
+
+func _draw_soft_backdrop(center: Vector2, radius_x: float, radius_y: float, color: Color) -> void:
+	var tex := _get_soft_gradient_texture()
+	if tex == null:
+		_draw_ellipse(center, radius_x, radius_y, color, Color.TRANSPARENT, 0.0)
+		return
+	var outer_tint := color
+	outer_tint.a *= 0.42
+	draw_texture_rect(
+		tex,
+		Rect2(center - Vector2(radius_x * 1.28, radius_y * 1.18), Vector2(radius_x * 2.56, radius_y * 2.36)),
+		false,
+		outer_tint
+	)
+	draw_texture_rect(
+		tex,
+		Rect2(center - Vector2(radius_x, radius_y), Vector2(radius_x * 2.0, radius_y * 2.0)),
+		false,
+		color
+	)
+	var core := color
+	core.a = minf(1.0, color.a * 1.12)
+	_draw_ellipse(center, radius_x * 0.62, radius_y * 0.58, core, Color.TRANSPARENT, 0.0)
+
+
+func _get_soft_gradient_texture() -> Texture2D:
+	if _soft_gradient_tex != null:
+		return _soft_gradient_tex
+	var size := 128
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in range(size):
+		for x in range(size):
+			var nx := (float(x) + 0.5) / float(size) * 2.0 - 1.0
+			var ny := (float(y) + 0.5) / float(size) * 2.0 - 1.0
+			var dist := sqrt(nx * nx + ny * ny)
+			var alpha := clampf(1.0 - dist, 0.0, 1.0)
+			alpha = pow(alpha, 0.48)
+			var core := clampf(1.0 - dist * 1.8, 0.0, 1.0)
+			alpha = maxf(alpha * 0.95, core * 0.48)
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, clampf(alpha, 0.0, 1.0)))
+	_soft_gradient_tex = ImageTexture.create_from_image(image)
+	return _soft_gradient_tex
 
 
 func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
 	var icon: String = IntentState.intent_icon(intent.type)
-	var badge_w: float = IsoCoordinates.visual(26.0)
-	var has_dmg: bool = intent.damage > 0
-	if has_dmg:
-		badge_w = IsoCoordinates.visual(38.0)
-	var badge_size := Vector2(badge_w, IsoCoordinates.visual(20.0))
-	var border_color: Color = _intent_badge_color(intent.type)
-	draw_rect(Rect2(pos, badge_size), Color(0.08, 0.08, 0.12, 0.88))
-	draw_rect(Rect2(pos, badge_size), border_color, false, IsoCoordinates.visual(1.2))
-	draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(3, 14)), icon, HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(13.0)), Color.WHITE)
-	if has_dmg:
-		draw_string(ThemeDB.fallback_font, pos + IsoCoordinates.visual_vec(Vector2(18, 14)), str(intent.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, int(IsoCoordinates.visual(10.0)), Color(1.0, 0.78, 0.45))
+	var font := ThemeDB.fallback_font
+	var font_size := int(IsoCoordinates.visual(14.0))
+	var icon_size := font.get_string_size(icon, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var center := Vector2(pos.x, pos.y)
+	_draw_soft_backdrop(center, maxf(icon_size.x * 0.6, IsoCoordinates.visual(9.0)), IsoCoordinates.visual(10.0), Color(0.0, 0.0, 0.0, 0.38))
+	_draw_text_with_shadow(
+		font,
+		Vector2(center.x - icon_size.x * 0.5, center.y + font_size * 0.35),
+		icon,
+		font_size,
+		_intent_badge_color(intent.type).lightened(0.25),
+		Color(0.0, 0.0, 0.0, 0.96)
+	)
 
 
 func _intent_badge_color(intent_type: String) -> Color:
@@ -489,7 +770,7 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 	var attacker: UnitState = state.units.get(attacker_uid, null)
 	if attacker == null:
 		return
-	attacker.facing = _facing_from_grid_pos(attacker.pos, victim_cell)
+	attacker.facing = _facing_from_unit_to_cell(attacker, victim_cell)
 	_strike_elapsed[attacker_uid] = 0.0
 	queue_redraw()
 
@@ -499,7 +780,7 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> voi
 	if state != null:
 		var mover: UnitState = state.units.get(unit_uid, null)
 		if mover != null:
-			mover.facing = _facing_from_grid_pos(from_pos, to_pos)
+			mover.facing = _facing_from_unit_to_cell(mover, to_pos)
 	_walk_phase[unit_uid] = 0.0
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)
@@ -540,6 +821,10 @@ func _on_move_anim_done(uid: String, final_offset: Vector2) -> void:
 		_move_offsets[uid] = final_offset
 	queue_redraw()
 	animation_finished.emit()
+
+
+func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
 func _push_sprite_sequence(cfg: Dictionary) -> bool:

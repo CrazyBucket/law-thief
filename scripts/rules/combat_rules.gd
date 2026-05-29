@@ -7,6 +7,12 @@ const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	# 止痛药：本场战斗首次受伤降为 1
+	if unit.uid == state.player_uid:
+		var absorb: bool = RelicEffectRegistry.query_modifier("first_damage_absorb", state)
+		if absorb:
+			amount = 1
+			state.battle_temp_flags["painkiller_used"] = true
 	var total_armor := current_armor(state, unit)
 	var final_amount := maxi(0, amount - total_armor)
 	if final_amount <= 0:
@@ -76,7 +82,9 @@ static func ranged_attack(
 
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
-	return maxi(0, attacker.base_attack + GemEffects.get_attack_bonus(state, attacker))
+	var base := attacker.base_attack + GemEffects.get_attack_bonus(state, attacker)
+	var mult: float = RelicEffectRegistry.query_modifier("attack_damage_mult", state)
+	return maxi(0, int(float(base) * mult))
 
 
 static func current_armor(state: GameState, unit: UnitState) -> int:

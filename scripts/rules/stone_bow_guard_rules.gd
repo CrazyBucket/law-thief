@@ -2,10 +2,6 @@ class_name StoneBowGuardRules
 extends RefCounted
 
 
-static func is_stone_bow_guard(unit: UnitState) -> bool:
-	return unit.has_tag(Constants.TAG_UNIT_STONE_BOW_GUARD)
-
-
 static func is_deployed(_start_pos: Vector2i, move_path: Array) -> bool:
 	return move_path.is_empty()
 
@@ -29,7 +25,7 @@ static func can_shoot_from_anchor(
 
 
 static func is_faulty_blind_shot(unit: UnitState) -> bool:
-	return is_stone_bow_guard(unit) and StatusRules.is_lawless(unit)
+	return StatusRules.is_lawless(unit)
 
 
 static func on_red_gem_stolen(state: GameState, unit: UnitState, gem_uid: String) -> void:

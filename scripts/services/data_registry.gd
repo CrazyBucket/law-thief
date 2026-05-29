@@ -19,12 +19,22 @@ const _RARITY_WEIGHTS := {
 	"rare": 25.0,
 	"epic": 10.0,
 	"legendary": 4.0,
+	"boss": 0.0,
+}
+
+# 来源 → 每个稀有度的权重（决定 roll 时各等级的抽出概率）
+const _SOURCE_RARITY_WEIGHTS := {
+	"normal_chest": {"common": 65.0, "rare": 25.0, "boss": 10.0},
+	"elite_combat":  {"common": 40.0, "rare": 40.0, "boss": 20.0},
+	"large_chest":   {"common": 10.0, "rare": 60.0, "boss": 30.0},
+	"shop":          {"common": 50.0, "rare": 35.0, "boss": 15.0},
 }
 
 var _gem_effect_profiles: Dictionary = {}
 var _gem_defs: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
+var _relic_defs: Dictionary = {}
 var _uid_counter: int = 0
 
 
@@ -37,15 +47,22 @@ func _ready() -> void:
 	_load_gem_defs_from_json()
 	_load_unit_defs_from_json()
 	_load_encounters_from_json()
+	_load_relic_defs_from_json()
 
 
-func create_battle_state(encounter_id: String, seed_value: int = 0) -> GameState:
+func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "") -> GameState:
 	var encounter: Dictionary = _encounters.get(encounter_id, {})
 	if encounter.is_empty():
 		push_error("Encounter not found: %s" % encounter_id)
 		return null
 	_uid_counter = 0
-	RngService.set_seed(seed_value if seed_value != 0 else int(Time.get_unix_time_from_system()))
+	if seed_value != 0:
+		# 外部显式提供种子（如单元测试、重放）：以此初始化 master seed
+		RngService.start_run(seed_value)
+	# 从 master seed 确定性衍生战斗种子，保证 SL 安全
+	# master seed 不存在时（首次裸启）退化为时间戳，行为与旧逻辑一致
+	var combat_seed := RngService.derive_combat_seed(encounter_id, room_id)
+	RngService.reset_state(combat_seed, "combat:%s" % encounter_id)
 	var state := GameState.new()
 	state.run_seed = RngService.get_seed()
 	state.encounter_id = encounter_id
@@ -232,6 +249,175 @@ func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array 
 		if roll < float(entry.get("limit", 0.0)):
 			return str(entry.get("gem_id", ""))
 	return str(weighted.back().get("gem_id", ""))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 遗物定义查询
+# ═══════════════════════════════════════════════════════════════════════════
+
+func get_relic_def(relic_id: String) -> Dictionary:
+	return _relic_defs.get(relic_id, {})
+
+
+func get_relic_rarity(relic_id: String) -> String:
+	return str(_relic_defs.get(relic_id, {}).get("rarity", "common"))
+
+
+func get_relic_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for k in _relic_defs.keys():
+		ids.append(str(k))
+	return ids
+
+
+## 计算单个遗物在当前上下文下的最终权重
+## weight_ctx 字段（均可选，缺省视为空/0）：
+##   owned_gems    Array[String]  当前持有宝石 gem_id 列表
+##   owned_relics  Array[String]  当前持有遗物 relic_id 列表
+##   gem_colors    Array[String]  当前持有宝石颜色集合（"red"/"blue"/"black"）
+##   total_slots   int            总槽位数
+##   empty_slots   int            空置槽位数
+##
+## weight_rules 支持的 type：
+##   has_gem            value=gem_id       持有指定宝石时乘 multiplier
+##   has_gem_color      value="red/blue/black"  持有该颜色任意宝石时乘
+##   has_relic          value=relic_id     持有指定遗物时乘
+##   slot_count_gte     value=int          总槽位数 >= value 时乘
+##   empty_slot_count_gte value=int        空置槽位数 >= value 时乘
+func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> float:
+	var def: Dictionary = _relic_defs.get(relic_id, {})
+	var weight := maxf(0.0, float(def.get("base_weight", 1.0)))
+	var rules: Array = def.get("weight_rules", [])
+	if rules.is_empty() or weight_ctx.is_empty():
+		return weight
+	var owned_gems: Array = weight_ctx.get("owned_gems", [])
+	var owned_relics: Array = weight_ctx.get("owned_relics", [])
+	var gem_colors: Array = weight_ctx.get("gem_colors", [])
+	var total_slots: int = int(weight_ctx.get("total_slots", 0))
+	var empty_slots: int = int(weight_ctx.get("empty_slots", 0))
+	for rule in rules:
+		var rule_type := str(rule.get("type", ""))
+		var multiplier := maxf(0.0, float(rule.get("multiplier", 1.0)))
+		var matched := false
+		match rule_type:
+			"has_gem":
+				matched = str(rule.get("value", "")) in owned_gems
+			"has_gem_color":
+				matched = str(rule.get("value", "")) in gem_colors
+			"has_relic":
+				matched = str(rule.get("value", "")) in owned_relics
+			"slot_count_gte":
+				matched = total_slots >= int(rule.get("value", 0))
+			"empty_slot_count_gte":
+				matched = empty_slots >= int(rule.get("value", 0))
+		if matched:
+			weight *= multiplier
+	return weight
+
+
+## 返回满足筛选条件的遗物 id 列表
+## source: 来源标识（"normal_chest" / "elite_combat" / "large_chest" / "shop"）
+## owned_ids: 当前局内已持有的遗物 id 集合（用于过滤 unique 遗物重复）
+## unlock_flags: 当前已解锁的 flag 集合（String 数组）
+func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array = []) -> Array[String]:
+	var results: Array[String] = []
+	var source_weights: Dictionary = _SOURCE_RARITY_WEIGHTS.get(source, {})
+	for relic_id in _relic_defs.keys():
+		var def: Dictionary = _relic_defs[relic_id]
+		# 检查来源兼容
+		var pool_types: Array = def.get("pool_types", ["global"])
+		var source_ok := false
+		match source:
+			"normal_chest", "elite_combat", "large_chest":
+				source_ok = "global" in pool_types
+			"shop":
+				source_ok = "global" in pool_types or "shop_only" in pool_types
+			_:
+				source_ok = "global" in pool_types
+		if not source_ok:
+			continue
+		# boss 遗物只在 source_weights 允许时出现
+		var rarity := str(def.get("rarity", "common"))
+		if rarity == "boss" and not source_weights.has("boss"):
+			continue
+		if rarity == "boss" and float(source_weights.get("boss", 0.0)) <= 0.0:
+			continue
+		# unique 遗物不重复
+		if def.get("unique", false) and relic_id in owned_ids:
+			continue
+		# 解锁条件检查
+		var unlock_cond: String = str(def.get("unlock_condition", ""))
+		if not unlock_cond.is_empty() and not unlock_cond in unlock_flags:
+			continue
+		results.append(relic_id)
+	results.sort()
+	return results
+
+
+## 按来源概率表抽一个遗物 id；返回空串表示无可用候选
+## owned_ids / unlock_flags 同 get_relic_pool
+## weight_ctx: 动态权重上下文，传入空 Dict 则退化为等权，见 compute_relic_weight 注释
+func roll_relic_for_source(
+	domain: String,
+	source: String,
+	owned_ids: Array = [],
+	unlock_flags: Array = [],
+	weight_ctx: Dictionary = {}
+) -> String:
+	var source_rarity_weights: Dictionary = _SOURCE_RARITY_WEIGHTS.get(source, {"common": 100.0})
+	# 阶段一：按来源权重 roll 出稀有度
+	var rarity_order: Array[String] = []
+	var rarity_ws: Array[float] = []
+	for rarity in source_rarity_weights.keys():
+		var w := float(source_rarity_weights[rarity])
+		if w > 0.0:
+			rarity_order.append(str(rarity))
+			rarity_ws.append(w)
+	if rarity_order.is_empty():
+		return ""
+	var rolled_rarity: String = str(
+		RngService.weighted_pick(domain + "_rarity", rarity_order, rarity_ws)
+	)
+	# 阶段二：从该稀有度的候选池里按动态权重选一个
+	var pool := get_relic_pool(source, owned_ids, unlock_flags)
+	var candidates: Array[String] = []
+	var candidate_weights: Array[float] = []
+	for rid in pool:
+		if get_relic_rarity(rid) == rolled_rarity:
+			candidates.append(rid)
+			candidate_weights.append(compute_relic_weight(rid, weight_ctx))
+	if candidates.is_empty():
+		# 指定稀有度无货，降级到整个候选池按动态权重选
+		if pool.is_empty():
+			return ""
+		var fallback_weights: Array[float] = []
+		for rid in pool:
+			fallback_weights.append(compute_relic_weight(rid, weight_ctx))
+		return str(RngService.weighted_pick(domain + "_fallback", pool, fallback_weights))
+	return str(RngService.weighted_pick(domain + "_pick", candidates, candidate_weights))
+
+
+## 一次生成 count 个不重复的遗物 id（三选一 UI 用）
+## weight_ctx 同 roll_relic_for_source
+func roll_relic_offer(
+	domain: String,
+	source: String,
+	count: int,
+	owned_ids: Array = [],
+	unlock_flags: Array = [],
+	weight_ctx: Dictionary = {}
+) -> Array[String]:
+	var result: Array[String] = []
+	var excluded: Array = owned_ids.duplicate()
+	for i in range(count):
+		var picked := roll_relic_for_source(
+			domain + "_%d" % i, source, excluded, unlock_flags, weight_ctx
+		)
+		if picked.is_empty():
+			break
+		result.append(picked)
+		excluded.append(picked)
+	return result
 
 
 func create_gem_instance(uid: String, gem_id: String, gem_overrides: Dictionary = {}) -> GemState:
@@ -531,6 +717,7 @@ func _register_unit_defs() -> void:
 			"speed": 13,
 			"base_attack": 4,
 			"ai_profile_id": "bomb_rat",
+			"behavior_id": "bomb_rat",
 			"spawn_gem_slots": [Constants.SLOT_BLACK],
 			"tags": [Constants.TAG_UNIT_BOMB_RAT, Constants.TAG_UNIT_MOBILE],
 			"slots": [
@@ -547,6 +734,7 @@ func _register_unit_defs() -> void:
 			"speed": 9,
 			"base_attack": 6,
 			"ai_profile_id": "melee_chase",
+			"behavior_id": "patrol_guard",
 			"tags": [Constants.TAG_UNIT_PATROL_GUARD],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
@@ -562,6 +750,7 @@ func _register_unit_defs() -> void:
 			"speed": 8,
 			"base_attack": 4,
 			"ai_profile_id": "stone_bow",
+			"behavior_id": "stone_bow_guard",
 			"tags": [Constants.TAG_UNIT_STONE_BOW_GUARD, Constants.TAG_UNIT_RANGED],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
@@ -577,6 +766,7 @@ func _register_unit_defs() -> void:
 			"speed": 7,
 			"base_attack": 4,
 			"ai_profile_id": "melee_chase",
+			"behavior_id": "fission_slime",
 			"footprint_size": Vector2i(2, 2),
 			"tags": [Constants.TAG_UNIT_FISSION_SLIME],
 			"slots": [
@@ -872,6 +1062,19 @@ func _parse_encounter_json(raw: Dictionary) -> Dictionary:
 			tiles[i] = t
 		result["tiles"] = tiles
 	return result
+
+
+func _load_relic_defs_from_json() -> void:
+	var path := "res://resources/relics/relic_defs.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		return
+	for relic_id in raw.keys():
+		var entry: Dictionary = raw[relic_id]
+		if _relic_defs.has(relic_id):
+			_relic_defs[relic_id] = _deep_merge_dict(_relic_defs[relic_id], entry)
+		else:
+			_relic_defs[relic_id] = entry
 
 
 func _read_json_file(path: String) -> Dictionary:

@@ -4,19 +4,11 @@ extends RefCounted
 const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 
 
-static func is_fission_slime(unit: UnitState) -> bool:
-	return unit.has_tag(Constants.TAG_UNIT_FISSION_SLIME)
+static func split_stat_ratio(_unit: UnitState) -> float:
+	return Constants.FISSION_SLIME_SPLIT_STAT_RATIO
 
 
-static func split_stat_ratio(unit: UnitState) -> float:
-	if is_fission_slime(unit):
-		return Constants.FISSION_SLIME_SPLIT_STAT_RATIO
-	return Constants.SPLIT_STAT_RATIO
-
-
-static func should_trigger_split_blue(unit: UnitState, reason: String) -> bool:
-	if not is_fission_slime(unit):
-		return true
+static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
 	return is_single_target_damage_reason(reason)
 
 
@@ -49,7 +41,7 @@ static func compute_intent(
 	var reachable: Array[Vector2i] = []
 	if StatusRules.can_move(unit):
 		reachable = BoardUtils.reachable_cells(
-			state, unit.pos, unit.move_points, unit.uid, {}, cell_blockers
+			state, unit.pos, unit.move_points, unit.uid, {}, cell_blockers, unit
 		)
 	reachable.append(unit.pos)
 
@@ -64,7 +56,7 @@ static func compute_intent(
 		var path: Array[Vector2i] = []
 		if anchor != unit.pos:
 			path = BoardUtils.path_toward(
-				state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers
+				state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers, unit
 			)
 			if path.is_empty() or path[path.size() - 1] != anchor:
 				continue
@@ -86,7 +78,7 @@ static func compute_intent(
 		return intent
 
 	var move_path := BoardUtils.path_toward(
-		state, unit.pos, player.pos, unit.move_points, unit.uid, {}, cell_blockers
+		state, unit.pos, player.pos, unit.move_points, unit.uid, {}, cell_blockers, unit
 	)
 	if move_path.is_empty():
 		return IntentState.wait(unit.uid)

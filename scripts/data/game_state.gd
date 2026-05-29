@@ -32,6 +32,9 @@ var player_acted: bool = false
 var combat_log: Array[String] = []
 var encounter_id: String = ""
 var result: String = ""
+## 单场战斗临时 flags，战斗结束即丢弃，不参与 clone/序列化
+## key: String（如 "first_hit_absorbed"）→ Variant
+var battle_temp_flags: Dictionary = {}
 # O(1) 占格索引：tile_key → UnitState；单位移动/生成/死亡时通过封装方法同步
 var _cell_occupancy: Dictionary = {}
 

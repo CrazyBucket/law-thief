@@ -25,6 +25,7 @@ func start_new_run(seed_value: int = -1) -> void:
 	if seed_value < 0:
 		seed_value = int(Time.get_unix_time_from_system()) % 100000
 	map_seed = seed_value
+	RunService.start_run(map_seed, map_seed)
 	var gen := _AdventureMapGenerator.new()
 	map_matrix = gen.generate(map_seed)
 	current_pos = Vector2i.ZERO
@@ -101,6 +102,7 @@ func _navigate_to_room(room_type: String) -> void:
 			var pool: Array = COMBAT_ENCOUNTERS.get(room_type, ["tutorial_001"])
 			var idx: int = (current_pos.x + current_pos.y + map_seed) % pool.size()
 			GameService.adventure_return = true
+			GameService.pending_room_id = "%d_%d" % [current_pos.x, current_pos.y]
 			GameService.start_battle(pool[idx])
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		_:

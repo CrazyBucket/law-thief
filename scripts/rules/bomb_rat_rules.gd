@@ -5,17 +5,13 @@ const PLUNDER_PHASE_WAIT := 1
 const PLUNDER_PHASE_STEAL := 2
 
 
-static func is_bomb_rat(unit: UnitState) -> bool:
-	return unit.has_tag(Constants.TAG_UNIT_BOMB_RAT)
-
-
 static func black_slot_empty(unit: UnitState) -> bool:
 	var black := unit.get_slot(Constants.SLOT_BLACK)
 	return black == null or black.gem_uid.is_empty()
 
 
 static func sync_plunder_state(state: GameState, unit: UnitState) -> void:
-	if not is_bomb_rat(unit) or not unit.alive:
+	if not unit.alive:
 		return
 	if black_slot_empty(unit):
 		if StatusRules.get_bomb_rat_plunder_phase(unit) < 0:

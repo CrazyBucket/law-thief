@@ -9,6 +9,8 @@ static func get_profile(ai_profile_id: String) -> Dictionary:
 			return _bomb_rat()
 		"stone_bow":
 			return _stone_bow()
+		"patrol_guard", "fission_slime":
+			return _melee_chase()
 		_:
 			return _melee_chase()
 

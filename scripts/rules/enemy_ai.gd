@@ -1,7 +1,6 @@
 class_name EnemyAI
 extends RefCounted
 
-const StoneBowGuardRules = preload("res://scripts/rules/stone_bow_guard_rules.gd")
 ## 分值评估系统 (Utility AI)
 ## 核心思路：遍历所有合法行动 → 模拟执行 → 打分 → 选最高分
 ## 怪物行动经济：每回合 1 次移动 + 1 次行动（攻击/技能）
@@ -59,7 +58,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			enemy.move_points,
 			enemy.uid,
 			path_profile,
-			cell_blockers
+			cell_blockers,
+			enemy
 		)
 
 	return {"move_path": move_path, "action": best}
@@ -94,7 +94,7 @@ static func _generate_all_candidates(
 		reachable = [] as Array[Vector2i]
 	else:
 		reachable = BoardUtils.reachable_cells(
-			state, enemy.pos, enemy.move_points, enemy.uid, path_profile, cell_blockers
+			state, enemy.pos, enemy.move_points, enemy.uid, path_profile, cell_blockers, enemy
 		)
 	reachable.append(enemy.pos)  # 原地也是选项
 
@@ -109,7 +109,7 @@ static func _generate_all_candidates(
 		else:
 			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(attack_candidates)
-		if profile.get("can_ranged_attack", false) and not StoneBowGuardRules.is_stone_bow_guard(enemy):
+		if profile.get("can_ranged_attack", false):
 			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(ranged_candidates)
 
@@ -182,8 +182,6 @@ static func _evaluate_ranged_attacks_from(
 	var moved: bool = from_pos != enemy.pos
 	var range_path: Array = [] if not moved else [from_pos]
 	var max_range: int = Constants.ATTACK_RANGE
-	if StoneBowGuardRules.is_stone_bow_guard(enemy):
-		max_range = StoneBowGuardRules.attack_range_for(enemy.pos, range_path)
 	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
 	if dist < 1 or dist > max_range:
 		return results
@@ -192,13 +190,9 @@ static func _evaluate_ranged_attacks_from(
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 	var damage_dealt: int = CombatRules.attack_damage(state, enemy)
-	if StoneBowGuardRules.is_stone_bow_guard(enemy):
-		damage_dealt = StoneBowGuardRules.ranged_damage_preview(state, enemy)
 	var score: float = float(damage_dealt) * _w(profile, "w_damage", 10.0)
 	if player.hp <= damage_dealt:
 		score += _w(profile, "w_kill_player", 200.0)
-	if not moved and StoneBowGuardRules.is_stone_bow_guard(enemy):
-		score += _w(profile, "w_deploy_bonus", 12.0)
 	var move_dist: int = BoardUtils.manhattan(enemy.pos, from_pos)
 	score -= float(move_dist) * _w(profile, "w_move_cost", 0.5)
 	score += _evaluate_tile_safety(state, from_pos, profile)
@@ -206,8 +200,6 @@ static func _evaluate_ranged_attacks_from(
 		score += float(dist) * _w(profile, "w_keep_distance", 3.0) * 0.3
 	candidate.score = score
 	var range_label := str(max_range)
-	if not moved and StoneBowGuardRules.is_stone_bow_guard(enemy):
-		range_label = "%d架设" % max_range
 	candidate.description = "在%s远程射击(%s格)" % [str(from_pos), range_label]
 	results.append(candidate)
 	return results

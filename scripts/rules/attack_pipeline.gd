@@ -259,13 +259,13 @@ static func _try_deflect(ctx: AttackContext) -> void:
 		if candidates.is_empty():
 			# 无单位：投射物落地在随机邻格，不造成伤害
 			var neighbors := BoardUtils.neighbors4(ctx.target.pos)
-			var land: Vector2i = neighbors[randi() % neighbors.size()]
+			var land: Vector2i = neighbors[RngService.roll_int("pipeline_gravity_land_%s" % ctx.target.uid, 0, neighbors.size() - 1)]
 			ctx.state.log("%s 被引力偏转，投射物落地 %s" % [ctx.target.uid, land])
 			ctx.push_event({"type": "projectile_deflect", "from": ctx.target.pos, "to": land})
 			ctx.add_tag(TAG_DEFLECT_DONE)
 		else:
 			# 有单位：投射物转向随机一个，继续走 pipeline
-			var new_target: UnitState = candidates[randi() % candidates.size()]
+			var new_target: UnitState = candidates[RngService.roll_int("pipeline_gravity_redirect_%s" % ctx.target.uid, 0, candidates.size() - 1)]
 			ctx.state.log("%s 被引力偏转，投射物转向 %s" % [ctx.target.uid, new_target.uid])
 			ctx.push_event({"type": "projectile_deflect", "from": ctx.target.pos, "to": new_target.pos})
 			ctx.target = new_target

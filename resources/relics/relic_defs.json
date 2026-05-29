@@ -1,0 +1,216 @@
+{
+  "relic_prism": {
+    "name": "棱镜",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_phase_wrench": {
+    "name": "相位扳手",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_chaos_launcher": {
+    "name": "混沌发射器",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_autopsy_log": {
+    "name": "验尸记录",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "weight_rules": [
+      {"type": "has_gem_color", "value": "black", "multiplier": 2.5}
+    ],
+    "effects": [
+      {"on": "unit_die", "action": "heal", "target": "player", "amount": 2,
+       "condition": "killer_is_player"}
+    ]
+  },
+  "relic_empty_coffin": {
+    "name": "空棺",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "weight_rules": [
+      {"type": "empty_slot_count_gte", "value": 2, "multiplier": 3.0}
+    ],
+    "effects": []
+  },
+  "relic_empty_shell": {
+    "name": "空壳",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "weight_rules": [
+      {"type": "empty_slot_count_gte", "value": 1, "multiplier": 2.0}
+    ],
+    "effects": []
+  },
+  "relic_night_heron_wings": {
+    "name": "夜鹭翅膀",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_frame_up": {
+    "name": "嫁祸",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_mini_casino": {
+    "name": "微型赌场",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "unlock_condition": "class_gambler",
+    "effects": []
+  },
+  "relic_slime_crown": {
+    "name": "史莱姆皇冠",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "unlock_condition": "boss_slime_king",
+    "weight_rules": [
+      {"type": "has_gem", "value": "gem_split", "multiplier": 5.0}
+    ],
+    "effects": []
+  },
+  "relic_gas_mask": {
+    "name": "呼吸面罩",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": []
+  },
+  "relic_cracked_amulet": {
+    "name": "破损护符",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": [
+      {"on": "battle_start", "action": "add_armor", "target": "player", "amount": 2}
+    ]
+  },
+  "relic_copper_wire": {
+    "name": "导热铜线",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "weight_rules": [
+      {"type": "has_gem", "value": "gem_conductive", "multiplier": 3.0}
+    ],
+    "effects": [
+      {"modifier": "arc_damage_mult", "value": 1.3}
+    ]
+  },
+  "relic_broken_rib": {
+    "name": "断裂肋骨",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": []
+  },
+  "relic_pressure_valve": {
+    "name": "旧式压力阀",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "weight_rules": [
+      {"type": "has_gem_color", "value": "blue", "multiplier": 2.0}
+    ],
+    "effects": []
+  },
+  "relic_crowbar": {
+    "name": "应急撬棍",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": []
+  },
+  "relic_adrenaline": {
+    "name": "肾上腺素",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
+  "relic_reinforced_base": {
+    "name": "加固底座",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "weight_rules": [
+      {"type": "slot_count_gte", "value": 3, "multiplier": 2.0}
+    ],
+    "effects": [
+      {"on": "after_insert", "action": "add_armor", "target": "player", "amount": 1}
+    ]
+  },
+  "relic_silver_cable": {
+    "name": "镀银电缆",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "weight_rules": [
+      {"type": "has_gem", "value": "gem_conductive", "multiplier": 2.5},
+      {"type": "has_relic", "value": "relic_copper_wire", "multiplier": 2.0}
+    ],
+    "effects": []
+  },
+  "relic_cracked_goggles": {
+    "name": "破损护目镜",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": []
+  },
+  "relic_painkiller": {
+    "name": "止痛药",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"modifier": "first_damage_absorb", "flag": "painkiller_used"}
+    ]
+  },
+  "relic_iron_boots": {
+    "name": "铁靴",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": false,
+    "effects": []
+  }
+}

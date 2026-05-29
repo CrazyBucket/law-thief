@@ -18,6 +18,8 @@ static func knockback(
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
+	if RelicEffectRegistry.query_modifier("forced_move_immune", state):
+		return
 	_push_directional(state, unit, origin, Direction.AWAY, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
 
 
@@ -32,6 +34,8 @@ static func pull_toward(
 	skip_gem_hooks: bool = false
 ) -> void:
 	if not unit.alive or steps <= 0:
+		return
+	if RelicEffectRegistry.query_modifier("forced_move_immune", state):
 		return
 	_push_directional(state, unit, anchor, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
 

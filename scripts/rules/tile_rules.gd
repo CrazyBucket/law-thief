@@ -163,7 +163,7 @@ static func spread_fire(state: GameState) -> void:
 			if ntile.has_modifier(Constants.TILE_MOD_FIRE):
 				continue
 			if ntile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
-				if randf() < Constants.FIRE_SPREAD_CHANCE:
+				if RngService.chance("tile_fire_spread_%s" % str(neighbor), Constants.FIRE_SPREAD_CHANCE):
 					create_fire(state, neighbor)
 
 	# [着火] 的单位路过可燃格也会点燃（已在 on_unit_moved_through 的 burning 触发中隐含，

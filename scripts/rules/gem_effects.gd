@@ -1,7 +1,7 @@
 class_name GemEffects
 extends RefCounted
 
-const FissionSlimeRules = preload("res://scripts/rules/fission_slime_rules.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 
@@ -14,10 +14,8 @@ const TIMING_FORCED_MOVE := "forced_move"   # 被强制位移时（击退、引�
 const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻击）
 
 const MODE_TRIGGER := "trigger"
-const MODE_ENEMY := "enemy"
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
-const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
 const ABILITY_BLUE_DAMAGED := "blue_damaged"
 const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
@@ -80,11 +78,16 @@ static func trigger_gem(
 
 
 static func on_unit_death(state: GameState, unit: UnitState, out_events: Array[Dictionary] = []) -> void:
+	_behavior_for(unit).on_unit_death(state, unit)
 	_run_death_hooks_with_events(state, unit, out_events)
 
 
 static func trigger_black_death_effects(state: GameState, unit: UnitState, out_events: Array[Dictionary] = []) -> void:
 	_run_death_hooks_with_events(state, unit, out_events)
+
+
+static func _behavior_for(unit: UnitState) -> GDScript:
+	return BehaviorRegistry.get_behavior(unit.behavior_id)
 
 
 static func get_slot_effect_description(gem_ref: Variant, slot_type: String, context: String) -> String:
@@ -114,7 +117,7 @@ static func intercept_damage_for_split(state: GameState, unit: UnitState, source
 			break
 	if not has_split_blue:
 		return damage
-	if not FissionSlimeRules.should_trigger_split_blue(unit, reason):
+	if not _behavior_for(unit).should_trigger_split_blue(unit, reason):
 		return damage
 	var redirect_amount := int(damage * Constants.SPLIT_DAMAGE_REDIRECT_RATIO)
 	if redirect_amount <= 0:
@@ -127,7 +130,7 @@ static func intercept_damage_for_split(state: GameState, unit: UnitState, source
 			candidates.append(other)
 	if candidates.is_empty():
 		return damage
-	var redirect_target: UnitState = candidates[randi() % candidates.size()]
+	var redirect_target: UnitState = candidates[RngService.roll_int("gem_split_redirect_%s" % unit.uid, 0, candidates.size() - 1)]
 	state.log("%s 分裂宝石将 %d 点伤害转移给 %s" % [unit.uid, redirect_amount, redirect_target.uid])
 	CombatRules.apply_damage(state, redirect_target, redirect_amount, source_uid, "split_redirect")
 	return damage - redirect_amount
@@ -151,7 +154,7 @@ static func on_red_action(state: GameState, unit: UnitState, intent: IntentState
 	var slot := unit.get_slot(Constants.SLOT_RED)
 	if slot == null or slot.gem_uid.is_empty():
 		return [] as Array[Dictionary]
-	return _run_enemy_red_action(state, unit, slot, intent.target_uid)
+	return _behavior_for(unit).execute_red_action(state, unit, intent)
 
 
 static func cross_explosion_cells(center: Vector2i) -> Array[Vector2i]:
@@ -268,82 +271,6 @@ static func pull_around(state: GameState, center: Vector2i, pull_range: int, ste
 		pull_unit_toward_with_events(state, unit, center, steps, source_uid)
 
 
-static func _execute_charge_explosion(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
-	var events: Array[Dictionary] = []
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null:
-		return events
-	events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
-	events.append_array(_explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
-	var self_dealt := CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "self_explosion")
-	if self_dealt > 0:
-		events.append({"type": "damage", "pos": unit.pos, "damage": self_dealt, "is_crit": false})
-	return events
-
-
-static func _run_enemy_red_action(state: GameState, unit: UnitState, slot: SlotState, target_uid: String) -> Array[Dictionary]:
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return [] as Array[Dictionary]
-	match _enemy_red_action_kind(gem):
-		"charge_explode":
-			return _execute_charge_explosion(state, unit, target_uid)
-		"poison_attack":
-			var poison_target: UnitState = state.units.get(target_uid, null)
-			if poison_target == null or BoardUtils.manhattan(unit.pos, poison_target.pos) != 1:
-				return [] as Array[Dictionary]
-			var poison_events := _enemy_red_damage_events(state, unit, target_uid, CombatRules.attack_damage(state, unit), "poison_attack")
-			if poison_target.alive:
-				StatusRules.apply_poison(state, poison_target)
-			return poison_events
-		"pull":
-			return _execute_pull_events(state, unit, target_uid)
-		"arc_attack":
-			var arc_target: UnitState = state.units.get(target_uid, null)
-			if arc_target == null or not arc_target.alive:
-				return [] as Array[Dictionary]
-			if BoardUtils.manhattan(unit.pos, arc_target.pos) > Constants.ATTACK_RANGE:
-				return [] as Array[Dictionary]
-			var arc_base := CombatRules.attack_damage(state, unit)
-			var arc_events := _enemy_red_damage_events(state, unit, target_uid, arc_base, "arc_attack")
-			if arc_target.alive:
-				apply_arc_bounce_from_victim(state, arc_target, unit, arc_base, arc_events)
-			return arc_events
-		"split_attack":
-			var split_t: UnitState = state.units.get(target_uid, null)
-			if split_t == null or not split_t.alive:
-				return [] as Array[Dictionary]
-			if BoardUtils.manhattan(unit.pos, split_t.pos) > Constants.ATTACK_RANGE:
-				return [] as Array[Dictionary]
-			var split_result := CombatRules.ranged_attack(state, unit, split_t)
-			return split_result.get("events", [] as Array[Dictionary])
-	return [] as Array[Dictionary]
-
-
-static func _enemy_red_damage_events(
-	state: GameState,
-	unit: UnitState,
-	target_uid: String,
-	amount: int,
-	reason: String,
-	is_crit: bool = false
-) -> Array[Dictionary]:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null or not target.alive:
-		return [] as Array[Dictionary]
-	var dealt := CombatRules.apply_damage(state, target, amount, unit.uid, reason)
-	if dealt <= 0:
-		return [] as Array[Dictionary]
-	return [{"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": is_crit}]
-
-
-static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null or not target.alive:
-		return [] as Array[Dictionary]
-	return pull_unit_toward_with_events(state, target, unit.pos, 2, unit.uid)
-
-
 static func _pull_unit_toward(state: GameState, unit: UnitState, anchor: Vector2i, steps: int, source_uid: String = "") -> void:
 	pull_unit_toward_with_events(state, unit, anchor, steps, source_uid)
 
@@ -455,48 +382,32 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 	return false
 
 
-static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: SlotState, gem: GemState, ctx: Dictionary) -> bool:
-	var mode: String = ctx.get("mode", MODE_TRIGGER)
-	var ability_slot := ABILITY_UNIT_RED_ACTIVE
-	if mode == MODE_ENEMY:
-		ability_slot = ABILITY_ENEMY_RED_ACTION
+static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: SlotState, gem: GemState, ctx: Dictionary) -> bool:
 	var out_events: Array[Dictionary] = _events_from_ctx(ctx)
-	match _ability_profile(gem, ability_slot):
+	match _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE):
 		"explosion":
-			match mode:
-				MODE_TRIGGER:
-					var blast_center: Vector2i = ctx.get("target_pos", owner.pos)
-					if blast_center.x < 0:
-						blast_center = owner.pos
-					var target_unit: UnitState = state.units.get(ctx.get("target_uid", ""), null)
-					if target_unit != null and target_unit.alive:
-						blast_center = target_unit.pos
-					out_events.append_array(
-						explode_cross_at(state, blast_center, owner.uid, 0, Constants.EXPLOSION_CROSS_DAMAGE, false)
-					)
-				MODE_ENEMY:
-					_execute_charge_explosion(state, owner, ctx.get("target_uid", ""))
+			var blast_center: Vector2i = ctx.get("target_pos", owner.pos)
+			if blast_center.x < 0:
+				blast_center = owner.pos
+			var target_unit: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+			if target_unit != null and target_unit.alive:
+				blast_center = target_unit.pos
+			out_events.append_array(
+				explode_cross_at(state, blast_center, owner.uid, 0, Constants.EXPLOSION_CROSS_DAMAGE, false)
+			)
 			return true
 		"poison":
-			match mode:
-				MODE_TRIGGER:
-					out_events.append({"type": "poison_burst", "pos": owner.pos, "radius": 0})
-					TileRules.create_poison_fog(state, owner.pos)
-				MODE_ENEMY:
-					_execute_poison_attack(state, owner, ctx.get("target_uid", ""))
+			out_events.append({"type": "poison_burst", "pos": owner.pos, "radius": 0})
+			TileRules.create_poison_fog(state, owner.pos)
 			return true
 		"gravity":
-			match mode:
-				MODE_TRIGGER:
-					out_events.append({"type": "gem_flash", "pos": owner.pos, "color": _data_registry().get_gem_color(gem)})
-					for unit in state.units.values():
-						if not unit.alive or unit.uid == owner.uid:
-							continue
-						if BoardUtils.chebyshev(owner.pos, unit.pos) > 2:
-							continue
-						out_events.append_array(pull_unit_toward_with_events(state, unit, owner.pos, 1, owner.uid))
-				MODE_ENEMY:
-					_execute_pull_events(state, owner, ctx.get("target_uid", ""))
+			out_events.append({"type": "gem_flash", "pos": owner.pos, "color": _data_registry().get_gem_color(gem)})
+			for unit in state.units.values():
+				if not unit.alive or unit.uid == owner.uid:
+					continue
+				if BoardUtils.chebyshev(owner.pos, unit.pos) > 2:
+					continue
+				out_events.append_array(pull_unit_toward_with_events(state, unit, owner.pos, 1, owner.uid))
 			return true
 		"arc":
 			var arc_target_uid: String = ctx.get("target_uid", "")
@@ -507,37 +418,20 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, slot: Sl
 			var trigger_tile := state.get_tile(arc_anchor)
 			if trigger_tile != null and trigger_tile.has_tile_tag(Constants.TAG_TILE_WATER):
 				apply_water_conduction(state, arc_anchor, owner, out_events)
-			else:
-				if arc_target != null and arc_target.alive:
-					var arc_base := CombatRules.attack_damage(state, owner)
-					_arc_to(state, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events)
-					apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
+			elif arc_target != null and arc_target.alive:
+				var arc_base := CombatRules.attack_damage(state, owner)
+				_arc_to(state, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events)
+				apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
 			return true
 		"fire_gem":
-			match mode:
-				MODE_TRIGGER:
-					out_events.append({"type": "fire_burst", "pos": owner.pos})
-					TileRules.create_fire(state, owner.pos)
-				MODE_ENEMY:
-					var fire_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
-					if fire_t != null and fire_t.alive:
-						StatusRules.apply_burning(state, fire_t, 1, owner.uid)
+			out_events.append({"type": "fire_burst", "pos": owner.pos})
+			TileRules.create_fire(state, owner.pos)
 			return true
 		"ice":
-			match mode:
-				MODE_TRIGGER:
-					out_events.append({"type": "frost_pulse", "pos": owner.pos})
-					StatusRules.apply_slowed(state, owner, 1, owner.uid)
-				MODE_ENEMY:
-					var ice_t: UnitState = state.units.get(ctx.get("target_uid", ""), null)
-					if ice_t != null and ice_t.alive:
-						apply_ice_hit_effect(state, ice_t, owner.uid)
+			out_events.append({"type": "frost_pulse", "pos": owner.pos})
+			StatusRules.apply_slowed(state, owner, 1, owner.uid)
 			return true
 		"split":
-			# 红槽触发：以 AttackPipeline 打出 V 字三发（TAG_SPLIT_SHOT 已在 pipeline 处理）
-			# 玩家触发时目标 uid 由 ctx 传入，由 battle_controller try_attack_cell 调用
-			# 实际伤害通过 AttackPipeline.execute 完成，此处无需额外处理
-			# MODE_ENEMY 分支由 _run_enemy_red_action 处理
 			return true
 	return false
 
@@ -580,7 +474,7 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 				# 若无单位则弹到自身脚下地块（不造成单位伤害，仅标记事件）
 			return true
 		"arc":
-			if source != null and source.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
+			if source != null and source.alive and RngService.chance("gem_arc_rebound_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE):
 				var rebound_events: Array[Dictionary] = []
 				_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), rebound_events)
 			return true
@@ -633,13 +527,13 @@ static func _run_unit_death_effect_with_events(state: GameState, owner: UnitStat
 				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
 					candidates.append(unit)
 			if not candidates.is_empty():
-				var strike_target: UnitState = candidates[randi() % candidates.size()]
+				var strike_target: UnitState = candidates[RngService.roll_int("gem_arc_death_strike_%s" % owner.uid, 0, candidates.size() - 1)]
 				var dealt := CombatRules.apply_true_damage(
 					state, strike_target, Constants.LIGHTNING_DEATH_DAMAGE, owner.uid, "lightning_death"
 				)
 				if dealt > 0:
 					out_events.append({"type": "damage", "pos": strike_target.pos, "damage": dealt, "is_crit": false})
-				if strike_target.alive and randf() < Constants.ARC_PARALYSIS_CHANCE:
+				if strike_target.alive and RngService.chance("gem_arc_death_paralyze_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE):
 					StatusRules.apply_paralyzed(state, strike_target, 1, owner.uid)
 				out_events.append({"type": "lightning", "pos": owner.pos, "target_pos": strike_target.pos})
 			return true
@@ -737,10 +631,6 @@ static func _gem_id(state: GameState, slot: SlotState) -> String:
 	return _data_registry().get_gem_display_name(gem)
 
 
-static func _enemy_red_action_kind(gem_ref: Variant) -> String:
-	return str(_data_registry().get_enemy_red_intent_meta(gem_ref, 0).get("type", "wait"))
-
-
 static func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
 
@@ -768,17 +658,7 @@ static func _random_neighbor_unit(state: GameState, center: UnitState, exclude_u
 			candidates.append(unit)
 	if candidates.is_empty():
 		return null
-	return candidates[randi() % candidates.size()]
-
-
-
-static func _execute_poison_attack(state: GameState, unit: UnitState, target_uid: String) -> void:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null:
-		return
-	if BoardUtils.manhattan(unit.pos, target.pos) == 1:
-		CombatRules.apply_damage(state, target, CombatRules.attack_damage(state, unit), unit.uid, "poison_attack")
-		StatusRules.apply_poison(state, target)
+	return candidates[RngService.roll_int("gem_gravity_deflect_%s" % center.uid, 0, candidates.size() - 1)]
 
 
 static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
@@ -787,8 +667,11 @@ static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 
 ## ─── 电弧（arc）辅助 ──────────────────────────────────────────────────────
 
-static func _calc_arc_damage(base_damage: int) -> int:
-	return maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO))
+static func _calc_arc_damage(base_damage: int, state: GameState = null) -> int:
+	var mult: float = 1.0
+	if state != null:
+		mult = RelicEffectRegistry.query_modifier("arc_damage_mult", state)
+	return maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO * mult))
 
 
 static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
@@ -809,7 +692,7 @@ static func apply_water_conduction(
 	if cluster.is_empty():
 		return
 	var zone := BoardUtils.water_conduction_zone(cluster)
-	var arc_damage := _calc_arc_damage(CombatRules.attack_damage(state, attacker))
+	var arc_damage := _calc_arc_damage(CombatRules.attack_damage(state, attacker), state)
 	var hit_uids: Dictionary = {}
 	for unit in state.units.values():
 		if not unit.alive:
@@ -843,7 +726,7 @@ static func apply_arc_bounce_from_victim(
 ) -> void:
 	if not victim.alive:
 		return
-	var arc_damage := _calc_arc_damage(base_damage)
+	var arc_damage := _calc_arc_damage(base_damage, state)
 	var candidates: Array[UnitState] = []
 	for unit in state.units.values():
 		if not unit.alive:
@@ -854,7 +737,7 @@ static func apply_arc_bounce_from_victim(
 			candidates.append(unit)
 	if candidates.is_empty():
 		return
-	var bounce_target: UnitState = candidates[randi() % candidates.size()]
+	var bounce_target: UnitState = candidates[RngService.roll_int("gem_arc_bounce_%s" % attacker.uid, 0, candidates.size() - 1)]
 	_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
 
 
@@ -882,7 +765,7 @@ static func _arc_to(
 	var dealt := CombatRules.apply_damage(state, target, damage, source_uid, "arc")
 	if dealt > 0:
 		events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
-	if target.alive and randf() < Constants.ARC_PROC_CHANCE:
+	if target.alive and RngService.chance("gem_arc_proc_%s" % source_uid, Constants.ARC_PROC_CHANCE):
 		StatusRules.apply_paralyzed(state, target, 1, source_uid)
 	events.append({"type": "arc", "pos": target.pos})
 
@@ -919,8 +802,8 @@ static func _scatter_fire_on_death(state: GameState, owner: UnitState, out_event
 		else:
 			occupied_cells.append(cell)
 	# 打乱顺序后取前 N 个
-	empty_cells.shuffle()
-	occupied_cells.shuffle()
+	RngService.shuffle_in_place("gem_fire_death_scatter_%s" % owner.uid, empty_cells)
+	RngService.shuffle_in_place("gem_fire_death_scatter_occ_%s" % owner.uid, occupied_cells)
 	var pool: Array[Vector2i] = empty_cells
 	pool.append_array(occupied_cells)
 	var count := mini(Constants.FIRE_DEATH_FIRE_COUNT, pool.size())
@@ -946,7 +829,7 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 	if candidates.is_empty():
 		return
 	for debuff in debuffs:
-		var target: UnitState = candidates[randi() % candidates.size()]
+		var target: UnitState = candidates[RngService.roll_int("gem_death_spread_%s" % owner.uid, 0, candidates.size() - 1)]
 		var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, owner.uid, debuff.payload.duplicate(true))
 		copy.value = debuff.value
 		StatusRegistry.apply_to_unit(target, copy)
@@ -997,10 +880,11 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 	clone.facing = owner.facing
 	clone.alive = true
 	clone.ai_profile_id = owner.ai_profile_id
+	clone.behavior_id = owner.behavior_id
 	clone.split_origin_uid = owner.uid
 	clone.footprint_size = Vector2i(1, 1)
 	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
-	var ratio: float = FissionSlimeRules.split_stat_ratio(owner)
+	var ratio: float = _behavior_for(owner).split_clone_ratio(owner)
 	clone.base_attack = ceili(owner.base_attack * ratio)
 	clone.armor = ceili(owner.armor * ratio)
 	clone.move_points = ceili(owner.move_points * ratio)

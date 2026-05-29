@@ -135,7 +135,7 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:
-			return "易伤：受到伤害 +50%，剩余 %d 回合" % status.duration
+			return "易伤：受到伤害 +50%%，剩余 %d 回合" % status.duration
 	return display_name(status.status_id)
 
 
