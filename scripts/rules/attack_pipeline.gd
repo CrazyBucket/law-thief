@@ -248,6 +248,11 @@ static func _gem_hooks_prepare(ctx: AttackContext) -> void:
 						ctx.add_tag(TAG_SLOW_ON_HIT)
 					"split":
 						ctx.add_tag(TAG_SPLIT_SHOT)
+	# 遗物 modifier：attack_split_count > 0 时自动附加分裂攻击
+	if not ctx.has_tag(TAG_SPLIT_SHOT):
+		var split_bonus: int = RelicEffectRegistry.query_modifier("attack_split_count", ctx.state)
+		if split_bonus > 0:
+			ctx.add_tag(TAG_SPLIT_SHOT)
 
 
 static func _try_deflect(ctx: AttackContext) -> void:

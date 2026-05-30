@@ -147,11 +147,12 @@ func setup(encounter_id: String) -> void:
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
 	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
+	_mark_visible_enemies_seen()
 	_inspect_uid = _controller.selected_unit_uid
 	_controller.select_action("")
 	_refresh()
 	_board.init_unit_orientations()
-	if encounter_id == "tutorial_001":
+	if encounter_id == "tutorial_001" and bool(SettingsService.get_value("show_tutorial")):
 		_show_tutorial_intro()
 
 
@@ -779,8 +780,8 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 
 	var skip_btn := Button.new()
 	skip_btn.text = "跳过"
-	skip_btn.add_theme_font_size_override("font_size", 14)
-	skip_btn.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	skip_btn.custom_minimum_size = Vector2(140, 40)
+	BattleUiTheme.apply_button(skip_btn, "ghost")
 	skip_btn.pressed.connect(func() -> void:
 		_on_relic_chosen("", battle_result)
 	)
@@ -828,7 +829,8 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 
 	var pick_btn := Button.new()
 	pick_btn.text = "选择"
-	pick_btn.add_theme_font_size_override("font_size", 14)
+	pick_btn.custom_minimum_size = Vector2(0, 40)
+	BattleUiTheme.apply_button(pick_btn, "end")
 	pick_btn.pressed.connect(func() -> void:
 		_on_relic_chosen(relic_id, battle_result)
 	)
@@ -871,10 +873,11 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 
 
 func _finish_battle_and_navigate(result: String) -> void:
+	_record_enemy_codex_progress()
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
 	if GameService.adventure_return:
 		GameService.adventure_return = false
-		get_tree().change_scene_to_file("res://scenes/map/adventure_map.tscn")
+		AdventureService.finish_room_and_return()
 	else:
 		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
@@ -1073,26 +1076,40 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 			color = UnitLooks.gem_color(gem)
 	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
 	var label := Label.new()
-	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
+	var slot_name := _slot_display_name(slot.slot_type)
+	var is_dual := not slot.dual_type.is_empty()
+	var dual_name := _slot_display_name(slot.dual_type) if is_dual else ""
+	var display_name := ("%s/%s" % [slot_name, dual_name]) if is_dual else slot_name
 	if slot.locked:
-		label.text = "%s🔒" % slot_name
-		chip.tooltip_text = "%s槽：锁定" % slot_name
+		label.text = "%s🔒" % display_name
+		chip.tooltip_text = "%s槽：锁定" % display_name
 	elif slot.gem_uid.is_empty():
-		label.text = "%s○" % slot_name
-		chip.tooltip_text = "%s槽：空" % slot_name
+		label.text = "%s○" % display_name
+		var tip := "%s槽：空" % display_name
+		if is_dual:
+			tip += "（双色槽，可嵌入%s或%s宝石）" % [slot_name, dual_name]
+		chip.tooltip_text = tip
 	else:
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
-			label.text = "%s?" % slot_name
-			chip.tooltip_text = "%s槽：无宝石数据" % slot_name
+			label.text = "%s?" % display_name
+			chip.tooltip_text = "%s槽：无宝石数据" % display_name
 		else:
-			label.text = "%s◆" % slot_name
+			label.text = "%s◆" % display_name
 			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
 
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	chip.add_child(label)
 	return chip
+
+
+func _slot_display_name(slot_type: String) -> String:
+	match slot_type:
+		Constants.SLOT_RED: return "红"
+		Constants.SLOT_BLUE: return "蓝"
+		Constants.SLOT_BLACK: return "黑"
+	return "?"
 
 
 func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
@@ -1184,6 +1201,28 @@ func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: Strin
 	_dmg_text.spawn(world_pos, value, dmg_type)
 
 
+func _mark_visible_enemies_seen() -> void:
+	if _controller.state == null:
+		return
+	for unit in _controller.state.units.values():
+		if unit.team != Constants.TEAM_ENEMY:
+			continue
+		ProfileService.mark_enemy_seen(unit.unit_def_id)
+	AchievementService.refresh_progress_flags()
+
+
+func _record_enemy_codex_progress() -> void:
+	if _controller.state == null:
+		return
+	for unit in _controller.state.units.values():
+		if unit.team != Constants.TEAM_ENEMY:
+			continue
+		ProfileService.mark_enemy_seen(unit.unit_def_id)
+		if not unit.alive:
+			ProfileService.mark_enemy_killed(unit.unit_def_id)
+	AchievementService.refresh_progress_flags()
+
+
 func _show_tutorial_intro() -> void:
 	var overlay := ColorRect.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1240,6 +1279,7 @@ func set_animation_speed_scale(speed_scale: float) -> void:
 
 
 func _apply_animation_speed() -> void:
+	_animation_speed_scale = SettingsService.get_animation_speed_scale()
 	if _board != null:
 		_board.set_animation_speed_scale(_animation_speed_scale)
 

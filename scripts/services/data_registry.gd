@@ -75,6 +75,7 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 		_unit_defs["unit_player"]
 	)
 	state.units[state.player_uid] = player
+	_apply_run_slot_overrides(player)
 	for enemy_data in encounter.get("enemies", []):
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
@@ -1078,6 +1079,36 @@ func _load_relic_defs_from_json() -> void:
 			_relic_defs[relic_id] = _deep_merge_dict(_relic_defs[relic_id], entry)
 		else:
 			_relic_defs[relic_id] = entry
+
+
+## 将 RunState 记录的持久槽位变更应用到刚创建的玩家单位上
+func _apply_run_slot_overrides(player: UnitState) -> void:
+	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
+	if run_svc == null:
+		return
+	var run: RunState = run_svc.get_run()
+	if run == null:
+		return
+	for entry in run.extra_slots:
+		var slot_type: String = str(entry.get("slot_type", ""))
+		if not slot_type.is_empty():
+			player.slots.append(SlotState.create(slot_type))
+	var upgrades_applied: int = 0
+	for entry in run.upgraded_slots:
+		var from_type: String = str(entry.get("from_type", ""))
+		var to_dual: String = str(entry.get("to_dual_type", ""))
+		if from_type.is_empty() or to_dual.is_empty():
+			continue
+		var applied := false
+		for i in range(upgrades_applied, player.slots.size()):
+			var slot: SlotState = player.slots[i]
+			if slot.slot_type == from_type and slot.dual_type.is_empty():
+				slot.dual_type = to_dual
+				applied = true
+				upgrades_applied += 1
+				break
+		if not applied:
+			upgrades_applied += 1
 
 
 func _read_json_file(path: String) -> Dictionary:

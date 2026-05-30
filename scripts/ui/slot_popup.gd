@@ -66,7 +66,7 @@ func _build_buttons(slots: Array, check_fn: Callable, state: GameState, action: 
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(76, 40)
 		btn.add_theme_font_size_override("font_size", 12)
-		var slot_label: String = _slot_label(slot.slot_type)
+		var slot_label: String = _slot_label_for(slot)
 		var gem_text := ""
 		if not slot.gem_uid.is_empty():
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
@@ -140,6 +140,13 @@ func _slot_label(slot_type: String) -> String:
 		"blue": return "蓝"
 		"black": return "黑"
 	return "?"
+
+
+func _slot_label_for(slot: SlotState) -> String:
+	var base := _slot_label(slot.slot_type)
+	if not slot.dual_type.is_empty():
+		return "%s/%s" % [base, _slot_label(slot.dual_type)]
+	return base
 
 
 func _data_registry() -> Node:

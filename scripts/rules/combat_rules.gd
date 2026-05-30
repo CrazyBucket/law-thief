@@ -153,7 +153,8 @@ static func split_melee_attack(state: GameState, attacker: UnitState, target: Un
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
 	var base := attacker.base_attack + GemEffects.get_attack_bonus(state, attacker)
 	var mult: float = RelicEffectRegistry.query_modifier("attack_damage_mult", state)
-	return maxi(0, int(float(base) * mult))
+	var bonus: int = RelicEffectRegistry.query_modifier("attack_damage_bonus", state)
+	return maxi(0, int(float(base) * mult) + bonus)
 
 
 static func current_armor(state: GameState, unit: UnitState) -> int:

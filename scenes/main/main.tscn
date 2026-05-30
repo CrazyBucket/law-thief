@@ -37,9 +37,120 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0, 0, 0, 0)
+color = Color(0, 0, 0, 0.22)
 
-[node name="ContentLayer" type="Control" parent="."]
+[node name="CenterWrap" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MenuPanel" type="PanelContainer" parent="CenterWrap"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="CenterWrap/MenuPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="CenterWrap/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+text = "窃 律 者"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="CenterWrap/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "LAW THIEF"
+horizontal_alignment = 1
+
+[node name="BadgePanel" type="PanelContainer" parent="CenterWrap/MenuPanel/VBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="SlotBadge" type="Label" parent="CenterWrap/MenuPanel/VBox/BadgePanel"]
+layout_mode = 2
+text = "档案 1"
+horizontal_alignment = 1
+
+[node name="SummaryPanel" type="PanelContainer" parent="CenterWrap/MenuPanel/VBox"]
+custom_minimum_size = Vector2(0, 110)
+layout_mode = 2
+
+[node name="Summary" type="Label" parent="CenterWrap/MenuPanel/VBox/SummaryPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "空白档案"
+autowrap_mode = 2
+vertical_alignment = 1
+
+[node name="Buttons" type="VBoxContainer" parent="CenterWrap/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ContinueBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "继续游戏"
+
+[node name="NewRunBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "开始新游戏"
+
+[node name="SaveBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "存档切换"
+
+[node name="AchievementBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "成就"
+
+[node name="CodexBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "图鉴"
+
+[node name="SettingsBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "设置"
+
+[node name="ExitBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "退出游戏"
+
+[node name="FooterHint" type="Label" parent="CenterWrap/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "开始/继续会切换到流程场景；其他入口通过弹窗查看。"
+autowrap_mode = 2
+horizontal_alignment = 1
+
+[node name="BottomInfo" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -34.0
+offset_right = 360.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 11
+text = "档案 1"
+horizontal_alignment = 1
+
+[node name="ModalLayer" type="Control" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -48,73 +159,65 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="TitleBlock" type="VBoxContainer" parent="ContentLayer"]
+[node name="Backdrop" type="ColorRect" parent="ModalLayer"]
 layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -200.0
-offset_top = 80.0
-offset_right = 200.0
-offset_bottom = 240.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.58)
+
+[node name="Dialog" type="PanelContainer" parent="ModalLayer"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -280.0
+offset_right = 420.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="ModalLayer/Dialog"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="Header" type="VBoxContainer" parent="ModalLayer/Dialog/VBox"]
+layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="Title" type="Label" parent="ContentLayer/TitleBlock"]
+[node name="Title" type="Label" parent="ModalLayer/Dialog/VBox/Header"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 52
-text = "窃 律 者"
-horizontal_alignment = 1
+theme_override_font_sizes/font_size = 28
+text = "弹窗标题"
 
-[node name="Subtitle" type="Label" parent="ContentLayer/TitleBlock"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "LAW THIEF"
-horizontal_alignment = 1
-
-[node name="Tagline" type="Label" parent="ContentLayer/TitleBlock"]
+[node name="Subtitle" type="Label" parent="ModalLayer/Dialog/VBox/Header"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "偷取规则，改写命运"
-horizontal_alignment = 1
+text = "弹窗说明"
+autowrap_mode = 2
 
-[node name="MenuBlock" type="VBoxContainer" parent="ContentLayer"]
-layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -160.0
-offset_top = 320.0
-offset_right = 160.0
-offset_bottom = 520.0
-grow_horizontal = 2
-theme_override_constants/separation = 16
-
-[node name="StartBtn" type="Button" parent="ContentLayer/MenuBlock"]
-custom_minimum_size = Vector2(320, 56)
+[node name="Scroll" type="ScrollContainer" parent="ModalLayer/Dialog/VBox"]
 layout_mode = 2
-text = "▶  开始游戏"
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
-[node name="MapBtn" type="Button" parent="ContentLayer/MenuBlock"]
-custom_minimum_size = Vector2(320, 48)
+[node name="Content" type="VBoxContainer" parent="ModalLayer/Dialog/VBox/Scroll"]
 layout_mode = 2
-text = "🗺  冒险地图"
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
 
-[node name="BottomInfo" type="Label" parent="ContentLayer"]
-layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -200.0
-offset_top = -40.0
-offset_right = 200.0
-grow_horizontal = 2
-grow_vertical = 0
-theme_override_font_sizes/font_size = 11
-text = "v0.3  |  战术 Roguelike  |  Godot 4.6"
-horizontal_alignment = 1
+[node name="Footer" type="HBoxContainer" parent="ModalLayer/Dialog/VBox"]
+layout_mode = 2
+alignment = 2
 
-[connection signal="pressed" from="ContentLayer/MenuBlock/StartBtn" to="." method="_on_start_pressed"]
-[connection signal="pressed" from="ContentLayer/MenuBlock/MapBtn" to="." method="_on_map_pressed"]
+[node name="CloseBtn" type="Button" parent="ModalLayer/Dialog/VBox/Footer"]
+custom_minimum_size = Vector2(140, 42)
+layout_mode = 2
+text = "关闭"

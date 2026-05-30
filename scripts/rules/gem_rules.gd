@@ -45,6 +45,12 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 		return _fail("槽位已被占用")
 	if BoardUtils.distance_between_units(actor, target_unit) > Constants.INSERT_RANGE:
 		return _fail("超出范围")
+	var gem: GemState = state.gems.get(state.held_gem_uid, null)
+	if gem != null:
+		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
+		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
+		if not gem_slot_type.is_empty() and not slot.accepts_slot_type(gem_slot_type):
+			return _fail("宝石颜色与槽位不兼容")
 	return _ok()
 
 
@@ -143,6 +149,12 @@ static func can_insert_tile(state: GameState, actor: UnitState, tile: TileState,
 		return _fail("槽位已被占用")
 	if BoardUtils.manhattan(actor.pos, tile.pos) > Constants.INSERT_RANGE:
 		return _fail("超出范围")
+	var gem: GemState = state.gems.get(state.held_gem_uid, null)
+	if gem != null:
+		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
+		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
+		if not gem_slot_type.is_empty() and not slot.accepts_slot_type(gem_slot_type):
+			return _fail("宝石颜色与槽位不兼容")
 	return _ok()
 
 

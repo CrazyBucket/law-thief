@@ -50,8 +50,8 @@ func _refresh_hud() -> void:
 	if node == null:
 		return
 	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type)
-	_title.text = "冒险地图"
-	_hint.text = "当前：%s %s  |  点击高亮相邻格前进" % [display["glyph"], display["label"]]
+	_title.text = "%s · 冒险地图" % SaveService.get_active_slot_label()
+	_hint.text = "当前：%s %s  |  层级 L%d  |  点击高亮相邻格前进" % [display["glyph"], display["label"], int(node.layer)]
 	_seed_label.text = "种子 %d" % AdventureService.map_seed
 
 
@@ -88,6 +88,8 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 
 
 func _on_back_pressed() -> void:
+	if RunService.is_run_active():
+		RunService.save_run()
 	AdventureService.run_active = false
 	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 

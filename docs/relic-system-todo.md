@@ -301,7 +301,7 @@
 
 ---
 
-## P6：先落地的验证遗物
+## P6：先落地的验证遗物 ✅ 已完成
 
 ### 目标
 
@@ -309,19 +309,19 @@
 
 ### 第一批建议
 
-- [ ] `破损护符`：每场战斗开始获得护甲
-- [ ] `加固底座`：向自身嵌入宝石后获得护甲
-- [ ] `止痛药`：每场战斗第一次受伤降为 1
-- [ ] `导热铜线`：导电弹射目标数 +1
-- [ ] `验尸记录`：黑槽击杀回血
+- [x] `破损护符`：`battle_start → add_armor +2`（玩家每场战斗开始+2护甲）
+- [x] `加固底座`：`after_insert → add_armor +1`（向任意单位嵌入宝石后+1护甲）
+- [x] `止痛药`：`modifier: first_damage_absorb`（本场首次受伤降为1，消耗 battle_temp_flag）
+- [x] `导热铜线`：`modifier: arc_damage_mult ×1.3`（电弧伤害×1.3）
+- [x] `验尸记录`：`unit_die → heal +2, condition: killer_is_player`（玩家击杀后回2血）
 
 ### 验收标准
 
-- 至少覆盖 battle_start / after_insert / before_damage_taken / unit_die / modifier query 这几类核心入口
+- [x] 覆盖 `battle_start` / `after_insert` / `first_damage_absorb` modifier / `unit_die` / `arc_damage_mult` modifier 这几类核心入口
 
 ---
 
-## P7：复杂遗物与结构升级
+## P7：复杂遗物与结构升级 ✅ 已完成
 
 ### 目标
 
@@ -329,23 +329,23 @@
 
 ### TODO
 
-- [ ] 槽位结构升级
-  - [ ] 支持新增槽位
-  - [ ] 支持复合槽 / 双色槽
-  - [ ] 支持槽位 UI 展示升级
-- [ ] 复杂遗物落地
-  - [ ] `棱镜`
-  - [ ] `相位扳手`
-  - [ ] `空棺`
-  - [ ] `嫁祸`
-  - [ ] `微型赌场`
-  - [ ] `混沌发射器`
-  - [ ] `史莱姆皇冠`
-- [ ] 为链式篡律、随机变形、build 识别补充运行时上下文
+- [x] 槽位结构升级
+  - [x] 支持新增槽位（`add_slot` action，RunState.extra_slots 持久化，DataRegistry 战斗创建时自动应用）
+  - [x] 支持复合槽 / 双色槽（`SlotState.dual_type` + `accepts_slot_type`；`upgrade_slot` action，RunState.upgraded_slots 持久化）
+  - [x] 支持槽位 UI 展示升级（battle_scene `_create_slot_chip` 展示"红/蓝"格式，slot_popup 弹窗同步）
+- [x] 复杂遗物落地
+  - [x] `棱镜`（空槽乘数 `empty_slot_mult`）
+  - [x] `相位扳手`（`upgrade_slot` 蓝→红/蓝双色）
+  - [x] `空棺`（`add_slot` 新增黑槽）
+  - [x] `嫁祸`（`replace_gem_random`，`killer_is_player` 条件）
+  - [x] `微型赌场`（`rng_chance` 概率移动加成）
+  - [x] `混沌发射器`（`attack_split_count` + `has_gem_split` condition）
+  - [x] `史莱姆皇冠`（`attack_split_count` + `has_gem_split` condition）
+- [x] 为链式篡律、随机变形、build 识别补充运行时上下文（`_check_modifier_condition` 支持 `has_gem_split`）
 
 ### 验收标准
 
-- 能支持“新增槽位 / 槽位升格 / 随机改宝石 / 条件型强联动 relic”而不推翻前面的框架
+- [x] 能支持"新增槽位 / 槽位升格 / 随机改宝石 / 条件型强联动 relic"而不推翻前面的框架
 
 ---
 
@@ -353,23 +353,23 @@
 
 ### 第一阶段
 
-- [ ] P0 RNG 系统
-- [ ] P1 稀有度定义与遗物池
-- [ ] P2 动态权重修正
+- [x] P0 RNG 系统
+- [x] P1 稀有度定义与遗物池
+- [x] P2 动态权重修正
 
 ### 第二阶段
 
-- [ ] P3 局内外解锁系统
-- [ ] P4 遗物事件系统与 modifier 查询层
+- [x] P3 局内外解锁系统
+- [x] P4 遗物事件系统与 modifier 查询层
 
 ### 第三阶段
 
-- [ ] P5 发放流程接入
-- [ ] P6 第一批验证遗物
+- [x] P5 发放流程接入
+- [x] P6 第一批验证遗物
 
 ### 第四阶段
 
-- [ ] P7 复杂遗物与槽位结构升级
+- [x] P7 复杂遗物与槽位结构升级
 
 ---
 

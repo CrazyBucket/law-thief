@@ -73,6 +73,7 @@ func finish_enemy_phase() -> void:
 	ctrl.state.phase = Constants.PHASE_PLAYER
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	_apply_move_bonus(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)
@@ -128,6 +129,16 @@ func check_battle_end() -> void:
 		ctrl.state.log("战斗胜利")
 		ctrl.state.on_battle_end.emit("win")
 		ctrl.battle_ended.emit("win")
+
+
+func _apply_move_bonus(state: GameState) -> void:
+	var bonus: int = RelicEffectRegistry.query_modifier("move_bonus", state)
+	if bonus <= 0:
+		return
+	var player := state.get_player()
+	if player == null:
+		return
+	player.move_points += bonus
 
 
 func _try_inherit_split_clone(ctrl) -> bool:

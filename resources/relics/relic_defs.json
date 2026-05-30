@@ -5,7 +5,11 @@
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"on": "battle_start", "action": "upgrade_slot",
+       "from_type": "blue", "to_dual_type": "red",
+       "once_per_run": "prism_upgraded"}
+    ]
   },
   "relic_phase_wrench": {
     "name": "相位扳手",
@@ -13,7 +17,11 @@
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"on": "battle_start", "action": "add_slot",
+       "slot_type": "black",
+       "once_per_run": "phase_wrench_added"}
+    ]
   },
   "relic_chaos_launcher": {
     "name": "混沌发射器",
@@ -21,7 +29,9 @@
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"modifier": "attack_damage_bonus", "value": 2}
+    ]
   },
   "relic_autopsy_log": {
     "name": "验尸记录",
@@ -46,7 +56,9 @@
     "weight_rules": [
       {"type": "empty_slot_count_gte", "value": 2, "multiplier": 3.0}
     ],
-    "effects": []
+    "effects": [
+      {"modifier": "attack_damage_mult", "empty_slot_mult": 0.2}
+    ]
   },
   "relic_empty_shell": {
     "name": "空壳",
@@ -73,7 +85,11 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"on": "unit_die", "action": "replace_gem_random",
+       "once_per_run": "frame_up_replaced",
+       "condition": "killer_is_player"}
+    ]
   },
   "relic_mini_casino": {
     "name": "微型赌场",
@@ -82,7 +98,9 @@
     "base_weight": 1.0,
     "unique": true,
     "unlock_condition": "class_gambler",
-    "effects": []
+    "effects": [
+      {"modifier": "move_bonus", "rng_chance": 0.4, "value": 1}
+    ]
   },
   "relic_slime_crown": {
     "name": "史莱姆皇冠",
@@ -94,7 +112,10 @@
     "weight_rules": [
       {"type": "has_gem", "value": "gem_split", "multiplier": 5.0}
     ],
-    "effects": []
+    "effects": [
+      {"modifier": "attack_split_count", "value": 1,
+       "condition": "has_gem_split"}
+    ]
   },
   "relic_gas_mask": {
     "name": "呼吸面罩",

@@ -2,6 +2,8 @@ class_name SlotState
 extends RefCounted
 
 var slot_type: String = ""
+## 双色槽第二颜色；非空时，该槽接受 slot_type 或 dual_type 的宝石嵌入
+var dual_type: String = ""
 var gem_uid: String = ""
 var locked: bool = false
 var lock_type: String = ""
@@ -20,11 +22,21 @@ static func create(slot_type: String, gem_uid: String = "", locked: bool = false
 func clone() -> SlotState:
 	var slot := SlotState.new()
 	slot.slot_type = slot_type
+	slot.dual_type = dual_type
 	slot.gem_uid = gem_uid
 	slot.locked = locked
 	slot.lock_type = lock_type
 	slot.unlock_until_turn = unlock_until_turn
 	return slot
+
+
+## 判断某个 slot_type 的宝石能否嵌入该槽（普通槽精确匹配，双色槽任一颜色均可）
+func accepts_slot_type(query_type: String) -> bool:
+	if slot_type == query_type:
+		return true
+	if not dual_type.is_empty() and dual_type == query_type:
+		return true
+	return false
 
 
 func is_empty() -> bool:

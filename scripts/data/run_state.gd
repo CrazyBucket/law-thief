@@ -9,6 +9,10 @@ var owned_relics: Array[String] = []
 var relic_offer_snapshots: Dictionary = {}
 ## relic_id → RelicRuntimeState
 var relic_runtime: Dictionary = {}
+## 玩家遗物赋予的持久额外槽位：Array of {"slot_type": String}
+var extra_slots: Array = []
+## 玩家遗物赋予的持久槽位升级：Array of {"from_type": String, "to_dual_type": String}
+var upgraded_slots: Array = []
 
 
 static func create(master_seed: int, map_seed: int) -> RunState:
@@ -52,6 +56,14 @@ func get_offer_snapshot(room_id: String) -> Array[String]:
 	return result
 
 
+func add_extra_slot(slot_type: String) -> void:
+	extra_slots.append({"slot_type": slot_type})
+
+
+func add_slot_upgrade(from_type: String, to_dual_type: String) -> void:
+	upgraded_slots.append({"from_type": from_type, "to_dual_type": to_dual_type})
+
+
 func export_dict() -> Dictionary:
 	var runtime_raw: Dictionary = {}
 	for rid in relic_runtime.keys():
@@ -63,6 +75,8 @@ func export_dict() -> Dictionary:
 		"owned_relics": owned_relics.duplicate(),
 		"relic_offer_snapshots": relic_offer_snapshots.duplicate(true),
 		"relic_runtime": runtime_raw,
+		"extra_slots": extra_slots.duplicate(true),
+		"upgraded_slots": upgraded_slots.duplicate(true),
 	}
 
 
@@ -82,4 +96,10 @@ static func from_dict(d: Dictionary) -> RunState:
 	if raw_runtime is Dictionary:
 		for rid in raw_runtime.keys():
 			s.relic_runtime[str(rid)] = RelicRuntimeState.from_dict(raw_runtime[rid])
+	var raw_extra: Variant = d.get("extra_slots", [])
+	if raw_extra is Array:
+		s.extra_slots = (raw_extra as Array).duplicate(true)
+	var raw_upgraded: Variant = d.get("upgraded_slots", [])
+	if raw_upgraded is Array:
+		s.upgraded_slots = (raw_upgraded as Array).duplicate(true)
 	return s
