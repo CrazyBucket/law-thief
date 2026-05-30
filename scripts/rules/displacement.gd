@@ -122,7 +122,7 @@ static func _push_directional(
 
 	if unit.pos != start_pos:
 		TileRules.on_unit_position_changed(state, unit, start_pos)
-		TileRules.on_unit_entered(state, unit, start_pos)
+		TileRules.on_unit_entered(state, unit, start_pos, {"forced": true, "source_uid": source_uid})
 		if not skip_gem_hooks:
 			GemEffects.on_forced_displacement(state, unit, events)
 
@@ -177,7 +177,7 @@ static func _land_after_block(
 	var from_pos := unit.pos
 	state.move_unit(unit, landing)
 	TileRules.on_unit_moved_through(state, unit, landing)
-	state.on_unit_entered(state, unit, from_pos)
+	TileRules.on_unit_entered(state, unit, from_pos, {"forced": true, "source_uid": source_uid})
 	state.on_unit_move.emit(unit.uid, from_pos, landing)
 	events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": landing})
 	if not skip_gem_hooks:

@@ -10,21 +10,24 @@ var _dmg_text: Node = null
 
 @onready var _board: Control = $BoardLayer/IsometricBoard
 @onready var _status_panel: PanelContainer = $HudLayer/StatusPanel
-@onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Portrait
-@onready var _player_name: Label = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/Name
-@onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/HpBar
-@onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/HpText
-@onready var _player_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/PlayerCard/PlayerRow/Info/StatusRow
+@onready var _status_vbox: VBoxContainer = $HudLayer/StatusPanel/VBox
+@onready var _header_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow
+@onready var _turn_chips: HBoxContainer = $HudLayer/StatusPanel/VBox/TurnChips
+@onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Portrait
+@onready var _inspect_name: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/Name
+@onready var _info_col: VBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info
+@onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBar
+@onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpText
+@onready var _inspect_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip/StatusRow
+@onready var _inspect_stats: Label = $HudLayer/StatusPanel/VBox/StatsLabel
+@onready var _slot_box: HBoxContainer = $HudLayer/StatusPanel/VBox/SlotClip/SlotBox
+@onready var _status_clip: Control = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip
+@onready var _slot_clip: Control = $HudLayer/StatusPanel/VBox/SlotClip
 @onready var _turn_label: Label = $HudLayer/StatusPanel/VBox/TurnChips/TurnLabel
 @onready var _move_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/MoveChip
 @onready var _act_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/ActChip
 @onready var _held_label: Label = $HudLayer/StatusPanel/VBox/HeldLabel
 @onready var _hint_label: Label = $HudLayer/StatusPanel/VBox/HintLabel
-@onready var _unit_roster: VBoxContainer = $HudLayer/StatusPanel/VBox/UnitScroll/UnitRoster
-@onready var _inspect_title: Label = $HudLayer/StatusPanel/VBox/InspectTitle
-@onready var _inspect_body: RichTextLabel = $HudLayer/StatusPanel/VBox/InspectBody
-@onready var _slot_box: HBoxContainer = $HudLayer/StatusPanel/VBox/SlotBox
-@onready var _log_label: RichTextLabel = $HudLayer/StatusPanel/VBox/Log
 @onready var _toggle_panel_btn: Button = $HudLayer/TogglePanelBtn
 @onready var _preview_panel: PanelContainer = $HudLayer/PreviewPanel
 @onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title
@@ -69,8 +72,9 @@ var _relic_reward_overlay: Node = null
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
 	"NORMAL_COMBAT": "normal_chest",
-	"ELITE_COMBAT":  "elite_combat",
+	"ELITE_COMBAT": "elite_combat",
 }
+const _STATUS_PANEL_WIDTH := 320.0
 
 func _ready() -> void:
 	_controller.state_changed.connect(_on_controller_state_changed)
@@ -83,6 +87,8 @@ func _ready() -> void:
 	_apply_ui_theme()
 	_preview_panel.visible = false
 	_preview_panel.modulate.a = 0.0
+	call_deferred("_fit_status_panel")
+	call_deferred("_fit_status_panel_height")
 	_wire_hover_interactions()
 	_create_slot_popup()
 	_create_damage_text_manager()
@@ -94,17 +100,17 @@ func _ready() -> void:
 func _apply_ui_theme() -> void:
 	_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_status_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
+	_status_panel.clip_contents = true
+	_held_label.clip_contents = true
+	_held_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_top_bar.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT.darkened(0.2)))
 	_bottom_dock.add_theme_stylebox_override("panel", BattleUiTheme.dock_style())
 	$HudLayer/TurnQueuePanel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.PHASE_PLAYER.darkened(0.35)))
 	_preview_panel.add_theme_stylebox_override("panel", BattleUiTheme.tooltip_style())
-	$HudLayer/StatusPanel/VBox/PlayerCard.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER.darkened(0.15)))
-	_player_name.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	_inspect_name.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	_inspect_stats.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_message_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-	for label_path in ["RosterTitle", "LogTitle", "InspectTitle"]:
-		var label: Label = $HudLayer/StatusPanel/VBox.get_node(label_path)
-		label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	_hp_bar.add_theme_stylebox_override("background", _flat_style(Color(0.12, 0.13, 0.18), Color(0.22, 0.24, 0.3)))
 	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
@@ -163,13 +169,27 @@ func _on_action_pressed(action: String) -> void:
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
-	if _enemy_phase_running or _player_animating:
+	if _player_animating:
 		return
 	var state := _controller.state
-	if state == null or state.phase != Constants.PHASE_PLAYER:
+	if state == null:
 		return
 	var unit := state.get_unit_at(cell)
-	match _controller.selected_action:
+	var action := _controller.selected_action
+	if action.is_empty():
+		if unit != null and unit.alive:
+			_select_unit(unit.uid)
+		else:
+			_dismiss_popup()
+			_refresh()
+		return
+	if _enemy_phase_running or state.phase != Constants.PHASE_PLAYER:
+		if unit != null and unit.alive:
+			_select_unit(unit.uid)
+		else:
+			_refresh()
+		return
+	match action:
 		Constants.ACTION_MOVE:
 			_dismiss_popup()
 			var move_result := _controller.try_move(cell)
@@ -189,23 +209,31 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			_dismiss_popup()
 			if unit != null:
 				_inspect_uid = unit.uid
+			_player_animating = true
+			_presentation_playing = true
 			var atk_res := _controller.try_attack_cell(cell)
 			_show_result(atk_res)
 			if atk_res.get("ok", false):
 				var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
 				var to_pos: Vector2i = atk_res.get("to_pos", cell)
-				_player_animating = true
-				_presentation_playing = true
 				_refresh_deferred = false
 				_start_presentation(atk_res.get("presentation_state", _controller.state.clone()))
-				if from_pos.x >= 0:
+				var attack_events: Array = atk_res.get("attack_events", [])
+				var has_projectile := false
+				for ev in attack_events:
+					if str(ev.get("type", "")) == "projectile":
+						has_projectile = true
+						break
+				if not has_projectile and from_pos.x >= 0:
 					_board.play_projectile(from_pos, to_pos)
 					await _board.animation_finished
 					await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
-				var attack_events: Array = atk_res.get("attack_events", [])
 				await _play_presented_events(attack_events)
 				_player_animating = false
 				_finish_presentation()
+			else:
+				_player_animating = false
+				_presentation_playing = false
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
@@ -230,8 +258,12 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		_board.set_hover(Vector2i(-1, -1))
 		if _timeline_hover_uid.is_empty():
 			_board.set_timeline_hover_unit("")
+		if _controller != null and _controller.selected_action == Constants.ACTION_ATTACK:
+			_board.set_highlights(_controller.get_highlights())
 		return
 	_board.set_hover(cell)
+	if _controller != null and _controller.selected_action == Constants.ACTION_ATTACK:
+		_board.set_highlights(_controller.get_highlights(_hover_cell))
 	if _timeline_hover_uid.is_empty():
 		var hovered_unit := _view_state().get_unit_at(cell)
 		_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
@@ -462,8 +494,9 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"gem_flash":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
 			await get_tree().create_timer(_scaled_anim_time(0.32)).timeout
-		"projectile_deflect":
-			_board.play_projectile(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), Color(0.78, 0.92, 1.0))
+		"projectile", "projectile_deflect":
+			var proj_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
+			_board.play_projectile(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), proj_color)
 			await _board.animation_finished
 			await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 		"lightning", "arc":
@@ -561,11 +594,76 @@ func _finish_presentation() -> void:
 
 
 func _play_presented_events(events: Array) -> void:
-	for ev in events:
+	var i := 0
+	while i < events.size():
+		var ev: Dictionary = events[i]
+		var ev_type := str(ev.get("type", ""))
+		if ev_type in ["projectile", "projectile_deflect"]:
+			var batch: Array = _collect_consecutive_events(events, i, ["projectile", "projectile_deflect"])
+			i += batch.size()
+			await _play_projectile_volley(batch)
+			continue
+		if ev_type == "move_step":
+			var batch: Array = _collect_consecutive_events(events, i, ["move_step"])
+			if _move_batch_is_parallel(batch):
+				i += batch.size()
+				for step_ev in batch:
+					_prime_event_state(step_ev)
+				_board.animate_moves_parallel(batch)
+				await _board.animation_finished
+				for step_ev in batch:
+					_apply_event_state(step_ev)
+				_board.queue_redraw()
+				continue
+		if ev_type == "split_spawn":
+			_apply_event_state(ev)
+			i += 1
+			_board.queue_redraw()
+			continue
 		_prime_event_state(ev)
 		await _play_anim_event(ev)
 		_apply_event_state(ev)
+		i += 1
 		_board.queue_redraw()
+
+
+func _collect_consecutive_events(events: Array, start: int, types: Array) -> Array:
+	var batch: Array = []
+	var i := start
+	while i < events.size() and str(events[i].get("type", "")) in types:
+		batch.append(events[i])
+		i += 1
+	return batch
+
+
+func _play_projectile_volley(batch: Array) -> void:
+	if batch.is_empty():
+		return
+	if batch.size() == 1:
+		var single: Dictionary = batch[0]
+		var proj_color: Color = single.get("color", Color(0.95, 0.92, 0.45))
+		_board.play_projectile(single.get("from", Vector2i.ZERO), single.get("to", Vector2i.ZERO), proj_color)
+	else:
+		var shots: Array = []
+		for ev in batch:
+			shots.append({
+				"from": ev.get("from", Vector2i.ZERO),
+				"to": ev.get("to", Vector2i.ZERO),
+				"color": ev.get("color", Color(0.95, 0.92, 0.45)),
+			})
+		_board.play_projectiles(shots)
+	await _board.animation_finished
+	await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+
+
+func _move_batch_is_parallel(batch: Array) -> bool:
+	if batch.size() <= 1:
+		return false
+	var first_uid := str(batch[0].get("uid", ""))
+	for ev in batch:
+		if str(ev.get("uid", "")) != first_uid:
+			return true
+	return false
 
 
 func _prime_event_state(ev: Dictionary) -> void:
@@ -576,7 +674,10 @@ func _prime_event_state(ev: Dictionary) -> void:
 			var uid := str(ev.get("uid", ""))
 			var unit: UnitState = _display_state.units.get(uid, null)
 			if unit != null:
-				unit.pos = ev.get("to", unit.pos)
+				var from_pos: Vector2i = ev.get("from", unit.pos)
+				var to_pos: Vector2i = ev.get("to", unit.pos)
+				unit.pos = to_pos
+				unit.facing = UnitState.facing_from_step(from_pos, to_pos)
 
 
 func _apply_event_state(ev: Dictionary) -> void:
@@ -602,6 +703,12 @@ func _apply_event_state(ev: Dictionary) -> void:
 			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
 		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc":
 			pass
+		"split_spawn":
+			var clone_uid := str(ev.get("uid", ""))
+			var clone: UnitState = _controller.state.units.get(clone_uid, null)
+			if clone != null and clone.alive:
+				_display_state.register_unit(clone.clone())
+				_display_state.rebuild_occupancy()
 
 
 func _flush_pending_battle_end() -> void:
@@ -746,12 +853,12 @@ func _build_effect_hint(def: Dictionary) -> String:
 
 func _rarity_color(rarity: String) -> Color:
 	match rarity:
-		"common":    return Color("#c8cad4")
-		"rare":      return Color("#6ec6f5")
-		"epic":      return Color("#c77dff")
+		"common": return Color("#c8cad4")
+		"rare": return Color("#6ec6f5")
+		"epic": return Color("#c77dff")
 		"legendary": return Color("#ffd166")
-		"boss":      return Color("#ff6b6b")
-		_:           return Color("#c8cad4")
+		"boss": return Color("#ff6b6b")
+		_: return Color("#c8cad4")
 
 
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
@@ -776,25 +883,13 @@ func _on_toggle_panel() -> void:
 	_panel_visible = not _panel_visible
 	_status_panel.visible = _panel_visible
 	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
-	_toggle_panel_btn.position.x = 260.0 if _panel_visible else 8.0
+	_sync_toggle_btn_x()
 
 
 func _refresh() -> void:
 	var state := _view_state()
 	if state == null:
 		return
-	var player := state.get_player()
-	if player != null:
-		_portrait.texture = UnitLooks.get_unit_texture(player.unit_def_id)
-		_portrait.self_modulate = UnitLooks.sprite_modulate_for_unit(player.team, player.unit_def_id)
-		_player_name.text = _data_registry().get_unit_display_name(player.unit_def_id)
-		_hp_bar.max_value = player.max_hp
-		_hp_bar.value = player.hp
-		var ratio := float(player.hp) / float(maxi(player.max_hp, 1))
-		_hp_bar.add_theme_stylebox_override("fill", _flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08)))
-		_hp_text.text = "%d / %d" % [player.hp, player.max_hp]
-		_refresh_player_status_row(player)
-
 	_turn_label.text = "T%d" % state.turn_index
 	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
 	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
@@ -832,89 +927,74 @@ func _refresh() -> void:
 	_board.selected_unit_uid = _inspect_uid
 	_board.set_timeline_hover_unit(_timeline_hover_uid)
 	_board.set_active_turn_unit(_get_active_turn_uid())
-	_board.set_highlights(_controller.get_highlights())
+	_board.set_highlights(_controller.get_highlights(_hover_cell))
 	if not _enemy_phase_running:
 		_enemy_turn_queue.clear()
 		for enemy in _controller.get_sorted_enemies():
 			_enemy_turn_queue.append(enemy.uid)
 	_refresh_turn_queue()
-	_refresh_unit_roster()
 	_refresh_inspect()
 	_refresh_action_buttons()
-	_refresh_combat_log()
 	_board.queue_redraw()
+	call_deferred("_fit_status_panel")
+	call_deferred("_fit_status_panel_height")
 
 
-func _refresh_player_status_row(player: UnitState) -> void:
-	StatusUi.populate_status_row(_player_status_row, player, true)
+func _fit_status_panel() -> void:
+	if not is_node_ready():
+		return
+	var margins := _status_panel_content_margins()
+	var panel_w := _STATUS_PANEL_WIDTH
+	var inner_w := panel_w - margins.x
+	var header_gap := float(_header_row.get_theme_constant("separation", "HBoxContainer"))
+	var info_w := inner_w - _portrait.custom_minimum_size.x - header_gap
+	_info_col.custom_minimum_size.x = info_w
+	_hp_bar.custom_minimum_size.x = info_w
+	_status_clip.custom_minimum_size.x = info_w
+	_inspect_status_row.offset_right = info_w
+	_apply_status_inner_width(inner_w)
+	var panel_h := _status_vbox.get_minimum_size().y + margins.y
+	_status_panel.custom_minimum_size = Vector2(panel_w, panel_h)
+	_status_panel.size = Vector2(panel_w, panel_h)
+	_status_panel.offset_right = _status_panel.offset_left + panel_w
+	_sync_toggle_btn_x()
 
 
-func _refresh_unit_roster() -> void:
-	for child in _unit_roster.get_children():
-		_unit_roster.remove_child(child)
-		child.queue_free()
-	var state := _view_state()
-	for unit in state.units.values():
-		if not unit.alive:
-			continue
-		var card := _create_unit_card(unit, state)
-		_unit_roster.add_child(card)
+func _fit_status_panel_height() -> void:
+	if not is_node_ready():
+		return
+	var margins := _status_panel_content_margins()
+	var panel_h := _status_vbox.get_minimum_size().y + margins.y
+	if absf(panel_h - _status_panel.size.y) < 0.5:
+		return
+	_status_panel.custom_minimum_size.y = panel_h
+	_status_panel.size.y = panel_h
+	_status_panel.offset_bottom = _status_panel.offset_top + panel_h
 
 
-func _create_unit_card(unit: UnitState, state: GameState) -> Control:
-	var card := PanelContainer.new()
-	var selected := unit.uid == _inspect_uid
-	var hovered := unit.uid == _timeline_hover_uid
-	var accent := Color(0.95, 0.35, 0.35) if unit.team == Constants.TEAM_ENEMY else BattleUiTheme.PHASE_PLAYER
-	if hovered:
-		accent = BattleUiTheme.TEXT_GOLD
-	card.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent if selected or hovered else BattleUiTheme.BORDER.darkened(0.1)))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	card.add_child(row)
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(28, 28)
-	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
-	icon.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
-	row.add_child(icon)
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 3)
-	row.add_child(info)
-	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
-	var title := Label.new()
-	title.text = unit_name
-	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	info.add_child(title)
-	var meta := Label.new()
-	var armor := CombatRules.current_armor(state, unit)
-	meta.text = "HP %d/%d  速%d  甲%d  %s" % [unit.hp, unit.max_hp, unit.speed, armor, _slot_icons(unit, state)]
-	meta.add_theme_font_size_override("font_size", 10)
-	meta.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	info.add_child(meta)
-	if not unit.statuses.is_empty():
-		info.add_child(StatusUi.build_status_row(unit, true))
-	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		var intent_label := Label.new()
-		intent_label.text = unit.intent.preview_text
-		intent_label.add_theme_font_size_override("font_size", 10)
-		intent_label.add_theme_color_override("font_color", Color(1.0, 0.72, 0.45))
-		info.add_child(intent_label)
-	var btn := Button.new()
-	btn.flat = true
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.pressed.connect(_select_unit.bind(unit.uid))
-	btn.mouse_entered.connect(_set_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
-	btn.mouse_exited.connect(_clear_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
-	card.add_child(btn)
-	card.custom_minimum_size = Vector2(0, 60)
-	return card
+func _sync_toggle_btn_x() -> void:
+	if _panel_visible:
+		_toggle_panel_btn.position.x = _status_panel.position.x + _status_panel.size.x + 8.0
+
+
+func _apply_status_inner_width(inner_w: float) -> void:
+	_status_vbox.custom_minimum_size.x = inner_w
+	_header_row.custom_minimum_size.x = inner_w
+	_hint_label.custom_minimum_size.x = inner_w
+	_inspect_stats.custom_minimum_size.x = inner_w
+	_held_label.custom_minimum_size.x = inner_w
+	_slot_clip.custom_minimum_size.x = inner_w
+	_slot_box.size.x = inner_w
+
+
+func _status_panel_content_margins() -> Vector2:
+	var style := _status_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if style == null:
+		return Vector2(24.0, 20.0)
+	return Vector2(
+		style.content_margin_left + style.content_margin_right,
+		style.content_margin_top + style.content_margin_bottom
+	)
 
 
 func _select_unit(uid: String) -> void:
@@ -928,35 +1008,16 @@ func _set_timeline_hover(uid: String) -> void:
 		return
 	_timeline_hover_uid = uid
 	_board.set_timeline_hover_unit(uid)
-	_refresh_turn_queue()
-	call_deferred("_refresh_unit_roster")
+	_board.queue_redraw()
 
 
 func _clear_timeline_hover(uid: String = "") -> void:
 	if not uid.is_empty() and _timeline_hover_uid != uid:
 		return
-	if _timeline_hover_uid.is_empty() and _hover_cell.x < 0:
-		return
 	_timeline_hover_uid = ""
 	var hovered_unit := _view_state().get_unit_at(_hover_cell) if _hover_cell.x >= 0 else null
 	_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
-	_refresh_turn_queue()
-	call_deferred("_refresh_unit_roster")
-
-
-func _slot_icons(unit: UnitState, state: GameState) -> String:
-	if unit.slots.is_empty():
-		return ""
-	var parts: Array[String] = []
-	for slot in unit.slots:
-		if slot.locked:
-			parts.append("🔒")
-		elif slot.gem_uid.is_empty():
-			parts.append("○")
-		else:
-			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			parts.append(UnitLooks.gem_symbol(gem) if gem != null else "?")
-	return "[%s]" % "".join(parts)
+	_board.queue_redraw()
 
 
 func _refresh_inspect() -> void:
@@ -964,44 +1025,43 @@ func _refresh_inspect() -> void:
 	for child in _slot_box.get_children():
 		child.queue_free()
 	if _inspect_uid.is_empty():
-		_inspect_title.text = "单位详情"
-		_inspect_body.text = "[color=#666b78]点击左侧单位或棋盘单位查看详情[/color]"
+		_clear_inspect_header("单位详情")
+		_inspect_stats.text = "点击时间轴或棋盘"
 		return
 	var unit: UnitState = state.units.get(_inspect_uid, null)
-	if unit == null:
-		_inspect_title.text = "已阵亡"
-		_inspect_body.text = ""
+	if unit == null or not unit.alive:
+		_clear_inspect_header("已阵亡")
+		_inspect_stats.text = ""
 		return
 	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
+	_portrait.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
+	_portrait.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
+	_inspect_name.text = unit_name
+	_hp_bar.max_value = unit.max_hp
+	_hp_bar.value = unit.hp
+	var ratio := float(unit.hp) / float(maxi(unit.max_hp, 1))
+	_hp_bar.add_theme_stylebox_override("fill", _flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08)))
+	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
+	StatusUi.populate_status_row(_inspect_status_row, unit, true)
 	var armor_value := CombatRules.current_armor(state, unit)
-	_inspect_title.text = "%s" % unit_name
-	var lines: Array[String] = []
-	lines.append("[color=#9aa0ad]HP %d/%d · 护甲 %d · 速度 %d[/color]" % [unit.hp, unit.max_hp, armor_value, unit.speed])
+	var attack_value := CombatRules.attack_damage(state, unit)
+	var stat_parts: Array[String] = ["攻击 %d · 护甲 %d · 速度 %d" % [attack_value, armor_value, unit.speed]]
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		lines.append("[color=#ffb07a]意图: %s[/color]" % unit.intent.preview_text)
-	lines.append(StatusUi.format_all_bbcode(unit))
+		stat_parts.append(unit.intent.preview_text)
+	_inspect_stats.text = "\n".join(stat_parts)
 	for slot in unit.slots:
-		lines.append(_slot_detail_bbcode(state, unit, slot))
 		_slot_box.add_child(_create_slot_chip(state, unit, slot))
-	_inspect_body.text = "\n".join(lines)
 
 
-func _slot_detail_bbcode(state: GameState, unit: UnitState, slot: SlotState) -> String:
-	var slot_name := "红" if slot.slot_type == Constants.SLOT_RED else ("蓝" if slot.slot_type == Constants.SLOT_BLUE else "黑")
-	var slot_col := UnitLooks.slot_color(slot.slot_type)
-	var col_hex := slot_col.to_html(false)
-	if slot.locked:
-		return "[color=%s]  %s 🔒 锁定[/color]" % [col_hex, slot_name]
-	if slot.gem_uid.is_empty():
-		return "[color=%s]  %s ○ 空槽[/color]" % [col_hex, slot_name]
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return "[color=%s]  %s ?[/color]" % [col_hex, slot_name]
-	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
-	if effect.is_empty():
-		return "[color=%s]  %s ◆ %s[/color]" % [col_hex, slot_name, gem_name]
-	return "[color=%s]  %s ◆ %s[/color] [color=#8a909c]— %s[/color]" % [col_hex, slot_name, gem_name, effect]
+func _clear_inspect_header(title: String) -> void:
+	_portrait.texture = null
+	_portrait.self_modulate = Color.WHITE
+	_inspect_name.text = title
+	_hp_bar.max_value = 1.0
+	_hp_bar.value = 0.0
+	_hp_text.text = ""
+	while _inspect_status_row.get_child_count() > 0:
+		_inspect_status_row.get_child(0).free()
 
 
 func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Control:
@@ -1026,8 +1086,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 			label.text = "%s?" % slot_name
 			chip.tooltip_text = "%s槽：无宝石数据" % slot_name
 		else:
-			var gem_name: String = _data_registry().get_gem_display_name(gem)
-			label.text = "%s·%s" % [slot_name, gem_name]
+			label.text = "%s◆" % slot_name
 			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
 
 	label.add_theme_font_size_override("font_size", 11)
@@ -1065,29 +1124,6 @@ func _refresh_action_buttons() -> void:
 	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
 	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
 	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
-
-
-func _refresh_combat_log() -> void:
-	var state := _view_state()
-	if state == null:
-		_log_label.text = ""
-		return
-	var log_lines := state.combat_log.slice(maxi(0, state.combat_log.size() - 6))
-	_log_label.text = _format_combat_log(log_lines)
-
-
-func _format_combat_log(lines: PackedStringArray) -> String:
-	var formatted: Array[String] = []
-	for line in lines:
-		if "伤害" in line or "被击败" in line:
-			formatted.append("[color=#ff8a80]%s[/color]" % line)
-		elif "嵌入" in line or "拔出" in line or "宝石" in line:
-			formatted.append("[color=#8fd4a8]%s[/color]" % line)
-		elif "回合" in line or "遭遇" in line:
-			formatted.append("[color=#9aa0ad]%s[/color]" % line)
-		else:
-			formatted.append("[color=#c8cad4]%s[/color]" % line)
-	return "\n".join(formatted)
 
 
 func _clamp_preview_panel() -> void:
@@ -1137,7 +1173,7 @@ func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: Strin
 	var dmg_type: String
 	if is_crit:
 		dmg_type = DamageTextManagerScript.DMG_CRIT
-	elif reason == "spike":
+	elif reason == "spike" or reason == "spike_enter" or reason == "spike_collision":
 		dmg_type = DamageTextManagerScript.DMG_FIRE
 	elif reason == "poison":
 		dmg_type = DamageTextManagerScript.DMG_POISON
@@ -1222,9 +1258,10 @@ func _refresh_turn_queue() -> void:
 	var state := _view_state()
 	if state == null:
 		return
+	var active_uid: String = _get_active_turn_uid()
+	_board.set_active_turn_unit(active_uid)
 	for child in _queue_row.get_children():
 		child.queue_free()
-	var active_uid: String = _get_active_turn_uid()
 	var focus_uid := _timeline_hover_uid if not _timeline_hover_uid.is_empty() else active_uid
 	var active_unit: UnitState = state.units.get(active_uid, null)
 	if active_unit != null:

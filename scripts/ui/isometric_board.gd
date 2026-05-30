@@ -65,8 +65,9 @@ var _cached_puff_paths: PackedStringArray = PackedStringArray()
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
-# 抛射物动画：二次贝塞尔曲线飞行
-var _projectile: Dictionary = {} # {from, to, ctrl, t, color} 空表示无飞行中抛射物
+# 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
+var _active_projectiles: Array = []
+var _parallel_move_remaining: int = 0
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
@@ -293,7 +294,13 @@ func _draw() -> void:
 		return
 	for grid in _sorted_cells():
 		_draw_tile(grid)
+	_draw_entities()
 	_draw_highlight_outlines()
+	if hover_cell.x >= 0:
+		var hover_unit := state.get_unit_at(hover_cell)
+		if hover_unit == null or not hover_unit.alive:
+			TileRenderer.draw_hover_outline(self , grid_to_screen(hover_cell))
+	_draw_unit_ground_outlines()
 	# 多格单位在 sorted_cells 中会被多次命中；用 Set 勿重复绘制
 	var drawn_uids: Dictionary = {}
 	for grid in _sorted_cells():
@@ -301,17 +308,22 @@ func _draw() -> void:
 		if unit != null and not drawn_uids.has(unit.uid):
 			drawn_uids[unit.uid] = true
 			_draw_unit(unit)
-	if hover_cell.x >= 0:
-		TileRenderer.draw_hover_outline(self , grid_to_screen(hover_cell))
 	_draw_particles()
 	_draw_projectile()
 
 
 func _draw_highlight_outlines() -> void:
+	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
 	var danger: Array = highlights.get("danger", [])
 	var effect_list: Array = highlights.get("effect_preview", [])
 	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
+	for grid in attack_range:
+		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
+		var closed: PackedVector2Array = corners.duplicate()
+		closed.append(corners[0])
+		var c := Color(0.45, 0.92, 0.55, 0.45 + pulse * 0.25)
+		draw_polyline(closed, c, IsoCoordinates.visual(1.6), false)
 	for grid in targets:
 		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
 		var closed: PackedVector2Array = corners.duplicate()
@@ -332,6 +344,15 @@ func _draw_highlight_outlines() -> void:
 		draw_polyline(closed, c, IsoCoordinates.visual(1.5), false)
 
 
+func _draw_entities() -> void:
+	if state == null:
+		return
+	for entity in state.entities.values():
+		if not entity.alive or entity.entity_id != Constants.ENTITY_SPIKE:
+			continue
+		TileRenderer.draw_spikes(self, grid_to_screen(entity.pos))
+
+
 func _draw_tile(grid: Vector2i) -> void:
 	var center := grid_to_screen(grid)
 	var tile := state.get_tile(grid)
@@ -341,17 +362,21 @@ func _draw_tile(grid: Vector2i) -> void:
 
 func _tile_highlight(grid: Vector2i) -> Color:
 	var reachable: Array = highlights.get("reachable", [])
+	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
 	var paths: Array = highlights.get("paths", [])
 	var danger: Array = highlights.get("danger", [])
 	var effect_list: Array = highlights.get("effect_preview", [])
 	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
+	if grid in effect_list:
+		var a: float = 0.5 + pulse * 0.22
+		return Color(1.0, 0.22, 0.22, a)
+	if grid in attack_range:
+		var a: float = 0.28 + pulse * 0.12
+		return Color(0.42, 0.9, 0.5, a)
 	if grid in targets:
 		var a: float = 0.52 + pulse * 0.22
 		return Color(1.0, 0.9, 0.25, a)
-	if grid in effect_list:
-		var a: float = 0.48 + pulse * 0.2
-		return Color(1.0, 0.48, 0.12, a)
 	if grid in danger:
 		var a: float = 0.42 + pulse * 0.22
 		return Color(1.0, 0.2, 0.2, a)
@@ -367,7 +392,7 @@ func _draw_unit(unit: UnitState) -> void:
 	# 坑2：多格单位的视觉中心（及 Y-Sort 锚点）必须是 footprint 右下角格的屏幕坐标
 	# 而非左上角锚点，否则站在大单位右下方的小单位会被错误遮挡
 	var fp := unit.footprint_size
-	var visual_anchor_grid := unit.pos + fp - Vector2i(1, 1)  # footprint 右下角格
+	var visual_anchor_grid := unit.pos + fp - Vector2i(1, 1) # footprint 右下角格
 	var center := grid_to_screen(visual_anchor_grid)
 	# 多格时水平中心取 footprint 宽度的屏幕跨度中点
 	if fp != Vector2i(1, 1):
@@ -405,22 +430,29 @@ func _draw_unit(unit: UnitState) -> void:
 	var aura_alpha := float(_active_aura_alpha_by_uid.get(unit.uid, 0.0))
 	if aura_alpha > 0.01:
 		_draw_active_turn_aura(unit, center + Vector2(0, IsoCoordinates.visual(2.0)), aura_alpha)
-	if pose_tex != null:
-		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
 	var hp_bar_pos := center + IsoCoordinates.visual_vec(Vector2(-18, 6))
 	var name_alpha := float(_nameplate_alpha_by_uid.get(unit.uid, 0.0))
-	var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
-	var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
-	if hover_alpha > 0.01:
-		_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.15, hover_alpha)
-	if selection_alpha > 0.01:
-		_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.08, selection_alpha)
+	if pose_tex != null:
+		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
 	if name_alpha > 0.01:
 		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
 	_draw_hp_bar(hp_bar_pos, unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		_draw_intent_badge(center + Vector2(0, -sprite_size.y + IsoCoordinates.visual(8.0)) + ground_nudge, unit.intent)
+
+
+func _draw_unit_ground_outlines() -> void:
+	for unit: UnitState in state.units.values():
+		if not unit.alive:
+			continue
+		var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
+		var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
+		var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
+		if hover_alpha > 0.01:
+			_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.15, hover_alpha)
+		if selection_alpha > 0.01:
+			_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.08, selection_alpha)
 
 
 func _draw_unit_focus_outline(
@@ -610,7 +642,7 @@ func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0,
 			cursor.x = 0.0
 			cursor.y += row_h
 			draw_pos = origin + cursor
-		if StatusIcons.draw_icon(self, draw_pos, status.status_id, ICON_SIZE):
+		if StatusIcons.draw_icon(self , draw_pos, status.status_id, ICON_SIZE):
 			var badge_text: String = StatusRegistry.icon_badge(status)
 			if not badge_text.is_empty():
 				var badge_size := ThemeDB.fallback_font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
@@ -776,11 +808,11 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 
 
 ## 播放移动动画：单位从 from_pos 滑动到 to_pos
-func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
+func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_finished: bool = true) -> void:
 	if state != null:
 		var mover: UnitState = state.units.get(unit_uid, null)
 		if mover != null:
-			mover.facing = _facing_from_unit_to_cell(mover, to_pos)
+			mover.facing = _facing_from_grid_pos(from_pos, to_pos)
 	_walk_phase[unit_uid] = 0.0
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)
@@ -797,7 +829,18 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> voi
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(0.25))
-	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset))
+	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset, emit_finished))
+
+
+## 多单位同时位移（爆炸击退等）
+func animate_moves_parallel(moves: Array) -> void:
+	if moves.is_empty():
+		animation_finished.emit()
+		return
+	_parallel_move_remaining = moves.size()
+	for mv in moves:
+		var uid := str(mv.get("uid", ""))
+		animate_move(uid, mv.get("from", Vector2i.ZERO), mv.get("to", Vector2i.ZERO), false)
 
 
 func set_animation_speed_scale(speed_scale: float) -> void:
@@ -813,13 +856,18 @@ func _set_move_offset(offset: Vector2, uid: String) -> void:
 	queue_redraw()
 
 
-func _on_move_anim_done(uid: String, final_offset: Vector2) -> void:
+func _on_move_anim_done(uid: String, final_offset: Vector2, emit_finished: bool = true) -> void:
 	_walk_phase.erase(uid)
 	if final_offset.length_squared() <= 0.001:
 		_move_offsets.erase(uid)
 	else:
 		_move_offsets[uid] = final_offset
 	queue_redraw()
+	if not emit_finished:
+		_parallel_move_remaining = maxi(0, _parallel_move_remaining - 1)
+		if _parallel_move_remaining <= 0:
+			animation_finished.emit()
+		return
 	animation_finished.emit()
 
 
@@ -1153,49 +1201,65 @@ func _puff_sprite_paths() -> PackedStringArray:
 # ═══════════════════════════════════════════════════════════════════════════
 
 ## 播放玩家投射物：从 from_grid 飞向 to_grid，走贝塞尔弧线
-## 落地后 emit animation_finished
 func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
-	var from_scr: Vector2 = grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
-	var to_scr: Vector2 = grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
-	var mid: Vector2 = (from_scr + to_scr) * 0.5
-	var dist: float = from_scr.distance_to(to_scr)
-	var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, IsoCoordinates.visual(28.0), IsoCoordinates.visual(90.0)))
-	_projectile = {
-		"from": from_scr,
-		"to": to_scr,
-		"ctrl": ctrl,
-		"t": 0.0,
-		"color": proj_color,
-	}
-	var duration: float = _scaled_duration(clampf(dist / IsoCoordinates.visual(520.0), 0.18, 0.38))
+	play_projectiles([ {"from": from_grid, "to": to_grid, "color": proj_color}])
+
+
+## 齐射：多枚投射物同时飞行
+func play_projectiles(shots: Array) -> void:
+	if shots.is_empty():
+		animation_finished.emit()
+		return
+	_active_projectiles.clear()
+	var max_duration := 0.0
+	for shot in shots:
+		var from_grid: Vector2i = shot.get("from", Vector2i.ZERO)
+		var to_grid: Vector2i = shot.get("to", Vector2i.ZERO)
+		var proj_color: Color = shot.get("color", Color(0.95, 0.92, 0.45))
+		var from_scr: Vector2 = grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
+		var to_scr: Vector2 = grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
+		var mid: Vector2 = (from_scr + to_scr) * 0.5
+		var dist: float = from_scr.distance_to(to_scr)
+		var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, IsoCoordinates.visual(28.0), IsoCoordinates.visual(90.0)))
+		var duration: float = _scaled_duration(clampf(dist / IsoCoordinates.visual(520.0), 0.18, 0.38))
+		max_duration = maxf(max_duration, duration)
+		_active_projectiles.append({
+			"from": from_scr,
+			"to": to_scr,
+			"ctrl": ctrl,
+			"t": 0.0,
+			"color": proj_color,
+		})
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_IN_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
-	tween.tween_method(_set_projectile_t, 0.0, 1.0, duration)
-	tween.tween_callback(_on_projectile_done)
+	tween.tween_method(_set_projectiles_t, 0.0, 1.0, max_duration)
+	tween.tween_callback(_on_projectiles_done)
 
 
-func _set_projectile_t(t: float) -> void:
-	if _projectile.is_empty():
-		return
-	_projectile["t"] = t
+func _set_projectiles_t(t: float) -> void:
+	for projectile in _active_projectiles:
+		projectile["t"] = t
 	queue_redraw()
 
 
-func _on_projectile_done() -> void:
-	_projectile = {}
+func _on_projectiles_done() -> void:
+	_active_projectiles.clear()
 	queue_redraw()
 	animation_finished.emit()
 
 
 func _draw_projectile() -> void:
-	if _projectile.is_empty():
-		return
-	var t: float = float(_projectile["t"])
-	var from: Vector2 = _projectile["from"]
-	var to: Vector2 = _projectile["to"]
-	var ctrl: Vector2 = _projectile["ctrl"]
-	var color: Color = _projectile["color"]
+	for projectile in _active_projectiles:
+		_draw_single_projectile(projectile)
+
+
+func _draw_single_projectile(projectile: Dictionary) -> void:
+	var t: float = float(projectile["t"])
+	var from: Vector2 = projectile["from"]
+	var to: Vector2 = projectile["to"]
+	var ctrl: Vector2 = projectile["ctrl"]
+	var color: Color = projectile["color"]
 
 	# 二次贝塞尔插值当前位置
 	var inv := 1.0 - t

@@ -23,6 +23,13 @@ static func chebyshev(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(a.x - b.x), absi(a.y - b.y))
 
 
+static func spike_entity_at(state: GameState, pos: Vector2i) -> EntityState:
+	var entity := state.get_entity_at(pos)
+	if entity != null and entity.alive and entity.entity_id == Constants.ENTITY_SPIKE:
+		return entity
+	return null
+
+
 static func neighbors4(pos: Vector2i) -> Array[Vector2i]:
 	return [
 		pos + Vector2i(1, 0),
@@ -115,12 +122,10 @@ static func tile_move_cost(state: GameState, pos: Vector2i) -> float:
 static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var base_step: float = float(profile.get("base_step_cost", 1.0))
 	var cost: float = base_step
+	var spike := spike_entity_at(state, pos)
+	if spike != null:
+		cost += float(Constants.SPIKE_DAMAGE) * float(profile.get("spike_damage_weight", 2.0))
 	var tile: TileState = state.get_tile(pos)
-	match tile.tile_id:
-		Constants.TILE_SPIKE:
-			cost += float(Constants.SPIKE_DAMAGE) * float(profile.get("spike_damage_weight", 2.0))
-		_:
-			pass
 	# 水洼（含毒水洼）：移动消耗 +1
 	if tile.has_ground_tag(Constants.GROUND_TAG_WATER) or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
 		cost += 1.0 + float(profile.get("water_cost_bias", 0.0))

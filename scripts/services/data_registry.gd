@@ -162,7 +162,6 @@ func get_gem_ids() -> Array[String]:
 func get_tile_ids() -> Array[String]:
 	return [
 		Constants.TILE_FLOOR,
-		Constants.TILE_SPIKE,
 		Constants.TILE_WATER,
 		Constants.TILE_PILLAR,
 	]
@@ -786,8 +785,8 @@ func _register_encounters() -> void:
 				{"def_id": "unit_bomb_rat", "pos": Vector2i(2, 4)},
 				{"def_id": "unit_patrol_guard", "pos": Vector2i(3, 5)},
 			],
-			"tiles": [
-				{"pos": Vector2i(2, 5), "tile_id": Constants.TILE_SPIKE},
+			"entities": [
+				{"pos": Vector2i(2, 5), "entity_id": Constants.ENTITY_SPIKE},
 			],
 		},
 		"bomb_rat_test": {
@@ -821,9 +820,11 @@ func _register_encounters() -> void:
 				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 4)},
 				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 6)},
 			],
+			"entities": [
+				{"pos": Vector2i(3, 5), "entity_id": Constants.ENTITY_SPIKE},
+				{"pos": Vector2i(6, 3), "entity_id": Constants.ENTITY_SPIKE},
+			],
 			"tiles": [
-				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(6, 3), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(7, 5), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
@@ -834,10 +835,12 @@ func _register_encounters() -> void:
 				{"def_id": "unit_fission_slime", "pos": Vector2i(3, 3)},
 				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 5)},
 			],
+			"entities": [
+				{"pos": Vector2i(4, 4), "entity_id": Constants.ENTITY_SPIKE},
+				{"pos": Vector2i(5, 4), "entity_id": Constants.ENTITY_SPIKE},
+				{"pos": Vector2i(6, 4), "entity_id": Constants.ENTITY_SPIKE},
+			],
 			"tiles": [
-				{"pos": Vector2i(4, 4), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(5, 4), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(6, 4), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(2, 2), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
@@ -864,12 +867,14 @@ func _register_encounters() -> void:
 				{"def_id": "unit_patrol_guard", "pos": Vector2i(4, 4)},
 				{"def_id": "unit_fission_slime", "pos": Vector2i(2, 2)},
 			],
+			"entities": [
+				{"pos": Vector2i(5, 6), "entity_id": Constants.ENTITY_SPIKE},
+				{"pos": Vector2i(6, 6), "entity_id": Constants.ENTITY_SPIKE},
+			],
 			"tiles": [
 				{"pos": Vector2i(2, 3), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(3, 3), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(2, 4), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(5, 6), "tile_id": Constants.TILE_SPIKE},
-				{"pos": Vector2i(6, 6), "tile_id": Constants.TILE_SPIKE},
 				{"pos": Vector2i(7, 3), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
@@ -946,8 +951,6 @@ func _rarity_rank(rarity: String) -> int:
 
 func _tile_display_name_key(tile_id: String) -> String:
 	match tile_id:
-		Constants.TILE_SPIKE:
-			return "tile.spike.name"
 		Constants.TILE_WATER:
 			return "tile.water.name"
 		Constants.TILE_PILLAR:

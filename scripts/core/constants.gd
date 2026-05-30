@@ -25,6 +25,7 @@ const GEM_FIRE := "gem_fire"
 const GEM_ICE := "gem_ice"
 const GEM_SPLIT := "gem_split"
 
+const SPLIT_ATTACK_RANGE := 1              # 红槽分裂：仅相邻格可瞄准
 const SPLIT_ATTACK_DAMAGE_RATIO := 0.7     # 红槽：三发伤害倍率
 const SPLIT_DAMAGE_REDIRECT_RATIO := 0.5   # 蓝槽：转移伤害比例（原单位受剩余50%）
 const SPLIT_SURROUND_RADIUS := 1           # 蓝槽：转移范围（占格外圈切比雪夫距离）
@@ -32,7 +33,6 @@ const SPLIT_STAT_RATIO := 0.3              # 黑槽：分身全属性倍率
 const SPLIT_DEATH_HP_MERGE_DIVISOR := 2    # 黑槽：战斗结算时分身血量之和除以此值
 
 const TILE_FLOOR := "tile_floor"
-const TILE_SPIKE := "tile_spike"
 const TILE_WATER := "tile_water"
 const TILE_PILLAR := "tile_pillar"    # 机关柱：有 1 个蓝槽，嵌入宝石提供持续光环
 
@@ -65,7 +65,7 @@ const INSERT_RANGE := 3
 const TRIGGER_RANGE := 3
 const EXPLOSION_DAMAGE := 12
 const EXPLOSION_RADIUS := 1
-const EXPLOSION_CROSS_DAMAGE := 1   # 爆炸宝石命中时十字扩散伤害
+const EXPLOSION_CROSS_DAMAGE := 12   # 红槽十字四邻溅射（命中格为中心，不含对角）
 const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 chebyshev 范围）
 const CHARGE_EXPLODE_DASH_RANGE := 2  # 红槽冲刺爆炸：自爆前最大冲刺格数
 const GRAVITY_COLLISION_DAMAGE := 3
@@ -96,7 +96,7 @@ const STATUS_EXPOSED := "exposed"
 const STATUS_LAWLESS := "lawless"
 const STATUS_BOMB_RAT_PLUNDER := "bomb_rat_plunder"  # 炸弹鼠无律掠夺阶段
 const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
-const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被推入地刺时附加
+const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被强制位移踩入地刺时附加
 
 const TILE_MOD_POISON_FOG := "poison_fog"
 const TILE_MOD_FIRE := "fire"
@@ -112,14 +112,14 @@ const GROUND_TAG_WATER      := "ground:water"        # 水洼：进入上潮湿�
 
 # ─── 地块实体 ──────────────────────────────────────────────────────────────────
 const ENTITY_ROCK   := "entity_rock"    # 石块：无敌，阻挡移动与弹道
-const ENTITY_SPIKE  := "entity_spike"   # 地刺：进入受伤，碰撞暴击
+const ENTITY_SPIKE  := "entity_spike"   # 地刺：可通行，步入受伤，强制位移附加易伤
 const ENTITY_BARREL := "entity_barrel"  # 油桶：可破坏，着火/血量归零时爆炸
 
 const BARREL_HP              := 3
 const BARREL_EXPLOSION_DAMAGE := 10
 const BARREL_EXPLOSION_RADIUS := 1
 
-const SPIKE_COLLISION_DAMAGE := 10  # 被推/拉撞入地刺时的基础伤害（易伤状态下 ×1.5 = 15）
+const SPIKE_COLLISION_DAMAGE := 10  # 强制位移踩入地刺的基础伤害（易伤状态下 ×1.5 = 15）
 
 # ─── 新地块 tile_id ────────────────────────────────────────────────────────────
 const TILE_ICE   := "tile_ice"
@@ -167,6 +167,5 @@ const DISPLACEMENT_LANDING_SCAN := 6
 
 # ─── 地块语义标签 ──────────────────────────────────────────────────────────────
 # 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部
-const TAG_TILE_HAZARD       := "tile:hazard"       # 危险地块（进入时受到伤害）
 const TAG_TILE_CONDUCTIVE   := "tile:conductive"   # 导体地块（电弧/电击可连锁）
 const TAG_TILE_INTERACTIVE  := "tile:interactive"  # 可交互地块（有槽位，可嵌入宝石）

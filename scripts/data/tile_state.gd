@@ -108,8 +108,6 @@ func tick_modifiers() -> void:
 ## 语义标签查询（向后兼容旧调用点，内部转发到 ground_tags 或 tile_id 匹配）
 func has_tile_tag(tag: String) -> bool:
 	match tag:
-		Constants.TAG_TILE_HAZARD:
-			return tile_id == Constants.TILE_SPIKE
 		Constants.TAG_TILE_CONDUCTIVE:
 			return has_ground_tag(Constants.GROUND_TAG_WATER)
 		Constants.TAG_TILE_INTERACTIVE:

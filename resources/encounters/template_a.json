@@ -5,9 +5,11 @@
     {"def_id": "unit_patrol_guard", "pos": [5, 4]},
     {"def_id": "unit_stone_bow_guard", "pos": [6, 6]}
   ],
+  "entities": [
+    {"pos": [3, 5], "entity_id": "entity_spike"},
+    {"pos": [6, 3], "entity_id": "entity_spike"}
+  ],
   "tiles": [
-    {"pos": [3, 5], "tile_id": "tile_spike"},
-    {"pos": [6, 3], "tile_id": "tile_spike"},
     {"pos": [7, 5], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]}
   ]
 }

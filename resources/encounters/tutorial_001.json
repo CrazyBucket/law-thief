@@ -4,7 +4,7 @@
     {"def_id": "unit_bomb_rat", "pos": [2, 4]},
     {"def_id": "unit_patrol_guard", "pos": [3, 5]}
   ],
-  "tiles": [
-    {"pos": [2, 5], "tile_id": "tile_spike"}
+  "entities": [
+    {"pos": [2, 5], "entity_id": "entity_spike"}
   ]
 }

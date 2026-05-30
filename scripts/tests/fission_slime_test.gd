@@ -18,6 +18,8 @@ func _run_test() -> void:
 	_test_split_redirect_skips_without_neighbor()
 	_test_split_surround_uses_footprint_ring()
 	_test_clone_footprint_1x1()
+	_test_clone_death_no_resplit()
+	_test_clone_uses_melee_ai()
 	_test_attack_range_uses_nearest_footprint_cell()
 	print("FISSION_SLIME_TEST_PASS")
 	quit()
@@ -146,6 +148,55 @@ func _test_clone_footprint_1x1() -> void:
 			print("  [OK] split clones are 1x1")
 			return
 	assert(false, "expected split clone")
+
+
+func _test_clone_death_no_resplit() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var events: Array[Dictionary] = []
+	GemEffectsScript.on_unit_death(state, slime, events)
+	var clone: UnitState = null
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			clone = unit
+			break
+	assert(clone != null, "expected a split clone")
+	var before_count := 0
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			before_count += 1
+	GemEffectsScript.on_unit_death(state, clone, events)
+	var after_count := 0
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE) and unit.alive:
+			after_count += 1
+	assert(after_count == before_count - 1, "clone death should not spawn more clones")
+	print("  [OK] clone death does not resplit")
+
+
+func _test_clone_uses_melee_ai() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var player := state.get_player()
+	var events: Array[Dictionary] = []
+	GemEffectsScript.on_unit_death(state, slime, events)
+	var clone: UnitState = null
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			clone = unit
+			break
+	assert(clone != null)
+	assert(clone.behavior_id == "generic_melee")
+	player.pos = clone.pos + Vector2i(1, 0)
+	if not BoardUtils.are_units_adjacent(clone, player):
+		player.pos = clone.pos + Vector2i(0, 1)
+	IntentSystem.refresh_unit_intent(state, clone)
+	assert(clone.intent.type != "wait", "clone should act, got %s" % clone.intent.type)
+	print("  [OK] clone uses generic melee ai")
 
 
 func _test_attack_range_uses_nearest_footprint_cell() -> void:

@@ -77,6 +77,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		)
 	reachable.append(enemy.pos)
 
+	var max_shoot_range: int = attack_range_for(turn_start, [])
 	var candidates: Array = []
 	for move_pos in reachable:
 		if _anchor_blocked(state, enemy, move_pos, cell_blockers):
@@ -125,8 +126,11 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		var candidate := EnemyAI.ActionCandidate.new()
 		candidate.type = EnemyAI.ActionType.MOVE
 		candidate.move_target = move_pos
-		candidate.score = _score_kite_reposition(current_dist, new_dist)
-		candidate.description = "风筝走位"
+		if current_dist > max_shoot_range:
+			candidate.score = _score_approach_out_of_range(current_dist, new_dist, move_pos, enemy.pos)
+		else:
+			candidate.score = _score_kite_reposition(current_dist, new_dist)
+		candidate.description = "风筝走位" if current_dist <= max_shoot_range else "逼近射程"
 		candidates.append(candidate)
 
 	var wait := EnemyAI.ActionCandidate.new()
@@ -194,6 +198,21 @@ static func _score_ranged_position(
 
 	if is_deployed(turn_start, move_path) and dist >= Constants.STONE_BOW_KITE_IDEAL_RANGE and not can_shoot_here:
 		score += 6.0
+	return score
+
+
+static func _score_approach_out_of_range(
+	current_dist: int,
+	new_dist: int,
+	move_pos: Vector2i,
+	turn_start: Vector2i
+) -> float:
+	var score: float = float(current_dist - new_dist) * 45.0
+	score -= float(BoardUtils.manhattan(turn_start, move_pos)) * 0.5
+	if new_dist < Constants.STONE_BOW_KITE_MIN_RANGE:
+		score -= 40.0
+	elif new_dist <= Constants.STONE_BOW_KITE_IDEAL_RANGE:
+		score += 25.0
 	return score
 
 

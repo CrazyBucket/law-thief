@@ -9,6 +9,7 @@ func _run_tests() -> void:
 	print("=== Gravity Test ===")
 	_test_diagonal_pull_collision()
 	_test_friendly_collision()
+	_test_pull_into_spike_applies_vulnerable()
 	print("GRAVITY_TEST_PASS")
 	quit()
 
@@ -27,6 +28,19 @@ func _test_diagonal_pull_collision() -> void:
 	assert(puller.hp < puller_hp_before, "puller should take collision damage")
 	assert(not events.is_empty(), "collision should emit events")
 	print("  [OK] diagonal pull collision")
+
+
+func _test_pull_into_spike_applies_vulnerable() -> void:
+	var state := _make_state()
+	var puller := _make_unit(state, "puller", Constants.TEAM_ENEMY, Vector2i(3, 3))
+	var target := _make_unit(state, "target", Constants.TEAM_PLAYER, Vector2i(1, 3))
+	state.add_entity(EntityState.create("spike_0", Constants.ENTITY_SPIKE, Vector2i(2, 3)))
+	var hp_before := target.hp
+	GemEffects.pull_unit_toward_with_events(state, target, puller.pos, 1, puller.uid)
+	assert(target.pos == Vector2i(2, 3), "target should land on spike")
+	assert(StatusRules.is_vulnerable(target), "forced pull onto spike should apply vulnerable")
+	assert(target.hp < hp_before, "pull onto spike should deal damage")
+	print("  [OK] gravity pull onto spike: vulnerable + damage")
 
 
 func _test_friendly_collision() -> void:

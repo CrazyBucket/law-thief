@@ -75,8 +75,6 @@ static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState)
 		_draw_room_label(canvas, center, tile.tile_id)
 		return
 	match tile.tile_id:
-		Constants.TILE_SPIKE:
-			_draw_spikes(canvas, center)
 		Constants.TILE_WATER:
 			_draw_water(canvas, center, tile.edge_mask)
 		Constants.TILE_FLOOR:
@@ -85,7 +83,7 @@ static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState)
 			_draw_pillar(canvas, center)
 
 
-static func _draw_spikes(canvas: Control, center: Vector2) -> void:
+static func draw_spikes(canvas: Control, center: Vector2) -> void:
 	var offsets := [Vector2(-10, 2), Vector2(0, -4), Vector2(10, 2)]
 	for offset in offsets:
 		var base: Vector2 = center + offset
@@ -144,12 +142,6 @@ static func _palette(tile: TileState) -> Dictionary:
 	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
 		return _room_palette(tile.tile_id)
 	match tile.tile_id:
-		Constants.TILE_SPIKE:
-			return {
-				"top": Color(0.48, 0.24, 0.2),
-				"left": Color(0.34, 0.16, 0.14),
-				"right": Color(0.4, 0.2, 0.17),
-			}
 		Constants.TILE_WATER:
 			return {
 				"top": Color(0.18, 0.34, 0.58),

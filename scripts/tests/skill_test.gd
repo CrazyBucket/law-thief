@@ -12,6 +12,7 @@ func _run_tests() -> void:
 	_test_explosion_triggers_on_attack_hit()
 	_test_poison_triggers_on_attack_hit()
 	_test_explosion_on_empty_cell()
+	_test_explosion_splash_damages_neighbor()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -118,6 +119,40 @@ func _test_explosion_on_empty_cell() -> void:
 	var cells: Array = explode_ev.get("cells", [])
 	assert(cells.size() == 5, "cross should cover 5 cells, got %d" % cells.size())
 	print("  [OK] explosion on empty cell")
+
+
+func _test_explosion_splash_damages_neighbor() -> void:
+	print("--- Test: Explosion red gem splash damages adjacent unit ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_explosion_splash"
+	gem.gem_id = Constants.GEM_EXPLOSION
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	var guards: Array[UnitState] = []
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard" and unit.alive:
+			guards.append(unit)
+	assert(guards.size() >= 2, "need at least 2 guards")
+	var primary := guards[0]
+	var neighbor := guards[1]
+	neighbor.pos = primary.pos + Vector2i(1, 0)
+	assert(BoardUtils.chebyshev(primary.pos, neighbor.pos) == 1, "neighbor setup")
+	var primary_hp := primary.hp
+	var neighbor_hp := neighbor.hp
+	var result := ctrl.try_attack_cell(primary.pos)
+	assert(result.get("ok", false), "attack should succeed")
+	assert(primary.hp < primary_hp, "primary target should take hit damage")
+	assert(neighbor.hp < neighbor_hp, "neighbor should take explosion splash (%d -> %d)" % [neighbor_hp, neighbor.hp])
+	var splash_events := 0
+	for ev in result.get("attack_events", []):
+		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == neighbor.pos:
+			splash_events += 1
+	assert(splash_events >= 1, "should emit neighbor damage event")
+	print("  [OK] explosion splash damages neighbor (%d -> %d)" % [neighbor_hp, neighbor.hp])
 
 
 func _data_registry() -> Node:

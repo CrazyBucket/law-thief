@@ -16,6 +16,7 @@ const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻�
 const MODE_TRIGGER := "trigger"
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
+const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
 const ABILITY_BLUE_DAMAGED := "blue_damaged"
 const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
@@ -164,6 +165,12 @@ static func cross_explosion_cells(center: Vector2i) -> Array[Vector2i]:
 	return cells
 
 
+static func resolve_blast_center(fallback: Vector2i, aim_cell: Variant = null) -> Vector2i:
+	if aim_cell is Vector2i:
+		return aim_cell
+	return fallback
+
+
 static func unit_has_red_explosion(state: GameState, unit: UnitState) -> bool:
 	var slot := unit.get_slot(Constants.SLOT_RED)
 	if slot == null or slot.gem_uid.is_empty():
@@ -174,15 +181,30 @@ static func unit_has_red_explosion(state: GameState, unit: UnitState) -> bool:
 	return _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == "explosion"
 
 
-## 红槽爆炸：中心 + 四邻十字共 5 格；默认仅震开四邻，中心单位不位移
+static func unit_has_red_split(state: GameState, unit: UnitState) -> bool:
+	var slot := unit.get_slot(Constants.SLOT_RED)
+	if slot == null or slot.gem_uid.is_empty():
+		return false
+	var gem: GemState = state.gems.get(slot.gem_uid, null)
+	if gem == null:
+		return false
+	var player_profile: String = _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE)
+	if player_profile == "split":
+		return true
+	return _ability_profile(gem, ABILITY_ENEMY_RED_ACTION) == "split"
+
+
+## 红槽爆炸：以 center 为中心，十字四邻各结算一次（同一单位只结算一次）
 static func explode_cross_at(
 	state: GameState,
 	center: Vector2i,
 	source_uid: String,
-	center_damage: int = 0,
-	cross_damage: int = Constants.EXPLOSION_CROSS_DAMAGE,
-	knockback_center: bool = false
+	opts: Dictionary = {}
 ) -> Array[Dictionary]:
+	var center_damage: int = int(opts.get("center_damage", 0))
+	var cross_damage: int = int(opts.get("cross_damage", Constants.EXPLOSION_CROSS_DAMAGE))
+	var knockback_center: bool = bool(opts.get("knockback_center", false))
+	var exclude_unit_uid: String = str(opts.get("exclude_unit_uid", ""))
 	var events: Array[Dictionary] = []
 	var cells: Array[Vector2i] = cross_explosion_cells(center)
 	events.append({"type": "explode", "pos": center, "pattern": "cross", "cells": cells})
@@ -190,15 +212,17 @@ static func explode_cross_at(
 	if center_damage > 0:
 		var center_unit := state.get_unit_at(center)
 		if center_unit != null and center_unit.alive and center_unit.uid != source_uid:
-			var dealt_center := CombatRules.apply_damage(
-				state, center_unit, center_damage, source_uid, "explosion_cross"
-			)
-			if dealt_center > 0:
-				events.append({"type": "damage", "pos": center_unit.pos, "damage": dealt_center, "is_crit": false})
-			if knockback_center and center_unit.alive:
-				_Displacement.knockback(
-					state, center_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
+			if exclude_unit_uid.is_empty() or center_unit.uid != exclude_unit_uid:
+				var dealt_center := CombatRules.apply_damage(
+					state, center_unit, center_damage, source_uid, "explosion_cross"
 				)
+				if dealt_center > 0:
+					events.append(_explosion_damage_event(center_unit, dealt_center, source_uid))
+				if knockback_center and center_unit.alive:
+					_Displacement.knockback(
+						state, center_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
+					)
+	var splashed: Dictionary = {}
 	for cell in BoardUtils.neighbors4(center):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
@@ -207,9 +231,14 @@ static func explode_cross_at(
 			continue
 		if hit_unit.uid == source_uid:
 			continue
+		if not exclude_unit_uid.is_empty() and hit_unit.uid == exclude_unit_uid:
+			continue
+		if splashed.has(hit_unit.uid):
+			continue
+		splashed[hit_unit.uid] = true
 		var dealt := CombatRules.apply_damage(state, hit_unit, cross_damage, source_uid, "explosion_cross")
 		if dealt > 0:
-			events.append({"type": "damage", "pos": hit_unit.pos, "damage": dealt, "is_crit": false})
+			events.append(_explosion_damage_event(hit_unit, dealt, source_uid))
 		for gem_slot in hit_unit.slots:
 			if gem_slot.locked and gem_slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, gem_slot, state.turn_index)
@@ -224,18 +253,34 @@ static func explode_at(state: GameState, center: Vector2i, damage: int, source_u
 	return _explode_at(state, center, damage, source_uid)
 
 
+static func _explosion_damage_event(unit: UnitState, dealt: int, source_uid: String) -> Dictionary:
+	return {
+		"type": "damage",
+		"pos": unit.pos,
+		"damage": dealt,
+		"is_crit": false,
+		"attacker_uid": source_uid,
+	}
+
+
 static func _explode_at(state: GameState, center: Vector2i, damage: int, source_uid: String) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
+	var hit_uids: Dictionary = {}
 	state.log("爆炸于 %s" % [center])
 	for cell in BoardUtils.cells_in_radius(center, Constants.EXPLOSION_RADIUS):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
 		var hit_unit := state.get_unit_at(cell)
-		if hit_unit == null:
+		if hit_unit == null or not hit_unit.alive:
 			continue
+		if hit_unit.uid == source_uid:
+			continue
+		if hit_uids.has(hit_unit.uid):
+			continue
+		hit_uids[hit_unit.uid] = true
 		var dealt := CombatRules.apply_damage(state, hit_unit, damage, source_uid, "explosion")
 		if dealt > 0:
-			events.append({"type": "damage", "pos": hit_unit.pos, "damage": dealt, "is_crit": false})
+			events.append(_explosion_damage_event(hit_unit, dealt, source_uid))
 		for slot in hit_unit.slots:
 			if slot.locked and slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, slot, state.turn_index)
@@ -307,7 +352,9 @@ static func pull_unit_toward_with_events(
 		current = next
 	if unit.pos != start_pos:
 		TileRules.on_unit_position_changed(state, unit, start_pos)
-		TileRules.on_unit_entered(state, unit, start_pos)
+		var enter_opts := {"forced": true, "source_uid": source_uid}
+		TileRules.on_unit_entered(state, unit, start_pos, enter_opts)
+		GemEffects.on_forced_displacement(state, unit, events)
 	return events
 
 
@@ -386,14 +433,14 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 	var out_events: Array[Dictionary] = _events_from_ctx(ctx)
 	match _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE):
 		"explosion":
-			var blast_center: Vector2i = ctx.get("target_pos", owner.pos)
-			if blast_center.x < 0:
-				blast_center = owner.pos
+			var blast_center := resolve_blast_center(owner.pos, ctx.get("target_pos", null))
 			var target_unit: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+			var exclude_uid := ""
 			if target_unit != null and target_unit.alive:
-				blast_center = target_unit.pos
+				blast_center = resolve_blast_center(target_unit.pos, ctx.get("target_pos", null))
+				exclude_uid = target_unit.uid
 			out_events.append_array(
-				explode_cross_at(state, blast_center, owner.uid, 0, Constants.EXPLOSION_CROSS_DAMAGE, false)
+				explode_cross_at(state, blast_center, owner.uid, {"exclude_unit_uid": exclude_uid})
 			)
 			return true
 		"poison":
@@ -486,8 +533,12 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 
 ## 带事件输出的死亡钩子入口
 static func _run_death_hooks_with_events(state: GameState, unit: UnitState, out_events: Array[Dictionary]) -> void:
+	if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+		return
 	for slot in unit.slots:
 		if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
+			continue
+		if slot.locked and slot.lock_type == "split_disabled":
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
@@ -838,6 +889,27 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 
 ## ─── 分裂（split）黑槽：死亡生成两个分身 ────────────────────────────────────
 
+## 优先在死亡单位刚腾出的 footprint 格生成分身，不足时再向外找空地
+static func _find_split_spawn_cells(state: GameState, owner: UnitState, count: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for cell in owner.occupied_cells():
+		if not BoardUtils.in_bounds(state, cell):
+			continue
+		if state.get_unit_at(cell) != null:
+			continue
+		if not result.has(cell):
+			result.append(cell)
+		if result.size() >= count:
+			return result
+	for cell in _find_empty_neighbor_cells(state, owner.pos, count):
+		if result.has(cell):
+			continue
+		result.append(cell)
+		if result.size() >= count:
+			break
+	return result
+
+
 ## 找 owner 周围（或更远）第一个空地
 static func _find_empty_neighbor_cells(state: GameState, origin: Vector2i, count: int) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
@@ -880,7 +952,7 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 	clone.facing = owner.facing
 	clone.alive = true
 	clone.ai_profile_id = owner.ai_profile_id
-	clone.behavior_id = owner.behavior_id
+	clone.behavior_id = "generic_melee"
 	clone.split_origin_uid = owner.uid
 	clone.footprint_size = Vector2i(1, 1)
 	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
@@ -934,12 +1006,14 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 		clone.slots.append(black_slot)
 
 	state.register_unit(clone)
+	var intent_system := preload("res://scripts/rules/intent_system.gd")
+	intent_system.refresh_unit_intent(state, clone)
 	return clone
 
 
 ## 生成两个分身：找空地、分槽、创建单位
 static func _spawn_split_clones(state: GameState, owner: UnitState, out_events: Array[Dictionary]) -> void:
-	var spawn_cells := _find_empty_neighbor_cells(state, owner.pos, 2)
+	var spawn_cells := _find_split_spawn_cells(state, owner, 2)
 	if spawn_cells.is_empty():
 		state.log("%s 分裂失败：周围没有空地" % owner.uid)
 		return

@@ -15,32 +15,69 @@ static func rampage_move_points(unit: UnitState) -> int:
 	return unit.move_points + Constants.PATROL_GUARD_RAMPAGE_MOVE_BONUS
 
 
-static func charge_bonus_from_path(from_pos: Vector2i, path: Array) -> int:
-	if straight_orthogonal_steps(from_pos, path) >= Constants.PATROL_GUARD_CHARGE_MIN_STEPS:
-		return Constants.PATROL_GUARD_CHARGE_BONUS
-	return 0
-
-
-static func melee_damage_preview(state: GameState, unit: UnitState, from_pos: Vector2i, path: Array) -> int:
-	return CombatRules.attack_damage(state, unit) + charge_bonus_from_path(from_pos, path)
-
-
-static func straight_orthogonal_steps(from_pos: Vector2i, path: Array) -> int:
-	if path.is_empty():
+static func charge_bonus(state: GameState, unit: UnitState, move_start_pos: Vector2i, path: Array) -> int:
+	if unit.has_status(Constants.STATUS_SLOWED):
 		return 0
-	var prev: Vector2i = from_pos
-	var axis: Vector2i = Vector2i.ZERO
-	var count: int = 0
+	var steps := _path_steps(path)
+	if steps.size() < Constants.PATROL_GUARD_CHARGE_MIN_STEPS:
+		return 0
+	var charge_cells := _final_charge_cells(move_start_pos, steps)
+	if charge_cells.is_empty():
+		return 0
+	if _charge_move_cost_sum(state, charge_cells) > Constants.PATROL_GUARD_CHARGE_MIN_STEPS:
+		return 0
+	return Constants.PATROL_GUARD_CHARGE_BONUS
+
+
+static func melee_damage_preview(
+	state: GameState,
+	unit: UnitState,
+	move_start_pos: Vector2i,
+	path: Array,
+	target_pos: Vector2i
+) -> int:
+	return CombatRules.attack_damage(state, unit) + charge_bonus(state, unit, move_start_pos, path)
+
+
+static func _path_steps(path: Array) -> Array[Vector2i]:
+	var steps: Array[Vector2i] = []
 	for step in path:
-		if not step is Vector2i:
-			continue
-		var delta: Vector2i = step - prev
-		if absi(delta.x) + absi(delta.y) != 1:
-			return count
-		if axis == Vector2i.ZERO:
-			axis = delta
-		elif delta != axis:
-			return count
-		count += 1
-		prev = step
-	return count
+		if step is Vector2i:
+			steps.append(step)
+	return steps
+
+
+static func _final_charge_cells(from_pos: Vector2i, steps: Array[Vector2i]) -> Array[Vector2i]:
+	var full_path: Array[Vector2i] = [from_pos]
+	full_path.append_array(steps)
+	if full_path.size() < 3:
+		return []
+
+	var last_idx := full_path.size() - 1
+	var last_dir := full_path[last_idx] - full_path[last_idx - 1]
+	if last_dir.x != 0 and last_dir.y != 0:
+		return []
+
+	var straight_steps := 1
+	for i in range(last_idx - 1, 0, -1):
+		var current_dir := full_path[i] - full_path[i - 1]
+		if current_dir == last_dir:
+			straight_steps += 1
+		else:
+			break
+
+	if straight_steps < Constants.PATROL_GUARD_CHARGE_MIN_STEPS:
+		return []
+
+	var result: Array[Vector2i] = []
+	var start_idx := steps.size() - Constants.PATROL_GUARD_CHARGE_MIN_STEPS
+	for i in range(start_idx, steps.size()):
+		result.append(steps[i])
+	return result
+
+
+static func _charge_move_cost_sum(state: GameState, cells: Array[Vector2i]) -> int:
+	var total := 0
+	for cell in cells:
+		total += ceili(BoardUtils.tile_move_cost(state, cell))
+	return total

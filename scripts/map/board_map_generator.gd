@@ -11,13 +11,14 @@ const _NEIGHBOR_DIRS: Array[Vector2i] = [
 
 static func build(state: GameState, encounter: Dictionary) -> void:
 	state.tiles.clear()
+	state.entities.clear()
 	for y in range(state.board_size.y):
 		for x in range(state.board_size.x):
 			var pos := Vector2i(x, y)
 			var tile := TileState.create(pos, Constants.TILE_FLOOR)
 			state.tiles[state.tile_key(pos)] = tile
 	for tile_data in encounter.get("tiles", []):
-		var pos: Vector2i = tile_data.get("pos", Vector2i.ZERO)
+		var pos: Vector2i = _resolve_pos(tile_data.get("pos", Vector2i.ZERO))
 		if not BoardUtils.in_bounds(state, pos):
 			continue
 		var tile_id: String = tile_data.get("tile_id", Constants.TILE_FLOOR)
@@ -30,8 +31,23 @@ static func build(state: GameState, encounter: Dictionary) -> void:
 			var placed: TileState = state.tiles[state.tile_key(pos)]
 			placed.tile_id = tile_id
 			placed._init_ground_tags()
+	_spawn_entities(state, encounter)
 	_apply_floor_variation(state, encounter)
 	_compute_edge_masks(state)
+
+
+static func _spawn_entities(state: GameState, encounter: Dictionary) -> void:
+	var index := 0
+	for entity_data in encounter.get("entities", []):
+		var pos: Vector2i = _resolve_pos(entity_data.get("pos", Vector2i.ZERO))
+		if not BoardUtils.in_bounds(state, pos):
+			continue
+		var entity_id: String = entity_data.get("entity_id", "")
+		if entity_id.is_empty():
+			continue
+		var uid: String = entity_data.get("uid", "entity_%d" % index)
+		index += 1
+		state.add_entity(EntityState.create(uid, entity_id, pos))
 
 
 static func _apply_floor_variation(state: GameState, encounter: Dictionary) -> void:
@@ -62,9 +78,15 @@ static func _compute_edge_masks(state: GameState) -> void:
 static func _edge_variant_name(tile_id: String, mask: int) -> String:
 	if tile_id == Constants.TILE_WATER:
 		return "water_%d" % mask
-	if tile_id == Constants.TILE_SPIKE:
-		return "spike_%d" % mask
 	return "floor_%d" % mask
+
+
+static func _resolve_pos(raw) -> Vector2i:
+	if raw is Vector2i:
+		return raw
+	if raw is Array and raw.size() >= 2:
+		return Vector2i(int(raw[0]), int(raw[1]))
+	return Vector2i.ZERO
 
 
 static func _hash_cell(pos: Vector2i, seed_value: int) -> int:

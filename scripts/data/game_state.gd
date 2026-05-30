@@ -170,5 +170,5 @@ func clone() -> GameState:
 		snapshot.tiles[key] = tiles[key].clone()
 	for uid in entities.keys():
 		snapshot.entities[uid] = entities[uid].clone()
-	# clone 快照不携带占格索引，走回退遍历分支（只读，无需高性能）
+	snapshot.rebuild_occupancy()
 	return snapshot

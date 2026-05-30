@@ -39,19 +39,14 @@ static func sync_all_units_standing_ground(state: GameState) -> void:
 		sync_standing_ground_effects(state, unit)
 
 
-## 单位主动移动进入格子时
-static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i) -> void:
+## 单位进入格子时（主动移动与强制位移共用）
+## opts.forced / opts.source_uid：强制位移踩入地刺时附加易伤
+static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i, opts: Dictionary = {}) -> void:
 	var tile := state.get_tile(unit.pos)
-
-	# 地面固有危险（地刺 tile）
-	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
-		CombatRules.apply_damage(state, unit, Constants.SPIKE_DAMAGE, unit.uid, "spike")
-		_unlock_armor_locks(state, unit)
 
 	sync_standing_ground_effects(state, unit)
 
-	# 实体进入检测（地刺 entity）
-	EntityRules.on_unit_entered(state, unit)
+	EntityRules.on_unit_entered(state, unit, opts)
 
 	# Overlay 进入效果（数据驱动）
 	_apply_enter_effects(state, unit, tile)
@@ -203,9 +198,3 @@ static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, Constants.POISON_FOG_DURATION)
 	_apply_enter_effects_to_occupant(state, tile.pos, tile)
-
-
-static func _unlock_armor_locks(state: GameState, unit: UnitState) -> void:
-	for slot in unit.slots:
-		if slot.locked and slot.lock_type == Constants.LOCK_ARMOR:
-			StatusRules.apply_exposed(state, unit, slot, state.turn_index)

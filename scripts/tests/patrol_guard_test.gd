@@ -29,12 +29,38 @@ func _test_spawn_stats() -> void:
 
 
 func _test_charge_bonus_path() -> void:
-	var from := Vector2i(0, 0)
-	var path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
-	assert(PatrolGuardRules.charge_bonus_from_path(from, path) == Constants.PATROL_GUARD_CHARGE_BONUS)
-	var zigzag: Array[Vector2i] = [Vector2i(1, 0), Vector2i(1, 1)]
-	assert(PatrolGuardRules.charge_bonus_from_path(from, zigzag) == 0)
-	print("  [OK] straight path charge bonus")
+	var ctx := _charge_test_context()
+	var state: GameState = ctx["state"]
+	var unit: UnitState = ctx["unit"]
+	var on_line: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), on_line) == Constants.PATROL_GUARD_CHARGE_BONUS)
+	var off_line: Array[Vector2i] = [Vector2i(5, 2), Vector2i(5, 3)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), off_line) == 0)
+	var line_then_break: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2), Vector2i(4, 3)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), line_then_break) == 0)
+	var turn_then_charge: Array[Vector2i] = [Vector2i(6, 3), Vector2i(5, 3), Vector2i(4, 3), Vector2i(3, 3)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), turn_then_charge) == Constants.PATROL_GUARD_CHARGE_BONUS)
+	var one_step: Array[Vector2i] = [Vector2i(4, 2)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(5, 2), one_step) == 0)
+	_set_tile(state, Vector2i(5, 2), Constants.TILE_WATER)
+	var water_charge: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2)]
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), water_charge) == 0)
+	unit.statuses.append(StatusInstance.create(Constants.STATUS_SLOWED, 1))
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), on_line) == 0)
+	print("  [OK] charge: final straight segment, no slow, move cost <=2")
+
+
+func _charge_test_context() -> Dictionary:
+	var state := GameState.new()
+	var unit := UnitState.new()
+	unit.uid = "guard"
+	unit.team = Constants.TEAM_ENEMY
+	state.units[unit.uid] = unit
+	return {"state": state, "unit": unit}
+
+
+func _set_tile(state: GameState, pos: Vector2i, tile_id: String) -> void:
+	state.tiles[state.tile_key(pos)] = TileState.create(pos, tile_id)
 
 
 func _test_charge_melee_damage() -> void:

@@ -30,7 +30,7 @@ func _init_from_def() -> void:
 		Constants.ENTITY_SPIKE:
 			hp = -1
 			max_hp = -1
-			tags = ["hazard", "blocks_move"]
+			tags = ["hazard"]
 		Constants.ENTITY_BARREL:
 			hp = Constants.BARREL_HP
 			max_hp = Constants.BARREL_HP

@@ -196,8 +196,8 @@ func get_sorted_enemies() -> Array:
 # UI 查询（委托 BattleQueryService）
 # ═══════════════════════════════════════════════════════════════════════════
 
-func get_highlights() -> Dictionary:
-	return _query_svc.get_highlights()
+func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
+	return _query_svc.get_highlights(hover_cell)
 
 
 func get_cell_preview(cell: Vector2i) -> Dictionary:

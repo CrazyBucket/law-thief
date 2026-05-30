@@ -6,12 +6,14 @@
     {"def_id": "unit_patrol_guard", "pos": [4, 4]},
     {"def_id": "unit_fission_slime", "pos": [2, 2]}
   ],
+  "entities": [
+    {"pos": [5, 6], "entity_id": "entity_spike"},
+    {"pos": [6, 6], "entity_id": "entity_spike"}
+  ],
   "tiles": [
     {"pos": [2, 3], "tile_id": "tile_water"},
     {"pos": [3, 3], "tile_id": "tile_water"},
     {"pos": [2, 4], "tile_id": "tile_water"},
-    {"pos": [5, 6], "tile_id": "tile_spike"},
-    {"pos": [6, 6], "tile_id": "tile_spike"},
     {"pos": [7, 3], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]}
   ]
 }

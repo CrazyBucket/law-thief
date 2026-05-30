@@ -107,31 +107,12 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	var from_pos := player.pos
 	var to_pos := target_pos
 	var attack_events: Array[Dictionary] = []
-	var target: UnitState = state.get_unit_at(target_pos)
-	if target != null and target.alive:
-		var atk_result := CombatRules.ranged_attack(state, player, target)
-		if not atk_result.get("ok", false):
-			return _fail(atk_result.get("reason", "无法攻击"))
-		attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
-		var red_slot := player.get_slot(Constants.SLOT_RED)
-		if red_slot != null and not red_slot.gem_uid.is_empty() and not GemEffects.unit_has_red_explosion(state, player):
-			GemEffects.trigger_gem(state, player.uid, red_slot, attack_events, target.uid)
-	else:
-		var tile: TileState = state.get_tile(target_pos)
-		if (
-			tile != null
-			and tile.has_tile_tag(Constants.TAG_TILE_WATER)
-			and GemEffects.unit_has_red_arc(state, player)
-		):
-			GemEffects.apply_water_conduction(state, target_pos, player, attack_events)
-			state.log("玩家电击水域 %s" % target_pos)
-		elif GemEffects.unit_has_red_explosion(state, player):
-			attack_events.append_array(
-				GemEffects.explode_cross_at(state, target_pos, player.uid, 0, Constants.EXPLOSION_CROSS_DAMAGE, false)
-			)
-			state.log("玩家射击空地 %s 触发十字爆炸" % target_pos)
-		else:
-			state.log("玩家射击空地 %s" % target_pos)
+	var atk_result := CombatRules.ranged_attack(
+		state, player, target_pos, Constants.ATTACK_RANGE, {"aim_cell": target_pos}
+	)
+	if not atk_result.get("ok", false):
+		return _fail(atk_result.get("reason", "无法攻击"))
+	attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
 	state.player_acted = true
 	ctrl._check_battle_end()
 	IntentSystem.refresh_all_intents(state)

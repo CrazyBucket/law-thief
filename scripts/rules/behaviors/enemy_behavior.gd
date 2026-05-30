@@ -46,8 +46,18 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 
 
 static func on_gem_extracted(state: GameState, unit: UnitState, slot_type: String, gem_uid: String) -> void:
-	if slot_type == Constants.SLOT_RED and unit.team == Constants.TEAM_ENEMY:
-		on_red_gem_stolen(state, unit, gem_uid)
+	if unit.team != Constants.TEAM_ENEMY:
+		return
+	if unit_has_any_gem(unit):
+		return
+	on_red_gem_stolen(state, unit, gem_uid)
+
+
+static func unit_has_any_gem(unit: UnitState) -> bool:
+	for slot in unit.slots:
+		if not slot.gem_uid.is_empty():
+			return true
+	return false
 
 
 static func on_gem_inserted(_state: GameState, unit: UnitState, gem_uid: String) -> void:
@@ -82,7 +92,8 @@ static func melee_charge_bonus(
 	_state: GameState,
 	_unit: UnitState,
 	_move_start_pos: Vector2i,
-	_intent_path: Array[Vector2i]
+	_intent_path: Array[Vector2i],
+	_target_uid: String = ""
 ) -> int:
 	return 0
 
@@ -100,7 +111,7 @@ static func ranged_attack_context(
 
 
 static func split_clone_ratio(_unit: UnitState) -> float:
-	return Constants.FISSION_SLIME_SPLIT_STAT_RATIO
+	return Constants.SPLIT_STAT_RATIO
 
 
 static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
@@ -140,9 +151,9 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var split_target: UnitState = state.units.get(intent.target_uid, null)
 			if split_target == null or not split_target.alive:
 				return [] as Array[Dictionary]
-			if BoardUtils.manhattan(unit.pos, split_target.pos) > Constants.ATTACK_RANGE:
+			var split_result := CombatRules.split_melee_attack(state, unit, split_target)
+			if not split_result.get("ok", false):
 				return [] as Array[Dictionary]
-			var split_result := CombatRules.ranged_attack(state, unit, split_target)
 			return split_result.get("events", [] as Array[Dictionary])
 		"fire_attack":
 			var fire_target: UnitState = state.units.get(intent.target_uid, null)

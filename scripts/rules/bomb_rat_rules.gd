@@ -1,6 +1,8 @@
 class_name BombRatRules
 extends RefCounted
 
+const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
+
 const PLUNDER_PHASE_WAIT := 1
 const PLUNDER_PHASE_STEAL := 2
 
@@ -200,7 +202,7 @@ static func _force_steal_nearest_gem(
 	if gem == null:
 		return
 	stolen_slot.gem_uid = ""
-	if stolen_slot.slot_type == Constants.SLOT_RED and victim.team == Constants.TEAM_ENEMY:
+	if victim.team == Constants.TEAM_ENEMY and not EnemyBehavior.unit_has_any_gem(victim):
 		StatusRules.apply_lawless(state, victim, gem.uid)
 	var host := rat.get_slot(Constants.SLOT_BLACK)
 	if host == null or not host.gem_uid.is_empty():

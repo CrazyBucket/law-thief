@@ -25,8 +25,9 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 
 
 static func on_gem_extracted(state: GameState, unit: UnitState, slot_type: String, gem_uid: String) -> void:
-	if slot_type == Constants.SLOT_RED and unit.team == Constants.TEAM_ENEMY:
-		PatrolGuardRules.on_red_gem_stolen(state, unit, gem_uid)
+	if unit.team != Constants.TEAM_ENEMY or unit_has_any_gem(unit):
+		return
+	PatrolGuardRules.on_red_gem_stolen(state, unit, gem_uid)
 
 
 static func on_gem_inserted(_state: GameState, unit: UnitState, gem_uid: String) -> void:
@@ -44,16 +45,25 @@ static func on_lawless_recovered(unit: UnitState) -> void:
 
 
 static func build_melee_intent(state: GameState, unit: UnitState, move_path: Array[Vector2i], intent: IntentState) -> void:
-	intent.damage = PatrolGuardRules.melee_damage_preview(state, unit, unit.pos, move_path)
-	var bonus: int = PatrolGuardRules.charge_bonus_from_path(unit.pos, move_path)
+	var target_pos := _target_pos(state, intent.target_uid)
+	intent.damage = PatrolGuardRules.melee_damage_preview(state, unit, unit.pos, move_path, target_pos)
+	var bonus: int = PatrolGuardRules.charge_bonus(state, unit, unit.pos, move_path)
 	var label := "冲锋" if bonus > 0 else "近战"
 	intent.preview_text = "%s攻击 (%d)" % [label, intent.damage]
 
 
 static func melee_charge_bonus(
-	_state: GameState,
+	state: GameState,
 	_unit: UnitState,
 	move_start_pos: Vector2i,
-	intent_path: Array[Vector2i]
+	intent_path: Array[Vector2i],
+	target_uid: String = ""
 ) -> int:
-	return PatrolGuardRules.charge_bonus_from_path(move_start_pos, intent_path)
+	return PatrolGuardRules.charge_bonus(state, _unit, move_start_pos, intent_path)
+
+
+static func _target_pos(state: GameState, target_uid: String) -> Vector2i:
+	var target: UnitState = state.units.get(target_uid, null)
+	if target == null:
+		return Vector2i(-999, -999)
+	return target.pos

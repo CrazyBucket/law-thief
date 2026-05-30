@@ -2,6 +2,7 @@ class_name IntentSystem
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 ## 敌人回合执行时按照预计算的意图行动
@@ -192,6 +193,19 @@ static func _build_skill_intent(
 			intent.affected_cells = BoardUtils.cells_in_radius(end_pos, Constants.EXPLOSION_RADIUS)
 			intent.target_pos = end_pos
 			intent.preview_text = "冲刺爆炸 (%d)" % Constants.EXPLOSION_DAMAGE
+	if intent.type == "split_attack":
+		var split_target: UnitState = state.units.get(action.action_target_uid, null)
+		if split_target != null:
+			var anchor: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
+			var aim_pos := split_target.pos
+			var saved_pos := unit.pos
+			unit.pos = anchor
+			var origin := _SplitShotRules.attacker_origin(unit, aim_pos)
+			unit.pos = saved_pos
+			intent.affected_cells = []
+			for cell in _SplitShotRules.all_hit_cells(origin, aim_pos):
+				if not cell in intent.affected_cells:
+					intent.affected_cells.append(cell)
 
 	return intent
 
@@ -240,7 +254,9 @@ static func _execute_melee(
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
-	var charge_bonus: int = int(_behavior_for(unit).melee_charge_bonus(state, unit, move_start_pos, intent.path))
+	var charge_bonus: int = int(_behavior_for(unit).melee_charge_bonus(
+		state, unit, move_start_pos, intent.path, intent.target_uid
+	))
 	var result := CombatRules.melee_attack(state, unit, target, charge_bonus)
 	if not result.get("ok", false):
 		return [] as Array[Dictionary]
@@ -260,7 +276,11 @@ static func _execute_ranged(
 	var max_range: int = int(attack_ctx.get("max_range", Constants.ATTACK_RANGE))
 	var payload_variant: Variant = attack_ctx.get("payload", {})
 	var payload: Dictionary = payload_variant if payload_variant is Dictionary else {}
-	var result := CombatRules.ranged_attack(state, unit, target, max_range, payload)
+	var aim_cell: Vector2i = target.pos
+	var raw_aim: Variant = payload.get("aim_cell", null)
+	if raw_aim is Vector2i:
+		aim_cell = raw_aim
+	var result := CombatRules.ranged_attack(state, unit, aim_cell, max_range, payload)
 	if not result.get("ok", false):
 		return [] as Array[Dictionary]
 	return result.get("events", [] as Array[Dictionary])
@@ -276,6 +296,7 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 			state.log("%s 移动受阻：%s 无法落脚" % [unit.uid, step])
 			break
 		var from_pos := unit.pos
+		unit.facing = UnitState.facing_from_step(from_pos, step)
 		state.move_unit(unit, step)
 		TileRules.on_unit_moved_through(state, unit, step)
 		state.on_unit_move.emit(unit.uid, from_pos, step)

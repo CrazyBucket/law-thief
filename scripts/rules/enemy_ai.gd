@@ -109,7 +109,7 @@ static func _generate_all_candidates(
 		else:
 			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(attack_candidates)
-		if profile.get("can_ranged_attack", false):
+		if profile.get("can_ranged_attack", false) and not GemEffects.unit_has_red_split(state, enemy):
 			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(ranged_candidates)
 
@@ -182,8 +182,12 @@ static func _evaluate_ranged_attacks_from(
 	var moved: bool = from_pos != enemy.pos
 	var range_path: Array = [] if not moved else [from_pos]
 	var max_range: int = Constants.ATTACK_RANGE
-	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
-	if dist < 1 or dist > max_range:
+	var saved := enemy.pos
+	enemy.pos = from_pos
+	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
+	var dist: int = BoardUtils.distance_between_units(enemy, player)
+	enemy.pos = saved
+	if not in_range:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.RANGED_ATTACK
@@ -283,10 +287,10 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	var score: float = _w(profile, "w_pull", 15.0) + 8.0
 	# 拉到危险地块加分
 	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
-	var tile: TileState = state.get_tile(pull_dest)
-	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
+	if BoardUtils.spike_entity_at(state, pull_dest) != null:
 		score += float(Constants.SPIKE_DAMAGE) * _w(profile, "w_damage", 10.0)
-	if tile.has_modifier("poison_fog"):
+	var pull_tile: TileState = state.get_tile(pull_dest)
+	if pull_tile.has_modifier("poison_fog"):
 		score += _w(profile, "w_damage", 10.0) * 0.5
 	# 引力会附带束缚，距离越远价值越高
 	score += float(dist) * 1.2
@@ -319,7 +323,11 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 
 static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) > Constants.ATTACK_RANGE:
+	var saved := enemy.pos
+	enemy.pos = from_pos
+	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, Constants.ATTACK_RANGE)
+	enemy.pos = saved
+	if not in_range:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -340,7 +348,11 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 
 static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) > Constants.ATTACK_RANGE:
+	var saved := enemy.pos
+	enemy.pos = from_pos
+	var in_range := BoardUtils.are_units_adjacent(enemy, player)
+	enemy.pos = saved
+	if not in_range:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -349,7 +361,7 @@ static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	var base := float(CombatRules.attack_damage(state, enemy)) * Constants.SPLIT_ATTACK_DAMAGE_RATIO
 	var score: float = base * _w(profile, "w_damage", 10.0)
 	candidate.score = score
-	candidate.description = "分裂射击"
+	candidate.description = "分裂攻击"
 	results.append(candidate)
 	return results
 
@@ -419,9 +431,9 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 # ─── 地块安全评估 ─────────────────────────────────────────────────────────
 static func _evaluate_tile_safety(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var score: float = 0.0
-	var tile: TileState = state.get_tile(pos)
-	if tile.has_tile_tag(Constants.TAG_TILE_HAZARD):
+	if BoardUtils.spike_entity_at(state, pos) != null:
 		score -= float(Constants.SPIKE_DAMAGE) * _w(profile, "w_self_damage", 8.0)
+	var tile: TileState = state.get_tile(pos)
 	if tile.has_modifier("poison_fog"):
 		score -= float(Constants.POISON_FOG_DAMAGE) * _w(profile, "w_self_damage", 8.0)
 	return score

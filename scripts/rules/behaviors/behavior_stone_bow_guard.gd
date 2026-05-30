@@ -22,8 +22,9 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 
 
 static func on_gem_extracted(state: GameState, unit: UnitState, slot_type: String, gem_uid: String) -> void:
-	if slot_type == Constants.SLOT_RED and unit.team == Constants.TEAM_ENEMY:
-		StoneBowGuardRules.on_red_gem_stolen(state, unit, gem_uid)
+	if unit.team != Constants.TEAM_ENEMY or unit_has_any_gem(unit):
+		return
+	StoneBowGuardRules.on_red_gem_stolen(state, unit, gem_uid)
 
 
 static func on_gem_inserted(_state: GameState, unit: UnitState, gem_uid: String) -> void:

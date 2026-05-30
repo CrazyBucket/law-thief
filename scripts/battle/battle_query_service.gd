@@ -2,6 +2,7 @@ class_name BattleQueryService
 extends RefCounted
 
 const _StatusUi = preload("res://scripts/ui/status_ui.gd")
+const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 
 var _ctrl: BattleController
 
@@ -18,10 +19,11 @@ func _c() -> BattleController:
 # 高亮 & 预览
 # ═══════════════════════════════════════════════════════════════════════════
 
-func get_highlights() -> Dictionary:
+func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	var result := {
 		"reachable": [],
 		"targets": [],
+		"attack_range": [],
 		"paths": [],
 		"danger": [],
 		"effect_preview": [],
@@ -40,8 +42,11 @@ func get_highlights() -> Dictionary:
 	if action == Constants.ACTION_MOVE and not state.player_moved and StatusRules.can_move(player):
 		result["reachable"] = BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	elif action == Constants.ACTION_ATTACK and not state.player_acted:
-		result["targets"] = _attack_target_cells(state, player)
-		result["effect_preview"] = _attack_effect_preview(state, player)
+		result["attack_range"] = _attack_target_cells(state, player)
+		if hover_cell.x >= 0 and BoardUtils.in_bounds(state, hover_cell):
+			result["effect_preview"] = _attack_hit_preview_cells(state, player, hover_cell)
+		else:
+			result["effect_preview"] = _attack_effect_preview(state, player)
 	elif action == Constants.ACTION_TRIGGER and not state.player_acted:
 		result["targets"] = _gem_target_cells(ctrl, state, player)
 	elif action == Constants.ACTION_EXTRACT and ctrl.can_use_action(Constants.ACTION_EXTRACT):
@@ -73,9 +78,12 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 	var unit: UnitState = state.get_unit_at(cell)
 	var tile: TileState = state.get_tile(cell)
 	var lines: Array[String] = ["%s %s" % [_data_registry().get_tile_display_name(tile.tile_id), cell]]
+	var spike := BoardUtils.spike_entity_at(state, cell)
+	if spike != null:
+		lines.append("地刺：步入 %d 伤害；被强制位移踩入附加易伤并受到 %d 伤害" % [
+			Constants.SPIKE_DAMAGE, Constants.SPIKE_COLLISION_DAMAGE
+		])
 	match tile.tile_id:
-		Constants.TILE_SPIKE:
-			lines.append("尖刺地块：进入受到 %d 伤害" % Constants.SPIKE_DAMAGE)
 		Constants.TILE_WATER:
 			lines.append("水洼：导电连锁区域")
 		Constants.TILE_PILLAR:
@@ -258,6 +266,37 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 # 死亡宝石预览
 # ═══════════════════════════════════════════════════════════════════════════
 
+func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
+	if target_pos == player.pos:
+		return []
+	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
+		return []
+	var cells: Array = []
+	if GemEffects.unit_has_red_split(state, player):
+		var shot := _SplitShotRules.resolve_shot(player, target_pos)
+		for cell in shot.cells:
+			if BoardUtils.in_bounds(state, cell) and not cell in cells:
+				cells.append(cell)
+	else:
+		cells.append(target_pos)
+	if GemEffects.unit_has_red_explosion(state, player):
+		for cell in GemEffects.cross_explosion_cells(target_pos):
+			if BoardUtils.in_bounds(state, cell) and not cell in cells:
+				cells.append(cell)
+	var victim: UnitState = state.get_unit_at(target_pos)
+	if victim != null and victim.alive and victim.hp <= 1:
+		for slot in victim.slots:
+			if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
+				continue
+			var gem: GemState = state.gems.get(slot.gem_uid, null)
+			if gem == null:
+				continue
+			for cell in _death_gem_preview_cells(state, victim.pos, gem):
+				if not cell in cells:
+					cells.append(cell)
+	return cells
+
+
 func _attack_effect_preview(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
@@ -273,7 +312,9 @@ func _attack_effect_preview(state: GameState, player: UnitState) -> Array:
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
 			if gem == null:
 				continue
-			cells.append_array(_death_gem_preview_cells(state, unit.pos, gem))
+			for cell in _death_gem_preview_cells(state, unit.pos, gem):
+				if not cell in cells:
+					cells.append(cell)
 	return cells
 
 

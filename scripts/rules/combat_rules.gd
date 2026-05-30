@@ -2,6 +2,12 @@ class_name CombatRules
 extends RefCounted
 
 const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
+
+static var _defer_death_hooks_depth: int = 0
+static var _pending_deaths: Array[Dictionary] = []
+static var _death_event_sink: Array[Dictionary] = []
 
 
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
@@ -43,12 +49,34 @@ static func apply_true_damage(state: GameState, unit: UnitState, amount: int, so
 	return amount
 
 
+static func begin_deferred_death_hooks(event_sink: Array[Dictionary] = []) -> void:
+	_defer_death_hooks_depth += 1
+	if not event_sink.is_empty():
+		_death_event_sink = event_sink
+
+
+static func end_deferred_death_hooks(state: GameState) -> void:
+	_defer_death_hooks_depth = maxi(0, _defer_death_hooks_depth - 1)
+	if _defer_death_hooks_depth > 0:
+		return
+	for entry in _pending_deaths:
+		var unit: UnitState = entry.get("unit", null)
+		if unit == null:
+			continue
+		_GemEffects.on_unit_death(state, unit, _death_event_sink)
+	_pending_deaths.clear()
+	_death_event_sink = []
+
+
 static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, reason: String) -> void:
 	unit.hp = 0
 	state.kill_unit(unit)  # 撤销占格索引并标记 alive = false
 	state.log("%s 被击败" % unit.uid)
 	state.on_unit_die.emit(unit.uid, source_uid, reason)
-	GemEffects.on_unit_death(state, unit)
+	if _defer_death_hooks_depth > 0:
+		_pending_deaths.append({"unit": unit})
+	else:
+		_GemEffects.on_unit_death(state, unit)
 
 
 ## 近战攻击（pipeline 版本）：返回 {ok, reason, events}
@@ -66,8 +94,28 @@ static func melee_attack(
 	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_MELEE], payload)
 
 
-## 远程攻击（pipeline 版本）：返回 {ok, reason, events}
+## 远程射击：唯一入口是瞄准格；格上单位在 pipeline 内解析为 target（可为 null）
 static func ranged_attack(
+	state: GameState,
+	attacker: UnitState,
+	aim_cell: Vector2i,
+	max_range: int = Constants.ATTACK_RANGE,
+	payload: Dictionary = {}
+) -> Dictionary:
+	if not attacker.alive:
+		return {"ok": false, "reason": "攻击者无效", "events": []}
+	return _AttackPipeline.execute_aimed(
+		state,
+		attacker,
+		aim_cell,
+		[_AttackPipeline.TAG_RANGED],
+		payload,
+		max_range
+	)
+
+
+## AI / 意图等仍持有目标单位引用时的薄封装
+static func ranged_attack_unit(
 	state: GameState,
 	attacker: UnitState,
 	target: UnitState,
@@ -78,7 +126,28 @@ static func ranged_attack(
 		return {"ok": false, "reason": "目标无效", "events": []}
 	if BoardUtils.distance_between_units(attacker, target) > max_range:
 		return {"ok": false, "reason": "目标超出射程", "events": []}
-	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_RANGED], payload)
+	var aim_cell: Vector2i = target.pos
+	var raw: Variant = payload.get("aim_cell", null)
+	if raw is Vector2i:
+		aim_cell = raw
+	return ranged_attack(state, attacker, aim_cell, max_range, payload)
+
+
+## 分裂红槽近战：相邻格瞄准，走 split_shot 两翼，不发射弹道
+static func split_melee_attack(state: GameState, attacker: UnitState, target: UnitState) -> Dictionary:
+	if not attacker.alive or not target.alive:
+		return {"ok": false, "reason": "目标无效", "events": []}
+	if not BoardUtils.are_units_adjacent(attacker, target):
+		return {"ok": false, "reason": "目标不在近战范围", "events": []}
+	var aim_cell: Vector2i = _SplitShotRules.aim_pos_for_target(attacker.pos, target)
+	return _AttackPipeline.execute_aimed(
+		state,
+		attacker,
+		aim_cell,
+		[_AttackPipeline.TAG_MELEE, _AttackPipeline.TAG_SPLIT_SHOT],
+		{"aim_cell": aim_cell},
+		Constants.SPLIT_ATTACK_RANGE
+	)
 
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
