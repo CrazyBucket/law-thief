@@ -340,6 +340,8 @@ static func pull_unit_toward_with_events(
 			break
 		if not BoardUtils.in_bounds(state, next):
 			break
+		if not BoardUtils.unit_footprint_passable(state, unit, next, unit.uid):
+			break
 		var blocker: UnitState = state.get_unit_at(next)
 		if blocker != null:
 			events.append_array(_apply_gravity_collision(state, unit, blocker, source_uid))
@@ -444,8 +446,17 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			)
 			return true
 		"poison":
-			out_events.append({"type": "poison_burst", "pos": owner.pos, "radius": 0})
-			TileRules.create_poison_fog(state, owner.pos)
+			var poison_center := resolve_blast_center(owner.pos, ctx.get("target_pos", null))
+			var poison_target: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+			if poison_target != null and poison_target.alive:
+				poison_center = resolve_blast_center(poison_target.pos, ctx.get("target_pos", null))
+			out_events.append({"type": "poison_burst", "pos": poison_center, "radius": 1})
+			for cell in BoardUtils.cells_in_radius(poison_center, 1):
+				if not BoardUtils.in_bounds(state, cell):
+					continue
+				TileRules.create_poison_fog(state, cell)
+			if poison_target != null and poison_target.alive:
+				StatusRules.apply_poison(state, poison_target, 1, 0, owner.uid)
 			return true
 		"gravity":
 			out_events.append({"type": "gem_flash", "pos": owner.pos, "color": _data_registry().get_gem_color(gem)})
@@ -471,8 +482,12 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 				apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events)
 			return true
 		"fire_gem":
-			out_events.append({"type": "fire_burst", "pos": owner.pos})
-			TileRules.create_fire(state, owner.pos)
+			var fire_pos := resolve_blast_center(owner.pos, ctx.get("target_pos", null))
+			var fire_target: UnitState = state.units.get(ctx.get("target_uid", ""), null)
+			if fire_target != null and fire_target.alive:
+				fire_pos = resolve_blast_center(fire_target.pos, ctx.get("target_pos", null))
+			out_events.append({"type": "fire_burst", "pos": fire_pos})
+			TileRules.create_fire(state, fire_pos)
 			return true
 		"ice":
 			out_events.append({"type": "frost_pulse", "pos": owner.pos})
@@ -895,7 +910,7 @@ static func _find_split_spawn_cells(state: GameState, owner: UnitState, count: i
 	for cell in owner.occupied_cells():
 		if not BoardUtils.in_bounds(state, cell):
 			continue
-		if state.get_unit_at(cell) != null:
+		if not BoardUtils.is_passable(state, cell):
 			continue
 		if not result.has(cell):
 			result.append(cell)
@@ -918,7 +933,7 @@ static func _find_empty_neighbor_cells(state: GameState, origin: Vector2i, count
 		for cell in BoardUtils.cells_in_radius(origin, radius):
 			if not BoardUtils.in_bounds(state, cell):
 				continue
-			if state.get_unit_at(cell) != null:
+			if not BoardUtils.is_passable(state, cell):
 				continue
 			if not result.has(cell):
 				result.append(cell)

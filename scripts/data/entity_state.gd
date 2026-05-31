@@ -4,6 +4,7 @@ extends RefCounted
 var uid: String = ""
 var entity_id: String = ""
 var pos: Vector2i = Vector2i.ZERO
+var prop_sprite: String = ""
 var hp: int = -1        # -1 表示无敌（石块）
 var max_hp: int = -1
 var alive: bool = true
@@ -23,7 +24,7 @@ static func create(uid: String, entity_id: String, pos: Vector2i) -> EntityState
 
 func _init_from_def() -> void:
 	match entity_id:
-		Constants.ENTITY_ROCK:
+		Constants.ENTITY_ROCK, Constants.ENTITY_PROP:
 			hp = -1
 			max_hp = -1
 			tags = ["blocks_move", "blocks_projectile", "indestructible"]
@@ -68,6 +69,7 @@ func clone() -> EntityState:
 	entity.uid = uid
 	entity.entity_id = entity_id
 	entity.pos = pos
+	entity.prop_sprite = prop_sprite
 	entity.hp = hp
 	entity.max_hp = max_hp
 	entity.alive = alive

@@ -22,6 +22,23 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 		_draw_fire(canvas, center)
 
 
+## 仅绘制叠加层（高亮、特殊地块、状态），不画地砖底块——底块改由贴图统一渲染
+static func draw_tile_overlays(canvas: Control, center: Vector2, tile: TileState, highlight_color: Color = Color.TRANSPARENT) -> void:
+	if highlight_color.a > 0.0:
+		draw_highlight_fill(canvas, center, highlight_color)
+	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
+		_draw_room_label(canvas, center, tile.tile_id)
+	elif tile.tile_id == Constants.TILE_WATER:
+		_draw_overlay(canvas, center, Color(0.16, 0.32, 0.56, 0.62))
+		_draw_water(canvas, center, tile.edge_mask)
+	elif tile.tile_id == Constants.TILE_PILLAR:
+		_draw_pillar(canvas, center)
+	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle"):
+		_draw_poison_fog(canvas, center)
+	if tile.has_modifier("fire"):
+		_draw_fire(canvas, center)
+
+
 static func draw_hover_outline(canvas: Control, center: Vector2) -> void:
 	var corners: PackedVector2Array = IsoCoordinates.diamond_corners(center)
 	var closed: PackedVector2Array = corners.duplicate()
@@ -89,6 +106,29 @@ static func draw_spikes(canvas: Control, center: Vector2) -> void:
 		var base: Vector2 = center + offset
 		canvas.draw_line(base + Vector2(-4, 4), base + Vector2(0, -10), Color(0.95, 0.55, 0.45), 2.0)
 		canvas.draw_line(base + Vector2(4, 4), base + Vector2(0, -10), Color(0.95, 0.55, 0.45), 2.0)
+
+
+static func draw_prop_sprite(canvas: Control, center: Vector2, texture: Texture2D, foot_ratio: float = 1.0) -> void:
+	if texture == null:
+		return
+	var rect := IsoCoordinates.prop_draw_rect(center, texture, foot_ratio)
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	canvas.draw_texture_rect(texture, rect, false, Color.WHITE)
+
+
+static func draw_prop_fallback(canvas: Control, center: Vector2) -> void:
+	var foot := center + IsoCoordinates.entity_foot_offset()
+	var half_w := IsoCoordinates._half_w() * 0.28
+	var half_h := IsoCoordinates._half_h() * 0.32
+	var rock := PackedVector2Array([
+		foot + Vector2(-half_w, -half_h * 0.1),
+		foot + Vector2(0.0, -half_h * 1.15),
+		foot + Vector2(half_w, -half_h * 0.1),
+		foot + Vector2(0.0, half_h * 0.02),
+	])
+	canvas.draw_colored_polygon(rock, Color(0.42, 0.44, 0.48, 0.95))
+	canvas.draw_polyline(rock, Color(0.28, 0.3, 0.34, 0.9), IsoCoordinates.visual(1.2), true)
 
 
 static func _draw_water(canvas: Control, center: Vector2, edge_mask: int) -> void:

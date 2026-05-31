@@ -21,6 +21,8 @@ func _run_test() -> void:
 	_test_clone_death_no_resplit()
 	_test_clone_uses_melee_ai()
 	_test_attack_range_uses_nearest_footprint_cell()
+	_test_approach_around_prop()
+	_test_clone_approaches_around_pillar()
 	print("FISSION_SLIME_TEST_PASS")
 	quit()
 
@@ -214,6 +216,50 @@ func _test_attack_range_uses_nearest_footprint_cell() -> void:
 	var result := controller.try_attack_cell(far_cell)
 	assert(result.get("ok", false), "should attack slime via nearest footprint cell")
 	print("  [OK] attack range uses nearest footprint cell")
+
+
+func _test_approach_around_prop() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("template_c", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var player := state.get_player()
+	assert(slime.pos == Vector2i(3, 3))
+	assert(state.get_entity_at(Vector2i(2, 3)) != null, "prop should block west side")
+	player.pos = Vector2i(1, 6)
+	IntentSystem.refresh_unit_intent(state, slime)
+	assert(slime.intent.type != "wait", "slime should move toward player around prop, got %s" % slime.intent.type)
+	assert(not slime.intent.path.is_empty(), "slime should have approach path")
+	print("  [OK] approach path around blocking prop")
+
+
+func _test_clone_approaches_around_pillar() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var player := state.get_player()
+	slime.max_hp = 10
+	slime.hp = 10
+	var events: Array[Dictionary] = []
+	GemEffectsScript.on_unit_death(state, slime, events)
+	var clone: UnitState = null
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			clone = unit
+			break
+	assert(clone != null, "expected split clone")
+	var pillar := EntityState.create("prop_block", Constants.ENTITY_PROP, clone.pos + Vector2i(0, -1))
+	state.add_entity(pillar)
+	player.pos = clone.pos + Vector2i(-2, 0)
+	IntentSystem.refresh_unit_intent(state, clone)
+	assert(clone.intent.type != "wait", "clone should approach player around pillar, got %s" % clone.intent.type)
+	if clone.intent.type == "move":
+		var end_pos: Vector2i = clone.intent.path.back() if not clone.intent.path.is_empty() else clone.pos
+		var before := BoardUtils.path_distance_to_cell(state, clone.pos, player.pos, clone.uid, {}, clone)
+		var after := BoardUtils.path_distance_to_cell(state, end_pos, player.pos, clone.uid, {}, clone)
+		assert(after < before, "move should reduce path distance (%d -> %d)" % [before, after])
+	print("  [OK] clone approaches via path distance")
 
 
 func _spawn_dummy(state: GameState, pos: Vector2i) -> UnitState:

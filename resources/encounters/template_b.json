@@ -1,16 +1,81 @@
 {
-  "player_spawn": [1, 6],
+  "player_spawn": [
+    1,
+    6
+  ],
   "enemies": [
-    {"def_id": "unit_stone_bow_guard", "pos": [6, 2]},
-    {"def_id": "unit_fission_slime", "pos": [3, 3]},
-    {"def_id": "unit_patrol_guard", "pos": [5, 5]}
+    {
+      "def_id": "unit_stone_bow_guard",
+      "pos": [
+        6,
+        2
+      ]
+    },
+    {
+      "def_id": "unit_fission_slime",
+      "pos": [
+        3,
+        3
+      ]
+    },
+    {
+      "def_id": "unit_patrol_guard",
+      "pos": [
+        5,
+        5
+      ]
+    }
   ],
   "entities": [
-    {"pos": [4, 4], "entity_id": "entity_spike"},
-    {"pos": [5, 4], "entity_id": "entity_spike"},
-    {"pos": [6, 4], "entity_id": "entity_spike"}
+    {
+      "pos": [
+        4,
+        4
+      ],
+      "entity_id": "entity_spike"
+    },
+    {
+      "pos": [
+        5,
+        4
+      ],
+      "entity_id": "entity_spike"
+    },
+    {
+      "pos": [
+        6,
+        4
+      ],
+      "entity_id": "entity_spike"
+    },
+    {
+      "pos": [
+        2,
+        3
+      ],
+      "entity_id": "entity_prop"
+    },
+    {
+      "pos": [
+        6,
+        5
+      ],
+      "entity_id": "entity_prop",
+      "prop_sprite": "Post1_0"
+    }
   ],
   "tiles": [
-    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]}
+    {
+      "pos": [
+        2,
+        2
+      ],
+      "tile_id": "tile_pillar",
+      "slots": [
+        {
+          "slot_type": "blue"
+        }
+      ]
+    }
   ]
 }

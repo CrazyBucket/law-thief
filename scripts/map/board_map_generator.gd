@@ -1,6 +1,8 @@
 class_name BoardMapGenerator
 extends RefCounted
 
+const DoodlePropSprites = preload("res://scripts/ui/doodle_prop_sprites.gd")
+
 const _NEIGHBOR_DIRS: Array[Vector2i] = [
 	Vector2i(0, -1),
 	Vector2i(1, 0),
@@ -47,7 +49,19 @@ static func _spawn_entities(state: GameState, encounter: Dictionary) -> void:
 			continue
 		var uid: String = entity_data.get("uid", "entity_%d" % index)
 		index += 1
-		state.add_entity(EntityState.create(uid, entity_id, pos))
+		var entity := EntityState.create(uid, entity_id, pos)
+		_assign_prop_sprite(entity, entity_data, state.run_seed)
+		state.add_entity(entity)
+
+
+static func _assign_prop_sprite(entity: EntityState, entity_data: Dictionary, run_seed: int) -> void:
+	if entity.entity_id != Constants.ENTITY_PROP and entity.entity_id != Constants.ENTITY_ROCK:
+		return
+	var raw_sprite: Variant = entity_data.get("prop_sprite", "")
+	if raw_sprite is String and not raw_sprite.is_empty():
+		entity.prop_sprite = raw_sprite
+		return
+	entity.prop_sprite = DoodlePropSprites.pick_sprite_id(run_seed, entity.pos, entity.uid)
 
 
 static func _apply_floor_variation(state: GameState, encounter: Dictionary) -> void:

@@ -43,6 +43,25 @@ static func visual_vec(v: Vector2) -> Vector2:
 	return v * tile_scale
 
 
+static func entity_foot_offset() -> Vector2:
+	# 与 IsometricBoard 单位脚底对齐：top 留白 visual(2) + ground nudge visual(12)
+	return Vector2(0.0, visual(14.0))
+
+
+static func prop_draw_rect(center: Vector2, texture: Texture2D, foot_ratio: float = 1.0) -> Rect2:
+	var tex_size := texture.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return Rect2()
+	# 静物应略小于 Knight（62×70），避免柱/雕像压过棋盘
+	var max_box := Vector2(_tile_w() * 0.36, _tile_h() * 0.92)
+	var scale := minf(max_box.x / tex_size.x, max_box.y / tex_size.y)
+	var draw_size := tex_size * scale
+	var foot := center + entity_foot_offset()
+	var foot_frac := clampf(foot_ratio, 0.15, 1.0)
+	var top_left := Vector2(foot.x - draw_size.x * 0.5, foot.y - draw_size.y * foot_frac)
+	return Rect2(top_left, draw_size)
+
+
 static func invert_grid(grid: Vector2i, board_size: Vector2i) -> Vector2i:
 	return Vector2i(board_size.x - 1 - grid.x, board_size.y - 1 - grid.y)
 

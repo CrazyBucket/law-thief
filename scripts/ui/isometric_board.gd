@@ -4,6 +4,10 @@ const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
 
 const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd")
+const PLAYER_SPRITES_SCRIPT := preload("res://scripts/ui/female_adventurer_sprites.gd")
+const SLIME_SPRITES_SCRIPT := preload("res://scripts/ui/slime_sprites.gd")
+const GEM_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_gem_sprites.gd")
+const PROP_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_prop_sprites.gd")
 const BoardFxTexturesClass := preload("res://scripts/ui/board_fx_textures.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
@@ -29,7 +33,9 @@ var state: GameState = null:
 		state = value
 		var next_id := value.get_instance_id() if value != null else 0
 		if next_id != prev_id:
+			_move_offsets.clear()
 			_walk_phase.clear()
+			_idle_phase.clear()
 			_strike_elapsed.clear()
 			_facing_screen_refs.clear()
 			_nameplate_alpha_by_uid.clear()
@@ -45,10 +51,12 @@ var invert_origin: bool = false
 var _board_origin: Vector2 = Vector2.ZERO
 var _animation_speed_scale: float = 1.0
 
-# ─── 动画系统 ─────────────────────────────────────────────────────────────
-var _anim_queue: Array[Dictionary] = [] # 待播放动画队列
-var _is_animating: bool = false
+## 棋盘地砖贴图（替代程序化绘制的菱形格子），按网格几何自动对齐
+var _board_texture: Sprite2D = null
+## 贴图去掉白边后的实际内容区域（缓存，仅扫描一次）
+var _board_texture_region: Rect2 = Rect2()
 
+# ─── 动画系统 ─────────────────────────────────────────────────────────────
 var _pulse_time: float = 0.0
 
 # 移动动画：单位 uid → 当前屏幕偏移（相对于逻辑位置）
@@ -59,10 +67,15 @@ var _particles: Array[Dictionary] = [] # {pos, color, life, max_life, velocity, 
 
 var _strike_elapsed: Dictionary = {}
 var _walk_phase: Dictionary = {}
+var _idle_phase: Dictionary = {}
 
 var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
+var _player_sprites: RefCounted = null ## FemaleAdventurerSprites
+var _slime_sprites: RefCounted = null ## SlimeSprites
+var _gem_sprites: RefCounted = null ## DoodleGemSprites
+var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
@@ -71,6 +84,20 @@ var _parallel_move_remaining: int = 0
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
+const _SLIME_SPRITE_GROUND_OFFSET_Y := -2.0
+const _PLAYER_WALK_FRAMES := 8
+const _PLAYER_IDLE_FRAMES := 8
+const _PLAYER_IDLE_FPS := 10.0
+const _PLAYER_WALK_FPS := 12.0
+const _PLAYER_STRIKE_FRAMES := 8
+const _PLAYER_STRIKE_DURATION := 0.52
+const _KNIGHT_STRIKE_DURATION := 0.28
+const _SLIME_IDLE_FPS := 2.0
+const _SLIME_IDLE_FRAMES := 2
+const _SLIME_WALK_FPS := 10.0
+const _SLIME_ANIM_FRAMES := 6
+const _SLIME_STRIKE_FRAMES := 6
+const _SLIME_STRIKE_DURATION := 0.36
 const _PUFF_FRAME_PATH := "res://assets/demo/doodle-rpg/ALL SPRITES/Particles/Puff_%d.png"
 const _INVALID_GRID := Vector2i(-9999, -9999)
 ## 等距棋盘仅四斜向（由 grid_to_screen 校准）
@@ -87,9 +114,14 @@ var _facing_screen_refs: Dictionary = {}
 func _ready() -> void:
 	texture_filter = TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_board_texture = get_node_or_null("Grids")
 	resized.connect(_update_origin)
 	_update_origin()
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
+	_player_sprites = PLAYER_SPRITES_SCRIPT.new()
+	_slime_sprites = SLIME_SPRITES_SCRIPT.new("green")
+	_gem_sprites = GEM_SPRITES_SCRIPT.new()
+	_prop_sprites = PROP_SPRITES_SCRIPT.new()
 	_fx_textures = BoardFxTexturesClass.new()
 	set_process(true)
 	call_deferred("_sync_unit_orientations")
@@ -99,6 +131,64 @@ func _update_origin() -> void:
 	var board_sz := _board_size()
 	IsoCoordinates.tile_scale = IsoCoordinates.compute_tile_scale(size, board_sz)
 	_board_origin = IsoCoordinates.board_origin(size, board_sz)
+	_update_board_texture_transform()
+
+
+## 把正方棋盘贴图映射到等距菱形上：四个角分别对到菱形上/右/下/左顶点
+## （等价于旋转 45°＋纵向压扁 2:1，但用仿射矩阵一次性完成缩放与定位）
+func _update_board_texture_transform() -> void:
+	if _board_texture == null or _board_texture.texture == null:
+		return
+	# 只取非白底内容区域，裁掉四周白边，避免透明白边在菱形里占位导致格子内缩
+	var region := _board_texture_content_rect()
+	if region.size.x <= 0.0 or region.size.y <= 0.0:
+		return
+	_board_texture.region_enabled = true
+	_board_texture.region_rect = region
+	var board_sz := _board_size()
+	var half_h := IsoCoordinates._half_h()
+	var top := grid_to_screen(Vector2i(0, 0)) - Vector2(0, half_h)
+	var bottom := grid_to_screen(Vector2i(board_sz.x - 1, board_sz.y - 1)) + Vector2(0, half_h)
+	var center := (top + bottom) * 0.5
+	var half_diag := IsoCoordinates.board_pixel_size(board_sz) * 0.5
+	var x_axis := Vector2(half_diag.x, half_diag.y) / region.size.x
+	var y_axis := Vector2(-half_diag.x, half_diag.y) / region.size.y
+	_board_texture.transform = Transform2D(x_axis, y_axis, center)
+
+
+## 扫描贴图，按 shader 同阈值（接近纯白即背景）求出内容包围盒，用于裁掉白边
+func _board_texture_content_rect() -> Rect2:
+	if _board_texture_region.size.x > 0.0:
+		return _board_texture_region
+	var tex := _board_texture.texture
+	var full := Rect2(Vector2.ZERO, tex.get_size())
+	var img := tex.get_image()
+	if img == null:
+		_board_texture_region = full
+		return full
+	if img.is_compressed():
+		img.decompress()
+	var w := img.get_width()
+	var h := img.get_height()
+	var min_x := w
+	var min_y := h
+	var max_x := -1
+	var max_y := -1
+	var step := 2
+	for y in range(0, h, step):
+		for x in range(0, w, step):
+			var c := img.get_pixel(x, y)
+			if c.a < 0.04 or (c.r > 0.95 and c.g > 0.95 and c.b > 0.95):
+				continue
+			min_x = mini(min_x, x)
+			min_y = mini(min_y, y)
+			max_x = maxi(max_x, x)
+			max_y = maxi(max_y, y)
+	if max_x < min_x or max_y < min_y:
+		_board_texture_region = full
+	else:
+		_board_texture_region = Rect2(min_x, min_y, max_x - min_x + step, max_y - min_y + step)
+	return _board_texture_region
 
 
 func _process(delta: float) -> void:
@@ -111,15 +201,23 @@ func _process(delta: float) -> void:
 	for mv_uid in _move_offsets.keys():
 		if _strike_elapsed.has(mv_uid):
 			continue
-		_walk_phase[mv_uid] = _walk_phase.get(mv_uid, 0.0) + scaled_dt * 11.5
+		_walk_phase[mv_uid] = _walk_phase.get(mv_uid, 0.0) + scaled_dt
 		visuals_dirty = true
+	if state != null:
+		for unit: UnitState in state.units.values():
+			if not unit.alive or not _uses_animated_idle(unit):
+				continue
+			if _strike_elapsed.has(unit.uid) or _move_offsets.has(unit.uid):
+				continue
+			_idle_phase[unit.uid] = _idle_phase.get(unit.uid, 0.0) + scaled_dt
+			visuals_dirty = true
 
 	var strike_done: Array[String] = []
 	for stk in _strike_elapsed.keys():
 		var next_t: float = float(_strike_elapsed[stk]) + scaled_dt
 		_strike_elapsed[stk] = next_t
 		visuals_dirty = true
-		if next_t >= 0.28:
+		if next_t >= _strike_duration_for(stk):
 			strike_done.append(str(stk))
 	for stk_rem in strike_done:
 		_strike_elapsed.erase(stk_rem)
@@ -199,6 +297,7 @@ func _step_unit_fade(store: Dictionary, target_uids: Array[String], delta: float
 
 func set_battle_state(new_state: GameState) -> void:
 	state = new_state
+	queue_redraw()
 
 
 func init_unit_orientations() -> void:
@@ -292,24 +391,51 @@ func _sorted_cells() -> Array[Vector2i]:
 func _draw() -> void:
 	if state == null:
 		return
+	var drawn_units: Dictionary = {}
+	var drawn_entities: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
-	_draw_entities()
-	_draw_highlight_outlines()
-	if hover_cell.x >= 0:
-		var hover_unit := state.get_unit_at(hover_cell)
-		if hover_unit == null or not hover_unit.alive:
-			TileRenderer.draw_hover_outline(self , grid_to_screen(hover_cell))
+		_draw_entity_at_grid(grid, drawn_entities)
+		if hover_cell == grid:
+			var hover_unit := state.get_unit_at(hover_cell)
+			if hover_unit == null or not hover_unit.alive:
+				TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell))
 	_draw_unit_ground_outlines()
-	# 多格单位在 sorted_cells 中会被多次命中；用 Set 勿重复绘制
-	var drawn_uids: Dictionary = {}
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
-		if unit != null and not drawn_uids.has(unit.uid):
-			drawn_uids[unit.uid] = true
+		if unit != null and unit.alive and not drawn_units.has(unit.uid):
+			drawn_units[unit.uid] = true
 			_draw_unit(unit)
+	_draw_highlight_outlines()
 	_draw_particles()
 	_draw_projectile()
+
+
+func _draw_entity_at_grid(grid: Vector2i, drawn_entities: Dictionary) -> void:
+	var entity := state.get_entity_at(grid)
+	if entity == null or not entity.alive or drawn_entities.has(entity.uid):
+		return
+	drawn_entities[entity.uid] = true
+	var center := grid_to_screen(entity.pos)
+	match entity.entity_id:
+		Constants.ENTITY_SPIKE:
+			TileRenderer.draw_spikes(self, center)
+		Constants.ENTITY_PROP, Constants.ENTITY_ROCK:
+			_draw_prop_entity(entity, center)
+		_:
+			pass
+
+
+func _draw_prop_entity(entity: EntityState, center: Vector2) -> void:
+	if _prop_sprites == null or entity.prop_sprite.is_empty():
+		TileRenderer.draw_prop_fallback(self, center)
+		return
+	var tex: Texture2D = _prop_sprites.texture_for_sprite_id(entity.prop_sprite)
+	if tex == null:
+		TileRenderer.draw_prop_fallback(self, center)
+		return
+	var foot_ratio: float = _prop_sprites.foot_ratio_for_sprite_id(entity.prop_sprite)
+	TileRenderer.draw_prop_sprite(self, center, tex, foot_ratio)
 
 
 func _draw_highlight_outlines() -> void:
@@ -344,20 +470,12 @@ func _draw_highlight_outlines() -> void:
 		draw_polyline(closed, c, IsoCoordinates.visual(1.5), false)
 
 
-func _draw_entities() -> void:
-	if state == null:
-		return
-	for entity in state.entities.values():
-		if not entity.alive or entity.entity_id != Constants.ENTITY_SPIKE:
-			continue
-		TileRenderer.draw_spikes(self, grid_to_screen(entity.pos))
-
-
 func _draw_tile(grid: Vector2i) -> void:
 	var center := grid_to_screen(grid)
 	var tile := state.get_tile(grid)
 	var highlight := _tile_highlight(grid)
-	TileRenderer.draw_tile(self , center, tile, highlight)
+	# 地砖底由 Grids 贴图统一绘制，这里只叠加高亮与特殊地块（水/柱/毒/火等）
+	TileRenderer.draw_tile_overlays(self , center, tile, highlight)
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
@@ -400,36 +518,20 @@ func _draw_unit(unit: UnitState) -> void:
 		center.x = (anchor_left.x + center.x) * 0.5
 	var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
 	center += offset
-	var sprite_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
-	# 多格单位 sprite 按 footprint 宽度等比放大
-	if fp != Vector2i(1, 1):
-		sprite_size *= Vector2(float(fp.x), float(fp.y)).length() * 0.8
-	var ground_nudge := Vector2(0.0, IsoCoordinates.visual(_UNIT_SPRITE_GROUND_OFFSET_Y))
-	var top_left := center + Vector2(-sprite_size.x * 0.5, -sprite_size.y + IsoCoordinates.visual(2.0)) + ground_nudge
 	var facing := unit.facing
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
-
-	var pose_tex: Texture2D = null
-	if _strike_elapsed.has(unit.uid):
-		var st: float = float(_strike_elapsed[unit.uid])
-		var fidx := clampi(int(st / (0.28 / 3.0)), 0, 2)
-		pose_tex = _knight_sprites.texture_sword_swing(facing, fidx)
-	elif _move_offsets.has(unit.uid):
-		var pf := float(_walk_phase.get(unit.uid, 0.0))
-		var wfr := int(pf) % 3
-		pose_tex = _knight_sprites.texture_walk(facing, wfr)
-	else:
-		pose_tex = _knight_sprites.texture_walk(facing, 0)
-
-	var sdw: Texture2D = _knight_sprites.texture_shadow() if _knight_sprites != null else null
-	if sdw != null:
-		var sh_sz := Vector2(sprite_size.x * 0.82, sprite_size.y * 0.24)
-		var sh_tl := center + Vector2(-sh_sz.x * 0.5, -IsoCoordinates.visual(2.0)) + ground_nudge
-		draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.42))
+	var pose: Dictionary = _resolve_unit_pose(unit, facing)
+	var pose_tex: Texture2D = pose.get("texture", null)
+	var sprite_size: Vector2 = pose.get("sprite_size", Vector2.ZERO)
+	var layout := _unit_sprite_layout(unit, center, sprite_size)
+	var top_left: Vector2 = layout["top_left"]
+	var ground_nudge: Vector2 = layout["ground_nudge"]
+	_draw_unit_shadow(unit, center, ground_nudge, sprite_size)
 
 	var aura_alpha := float(_active_aura_alpha_by_uid.get(unit.uid, 0.0))
-	if aura_alpha > 0.01:
-		_draw_active_turn_aura(unit, center + Vector2(0, IsoCoordinates.visual(2.0)), aura_alpha)
+	if aura_alpha > 0.01 and not _uses_player_sprite(unit) and not _uses_slime_sprite(unit):
+		var aura_center := center + ground_nudge + Vector2(0.0, IsoCoordinates.visual(2.0))
+		_draw_active_turn_aura(unit, aura_center, aura_alpha)
 	var hp_bar_pos := center + IsoCoordinates.visual_vec(Vector2(-18, 6))
 	var name_alpha := float(_nameplate_alpha_by_uid.get(unit.uid, 0.0))
 	if pose_tex != null:
@@ -437,9 +539,188 @@ func _draw_unit(unit: UnitState) -> void:
 	if name_alpha > 0.01:
 		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
+	_draw_gem_icons(unit, hp_bar_pos)
 	_draw_hp_bar(hp_bar_pos, unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		_draw_intent_badge(center + Vector2(0, -sprite_size.y + IsoCoordinates.visual(8.0)) + ground_nudge, unit.intent)
+
+
+func _unit_sprite_size(unit: UnitState) -> Vector2:
+	var sprite_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
+	var fp := unit.footprint_size
+	if fp != Vector2i(1, 1):
+		sprite_size *= Vector2(float(fp.x), float(fp.y)).length() * 0.8
+	return sprite_size
+
+
+func _uses_player_sprite(unit: UnitState) -> bool:
+	return unit.unit_def_id == "unit_player"
+
+
+func _uses_slime_sprite(unit: UnitState) -> bool:
+	return unit.unit_def_id == "unit_fission_slime"
+
+
+func _uses_animated_idle(unit: UnitState) -> bool:
+	return _uses_player_sprite(unit) or _uses_slime_sprite(unit)
+
+
+func _unit_sprite_layout(unit: UnitState, center: Vector2, sprite_size: Vector2) -> Dictionary:
+	var ground_y := _UNIT_SPRITE_GROUND_OFFSET_Y
+	var foot_extra_y := 2.0
+	if _uses_slime_sprite(unit):
+		ground_y = _SLIME_SPRITE_GROUND_OFFSET_Y
+		foot_extra_y = 0.0
+	var ground_nudge := Vector2(0.0, IsoCoordinates.visual(ground_y))
+	var foot := center + ground_nudge + Vector2(0.0, IsoCoordinates.visual(foot_extra_y))
+	var top_left := Vector2(foot.x - sprite_size.x * 0.5, foot.y - sprite_size.y)
+	return {"top_left": top_left, "ground_nudge": ground_nudge, "foot": foot}
+
+
+func _strike_duration_for(unit_uid: String) -> float:
+	if state == null:
+		return _KNIGHT_STRIKE_DURATION
+	var unit: UnitState = state.units.get(unit_uid, null)
+	if unit != null and _uses_player_sprite(unit):
+		return _PLAYER_STRIKE_DURATION
+	if unit != null and _uses_slime_sprite(unit):
+		return _SLIME_STRIKE_DURATION
+	return _KNIGHT_STRIKE_DURATION
+
+
+func _unit_shadow_texture(unit: UnitState) -> Texture2D:
+	if _uses_slime_sprite(unit):
+		return null
+	if _uses_player_sprite(unit) and _player_sprites != null:
+		return _player_sprites.texture_shadow()
+	if _knight_sprites != null:
+		return _knight_sprites.texture_shadow()
+	return null
+
+
+func _draw_unit_shadow(unit: UnitState, center: Vector2, ground_nudge: Vector2, sprite_size: Vector2) -> void:
+	if _uses_slime_sprite(unit):
+		if _player_sprites == null:
+			return
+		var sdw: Texture2D = _player_sprites.texture_shadow()
+		if sdw == null:
+			return
+		var foot: Vector2 = center + ground_nudge
+		var sh_sz := Vector2(sprite_size.x * 0.58, IsoCoordinates.visual(9.0))
+		var sh_tl := Vector2(foot.x - sh_sz.x * 0.5, foot.y - sh_sz.y * 0.68)
+		draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.32))
+		return
+	var sdw: Texture2D = _unit_shadow_texture(unit)
+	if sdw == null:
+		return
+	if _uses_player_sprite(unit):
+		var foot := center + ground_nudge + Vector2(0.0, IsoCoordinates.visual(2.0))
+		var sh_sz := Vector2(sprite_size.x * 0.72, IsoCoordinates.visual(10.0))
+		var sh_tl := Vector2(foot.x - sh_sz.x * 0.5, foot.y - sh_sz.y * 0.55)
+		draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.34))
+		return
+	var sh_sz := Vector2(sprite_size.x * 0.82, sprite_size.y * 0.24)
+	var sh_tl := center + Vector2(-sh_sz.x * 0.5, -IsoCoordinates.visual(2.0)) + ground_nudge
+	draw_texture_rect(sdw, Rect2(sh_tl, sh_sz), false, Color(1, 1, 1, 0.42))
+
+
+func _resolve_unit_pose(unit: UnitState, facing: String) -> Dictionary:
+	if _uses_player_sprite(unit):
+		return _resolve_player_pose(unit.uid, facing)
+	if _uses_slime_sprite(unit):
+		return _resolve_slime_pose(unit, facing)
+	return _resolve_knight_pose(unit, facing)
+
+
+func _resolve_player_pose(unit_uid: String, facing: String) -> Dictionary:
+	if _player_sprites == null:
+		return {}
+	var anim := "Idle"
+	var idle_t: float = float(_idle_phase.get(unit_uid, 0.0))
+	var frame := int(idle_t * _PLAYER_IDLE_FPS) % _PLAYER_IDLE_FRAMES
+	if _strike_elapsed.has(unit_uid):
+		anim = "Dash"
+		var st: float = float(_strike_elapsed[unit_uid])
+		frame = clampi(
+			int(st / (_PLAYER_STRIKE_DURATION / float(_PLAYER_STRIKE_FRAMES))),
+			0,
+			_PLAYER_STRIKE_FRAMES - 1
+		)
+	elif _move_offsets.has(unit_uid):
+		anim = "Walk"
+		var walk_t: float = float(_walk_phase.get(unit_uid, 0.0))
+		frame = int(walk_t * _PLAYER_WALK_FPS) % _PLAYER_WALK_FRAMES
+	var pose: Dictionary = _player_sprites.pose_frame(facing, anim, frame)
+	if pose.is_empty():
+		return {}
+	var draw_size: Vector2 = pose.get("draw_size", Vector2.ZERO)
+	return {
+		"texture": pose.get("texture", null),
+		"sprite_size": IsoCoordinates.visual_vec(draw_size),
+	}
+
+
+func _resolve_slime_pose(unit: UnitState, facing: String) -> Dictionary:
+	if _slime_sprites == null:
+		return {}
+	var display_facing := facing
+	if not _strike_elapsed.has(unit.uid) and not _move_offsets.has(unit.uid):
+		display_facing = _slime_display_facing(unit, facing)
+	var anim := "Idle"
+	var idle_t: float = float(_idle_phase.get(unit.uid, 0.0))
+	var frame := int(idle_t * _SLIME_IDLE_FPS) % _SLIME_IDLE_FRAMES
+	if _strike_elapsed.has(unit.uid):
+		anim = "Strike"
+		var st: float = float(_strike_elapsed[unit.uid])
+		frame = clampi(
+			int(st / (_SLIME_STRIKE_DURATION / float(_SLIME_STRIKE_FRAMES))),
+			0,
+			_SLIME_STRIKE_FRAMES - 1
+		)
+	elif _move_offsets.has(unit.uid):
+		anim = "Walk"
+		var walk_t: float = float(_walk_phase.get(unit.uid, 0.0))
+		frame = int(walk_t * _SLIME_WALK_FPS) % _SLIME_ANIM_FRAMES
+	var pose: Dictionary = _slime_sprites.pose_frame(display_facing, anim, frame)
+	if pose.is_empty():
+		return {}
+	var base_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
+	var sprite_size := _unit_sprite_size(unit)
+	var scale := sprite_size / base_size
+	var draw_size: Vector2 = pose.get("draw_size", Vector2.ZERO) * scale
+	return {
+		"texture": pose.get("texture", null),
+		"sprite_size": draw_size,
+	}
+
+
+func _slime_display_facing(unit: UnitState, fallback: String) -> String:
+	if state == null:
+		return fallback
+	var player: UnitState = state.get_player()
+	if player == null or not player.alive:
+		return fallback
+	return _facing_from_screen_delta(
+		_get_unit_screen_center(unit),
+		_get_unit_screen_center(player),
+		fallback
+	)
+
+
+func _resolve_knight_pose(unit: UnitState, facing: String) -> Dictionary:
+	var tex: Texture2D = null
+	if _knight_sprites == null:
+		return {}
+	if _strike_elapsed.has(unit.uid):
+		var st: float = float(_strike_elapsed[unit.uid])
+		var fidx := clampi(int(st / (0.28 / 3.0)), 0, 2)
+		tex = _knight_sprites.texture_sword_swing(facing, fidx)
+	elif _move_offsets.has(unit.uid):
+		var wfr := int(_walk_phase.get(unit.uid, 0.0)) % 3
+		tex = _knight_sprites.texture_walk(facing, wfr)
+	else:
+		tex = _knight_sprites.texture_walk(facing, 0)
+	return {"texture": tex, "sprite_size": _unit_sprite_size(unit)}
 
 
 func _draw_unit_ground_outlines() -> void:
@@ -450,9 +731,9 @@ func _draw_unit_ground_outlines() -> void:
 		var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
 		var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
 		if hover_alpha > 0.01:
-			_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.15, hover_alpha)
+			_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.0, hover_alpha)
 		if selection_alpha > 0.01:
-			_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.08, selection_alpha)
+			_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, selection_alpha)
 
 
 func _draw_unit_focus_outline(
@@ -526,8 +807,35 @@ func _draw_unit_statuses(unit: UnitState, origin: Vector2) -> void:
 	_draw_status_row(origin, unit, IsoCoordinates.visual(12.0), IsoCoordinates.visual(2.0), IsoCoordinates.visual(44.0))
 
 
-func _draw_gem_diamonds(_unit: UnitState, _anchor: Vector2) -> void:
-	return
+func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
+	if state == null or _gem_sprites == null:
+		return
+	var occupied_slots: Array[SlotState] = []
+	for slot in unit.slots:
+		if not slot.gem_uid.is_empty():
+			occupied_slots.append(slot)
+	if occupied_slots.is_empty():
+		return
+	var icon_size := IsoCoordinates.visual(10.0)
+	var spacing := IsoCoordinates.visual(11.0)
+	var start_x := anchor.x - spacing * float(occupied_slots.size() - 1) * 0.5
+	var icon_y := anchor.y - IsoCoordinates.visual(13.0)
+	for i in range(occupied_slots.size()):
+		var slot: SlotState = occupied_slots[i]
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem == null:
+			continue
+		var tex: Texture2D = _gem_sprites.texture_for_gem_id(gem.gem_id)
+		if tex == null:
+			continue
+		var tint: Color = _gem_sprites.modulate_for_gem_id(gem.gem_id)
+		var cx := start_x + spacing * float(i)
+		draw_texture_rect(
+			tex,
+			Rect2(Vector2(cx - icon_size * 0.5, icon_y - icon_size * 0.5), Vector2(icon_size, icon_size)),
+			false,
+			tint
+		)
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
@@ -856,12 +1164,9 @@ func _set_move_offset(offset: Vector2, uid: String) -> void:
 	queue_redraw()
 
 
-func _on_move_anim_done(uid: String, final_offset: Vector2, emit_finished: bool = true) -> void:
+func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool = true) -> void:
 	_walk_phase.erase(uid)
-	if final_offset.length_squared() <= 0.001:
-		_move_offsets.erase(uid)
-	else:
-		_move_offsets[uid] = final_offset
+	_move_offsets.erase(uid)
 	queue_redraw()
 	if not emit_finished:
 		_parallel_move_remaining = maxi(0, _parallel_move_remaining - 1)

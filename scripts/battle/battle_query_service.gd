@@ -83,6 +83,9 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 		lines.append("地刺：步入 %d 伤害；被强制位移踩入附加易伤并受到 %d 伤害" % [
 			Constants.SPIKE_DAMAGE, Constants.SPIKE_COLLISION_DAMAGE
 		])
+	var blocking := BoardUtils.blocking_entity_at(state, cell)
+	if blocking != null and blocking.is_indestructible():
+		lines.append("静物：不可通行，攻击无效")
 	match tile.tile_id:
 		Constants.TILE_WATER:
 			lines.append("水洼：导电连锁区域")
@@ -109,7 +112,9 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
 			if cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
-				if tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
+				if blocking != null and blocking.is_indestructible() and unit == null:
+					lines.append("→ 点击射击（静物不受伤害）")
+				elif tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
 					lines.append("→ 点击电击水域（相连水域及边缘潮湿单位导电）")
 				else:
 					lines.append("→ 点击射击（%d 伤害）" % CombatRules.attack_damage(state, player))
@@ -155,7 +160,10 @@ func get_action_hint() -> String:
 			if ctrl.state != null:
 				var player: UnitState = ctrl.state.get_player()
 				if player != null and not StatusRules.can_move(player):
-					return "移动：你被束缚，暂时无法移动"
+					var block_reason := StatusRules.move_block_reason(player)
+					if block_reason.is_empty():
+						return "移动：暂时无法移动"
+					return "移动：%s" % block_reason
 			return "移动：点击蓝色高亮格（每回合 1 次）"
 		Constants.ACTION_ATTACK:
 			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE

@@ -2,8 +2,9 @@ extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
+const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 
-@onready var _board: Control = $BoardLayer/IsometricBoard
+@onready var _board: _IsometricBoard = $BoardLayer/IsometricBoard
 @onready var _title: Label = $HudLayer/TopBar/HBox/Title
 @onready var _hint: Label = $HudLayer/TopBar/HBox/Hint
 @onready var _seed_label: Label = $HudLayer/TopBar/HBox/SeedLabel

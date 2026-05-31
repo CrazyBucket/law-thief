@@ -11,5 +11,11 @@
     {"pos": [4, 4], "tile_id": "tile_water"},
     {"pos": [3, 5], "tile_id": "tile_water"},
     {"pos": [4, 5], "tile_id": "tile_water"}
+  ],
+  "entities": [
+    {"pos": [2, 3], "entity_id": "entity_prop"},
+    {"pos": [6, 2], "entity_id": "entity_prop", "prop_sprite": "LargeRock2_1"},
+    {"pos": [5, 5], "entity_id": "entity_prop"},
+    {"pos": [3, 6], "entity_id": "entity_prop", "prop_sprite": "Post2_0"}
   ]
 }

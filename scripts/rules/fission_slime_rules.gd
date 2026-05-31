@@ -1,6 +1,7 @@
 class_name FissionSlimeRules
 extends RefCounted
 
+const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
 const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 
 
@@ -13,20 +14,7 @@ static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
 
 
 static func is_single_target_damage_reason(reason: String) -> bool:
-	const SINGLE_TARGET_REASONS: Array[String] = [
-		"melee_attack",
-		"ranged_attack",
-		"lawless_attack",
-		"bomb_rat_plunder",
-		"poison_attack",
-		"arc_attack",
-		"fire_attack",
-		"ice_attack",
-		"split_attack",
-		"split_wing",
-		Constants.DAMAGE_REASON_SLAM,
-	]
-	return reason in SINGLE_TARGET_REASONS
+	return EnemyBehavior.is_single_target_damage_reason(reason)
 
 
 static func compute_intent(
@@ -77,17 +65,15 @@ static func compute_intent(
 		intent.preview_text = "砸击 (%d)" % intent.damage
 		return intent
 
-	var move_path := BoardUtils.path_toward(
-		state, unit.pos, player.pos, unit.move_points, unit.uid, {}, cell_blockers, unit
-	)
-	if move_path.is_empty():
+	var approach := _find_best_approach(state, unit, player, reachable, cell_blockers)
+	if approach.is_empty():
 		return IntentState.wait(unit.uid)
 	var move_intent := IntentState.new()
 	move_intent.type = "move"
 	move_intent.source_uid = unit.uid
 	move_intent.target_uid = player.uid
-	move_intent.path = move_path
-	move_intent.target_pos = move_path[move_path.size() - 1]
+	move_intent.path = approach.get("path", [] as Array[Vector2i])
+	move_intent.target_pos = approach.get("target_pos", unit.pos)
 	move_intent.preview_text = "逼近"
 	return move_intent
 
@@ -144,6 +130,50 @@ static func _anchor_passable_for_plan(
 		if cell_blockers.has(key) and str(cell_blockers[key]) != unit.uid:
 			return false
 	return true
+
+
+static func _find_best_approach(
+	state: GameState,
+	unit: UnitState,
+	player: UnitState,
+	reachable: Array[Vector2i],
+	cell_blockers: Dictionary
+) -> Dictionary:
+	var current_dist := BoardUtils.path_distance_to_cell(
+		state, unit.pos, player.pos, unit.uid, cell_blockers, unit
+	)
+	if current_dist < 0:
+		return {}
+	var best_path: Array[Vector2i] = []
+	var best_dist := current_dist
+	var best_anchor := unit.pos
+
+	for anchor in reachable:
+		if not _anchor_passable_for_plan(state, unit, anchor, cell_blockers):
+			continue
+		var dist := BoardUtils.path_distance_to_cell(
+			state, anchor, player.pos, unit.uid, cell_blockers, unit
+		)
+		if dist < 0 or dist >= best_dist:
+			continue
+		var path: Array[Vector2i] = []
+		if anchor != unit.pos:
+			path = BoardUtils.path_toward(
+				state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers, unit
+			)
+			if path.is_empty() or path[path.size() - 1] != anchor:
+				continue
+		if dist < best_dist or (dist == best_dist and path.size() < best_path.size()):
+			best_dist = dist
+			best_anchor = anchor
+			best_path = path
+
+	if best_dist >= current_dist:
+		return {}
+	var target_pos := unit.pos
+	if not best_path.is_empty():
+		target_pos = best_path[best_path.size() - 1]
+	return {"path": best_path, "target_pos": target_pos}
 
 
 static func _knockback_origin_toward(unit: UnitState, target_pos: Vector2i) -> Vector2i:

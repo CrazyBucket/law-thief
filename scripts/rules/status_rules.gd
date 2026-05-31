@@ -131,6 +131,18 @@ static func can_move(unit: UnitState) -> bool:
 	return true
 
 
+static func move_block_reason(unit: UnitState) -> String:
+	for status in unit.statuses:
+		if not _StatusRegistry.blocks_movement(status.status_id):
+			continue
+		match status.status_id:
+			Constants.STATUS_PARALYZED:
+				return "被麻痹，无法移动"
+			Constants.STATUS_ROOTED:
+				return "被束缚，无法移动"
+	return ""
+
+
 static func get_armor_bonus(unit: UnitState) -> int:
 	var armor: StatusInstance = unit.get_status(Constants.STATUS_ARMOR)
 	if armor == null:

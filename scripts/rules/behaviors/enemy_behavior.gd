@@ -115,7 +115,24 @@ static func split_clone_ratio(_unit: UnitState) -> float:
 
 
 static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
-	return _is_single_target_damage_reason(reason)
+	return is_single_target_damage_reason(reason)
+
+
+static func is_single_target_damage_reason(reason: String) -> bool:
+	const SINGLE_TARGET_REASONS: Array[String] = [
+		"melee_attack",
+		"ranged_attack",
+		"lawless_attack",
+		"bomb_rat_plunder",
+		"poison_attack",
+		"arc_attack",
+		"fire_attack",
+		"ice_attack",
+		"split_attack",
+		"split_wing",
+		Constants.DAMAGE_REASON_SLAM,
+	]
+	return reason in SINGLE_TARGET_REASONS
 
 
 static func execute_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
@@ -140,7 +157,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var arc_target: UnitState = state.units.get(intent.target_uid, null)
 			if arc_target == null or not arc_target.alive:
 				return [] as Array[Dictionary]
-			if BoardUtils.manhattan(unit.pos, arc_target.pos) > Constants.ATTACK_RANGE:
+			if not BoardUtils.are_units_adjacent(unit, arc_target):
 				return [] as Array[Dictionary]
 			var arc_base := CombatRules.attack_damage(state, unit)
 			var arc_events := _enemy_red_damage_events(state, unit, intent.target_uid, arc_base, "arc_attack")
@@ -157,14 +174,28 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			return split_result.get("events", [] as Array[Dictionary])
 		"fire_attack":
 			var fire_target: UnitState = state.units.get(intent.target_uid, null)
-			if fire_target != null and fire_target.alive:
+			if fire_target == null or not fire_target.alive:
+				return [] as Array[Dictionary]
+			if not BoardUtils.are_units_adjacent(unit, fire_target):
+				return [] as Array[Dictionary]
+			var fire_events := _enemy_red_damage_events(
+				state, unit, intent.target_uid, CombatRules.attack_damage(state, unit), "fire_attack"
+			)
+			if fire_target.alive:
 				StatusRules.apply_burning(state, fire_target, 1, unit.uid)
-			return [] as Array[Dictionary]
+			return fire_events
 		"ice_attack":
 			var ice_target: UnitState = state.units.get(intent.target_uid, null)
-			if ice_target != null and ice_target.alive:
+			if ice_target == null or not ice_target.alive:
+				return [] as Array[Dictionary]
+			if not BoardUtils.are_units_adjacent(unit, ice_target):
+				return [] as Array[Dictionary]
+			var ice_events := _enemy_red_damage_events(
+				state, unit, intent.target_uid, CombatRules.attack_damage(state, unit), "ice_attack"
+			)
+			if ice_target.alive:
 				GemEffects.apply_ice_hit_effect(state, ice_target, unit.uid)
-			return [] as Array[Dictionary]
+			return ice_events
 		_:
 			return [] as Array[Dictionary]
 
@@ -263,21 +294,13 @@ static func _find_gem_carrier(state: GameState, gem: GemState) -> UnitState:
 	return null
 
 
-static func _is_single_target_damage_reason(reason: String) -> bool:
-	const SINGLE_TARGET_REASONS: Array[String] = [
-		"melee_attack",
-		"ranged_attack",
-		"lawless_attack",
-		"bomb_rat_plunder",
-		"poison_attack",
-		"arc_attack",
-		"fire_attack",
-		"ice_attack",
-		"split_attack",
-		"split_wing",
-		Constants.DAMAGE_REASON_SLAM,
-	]
-	return reason in SINGLE_TARGET_REASONS
+static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
+	var target: UnitState = state.units.get(target_uid, null)
+	if target == null or not target.alive:
+		return [] as Array[Dictionary]
+	if BoardUtils.manhattan(unit.pos, target.pos) > Constants.ENEMY_GRAVITY_PULL_RANGE:
+		return [] as Array[Dictionary]
+	return GemEffects.pull_unit_toward_with_events(state, target, unit.pos, 2, unit.uid)
 
 
 static func _execute_charge_explosion(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
@@ -307,11 +330,11 @@ static func _enemy_red_damage_events(
 	var dealt := CombatRules.apply_damage(state, target, amount, unit.uid, reason)
 	if dealt <= 0:
 		return [] as Array[Dictionary]
-	return [{"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": is_crit}]
+	return [{
+		"type": "damage",
+		"pos": target.pos,
+		"damage": dealt,
+		"is_crit": is_crit,
+		"attacker_uid": unit.uid,
+	}]
 
-
-static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
-	var target: UnitState = state.units.get(target_uid, null)
-	if target == null or not target.alive:
-		return [] as Array[Dictionary]
-	return GemEffects.pull_unit_toward_with_events(state, target, unit.pos, 2, unit.uid)

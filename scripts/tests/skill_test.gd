@@ -11,8 +11,10 @@ func _run_tests() -> void:
 	_test_attack_without_red_gem()
 	_test_explosion_triggers_on_attack_hit()
 	_test_poison_triggers_on_attack_hit()
+	_test_poison_fogs_target_not_attacker()
 	_test_explosion_on_empty_cell()
 	_test_explosion_splash_damages_neighbor()
+	_test_fire_gem_burns_target_not_attacker()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -92,6 +94,39 @@ func _test_poison_triggers_on_attack_hit() -> void:
 	print("  [OK] poison gem triggered on attack hit")
 
 
+func _test_poison_fogs_target_not_attacker() -> void:
+	print("--- Test: Poison red gem fogs target area, not attacker ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_poison_fog"
+	gem.gem_id = Constants.GEM_POISON
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	var guard: UnitState = null
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard":
+			guard = unit
+			break
+	assert(guard != null, "guard should exist")
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "attack should succeed")
+	var player_tile := state.get_tile(player.pos)
+	var guard_tile := state.get_tile(guard.pos)
+	assert(
+		not player_tile.has_modifier(Constants.TILE_MOD_POISON_FOG),
+		"player tile should not have poison fog"
+	)
+	assert(
+		guard_tile.has_modifier(Constants.TILE_MOD_POISON_FOG),
+		"target tile should have poison fog"
+	)
+	assert(guard.has_status(Constants.STATUS_POISON), "target should be poisoned")
+	print("  [OK] poison fog on target only")
+
+
 func _test_explosion_on_empty_cell() -> void:
 	print("--- Test: Explosion red gem triggers on empty cell ---")
 	var ctrl := BattleController.new()
@@ -153,6 +188,30 @@ func _test_explosion_splash_damages_neighbor() -> void:
 			splash_events += 1
 	assert(splash_events >= 1, "should emit neighbor damage event")
 	print("  [OK] explosion splash damages neighbor (%d -> %d)" % [neighbor_hp, neighbor.hp])
+
+
+func _test_fire_gem_burns_target_not_attacker() -> void:
+	print("--- Test: Fire red gem burns target, not attacker ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_fire_red"
+	gem.gem_id = Constants.GEM_FIRE
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	var guard: UnitState = null
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard":
+			guard = unit
+			break
+	assert(guard != null, "guard should exist")
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "attack should succeed")
+	assert(guard.has_status(Constants.STATUS_BURNING), "guard should be burning")
+	assert(not player.has_status(Constants.STATUS_BURNING), "player should not be burning")
+	print("  [OK] fire gem burns target only")
 
 
 func _data_registry() -> Node:

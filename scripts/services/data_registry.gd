@@ -25,9 +25,9 @@ const _RARITY_WEIGHTS := {
 # 来源 → 每个稀有度的权重（决定 roll 时各等级的抽出概率）
 const _SOURCE_RARITY_WEIGHTS := {
 	"normal_chest": {"common": 65.0, "rare": 25.0, "boss": 10.0},
-	"elite_combat":  {"common": 40.0, "rare": 40.0, "boss": 20.0},
-	"large_chest":   {"common": 10.0, "rare": 60.0, "boss": 30.0},
-	"shop":          {"common": 50.0, "rare": 35.0, "boss": 15.0},
+	"elite_combat": {"common": 40.0, "rare": 40.0, "boss": 20.0},
+	"large_chest": {"common": 10.0, "rare": 60.0, "boss": 30.0},
+	"shop": {"common": 50.0, "rare": 35.0, "boss": 15.0},
 }
 
 var _gem_effect_profiles: Dictionary = {}
@@ -788,6 +788,9 @@ func _register_encounters() -> void:
 			],
 			"entities": [
 				{"pos": Vector2i(2, 5), "entity_id": Constants.ENTITY_SPIKE},
+				{"pos": Vector2i(4, 3), "entity_id": Constants.ENTITY_PROP},
+				{"pos": Vector2i(5, 2), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "Statue1_0"},
+				{"pos": Vector2i(1, 4), "entity_id": Constants.ENTITY_PROP},
 			],
 		},
 		"bomb_rat_test": {
@@ -826,7 +829,7 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(6, 3), "entity_id": Constants.ENTITY_SPIKE},
 			],
 			"tiles": [
-				{"pos": Vector2i(7, 5), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
+				{"pos": Vector2i(7, 5), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
 		"template_b": {
@@ -842,7 +845,7 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(6, 4), "entity_id": Constants.ENTITY_SPIKE},
 			],
 			"tiles": [
-				{"pos": Vector2i(2, 2), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
+				{"pos": Vector2i(2, 2), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
 		"template_c": {
@@ -858,6 +861,12 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(4, 4), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(4, 5), "tile_id": Constants.TILE_WATER},
+			],
+			"entities": [
+				{"pos": Vector2i(2, 3), "entity_id": Constants.ENTITY_PROP},
+				{"pos": Vector2i(6, 2), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "LargeRock2_1"},
+				{"pos": Vector2i(5, 5), "entity_id": Constants.ENTITY_PROP},
+				{"pos": Vector2i(3, 6), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "Post2_0"},
 			],
 		},
 		"template_d": {
@@ -876,7 +885,7 @@ func _register_encounters() -> void:
 				{"pos": Vector2i(2, 3), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(3, 3), "tile_id": Constants.TILE_WATER},
 				{"pos": Vector2i(2, 4), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(7, 3), "tile_id": Constants.TILE_PILLAR, "slots": [{"slot_type": Constants.SLOT_BLUE}]},
+				{"pos": Vector2i(7, 3), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
 			],
 		},
 	}
@@ -1065,6 +1074,16 @@ func _parse_encounter_json(raw: Dictionary) -> Dictionary:
 				t["pos"] = Vector2i(int(p[0]), int(p[1]))
 			tiles[i] = t
 		result["tiles"] = tiles
+	if result.has("entities"):
+		var entities: Array = result["entities"]
+		for i in range(entities.size()):
+			var entry: Dictionary = entities[i].duplicate(true)
+			if entry.has("pos"):
+				var p: Variant = entry["pos"]
+				if p is Array and p.size() >= 2:
+					entry["pos"] = Vector2i(int(p[0]), int(p[1]))
+			entities[i] = entry
+		result["entities"] = entities
 	return result
 
 

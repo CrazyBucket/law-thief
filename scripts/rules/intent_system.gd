@@ -227,7 +227,8 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 
 	var custom_result: Dictionary = _behavior_for(unit).execute_custom_intent(state, unit, intent, move_start_pos)
 	if bool(custom_result.get("handled", false)):
-		return custom_result.get("events", [] as Array[Dictionary])
+		anim_events.append_array(custom_result.get("events", [] as Array[Dictionary]))
+		return anim_events
 
 	match intent.type:
 		"melee_attack":
@@ -240,7 +241,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			_execute_extract(state, unit, intent)
 			anim_events.append({"type": "gem_flash", "pos": intent.target_pos, "color": Color(0.9, 0.2, 0.2)})
 		"move":
-			pass  # 纯移动，无行动
+			pass # 纯移动，无行动
 
 	return anim_events
 

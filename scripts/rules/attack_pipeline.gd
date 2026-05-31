@@ -14,7 +14,6 @@ const TAG_PULL         := "pull"
 const TAG_DEFLECT      := "deflect"
 const TAG_DEFLECT_DONE := "deflect_done"
 const TAG_POISON       := "poison"
-const TAG_POISON_FOG   := "poison_fog"
 const TAG_ARC          := "arc"
 const TAG_FIRE_ON_HIT  := "fire_on_hit"
 const TAG_SLOW_ON_HIT  := "slow_on_hit"
@@ -177,7 +176,15 @@ static func _phase_hit(ctx: AttackContext) -> void:
 			reason = "attack"
 
 	if ctx.has_tag(TAG_RANGED):
-		_push_projectile_event(ctx, ctx.aim_cell)
+		var from_cell := _projectile_from_cell(ctx.attacker, ctx.aim_cell)
+		if ctx.has_tag(TAG_SPLIT_SHOT):
+			_push_projectile_event(ctx, from_cell, ctx.aim_cell)
+		else:
+			var impact_cell := BoardUtils.resolve_projectile_impact(ctx.state, from_cell, ctx.aim_cell)
+			_push_projectile_event(ctx, from_cell, impact_cell)
+			if impact_cell != ctx.aim_cell:
+				ctx.target = null
+				ctx.final_damage = 0
 	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, ctx.aim_cell)
 
 	var dealt := 0
@@ -199,8 +206,6 @@ static func _phase_hit(ctx: AttackContext) -> void:
 
 	if ctx.has_tag(TAG_EXPLOSIVE):
 		_apply_cross_explosion(ctx)
-	if ctx.has_tag(TAG_POISON_FOG):
-		TileRules.create_poison_fog(ctx.state, ctx.aim_cell)
 	if ctx.has_tag(TAG_ARC):
 		var hit_tile := ctx.state.get_tile(ctx.aim_cell)
 		if hit_tile != null and hit_tile.has_tile_tag(Constants.TAG_TILE_WATER):
@@ -238,8 +243,6 @@ static func _gem_hooks_prepare(ctx: AttackContext) -> void:
 						ctx.add_tag(TAG_EXPLOSIVE)
 					"gravity":
 						ctx.add_tag(TAG_PULL)
-					"poison":
-						ctx.add_tag(TAG_POISON_FOG)
 					"arc":
 						ctx.add_tag(TAG_ARC)
 					"fire_gem":
@@ -347,10 +350,10 @@ static func _projectile_from_cell(attacker: UnitState, target_pos: Vector2i) -> 
 	return best
 
 
-static func _push_projectile_event(ctx: AttackContext, to_pos: Vector2i) -> void:
+static func _push_projectile_event(ctx: AttackContext, from_pos: Vector2i, to_pos: Vector2i) -> void:
 	ctx.push_event({
 		"type": "projectile",
-		"from": _projectile_from_cell(ctx.attacker, to_pos),
+		"from": from_pos,
 		"to": to_pos,
 	})
 
@@ -362,7 +365,8 @@ static func _apply_split_wings(ctx: AttackContext) -> void:
 	for wing_pos in wing_cells:
 		if not BoardUtils.in_bounds(ctx.state, wing_pos):
 			continue
-		_push_projectile_event(ctx, wing_pos)
+		var wing_from := _projectile_from_cell(ctx.attacker, wing_pos)
+		_push_projectile_event(ctx, wing_from, wing_pos)
 		var wing_target := ctx.state.get_unit_at(wing_pos)
 		if wing_target == null or not wing_target.alive or wing_target.uid == ctx.attacker.uid:
 			continue

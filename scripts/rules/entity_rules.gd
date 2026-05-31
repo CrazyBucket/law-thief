@@ -30,7 +30,7 @@ static func on_unit_collide_entity(
 	if not entity.alive:
 		return false
 	match entity.entity_id:
-		Constants.ENTITY_ROCK:
+		Constants.ENTITY_ROCK, Constants.ENTITY_PROP:
 			CombatRules.apply_damage(state, unit, Constants.KNOCKBACK_COLLISION_DAMAGE, source_uid, "rock_collision")
 			if events != null:
 				events.append({"type": "damage", "pos": unit.pos, "damage": Constants.KNOCKBACK_COLLISION_DAMAGE, "is_crit": false})

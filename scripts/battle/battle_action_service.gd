@@ -34,7 +34,8 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	if player == null:
 		return _fail("玩家不存在")
 	if not StatusRules.can_move(player):
-		return _fail("被束缚，无法移动")
+		var block_reason := StatusRules.move_block_reason(player)
+		return _fail(block_reason if not block_reason.is_empty() else "无法移动")
 	var reachable := BoardUtils.reachable_cells(state, player.pos, player.move_points)
 	if not target_pos in reachable:
 		return _fail("无法移动到该格")
@@ -116,7 +117,6 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	state.player_acted = true
 	ctrl._check_battle_end()
 	IntentSystem.refresh_all_intents(state)
-	ctrl._emit_changed()
 	return _ok({
 		"from_pos": from_pos,
 		"to_pos": to_pos,
@@ -194,7 +194,6 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 		result["events"] = events
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
-		ctrl._emit_changed()
 	return result
 
 
@@ -266,7 +265,6 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		result["events"] = events
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
-		ctrl._emit_changed()
 	return result
 
 

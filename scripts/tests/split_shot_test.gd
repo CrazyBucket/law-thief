@@ -22,6 +22,8 @@ func _run_test() -> void:
 	_test_spawn_shoot_water_3_3()
 	_test_preview_matches_resolve_shot()
 	_test_aim_empty_cell_hits_wings()
+	_test_wing_damage_ignores_front_obstacle()
+	_test_main_target_ignores_front_obstacle()
 	_test_never_hit_self()
 	if _failed:
 		push_error("SPLIT_SHOT_TEST_FAIL")
@@ -177,6 +179,49 @@ func _test_aim_empty_cell_hits_wings() -> void:
 		_fail("wing unit should take damage (%d -> %d)" % [hp_before, guard.hp])
 		return
 	print("  [OK] split aim empty cell damages wings")
+
+
+func _test_wing_damage_ignores_front_obstacle() -> void:
+	var state := _create_test_state()
+	var player := state.get_player()
+	_mount_split_red(state, player)
+	player.pos = Vector2i(0, 2)
+	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(1, 3))
+	state.add_entity(prop)
+	var aim := Vector2i(3, 3)
+	var guard := _spawn_guard(state, Vector2i(2, 4))
+	var hp_before := guard.hp
+	var result := AttackPipeline.execute_aimed(
+		state, player, aim, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+	)
+	if not result.get("ok", false):
+		_fail("split with front obstacle should succeed")
+		return
+	if guard.hp >= hp_before:
+		_fail("wing should take damage despite obstacle in front (%d -> %d)" % [hp_before, guard.hp])
+		return
+	print("  [OK] wing damage ignores front obstacle")
+
+
+func _test_main_target_ignores_front_obstacle() -> void:
+	var state := _create_test_state()
+	var player := state.get_player()
+	_mount_split_red(state, player)
+	player.pos = Vector2i(0, 2)
+	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(2, 2))
+	state.add_entity(prop)
+	var guard := _spawn_guard(state, Vector2i(3, 2))
+	var hp_before := guard.hp
+	var result := AttackPipeline.execute_aimed(
+		state, player, guard.pos, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+	)
+	if not result.get("ok", false):
+		_fail("split main target through obstacle should succeed")
+		return
+	if guard.hp >= hp_before:
+		_fail("main target should take damage through obstacle (%d -> %d)" % [hp_before, guard.hp])
+		return
+	print("  [OK] split main target ignores front obstacle")
 
 
 func _spawn_guard(state: GameState, pos: Vector2i) -> UnitState:

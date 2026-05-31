@@ -5,6 +5,9 @@
     {"def_id": "unit_patrol_guard", "pos": [3, 5]}
   ],
   "entities": [
-    {"pos": [2, 5], "entity_id": "entity_spike"}
+    {"pos": [2, 5], "entity_id": "entity_spike"},
+    {"pos": [4, 3], "entity_id": "entity_prop"},
+    {"pos": [5, 2], "entity_id": "entity_prop", "prop_sprite": "Statue1_0"},
+    {"pos": [1, 4], "entity_id": "entity_prop"}
   ]
 }

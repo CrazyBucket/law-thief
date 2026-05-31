@@ -30,6 +30,13 @@ static func spike_entity_at(state: GameState, pos: Vector2i) -> EntityState:
 	return null
 
 
+static func blocking_entity_at(state: GameState, pos: Vector2i) -> EntityState:
+	var entity := state.get_entity_at(pos)
+	if entity != null and entity.alive and entity.blocks_movement():
+		return entity
+	return null
+
+
 static func neighbors4(pos: Vector2i) -> Array[Vector2i]:
 	return [
 		pos + Vector2i(1, 0),
@@ -248,23 +255,72 @@ static func path_toward(
 	cell_blockers: Dictionary = {},
 	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
-	# 如果目标被占据，寻路到目标的邻接格中最近的那个
-	if not is_passable(state, to_pos, ignore_uid, cell_blockers):
-		var best_neighbor: Vector2i = from_pos
-		var best_dist: int = manhattan(from_pos, to_pos)
-		for adj in neighbors4(to_pos):
-			if not in_bounds(state, adj):
-				continue
-			if not is_passable(state, adj, ignore_uid, cell_blockers) and adj != from_pos:
-				continue
-			var d: int = manhattan(from_pos, adj)
-			if d < best_dist:
-				best_dist = d
-				best_neighbor = adj
-		if best_neighbor == from_pos:
-			return [] as Array[Vector2i]
-		return astar_path(state, from_pos, best_neighbor, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
-	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
+	var use_footprint := moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
+	var goal_ok := is_passable(state, to_pos, ignore_uid, cell_blockers)
+	if use_footprint:
+		goal_ok = goal_ok and unit_footprint_passable(state, moving_unit, to_pos, ignore_uid, cell_blockers)
+	if goal_ok:
+		return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
+
+	var candidates := _path_goal_candidates(state, to_pos, ignore_uid, cell_blockers, moving_unit)
+	if candidates.is_empty():
+		return [] as Array[Vector2i]
+
+	var best_path: Array[Vector2i] = []
+	var best_score := 999999
+	for goal in candidates:
+		var path := astar_path(
+			state, from_pos, goal, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit
+		)
+		if path.is_empty() and goal != from_pos:
+			continue
+		var score := path.size() * 1000 + manhattan(goal, to_pos)
+		if score < best_score:
+			best_score = score
+			best_path = path
+	return best_path
+
+
+static func _path_goal_candidates(
+	state: GameState,
+	to_pos: Vector2i,
+	ignore_uid: String,
+	cell_blockers: Dictionary,
+	moving_unit: UnitState
+) -> Array[Vector2i]:
+	var candidates: Array[Vector2i] = []
+	var use_footprint := moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
+	if use_footprint:
+		var fp := moving_unit.footprint_size
+		var search_radius := fp.x + fp.y + 3
+		for ax in range(to_pos.x - search_radius, to_pos.x + search_radius + 1):
+			for ay in range(to_pos.y - search_radius, to_pos.y + search_radius + 1):
+				var anchor := Vector2i(ax, ay)
+				if not in_bounds(state, anchor):
+					continue
+				if not unit_footprint_passable(state, moving_unit, anchor, ignore_uid, cell_blockers):
+					continue
+				if not _footprint_adjacent_to_cell(moving_unit, anchor, to_pos):
+					continue
+				if not candidates.has(anchor):
+					candidates.append(anchor)
+		return candidates
+
+	for adj in neighbors4(to_pos):
+		if not in_bounds(state, adj):
+			continue
+		if not is_passable(state, adj, ignore_uid, cell_blockers):
+			continue
+		if not candidates.has(adj):
+			candidates.append(adj)
+	return candidates
+
+
+static func _footprint_adjacent_to_cell(unit: UnitState, anchor: Vector2i, cell: Vector2i) -> bool:
+	for fc in footprint_cells_at(unit.footprint_size, anchor):
+		if manhattan(fc, cell) <= 1:
+			return true
+	return false
 
 
 ## Dijkstra BFS 可达格子（考虑地块代价）
@@ -417,3 +473,50 @@ static func step_toward(from_pos: Vector2i, to_pos: Vector2i) -> Vector2i:
 	elif absi(delta.y) > absi(delta.x):
 		step = Vector2i(0, signi(delta.y))
 	return from_pos + step
+
+
+static func cells_toward(from_pos: Vector2i, to_pos: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if from_pos == to_pos:
+		return cells
+	var current := from_pos
+	while current != to_pos:
+		current = step_toward(current, to_pos)
+		cells.append(current)
+	return cells
+
+
+static func resolve_projectile_impact(state: GameState, from_pos: Vector2i, to_pos: Vector2i) -> Vector2i:
+	for cell in cells_toward(from_pos, to_pos):
+		var entity := state.get_entity_at(cell)
+		if entity != null and entity.alive and entity.blocks_projectile():
+			return cell
+	return to_pos
+
+
+static func projectile_blocked_before_aim(
+	state: GameState,
+	from_pos: Vector2i,
+	aim_cell: Vector2i
+) -> bool:
+	return resolve_projectile_impact(state, from_pos, aim_cell) != aim_cell
+
+
+## 到目标格的最短寻路步数；不可达时返回 -1
+static func path_distance_to_cell(
+	state: GameState,
+	from_pos: Vector2i,
+	to_pos: Vector2i,
+	ignore_uid: String = "",
+	cell_blockers: Dictionary = {},
+	moving_unit: UnitState = null
+) -> int:
+	if from_pos == to_pos:
+		return 0
+	var max_steps := maxi(state.board_size.x, state.board_size.y) * 2
+	var path := path_toward(
+		state, from_pos, to_pos, max_steps, ignore_uid, {}, cell_blockers, moving_unit
+	)
+	if path.is_empty():
+		return -1
+	return path.size()

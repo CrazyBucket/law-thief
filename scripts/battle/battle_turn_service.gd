@@ -23,6 +23,9 @@ func begin_enemy_phase() -> void:
 		return
 	if ctrl.state == null or ctrl.state.phase != Constants.PHASE_PLAYER:
 		return
+	var player := ctrl.state.get_player()
+	if player != null and player.has_status(Constants.STATUS_PARALYZED):
+		player.remove_status(Constants.STATUS_PARALYZED)
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
 	ctrl.state.phase = Constants.PHASE_ENEMY
 	IntentSystem.refresh_all_intents(ctrl.state)

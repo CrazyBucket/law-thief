@@ -139,8 +139,12 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 	if player == null or not player.alive:
 		return results
 
-	# 检查从 from_pos 能否攻击到玩家（曼哈顿距离 1）
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	# 检查从 from_pos 能否攻击到玩家
+	var saved_pos := enemy.pos
+	enemy.pos = from_pos
+	var can_attack := BoardUtils.are_units_adjacent(enemy, player)
+	enemy.pos = saved_pos
+	if not can_attack:
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -233,6 +237,10 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
 		"arc_attack":
 			results.append_array(_score_arc_skill(state, enemy, from_pos, player, profile))
+		"fire_attack":
+			results.append_array(_score_fire_skill(state, enemy, from_pos, player, profile))
+		"ice_attack":
+			results.append_array(_score_ice_skill(state, enemy, from_pos, player, profile))
 		"split_attack":
 			results.append_array(_score_split_skill(state, enemy, from_pos, player, profile))
 	return results
@@ -276,7 +284,7 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
-	if dist > 4:  # 引力范围
+	if dist > Constants.ENEMY_GRAVITY_PULL_RANGE:
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -323,11 +331,7 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 
 static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	var saved := enemy.pos
-	enemy.pos = from_pos
-	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, Constants.ATTACK_RANGE)
-	enemy.pos = saved
-	if not in_range:
+	if BoardUtils.manhattan(from_pos, player.pos) != 1:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -342,6 +346,38 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 			score += base * Constants.ARC_CHAIN_DAMAGE_RATIO * _w(profile, "w_damage", 10.0) * 0.5
 	candidate.score = score
 	candidate.description = "电击"
+	results.append(candidate)
+	return results
+
+
+static func _score_fire_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	score += _w(profile, "w_status", 6.0)
+	candidate.score = score
+	candidate.description = "烈焰攻击"
+	results.append(candidate)
+	return results
+
+
+static func _score_ice_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	score += _w(profile, "w_status", 6.0)
+	candidate.score = score
+	candidate.description = "寒冰攻击"
 	results.append(candidate)
 	return results
 
@@ -379,41 +415,71 @@ static func _evaluate_move_only(
 	if player == null:
 		return results
 
-	# 选择最优移动目标
+	if profile.get("prefer_distance", false):
+		return _evaluate_move_kiting(state, enemy, reachable, profile, cell_blockers)
+
+	var current_dist := BoardUtils.path_distance_to_cell(
+		state, enemy.pos, player.pos, enemy.uid, cell_blockers, enemy
+	)
+	if current_dist < 0:
+		return results
+
+	var best_pos := enemy.pos
+	var best_dist := current_dist
 	for pos in reachable:
 		if pos == enemy.pos:
-			continue  # 原地不算移动
+			continue
 		if _is_blocked_destination(state, pos, enemy, cell_blockers):
 			continue
+		var dist := BoardUtils.path_distance_to_cell(
+			state, pos, player.pos, enemy.uid, cell_blockers, enemy
+		)
+		if dist < 0 or dist >= best_dist:
+			continue
+		best_dist = dist
+		best_pos = pos
 
+	if best_pos == enemy.pos:
+		return results
+
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.MOVE
+	candidate.move_target = best_pos
+	var score := float(current_dist - best_dist) * _w(profile, "w_approach", 5.0)
+	score += _evaluate_tile_safety(state, best_pos, profile)
+	candidate.score = score
+	candidate.description = "移动到%s" % str(best_pos)
+	results.append(candidate)
+	return results
+
+
+static func _evaluate_move_kiting(
+	state: GameState,
+	enemy: UnitState,
+	reachable: Array[Vector2i],
+	profile: Dictionary,
+	cell_blockers: Dictionary = {}
+) -> Array:
+	var results: Array = []
+	var player: UnitState = state.get_player()
+	if player == null:
+		return results
+	for pos in reachable:
+		if pos == enemy.pos:
+			continue
+		if _is_blocked_destination(state, pos, enemy, cell_blockers):
+			continue
 		var candidate := ActionCandidate.new()
 		candidate.type = ActionType.MOVE
 		candidate.move_target = pos
-
-		var score: float = 0.0
 		var dist_to_player: int = BoardUtils.manhattan(pos, player.pos)
 		var current_dist: int = BoardUtils.manhattan(enemy.pos, player.pos)
-
-		# 靠近玩家加分（进攻型）
-		var approach_value: float = float(current_dist - dist_to_player) * _w(profile, "w_approach", 5.0)
-		score += approach_value
-
-		# 远离玩家加分（猥琐型，如引力眼）
-		if profile.get("prefer_distance", false):
-			score += float(dist_to_player) * _w(profile, "w_keep_distance", 3.0)
-
-		# 地块安全
+		var score: float = float(current_dist - dist_to_player) * _w(profile, "w_approach", 5.0)
+		score += float(dist_to_player) * _w(profile, "w_keep_distance", 3.0)
 		score += _evaluate_tile_safety(state, pos, profile)
-
-		# 守卫型：靠近友军加分
-		if profile.get("guard_ally", false):
-			var nearest_ally_dist: int = _nearest_ally_distance(state, pos, enemy.uid)
-			score += float(3 - nearest_ally_dist) * _w(profile, "w_guard_proximity", 4.0)
-
 		candidate.score = score
 		candidate.description = "移动到%s" % str(pos)
 		results.append(candidate)
-
 	return results
 
 

@@ -69,6 +69,7 @@ const EXPLOSION_CROSS_DAMAGE := 12   # 红槽十字四邻溅射（命中格为�
 const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 chebyshev 范围）
 const CHARGE_EXPLODE_DASH_RANGE := 2  # 红槽冲刺爆炸：自爆前最大冲刺格数
 const GRAVITY_COLLISION_DAMAGE := 3
+const ENEMY_GRAVITY_PULL_RANGE := 4
 const KNOCKBACK_COLLISION_DAMAGE := 3  # 击退撞墙/撞单位碰撞伤害
 const SPIKE_DAMAGE := 5
 const POISON_FOG_DAMAGE := 3
@@ -112,6 +113,7 @@ const GROUND_TAG_WATER      := "ground:water"        # 水洼：进入上潮湿�
 
 # ─── 地块实体 ──────────────────────────────────────────────────────────────────
 const ENTITY_ROCK   := "entity_rock"    # 石块：无敌，阻挡移动与弹道
+const ENTITY_PROP   := "entity_prop"    # 静物：无敌，阻挡移动与弹道，Doodle 贴图
 const ENTITY_SPIKE  := "entity_spike"   # 地刺：可通行，步入受伤，强制位移附加易伤
 const ENTITY_BARREL := "entity_barrel"  # 油桶：可破坏，着火/血量归零时爆炸
 

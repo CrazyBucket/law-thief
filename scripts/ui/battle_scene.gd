@@ -68,6 +68,7 @@ var _preview_panel_tween: Tween = null
 var _preview_visible_target: bool = false
 var _preview_fade_serial: int = 0
 var _relic_reward_overlay: Node = null
+var _held_gem_icon: TextureRect = null
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
@@ -89,6 +90,7 @@ func _ready() -> void:
 	_preview_panel.modulate.a = 0.0
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
+	call_deferred("_setup_held_gem_row")
 	_wire_hover_interactions()
 	_create_slot_popup()
 	_create_damage_text_manager()
@@ -198,7 +200,10 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				_player_animating = true
 				_presentation_playing = true
 				_refresh_deferred = false
-				_start_presentation(move_result.get("presentation_state", _controller.state.clone()))
+				_start_presentation(
+					move_result.get("presentation_state", _controller.state.clone()),
+					_controller.state
+				)
 				_board.set_highlights({})
 				var events: Array = move_result.get("move_events", [])
 				await _play_presented_events(events)
@@ -217,8 +222,14 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			if atk_res.get("ok", false):
 				var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
 				var to_pos: Vector2i = atk_res.get("to_pos", cell)
+				var player := _controller.state.get_player()
+				if player != null:
+					_board.start_strike_effect(player.uid, to_pos)
 				_refresh_deferred = false
-				_start_presentation(atk_res.get("presentation_state", _controller.state.clone()))
+				_start_presentation(
+					atk_res.get("presentation_state", _controller.state.clone()),
+					_controller.state
+				)
 				var attack_events: Array = atk_res.get("attack_events", [])
 				var has_projectile := false
 				for ev in attack_events:
@@ -371,7 +382,10 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 				_player_animating = true
 				_presentation_playing = true
 				_refresh_deferred = false
-				_start_presentation(result.get("presentation_state", _controller.state.clone()))
+				_start_presentation(
+					result.get("presentation_state", _controller.state.clone()),
+					_controller.state
+				)
 				var trigger_events: Array = result.get("events", [])
 				await _play_presented_events(trigger_events)
 				_player_animating = false
@@ -405,7 +419,10 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 				_player_animating = true
 				_presentation_playing = true
 				_refresh_deferred = false
-				_start_presentation(result.get("presentation_state", _controller.state.clone()))
+				_start_presentation(
+					result.get("presentation_state", _controller.state.clone()),
+					_controller.state
+				)
 				var trigger_events: Array = result.get("events", [])
 				await _play_presented_events(trigger_events)
 				_player_animating = false
@@ -578,11 +595,26 @@ func _on_controller_state_changed() -> void:
 	_refresh()
 
 
-func _start_presentation(state_before: GameState) -> void:
+func _start_presentation(state_before: GameState, economy_source: GameState = null) -> void:
 	_display_state = state_before
+	if economy_source != null:
+		_display_state.player_moved = economy_source.player_moved
+		_display_state.player_acted = economy_source.player_acted
 	_board.set_battle_state(_display_state)
 	_board.selected_unit_uid = _inspect_uid
 	_board.queue_redraw()
+	if economy_source != null:
+		_refresh_economy_chips()
+
+
+func _refresh_economy_chips() -> void:
+	var state := _view_state()
+	if state == null:
+		return
+	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
+	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
+	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
+	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
 
 
 func _finish_presentation() -> void:
@@ -913,9 +945,15 @@ func _refresh() -> void:
 	var held := _controller.get_held_gem()
 	if held != null:
 		var gem_name: String = _data_registry().get_gem_display_name(held)
-		_held_label.text = "手持 ◆ %s" % gem_name
+		if _held_gem_icon != null:
+			_held_gem_icon.texture = UnitLooks.get_gem_texture(held)
+			_held_gem_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
+			_held_gem_icon.visible = true
+		_held_label.text = "手持 %s" % gem_name
 		_held_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.15))
 	else:
+		if _held_gem_icon != null:
+			_held_gem_icon.visible = false
 		_held_label.text = ""
 		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 
@@ -1070,11 +1108,14 @@ func _clear_inspect_header(title: String) -> void:
 func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Control:
 	var chip := PanelContainer.new()
 	var color := UnitLooks.slot_color(slot.slot_type)
+	var gem: GemState = null
 	if not slot.gem_uid.is_empty():
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		gem = state.gems.get(slot.gem_uid, null)
 		if gem != null:
 			color = UnitLooks.gem_color(gem)
 	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
 	var label := Label.new()
 	var slot_name := _slot_display_name(slot.slot_type)
 	var is_dual := not slot.dual_type.is_empty()
@@ -1090,18 +1131,58 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 			tip += "（双色槽，可嵌入%s或%s宝石）" % [slot_name, dual_name]
 		chip.tooltip_text = tip
 	else:
-		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			label.text = "%s?" % display_name
 			chip.tooltip_text = "%s槽：无宝石数据" % display_name
 		else:
-			label.text = "%s◆" % display_name
+			var gem_icon := _make_gem_icon(gem, 14)
+			if gem_icon != null:
+				row.add_child(gem_icon)
+			label.text = display_name
 			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
 
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	chip.add_child(label)
+	row.add_child(label)
+	chip.add_child(row)
 	return chip
+
+
+func _make_gem_icon(gem: GemState, size_px: int) -> TextureRect:
+	var tex := UnitLooks.get_gem_texture(gem)
+	if tex == null:
+		return null
+	var icon := TextureRect.new()
+	icon.texture = tex
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.custom_minimum_size = Vector2(size_px, size_px)
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.self_modulate = UnitLooks.gem_sprite_modulate(gem)
+	return icon
+
+
+func _setup_held_gem_row() -> void:
+	if _held_label == null or _held_gem_icon != null:
+		return
+	var vbox: Node = _held_label.get_parent()
+	if vbox == null:
+		return
+	var row := HBoxContainer.new()
+	row.name = "HeldRow"
+	row.add_theme_constant_override("separation", 4)
+	var idx := _held_label.get_index()
+	vbox.remove_child(_held_label)
+	vbox.add_child(row)
+	vbox.move_child(row, idx)
+	_held_gem_icon = TextureRect.new()
+	_held_gem_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_held_gem_icon.custom_minimum_size = Vector2(14, 14)
+	_held_gem_icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	_held_gem_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_held_gem_icon.visible = false
+	row.add_child(_held_gem_icon)
+	row.add_child(_held_label)
 
 
 func _slot_display_name(slot_type: String) -> String:
