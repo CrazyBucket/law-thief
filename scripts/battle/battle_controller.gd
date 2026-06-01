@@ -1,6 +1,11 @@
 class_name BattleController
 extends RefCounted
 
+const _BattleActionService = preload("res://scripts/battle/battle_action_service.gd")
+const _BattleTurnService = preload("res://scripts/battle/battle_turn_service.gd")
+const _BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
+const _BattleEditorCli = preload("res://scripts/debug/battle_editor_cli.gd")
+
 signal state_changed
 signal battle_ended(result: String)
 signal anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
@@ -11,17 +16,40 @@ var state: GameState = null
 var selected_action: String = ""
 var selected_unit_uid: String = ""
 
-var _action_svc: BattleActionService = BattleActionService.new()
-var _turn_svc: BattleTurnService = BattleTurnService.new()
-var _query_svc: BattleQueryService = BattleQueryService.new()
-var _editor_cli: BattleEditorCli = BattleEditorCli.new()
+var _action_svc: BattleActionService = null
+var _turn_svc: BattleTurnService = null
+var _query_svc: BattleQueryService = null
+var _editor_cli: BattleEditorCli = null
 
 
 func _init() -> void:
-	_action_svc.setup(self)
-	_turn_svc.setup(self)
-	_query_svc.setup(self)
-	_editor_cli.setup(self)
+	_ensure_services()
+
+
+func _ensure_services() -> void:
+	if _action_svc == null:
+		_action_svc = _BattleActionService.new()
+		_action_svc.setup(self)
+	if _turn_svc == null:
+		_turn_svc = _BattleTurnService.new()
+		_turn_svc.setup(self)
+	if _query_svc == null:
+		_query_svc = _BattleQueryService.new()
+		_query_svc.setup(self)
+	if _editor_cli == null:
+		_editor_cli = _BattleEditorCli.new()
+		_editor_cli.setup(self)
+
+
+func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
+
+func _fire_relic_event(event_id: String, battle_state: GameState, payload: Dictionary = {}) -> void:
+	var registry := _relic_effect_registry()
+	if registry == null:
+		return
+	registry.fire_event(event_id, battle_state, payload)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -29,6 +57,7 @@ func _init() -> void:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func start_encounter(encounter_id: String, seed_value: int = 0, room_id: String = "") -> void:
+	_ensure_services()
 	state = _data_registry().create_battle_state(encounter_id, seed_value, room_id)
 	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
@@ -41,22 +70,22 @@ func start_encounter(encounter_id: String, seed_value: int = 0, room_id: String 
 ## 统一在信号层连接遗物事件触发，避免分散在各规则文件
 func _connect_relic_signals(s: GameState) -> void:
 	s.on_battle_start.connect(func() -> void:
-		RelicEffectRegistry.fire_event("battle_start", s)
+		_fire_relic_event("battle_start", s)
 	)
 	s.on_turn_start.connect(func(turn_index: int) -> void:
-		RelicEffectRegistry.fire_event("turn_start", s, {"turn_index": turn_index})
+		_fire_relic_event("turn_start", s, {"turn_index": turn_index})
 	)
 	s.on_turn_end.connect(func(turn_index: int) -> void:
-		RelicEffectRegistry.fire_event("turn_end", s, {"turn_index": turn_index})
+		_fire_relic_event("turn_end", s, {"turn_index": turn_index})
 	)
 	s.on_unit_die.connect(func(unit_uid: String, killer_uid: String, reason: String) -> void:
-		RelicEffectRegistry.fire_event("unit_die", s, {
+		_fire_relic_event("unit_die", s, {
 			"unit_uid": unit_uid, "killer_uid": killer_uid, "reason": reason
 		})
 	)
 	s.on_battle_end.connect(func(result: String) -> void:
 		if result == "win":
-			RelicEffectRegistry.fire_event("battle_win", s, {"encounter_id": s.encounter_id})
+			_fire_relic_event("battle_win", s, {"encounter_id": s.encounter_id})
 	)
 
 
@@ -70,38 +99,47 @@ func select_action(action: String) -> void:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func try_move(target_pos: Vector2i) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_move(target_pos)
 
 
 func try_attack(target_uid: String) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_attack(target_uid)
 
 
 func try_attack_cell(target_pos: Vector2i) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_attack_cell(target_pos)
 
 
 func try_extract(target_uid: String, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_extract(target_uid, slot_index)
 
 
 func try_insert(target_uid: String, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_insert(target_uid, slot_index)
 
 
 func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_trigger(target_uid, slot_index)
 
 
 func try_extract_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_extract_tile(tile_pos, slot_index)
 
 
 func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_insert_tile(tile_pos, slot_index)
 
 
 func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
+	_ensure_services()
 	return _action_svc.try_trigger_tile(tile_pos, slot_index)
 
 
@@ -177,18 +215,22 @@ func get_held_gem() -> GemState:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func begin_enemy_phase() -> void:
+	_ensure_services()
 	_turn_svc.begin_enemy_phase()
 
 
 func execute_single_enemy(enemy: UnitState) -> Dictionary:
+	_ensure_services()
 	return _turn_svc.execute_single_enemy(enemy)
 
 
 func finish_enemy_phase() -> void:
+	_ensure_services()
 	_turn_svc.finish_enemy_phase()
 
 
 func get_sorted_enemies() -> Array:
+	_ensure_services()
 	return _turn_svc.get_sorted_enemies()
 
 
@@ -197,18 +239,22 @@ func get_sorted_enemies() -> Array:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
+	_ensure_services()
 	return _query_svc.get_highlights(hover_cell)
 
 
 func get_cell_preview(cell: Vector2i) -> Dictionary:
+	_ensure_services()
 	return _query_svc.get_cell_preview(cell)
 
 
 func get_action_hint() -> String:
+	_ensure_services()
 	return _query_svc.get_action_hint()
 
 
 func get_tutorial_hint() -> String:
+	_ensure_services()
 	return _query_svc.get_tutorial_hint()
 
 
@@ -217,6 +263,7 @@ func get_tutorial_hint() -> String:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func run_editor_command(raw_command: String) -> Dictionary:
+	_ensure_services()
 	return _editor_cli.run(raw_command)
 
 
@@ -225,6 +272,7 @@ func run_editor_command(raw_command: String) -> Dictionary:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func _check_battle_end() -> void:
+	_ensure_services()
 	_turn_svc.check_battle_end()
 
 

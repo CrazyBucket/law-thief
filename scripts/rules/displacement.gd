@@ -3,6 +3,10 @@ extends RefCounted
 
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 
+
+static func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
 enum Direction { AWAY, TOWARD, NORTH, SOUTH, EAST, WEST }
 
 
@@ -18,7 +22,8 @@ static func knockback(
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
-	if RelicEffectRegistry.query_modifier("forced_move_immune", state):
+	var registry := _relic_effect_registry()
+	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
 		return
 	_push_directional(state, unit, origin, Direction.AWAY, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
 
@@ -35,7 +40,8 @@ static func pull_toward(
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
-	if RelicEffectRegistry.query_modifier("forced_move_immune", state):
+	var registry := _relic_effect_registry()
+	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
 		return
 	_push_directional(state, unit, anchor, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
 

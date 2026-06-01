@@ -14,14 +14,22 @@ static func attack_range_for(_start_pos: Vector2i, move_path: Array) -> int:
 
 
 static func can_shoot_from_anchor(
+	state: GameState,
+	unit: UnitState,
 	anchor: Vector2i,
-	player_pos: Vector2i,
+	target: UnitState,
 	move_path: Array
 ) -> bool:
-	var dist := BoardUtils.manhattan(anchor, player_pos)
+	if state == null or unit == null or target == null or not target.alive:
+		return false
+	var dist := BoardUtils.distance_between_units(unit, target)
 	if dist < Constants.STONE_BOW_KITE_MIN_RANGE:
 		return false
-	return dist <= attack_range_for(anchor, move_path)
+	var max_range := attack_range_for(anchor, move_path)
+	if dist > max_range:
+		return false
+	var from_cell := BoardUtils.projectile_origin_cell(unit, target.pos)
+	return not BoardUtils.projectile_blocked_before_aim(state, from_cell, target.pos)
 
 
 static func is_faulty_blind_shot(unit: UnitState) -> bool:
@@ -55,8 +63,12 @@ static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node("RngService")
 
 
-static func in_range(from_pos: Vector2i, target_pos: Vector2i, start_pos: Vector2i, move_path: Array) -> bool:
-	return can_shoot_from_anchor(from_pos, target_pos, move_path)
+static func in_range(state: GameState, unit: UnitState, from_pos: Vector2i, target: UnitState, move_path: Array) -> bool:
+	var saved_pos := unit.pos
+	unit.pos = from_pos
+	var ok := can_shoot_from_anchor(state, unit, from_pos, target, move_path)
+	unit.pos = saved_pos
+	return ok
 
 
 ## 石弓专用风筝 AI：每步决策用当前玩家坐标；已在射程内优先原地架设射击
@@ -67,8 +79,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 
 	var player_pos: Vector2i = player.pos
 	var turn_start: Vector2i = enemy.pos
-	var current_dist: int = BoardUtils.manhattan(turn_start, player_pos)
-	var can_shoot_here: bool = can_shoot_from_anchor(turn_start, player_pos, [])
+	var current_dist: int = BoardUtils.distance_between_units(enemy, player)
+	var can_shoot_here: bool = can_shoot_from_anchor(state, enemy, turn_start, player, [])
 
 	var reachable: Array[Vector2i] = []
 	if StatusRules.can_move(enemy):
@@ -89,9 +101,14 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			)
 			if move_path.is_empty():
 				continue
-		var dist: int = BoardUtils.manhattan(move_pos, player_pos)
+		var saved_pos := enemy.pos
+		enemy.pos = move_pos
+		var dist: int = BoardUtils.distance_between_units(enemy, player)
+		enemy.pos = saved_pos
 		var max_range: int = attack_range_for(turn_start, move_path)
 		if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range:
+			continue
+		if not in_range(state, enemy, move_pos, player, move_path):
 			continue
 		var candidate := EnemyAI.ActionCandidate.new()
 		candidate.type = EnemyAI.ActionType.RANGED_ATTACK
@@ -118,7 +135,10 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if _anchor_blocked(state, enemy, move_pos, cell_blockers):
 			continue
-		var new_dist: int = BoardUtils.manhattan(move_pos, player_pos)
+		var saved_pos := enemy.pos
+		enemy.pos = move_pos
+		var new_dist: int = BoardUtils.distance_between_units(enemy, player)
+		enemy.pos = saved_pos
 		if can_shoot_here and new_dist >= Constants.STONE_BOW_KITE_MIN_RANGE:
 			continue
 		if can_shoot_here and new_dist < current_dist:

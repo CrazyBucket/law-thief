@@ -81,6 +81,9 @@ var _soft_gradient_tex: Texture2D = null
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
 var _active_projectiles: Array = []
 var _parallel_move_remaining: int = 0
+var _held_gem_visual: Dictionary = {}
+var _inserting_gem_visuals: Array[Dictionary] = []
+var _masked_embedded_gems: Dictionary = {}
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
@@ -100,6 +103,15 @@ const _SLIME_STRIKE_FRAMES := 6
 const _SLIME_STRIKE_DURATION := 0.36
 const _PUFF_FRAME_PATH := "res://assets/demo/doodle-rpg/ALL SPRITES/Particles/Puff_%d.png"
 const _INVALID_GRID := Vector2i(-9999, -9999)
+const _GEM_LIFT_DURATION := 0.48
+const _GEM_INSERT_DURATION := 0.38
+const _GEM_ORBIT_SPEED := 1.9
+const _GEM_ORBIT_RADIUS_X := 20.0
+const _GEM_ORBIT_RADIUS_Y := 7.5
+const _GEM_BOB_SPEED := 1.7
+const _GEM_BOB_AMPLITUDE := 1.0
+const _GEM_DRAW_SIZE := 18.0
+const _GEM_SLOT_SOURCE_OFFSET := Vector2(0.0, -28.0)
 ## 等距棋盘仅四斜向（由 grid_to_screen 校准）
 const _FACING_GRID_STEPS: Dictionary = {
 	"DR": Vector2i(1, 0),
@@ -240,7 +252,8 @@ func _process(delta: float) -> void:
 				p["velocity"] = p["velocity"] + Vector2(0, 120.0) * delta
 		needs_redraw = true
 		i -= 1
-	if needs_redraw or visuals_dirty:
+	var gem_dirty := _update_gem_visuals(scaled_dt)
+	if needs_redraw or visuals_dirty or gem_dirty:
 		queue_redraw()
 
 
@@ -395,12 +408,15 @@ func _draw() -> void:
 	var drawn_entities: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
+	_draw_move_highlight_outlines()
+	for grid in _sorted_cells():
 		_draw_entity_at_grid(grid, drawn_entities)
 		if hover_cell == grid:
 			var hover_unit := state.get_unit_at(hover_cell)
 			if hover_unit == null or not hover_unit.alive:
-				TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell))
+				TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell), _cell_hover_outline_color())
 	_draw_unit_ground_outlines()
+	_draw_gem_visuals(false)
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
 		if unit != null and unit.alive and not drawn_units.has(unit.uid):
@@ -409,6 +425,7 @@ func _draw() -> void:
 	_draw_highlight_outlines()
 	_draw_particles()
 	_draw_projectile()
+	_draw_gem_visuals(true)
 
 
 func _draw_entity_at_grid(grid: Vector2i, drawn_entities: Dictionary) -> void:
@@ -438,6 +455,20 @@ func _draw_prop_entity(entity: EntityState, center: Vector2) -> void:
 	TileRenderer.draw_prop_sprite(self, center, tex, foot_ratio)
 
 
+func _draw_move_highlight_outlines() -> void:
+	var reachable: Array = highlights.get("reachable", [])
+	if reachable.is_empty():
+		return
+	var outline: Color = _reachable_outline_color()
+	var hover_outline: Color = _hover_outline_color()
+	for grid in reachable:
+		var cell: Vector2i = grid
+		var is_hovered: bool = (cell == hover_cell)
+		var color: Color = hover_outline if is_hovered else outline
+		var width: float = IsoCoordinates.visual(2.0 if is_hovered else 1.5)
+		_draw_cell_outline(cell, color, width)
+
+
 func _draw_highlight_outlines() -> void:
 	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
@@ -445,29 +476,17 @@ func _draw_highlight_outlines() -> void:
 	var effect_list: Array = highlights.get("effect_preview", [])
 	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
 	for grid in attack_range:
-		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
-		var closed: PackedVector2Array = corners.duplicate()
-		closed.append(corners[0])
 		var c := Color(0.45, 0.92, 0.55, 0.45 + pulse * 0.25)
-		draw_polyline(closed, c, IsoCoordinates.visual(1.6), false)
+		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.6))
 	for grid in targets:
-		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
-		var closed: PackedVector2Array = corners.duplicate()
-		closed.append(corners[0])
 		var c := Color(1.0, 0.92, 0.3, 0.55 + pulse * 0.35)
-		draw_polyline(closed, c, IsoCoordinates.visual(1.8), false)
+		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
 	for grid in danger:
-		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
-		var closed: PackedVector2Array = corners.duplicate()
-		closed.append(corners[0])
 		var c := Color(1.0, 0.28, 0.28, 0.5 + pulse * 0.35)
-		draw_polyline(closed, c, IsoCoordinates.visual(1.8), false)
+		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
 	for grid in effect_list:
-		var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
-		var closed: PackedVector2Array = corners.duplicate()
-		closed.append(corners[0])
 		var c := Color(1.0, 0.52, 0.15, 0.45 + pulse * 0.3)
-		draw_polyline(closed, c, IsoCoordinates.visual(1.5), false)
+		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.5))
 
 
 func _draw_tile(grid: Vector2i) -> void:
@@ -479,7 +498,6 @@ func _draw_tile(grid: Vector2i) -> void:
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
-	var reachable: Array = highlights.get("reachable", [])
 	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
 	var paths: Array = highlights.get("paths", [])
@@ -498,9 +516,6 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	if grid in danger:
 		var a: float = 0.42 + pulse * 0.22
 		return Color(1.0, 0.2, 0.2, a)
-	if grid in reachable:
-		var a: float = 0.32 + pulse * 0.14
-		return Color(0.3, 0.88, 1.0, a)
 	if grid in paths:
 		return Color(0.95, 0.65, 0.2, 0.24 + pulse * 0.1)
 	return Color.TRANSPARENT
@@ -723,6 +738,26 @@ func _resolve_knight_pose(unit: UnitState, facing: String) -> Dictionary:
 	return {"texture": tex, "sprite_size": _unit_sprite_size(unit)}
 
 
+func _draw_cell_outline(grid: Vector2i, color: Color, line_width: float) -> void:
+	var corners: PackedVector2Array = IsoCoordinates.diamond_corners(grid_to_screen(grid))
+	var closed: PackedVector2Array = corners.duplicate()
+	closed.append(corners[0])
+	draw_polyline(closed, color, line_width, false)
+
+
+func _reachable_outline_color() -> Color:
+	return Color(1.0, 1.0, 1.0, 0.92)
+
+
+func _hover_outline_color() -> Color:
+	return Color(0.76, 0.98, 0.78, 0.98)
+
+
+func _cell_hover_outline_color() -> Color:
+	var reachable: Array = highlights.get("reachable", [])
+	return _hover_outline_color() if hover_cell in reachable else Color(0.95, 0.95, 1.0, 0.95)
+
+
 func _draw_unit_ground_outlines() -> void:
 	for unit: UnitState in state.units.values():
 		if not unit.alive:
@@ -812,8 +847,11 @@ func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 		return
 	var occupied_slots: Array[SlotState] = []
 	for slot in unit.slots:
-		if not slot.gem_uid.is_empty():
-			occupied_slots.append(slot)
+		if slot.gem_uid.is_empty():
+			continue
+		if _masked_embedded_gems.has(slot.gem_uid):
+			continue
+		occupied_slots.append(slot)
 	if occupied_slots.is_empty():
 		return
 	var icon_size := IsoCoordinates.visual(10.0)
@@ -847,6 +885,58 @@ func _draw_small_diamond(center: Vector2, width: float, height: float, color: Co
 	])
 	draw_colored_polygon(points, color)
 	draw_polyline(points, color.darkened(0.35), IsoCoordinates.visual(1.2), true)
+
+
+func _draw_gem_visuals(front_layer: bool) -> void:
+	for visual in _inserting_gem_visuals:
+		if _gem_visual_draws_in_front(visual) == front_layer:
+			_draw_single_gem_visual(visual)
+	if not _held_gem_visual.is_empty() and _gem_visual_draws_in_front(_held_gem_visual) == front_layer:
+		_draw_single_gem_visual(_held_gem_visual)
+
+
+func _gem_visual_draws_in_front(visual: Dictionary) -> bool:
+	var anchor := _player_gem_anchor()
+	if anchor == Vector2.ZERO:
+		return true
+	var pos: Vector2 = visual.get("current_pos", Vector2.ZERO)
+	if pos.distance_to(anchor) > IsoCoordinates.visual(30.0):
+		return true
+	return pos.y >= anchor.y
+
+
+func _draw_single_gem_visual(visual: Dictionary) -> void:
+	var pos: Vector2 = visual.get("current_pos", Vector2.ZERO)
+	var tint: Color = visual.get("tint", Color.WHITE)
+	var phase := str(visual.get("phase", "orbit"))
+	var progress := _gem_visual_progress(visual)
+	var alpha := 1.0
+	var scale := 1.0
+	if phase == "extract":
+		scale = lerpf(0.82, 1.0, progress)
+	elif phase == "insert":
+		alpha = 1.0 - progress * 0.35
+		scale = lerpf(1.0, 0.74, progress)
+	else:
+		scale = 1.0 + sin(float(visual.get("bob_time", 0.0)) * 0.5) * 0.05
+	var draw_tint := tint
+	draw_tint.a *= alpha
+	var glow := tint
+	glow.a = 0.22 * alpha
+	var shadow := Color(0.0, 0.0, 0.0, 0.16 * alpha)
+	var draw_size := IsoCoordinates.visual(_GEM_DRAW_SIZE) * scale
+	_draw_soft_backdrop(pos + Vector2(0.0, IsoCoordinates.visual(8.0)), draw_size * 0.28, draw_size * 0.14, shadow)
+	_draw_soft_backdrop(pos, draw_size * 0.5, draw_size * 0.34, glow)
+	var tex: Texture2D = visual.get("texture", null)
+	if tex != null:
+		draw_texture_rect(tex, Rect2(pos - Vector2.ONE * draw_size * 0.5, Vector2.ONE * draw_size), false, draw_tint)
+	else:
+		_draw_small_diamond(pos, draw_size * 0.48, draw_size * 0.32, draw_tint)
+
+
+func _gem_visual_progress(visual: Dictionary) -> float:
+	var duration := maxf(float(visual.get("duration", 1.0)), 0.001)
+	return clampf(float(visual.get("elapsed", 0.0)) / duration, 0.0, 1.0)
 
 
 func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
@@ -1151,6 +1241,61 @@ func animate_moves_parallel(moves: Array) -> void:
 		animate_move(uid, mv.get("from", Vector2i.ZERO), mv.get("to", Vector2i.ZERO), false)
 
 
+func clear_gem_visuals() -> void:
+	_held_gem_visual.clear()
+	_inserting_gem_visuals.clear()
+	_masked_embedded_gems.clear()
+	queue_redraw()
+
+
+func has_active_held_gem_visual() -> bool:
+	return not _held_gem_visual.is_empty()
+
+
+func start_held_gem_extract(source_grid: Vector2i, gem: GemState) -> void:
+	if gem == null:
+		return
+	var source_pos := _consume_inserting_gem_position(gem.uid, _gem_grid_anchor(source_grid))
+	_held_gem_visual = _make_gem_visual(gem, source_pos)
+	_held_gem_visual["phase"] = "extract"
+	_held_gem_visual["from_pos"] = source_pos
+	_held_gem_visual["current_pos"] = source_pos
+	_held_gem_visual["elapsed"] = 0.0
+	_held_gem_visual["duration"] = _scaled_duration(_GEM_LIFT_DURATION)
+	_held_gem_visual["arc_height"] = IsoCoordinates.visual(54.0)
+	_held_gem_visual["orbit_angle"] = _orbit_angle_from_position(source_pos)
+	_held_gem_visual["bob_time"] = randf() * TAU
+	queue_redraw()
+
+
+func start_held_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
+	var visual: Dictionary = {}
+	if not _held_gem_visual.is_empty():
+		visual = _held_gem_visual.duplicate(true)
+		_held_gem_visual.clear()
+	elif gem != null:
+		var fallback := {
+			"orbit_angle": 0.0,
+			"bob_time": _pulse_time * _GEM_BOB_SPEED,
+		}
+		visual = _make_gem_visual(gem, _current_player_orbit_position(fallback))
+	if visual.is_empty():
+		return
+	var start_pos: Vector2 = visual.get("current_pos", _gem_grid_anchor(target_grid))
+	visual["phase"] = "insert"
+	visual["from_pos"] = start_pos
+	visual["current_pos"] = start_pos
+	visual["target_grid"] = target_grid
+	visual["elapsed"] = 0.0
+	visual["duration"] = _scaled_duration(_GEM_INSERT_DURATION)
+	visual["arc_height"] = IsoCoordinates.visual(36.0)
+	var gem_uid := str(visual.get("uid", ""))
+	if not gem_uid.is_empty():
+		_masked_embedded_gems[gem_uid] = true
+	_inserting_gem_visuals.append(visual)
+	queue_redraw()
+
+
 func set_animation_speed_scale(speed_scale: float) -> void:
 	_animation_speed_scale = maxf(speed_scale, 0.05)
 
@@ -1174,6 +1319,149 @@ func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool
 			animation_finished.emit()
 		return
 	animation_finished.emit()
+
+
+func _update_gem_visuals(scaled_dt: float) -> bool:
+	var dirty := false
+	if not _held_gem_visual.is_empty():
+		dirty = _update_held_gem_visual(scaled_dt) or dirty
+	if not _inserting_gem_visuals.is_empty():
+		var idx := _inserting_gem_visuals.size() - 1
+		while idx >= 0:
+			var visual: Dictionary = _inserting_gem_visuals[idx]
+			dirty = true
+			if _step_inserting_gem_visual(visual, scaled_dt):
+				_inserting_gem_visuals[idx] = visual
+			else:
+				var gem_uid := str(visual.get("uid", ""))
+				if not gem_uid.is_empty():
+					_masked_embedded_gems.erase(gem_uid)
+				play_gem_flash(visual.get("target_grid", Vector2i.ZERO), visual.get("tint", Color.WHITE))
+				_inserting_gem_visuals.remove_at(idx)
+			idx -= 1
+	return dirty
+
+
+func _update_held_gem_visual(scaled_dt: float) -> bool:
+	var phase := str(_held_gem_visual.get("phase", "orbit"))
+	if phase == "extract":
+		var duration := maxf(float(_held_gem_visual.get("duration", 0.01)), 0.01)
+		var elapsed := minf(float(_held_gem_visual.get("elapsed", 0.0)) + scaled_dt, duration)
+		_held_gem_visual["elapsed"] = elapsed
+		_held_gem_visual["bob_time"] = float(_held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		var from_pos: Vector2 = _held_gem_visual.get("from_pos", _held_gem_visual.get("current_pos", Vector2.ZERO))
+		var to_pos := _current_player_orbit_position(_held_gem_visual)
+		var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(_held_gem_visual.get("arc_height", IsoCoordinates.visual(54.0))))
+		var pos := _quadratic_bezier(from_pos, ctrl, to_pos, _ease_out_cubic(elapsed / duration))
+		_held_gem_visual["current_pos"] = pos
+		if elapsed >= duration:
+			_held_gem_visual["phase"] = "orbit"
+			_held_gem_visual["orbit_angle"] = _orbit_angle_from_position(pos)
+	else:
+		_held_gem_visual["orbit_angle"] = float(_held_gem_visual.get("orbit_angle", 0.0)) + scaled_dt * _GEM_ORBIT_SPEED
+		_held_gem_visual["bob_time"] = float(_held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		_held_gem_visual["current_pos"] = _current_player_orbit_position(_held_gem_visual)
+	return true
+
+
+func _step_inserting_gem_visual(visual: Dictionary, scaled_dt: float) -> bool:
+	var duration := maxf(float(visual.get("duration", 0.01)), 0.01)
+	var elapsed := minf(float(visual.get("elapsed", 0.0)) + scaled_dt, duration)
+	visual["elapsed"] = elapsed
+	var from_pos: Vector2 = visual.get("from_pos", visual.get("current_pos", Vector2.ZERO))
+	var to_pos := _gem_grid_anchor(visual.get("target_grid", Vector2.ZERO))
+	var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(visual.get("arc_height", IsoCoordinates.visual(36.0))))
+	visual["current_pos"] = _quadratic_bezier(from_pos, ctrl, to_pos, _ease_in_out_cubic(elapsed / duration))
+	return elapsed < duration
+
+
+func _make_gem_visual(gem: GemState, start_pos: Vector2) -> Dictionary:
+	if gem == null:
+		return {}
+	return {
+		"uid": gem.uid,
+		"gem_id": gem.gem_id,
+		"texture": UnitLooks.get_gem_texture(gem),
+		"tint": UnitLooks.gem_sprite_modulate(gem),
+		"current_pos": start_pos,
+		"phase": "orbit",
+		"orbit_angle": randf() * TAU,
+		"bob_time": randf() * TAU,
+	}
+
+
+func _consume_inserting_gem_position(gem_uid: String, fallback: Vector2) -> Vector2:
+	for idx in range(_inserting_gem_visuals.size() - 1, -1, -1):
+		var visual: Dictionary = _inserting_gem_visuals[idx]
+		if str(visual.get("uid", "")) != gem_uid:
+			continue
+		_masked_embedded_gems.erase(gem_uid)
+		_inserting_gem_visuals.remove_at(idx)
+		return visual.get("current_pos", fallback)
+	return fallback
+
+
+func _gem_grid_anchor(grid: Vector2i) -> Vector2:
+	return grid_to_screen(grid) + IsoCoordinates.visual_vec(_GEM_SLOT_SOURCE_OFFSET)
+
+
+func _player_gem_anchor() -> Vector2:
+	if state == null:
+		return Vector2.ZERO
+	var player := state.get_player()
+	if player == null or not player.alive:
+		return Vector2.ZERO
+	var fp := player.footprint_size
+	var visual_anchor_grid := player.pos + fp - Vector2i(1, 1)
+	var center := grid_to_screen(visual_anchor_grid)
+	if fp != Vector2i(1, 1):
+		var anchor_left := grid_to_screen(player.pos)
+		center.x = (anchor_left.x + center.x) * 0.5
+	return center + _move_offsets.get(player.uid, Vector2.ZERO)
+
+
+func _current_player_orbit_position(visual: Dictionary) -> Vector2:
+	var anchor := _player_gem_anchor()
+	if anchor == Vector2.ZERO:
+		return visual.get("current_pos", Vector2.ZERO)
+	var angle := float(visual.get("orbit_angle", 0.0))
+	var bob_time := float(visual.get("bob_time", 0.0))
+	var radius_x := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_X)
+	var radius_y := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_Y)
+	return anchor + Vector2(
+		cos(angle) * radius_x,
+		sin(angle) * radius_y + sin(bob_time) * IsoCoordinates.visual(_GEM_BOB_AMPLITUDE)
+	)
+
+
+func _orbit_angle_from_position(pos: Vector2) -> float:
+	var anchor := _player_gem_anchor()
+	if anchor == Vector2.ZERO:
+		return 0.0
+	var rel := pos - anchor
+	if rel.length_squared() <= 0.0001:
+		return 0.0
+	var radius_x := maxf(IsoCoordinates.visual(_GEM_ORBIT_RADIUS_X), 0.001)
+	var radius_y := maxf(IsoCoordinates.visual(_GEM_ORBIT_RADIUS_Y), 0.001)
+	return atan2(rel.y / radius_y, rel.x / radius_x)
+
+
+func _quadratic_bezier(from_pos: Vector2, ctrl: Vector2, to_pos: Vector2, t: float) -> Vector2:
+	var clamped_t := clampf(t, 0.0, 1.0)
+	var inv := 1.0 - clamped_t
+	return inv * inv * from_pos + 2.0 * inv * clamped_t * ctrl + clamped_t * clamped_t * to_pos
+
+
+func _ease_out_cubic(t: float) -> float:
+	var clamped_t := clampf(t, 0.0, 1.0)
+	return 1.0 - pow(1.0 - clamped_t, 3.0)
+
+
+func _ease_in_out_cubic(t: float) -> float:
+	var clamped_t := clampf(t, 0.0, 1.0)
+	if clamped_t < 0.5:
+		return 4.0 * clamped_t * clamped_t * clamped_t
+	return 1.0 - pow(-2.0 * clamped_t + 2.0, 3.0) * 0.5
 
 
 func _data_registry() -> Node:

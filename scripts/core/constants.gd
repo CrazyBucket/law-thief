@@ -81,7 +81,7 @@ const ARC_PARALYSIS_CHANCE := 0.33   # 落雷/蓝槽反击麻痹概率 33%
 const ARC_CHAIN_DAMAGE_RATIO := 0.2  # 弹射伤害倍率 20%
 const ARC_CHAIN_RANGE := 2           # 电弧弹射范围
 const ARC_HIT_DAMAGE := 8            # 电弧单次命中伤害
-const LIGHTNING_DEATH_DAMAGE := 25   # 死亡落雷固定伤害
+const LIGHTNING_DEATH_DAMAGE := 10   # 死亡落雷固定伤害
 const FIRE_DEATH_FIRE_COUNT := 5     # 死亡爆裂火团数
 const FIRE_DEATH_RADIUS := 2         # 死亡爆裂范围（5x5 = radius 2）
 const ICE_DEATH_RADIUS := 1          # 冰冻死亡范围（3x3 = radius 1）

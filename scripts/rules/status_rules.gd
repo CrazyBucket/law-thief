@@ -5,6 +5,10 @@ const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 
 
+static func _rng_service() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RngService")
+
+
 static func apply_poison(
 	state: GameState,
 	unit: UnitState,
@@ -153,13 +157,13 @@ static func get_armor_bonus(unit: UnitState) -> int:
 static func apply_paralyzed(
 	state: GameState,
 	unit: UnitState,
-	_duration: int = 1,
+	duration: int = 1,
 	source_uid: String = ""
 ) -> void:
 	if unit.has_status(Constants.STATUS_PARALYZED):
 		return
 	_apply(state, unit, Constants.STATUS_PARALYZED, {
-		"duration": 0,
+		"duration": maxi(1, duration),
 		"source_uid": source_uid,
 	})
 
@@ -398,8 +402,11 @@ static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInsta
 
 ## 草地随机生长为草丛
 static func _tick_grass_growth(state: GameState) -> void:
+	var rng := _rng_service()
+	if rng == null:
+		return
 	for tile in state.tiles.values():
-		if tile.tile_id == Constants.TILE_GRASS and RngService.chance("tile_grass_grow_%s" % str(tile.pos), Constants.GRASS_GROW_CHANCE):
+		if tile.tile_id == Constants.TILE_GRASS and bool(rng.chance("tile_grass_grow_%s" % str(tile.pos), Constants.GRASS_GROW_CHANCE)):
 			tile.tile_id = Constants.TILE_BUSH
 			tile._init_ground_tags()
 			state.log("草地 %s 长成草丛" % [tile.pos])

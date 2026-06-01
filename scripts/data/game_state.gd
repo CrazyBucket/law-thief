@@ -29,6 +29,8 @@ var entities: Dictionary = {}  # uid → EntityState
 var held_gem_uid: String = ""
 var player_moved: bool = false
 var player_acted: bool = false
+## 当前回合仍待操控的友方单位队列（首个已成为 player_uid，后续依次激活）
+var controllable_queue: Array[String] = []
 var combat_log: Array[String] = []
 var encounter_id: String = ""
 var result: String = ""
@@ -46,6 +48,47 @@ func log(message: String) -> void:
 
 func get_player() -> UnitState:
 	return units.get(player_uid, null)
+
+
+# ─── 友方可操控队列 ───────────────────────────────────────────────────────────
+
+## 把一批单位按顺序推入队列，并立即激活第一个（设为 player_uid）
+## 若 activate_first 为 false 则仅入队，不切换 player_uid
+func push_controllable_batch(uids: Array, activate_first: bool = true) -> void:
+	controllable_queue.clear()
+	if uids.is_empty():
+		return
+	var start := 1 if activate_first else 0
+	for i in range(start, uids.size()):
+		controllable_queue.append(uids[i])
+	if activate_first:
+		player_uid = uids[0]
+		player_moved = false
+		player_acted = false
+
+
+## 弹出队列头部的下一个存活单位并激活；返回激活的 uid，失败返回空串
+func activate_next_controllable() -> String:
+	while not controllable_queue.is_empty():
+		var next_uid: String = controllable_queue[0]
+		var next_unit: UnitState = units.get(next_uid, null)
+		if next_unit != null and next_unit.alive:
+			controllable_queue.pop_front()
+			player_uid = next_uid
+			player_moved = false
+			player_acted = false
+			return next_uid
+		controllable_queue.pop_front()
+	return ""
+
+
+## 清除队列中已死亡的单位（不激活）
+func purge_dead_controllable() -> void:
+	controllable_queue = controllable_queue.filter(
+		func(uid: String) -> bool:
+			var u: UnitState = units.get(uid, null)
+			return u != null and u.alive
+	)
 
 
 # ─── 占格索引维护 ─────────────────────────────────────────────────────────────
@@ -159,6 +202,7 @@ func clone() -> GameState:
 	snapshot.held_gem_uid = held_gem_uid
 	snapshot.player_moved = player_moved
 	snapshot.player_acted = player_acted
+	snapshot.controllable_queue = controllable_queue.duplicate()
 	snapshot.combat_log = combat_log.duplicate(true)
 	snapshot.encounter_id = encounter_id
 	snapshot.result = result

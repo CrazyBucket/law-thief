@@ -10,6 +10,7 @@ func _run_test() -> void:
 	print("=== AI System Test ===")
 	_test_bomb_rat_ai()
 	_test_patrol_guard_ai()
+	_test_patrol_guard_detours_around_prop()
 	_test_stone_bow_ai()
 	_test_enemy_turn_execution()
 	_test_multi_enemy_coordination()
@@ -50,6 +51,26 @@ func _test_stone_bow_ai() -> void:
 	assert(bow != null, "stone bow should exist")
 	assert(bow.intent != null, "stone bow should have intent")
 	print("  [OK] stone bow intent: %s" % bow.intent.preview_text)
+
+
+func _test_patrol_guard_detours_around_prop() -> void:
+	print("--- Test: Patrol Guard Detour ---")
+	var controller := BattleController.new()
+	controller.start_encounter("template_c", 42)
+	var state := controller.state
+	var guard := _find_unit_by_def(state, "unit_patrol_guard")
+	var player := state.get_player()
+	assert(guard != null and player != null, "guard/player should exist")
+	player.pos = Vector2i(1, 6)
+	state.rebuild_occupancy()
+	var before := BoardUtils.path_distance_to_cell(state, guard.pos, player.pos, guard.uid, {}, guard)
+	var decision: Dictionary = EnemyAI.decide(state, guard)
+	var path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
+	assert(not path.is_empty(), "guard should plan a detour path")
+	var after_pos := path[path.size() - 1]
+	var after := BoardUtils.path_distance_to_cell(state, after_pos, player.pos, guard.uid, {}, guard)
+	assert(after >= 0 and after < before, "guard should reduce full path distance around prop (%d -> %d)" % [before, after])
+	print("  [OK] patrol guard detours around prop")
 
 
 func _test_enemy_turn_execution() -> void:

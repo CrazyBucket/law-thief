@@ -183,15 +183,15 @@ static func _evaluate_ranged_attacks_from(
 	var player: UnitState = state.get_player()
 	if player == null or not player.alive:
 		return results
-	var moved: bool = from_pos != enemy.pos
-	var range_path: Array = [] if not moved else [from_pos]
 	var max_range: int = Constants.ATTACK_RANGE
 	var saved := enemy.pos
 	enemy.pos = from_pos
 	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
 	var dist: int = BoardUtils.distance_between_units(enemy, player)
+	var from_cell := BoardUtils.projectile_origin_cell(enemy, player.pos)
+	var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
 	enemy.pos = saved
-	if not in_range:
+	if not in_range or blocked:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.RANGED_ATTACK

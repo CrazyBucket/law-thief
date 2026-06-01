@@ -164,7 +164,8 @@ func get_action_hint() -> String:
 					if block_reason.is_empty():
 						return "移动：暂时无法移动"
 					return "移动：%s" % block_reason
-			return "移动：点击蓝色高亮格（每回合 1 次）"
+			return "移动：点击白色边框格（悬浮为浅绿，每回合 1 次）"
+
 		Constants.ACTION_ATTACK:
 			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE
 		Constants.ACTION_EXTRACT:
@@ -242,8 +243,9 @@ func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 			var pos := Vector2i(x, y)
 			if pos == player.pos:
 				continue
-			if BoardUtils.can_unit_attack_cell(player, state, pos, Constants.ATTACK_RANGE):
-				cells.append(pos)
+			if not BoardUtils.can_unit_attack_cell(player, state, pos, Constants.ATTACK_RANGE):
+				continue
+			cells.append(pos)
 	return cells
 
 
@@ -279,8 +281,9 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 		return []
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
 		return []
+	var has_split: bool = GemEffects.unit_has_red_split(state, player)
 	var cells: Array = []
-	if GemEffects.unit_has_red_split(state, player):
+	if has_split:
 		var shot := _SplitShotRules.resolve_shot(player, target_pos)
 		for cell in shot.cells:
 			if BoardUtils.in_bounds(state, cell) and not cell in cells:

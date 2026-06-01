@@ -33,6 +33,20 @@ godot --headless --path . --quit-after 2
 godot --headless --path . res://scenes/battle/battle_scene.tscn --quit-after 3
 ```
 
+战斗回归基线（提交战斗相关改动前至少跑完这一组）：
+
+```bash
+godot --headless --path . --script res://scripts/tests/encounter_load_test.gd && godot --headless --path . --script res://scripts/tests/ai_test.gd && godot --headless --path . --script res://scripts/tests/smoke_test.gd
+```
+
+命中/障碍物专项回归：
+
+```bash
+godot --headless --path . --script res://scripts/tests/damage_debug_test.gd && godot --headless --path . --script res://scripts/tests/stone_bow_guard_test.gd && godot --headless --path . --script res://scripts/tests/split_shot_test.gd
+```
+
+约定：只要改动了 `scripts/battle/`、`scripts/rules/`、`scripts/ui/` 或战斗场景资源，都要重新执行上面两组命令，确认战斗场景可启动、主流程可跑通、隔障碍攻击/分裂攻击没有回归。
+
 教学关冒烟测试（拔爆炸 → 嵌黑槽 → 击杀引爆）：
 
 ```bash

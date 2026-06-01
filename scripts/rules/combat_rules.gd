@@ -5,6 +5,10 @@ const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
 
+
+static func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
 static var _defer_death_hooks_depth: int = 0
 static var _pending_deaths: Array[Dictionary] = []
 static var _death_event_sink: Array[Dictionary] = []
@@ -15,7 +19,8 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		return 0
 	# 止痛药：本场战斗首次受伤降为 1
 	if unit.uid == state.player_uid:
-		var absorb: bool = RelicEffectRegistry.query_modifier("first_damage_absorb", state)
+		var registry := _relic_effect_registry()
+		var absorb: bool = registry != null and bool(registry.query_modifier("first_damage_absorb", state))
 		if absorb:
 			amount = 1
 			state.battle_temp_flags["painkiller_used"] = true
@@ -152,8 +157,12 @@ static func split_melee_attack(state: GameState, attacker: UnitState, target: Un
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
 	var base := attacker.base_attack + GemEffects.get_attack_bonus(state, attacker)
-	var mult: float = RelicEffectRegistry.query_modifier("attack_damage_mult", state)
-	var bonus: int = RelicEffectRegistry.query_modifier("attack_damage_bonus", state)
+	var registry := _relic_effect_registry()
+	var mult: float = 1.0
+	var bonus: int = 0
+	if registry != null:
+		mult = float(registry.query_modifier("attack_damage_mult", state))
+		bonus = int(registry.query_modifier("attack_damage_bonus", state))
 	return maxi(0, int(float(base) * mult) + bonus)
 
 

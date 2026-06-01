@@ -167,7 +167,6 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert(ctrl.state, player, target, slot)
 	if result.get("ok", false):
-		ctrl.anim_gem_flash.emit(target.pos, Color(0.4, 0.9, 1.0))
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 	return result
@@ -238,7 +237,6 @@ func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert_tile(ctrl.state, player, tile, slot)
 	if result.get("ok", false):
-		ctrl.anim_gem_flash.emit(tile_pos, Color(0.4, 0.9, 1.0))
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 	return result

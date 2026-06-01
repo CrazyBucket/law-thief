@@ -39,11 +39,11 @@ static func draw_tile_overlays(canvas: Control, center: Vector2, tile: TileState
 		_draw_fire(canvas, center)
 
 
-static func draw_hover_outline(canvas: Control, center: Vector2) -> void:
+static func draw_hover_outline(canvas: Control, center: Vector2, color: Color = Color(0.95, 0.95, 1.0, 0.95)) -> void:
 	var corners: PackedVector2Array = IsoCoordinates.diamond_corners(center)
 	var closed: PackedVector2Array = corners.duplicate()
 	closed.append(corners[0])
-	canvas.draw_polyline(closed, Color(0.95, 0.95, 1.0, 0.95), 2.5 * IsoCoordinates.tile_scale, false)
+	canvas.draw_polyline(closed, color, 2.5 * IsoCoordinates.tile_scale, false)
 
 
 static func draw_highlight_fill(canvas: Control, center: Vector2, color: Color) -> void:

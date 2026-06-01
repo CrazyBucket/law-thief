@@ -163,14 +163,14 @@ func _test_aim_empty_cell_hits_wings() -> void:
 	var player := state.get_player()
 	_mount_split_red(state, player)
 	player.pos = Vector2i(0, 2)
-	var aim := Vector2i(3, 3)
+	var aim := Vector2i(2, 3)
 	if state.get_unit_at(aim) != null:
 		_fail("aim cell should be empty")
 		return
-	var guard := _spawn_guard(state, Vector2i(2, 4))
+	var guard := _spawn_guard(state, Vector2i(1, 3))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, aim, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
 	)
 	if not result.get("ok", false):
 		_fail("split aim on empty should succeed")
@@ -186,13 +186,13 @@ func _test_wing_damage_ignores_front_obstacle() -> void:
 	var player := state.get_player()
 	_mount_split_red(state, player)
 	player.pos = Vector2i(0, 2)
-	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(1, 3))
+	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(1, 2))
 	state.add_entity(prop)
-	var aim := Vector2i(3, 3)
-	var guard := _spawn_guard(state, Vector2i(2, 4))
+	var aim := Vector2i(2, 3)
+	var guard := _spawn_guard(state, Vector2i(1, 3))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, aim, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
 	)
 	if not result.get("ok", false):
 		_fail("split with front obstacle should succeed")
@@ -213,7 +213,7 @@ func _test_main_target_ignores_front_obstacle() -> void:
 	var guard := _spawn_guard(state, Vector2i(3, 2))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, guard.pos, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+		state, player, guard.pos, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
 	)
 	if not result.get("ok", false):
 		_fail("split main target through obstacle should succeed")

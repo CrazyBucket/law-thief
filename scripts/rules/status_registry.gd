@@ -226,7 +226,7 @@ static var _DEFS: Dictionary = {
 		"type": TYPE_DEBUFF,
 		"color": Color(0.9, 0.9, 0.2),
 		"stack_rule": STACK_REPLACE,
-		"tick_phase": TICK_NONE,
+		"tick_phase": TICK_TURN_START,
 		"blocks_movement": true,
 		"blocks_action": true,
 	},

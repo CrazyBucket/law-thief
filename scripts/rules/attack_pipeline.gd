@@ -5,6 +5,14 @@ const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 
+
+static func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
+
+static func _rng_service() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RngService")
+
 # ─── 攻击标签集合 ────────────────────────────────────────────────────────────
 const TAG_RANGED       := "ranged"
 const TAG_MELEE        := "melee"
@@ -108,7 +116,6 @@ static func execute_aimed(
 	_phase_prepare(ctx)
 	if target != null and not ctx.target.alive:
 		return _finish_execute(state, ctx, _ok(ctx.events))
-
 	if ctx.has_tag(TAG_RANGED) and ctx.target != null:
 		_try_deflect(ctx)
 	if ctx.has_tag(TAG_DEFLECT_DONE):
@@ -176,7 +183,7 @@ static func _phase_hit(ctx: AttackContext) -> void:
 			reason = "attack"
 
 	if ctx.has_tag(TAG_RANGED):
-		var from_cell := _projectile_from_cell(ctx.attacker, ctx.aim_cell)
+		var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
 		if ctx.has_tag(TAG_SPLIT_SHOT):
 			_push_projectile_event(ctx, from_cell, ctx.aim_cell)
 		else:
@@ -188,7 +195,7 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, ctx.aim_cell)
 
 	var dealt := 0
-	if ctx.target != null:
+	if ctx.target != null and not ctx.has_tag(TAG_EXPLOSIVE):
 		dealt = CombatRules.apply_damage(ctx.state, ctx.target, ctx.base_damage, ctx.attacker.uid, reason)
 		if dealt > 0:
 			ctx.push_damage_event(ctx.aim_cell, dealt)
@@ -197,7 +204,7 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	if dealt > 0 and ctx.target != null:
 		_ContactResolver.on_attack_contact(ctx.state, ctx.attacker, ctx.target)
 		_gem_hooks_on_hit(ctx)
-		if ctx.has_tag(TAG_KNOCKBACK) and not ctx.has_tag(TAG_EXPLOSIVE) and ctx.target.alive:
+		if ctx.has_tag(TAG_KNOCKBACK) and ctx.target.alive:
 			_Displacement.knockback(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 		if ctx.has_tag(TAG_FIRE_ON_HIT) and ctx.target.alive:
 			StatusRules.apply_burning(ctx.state, ctx.target, 1, ctx.attacker.uid)
@@ -253,7 +260,8 @@ static func _gem_hooks_prepare(ctx: AttackContext) -> void:
 						ctx.add_tag(TAG_SPLIT_SHOT)
 	# 遗物 modifier：attack_split_count > 0 时自动附加分裂攻击
 	if not ctx.has_tag(TAG_SPLIT_SHOT):
-		var split_bonus: int = RelicEffectRegistry.query_modifier("attack_split_count", ctx.state)
+		var registry := _relic_effect_registry()
+		var split_bonus: int = int(registry.query_modifier("attack_split_count", ctx.state)) if registry != null else 0
 		if split_bonus > 0:
 			ctx.add_tag(TAG_SPLIT_SHOT)
 
@@ -274,14 +282,17 @@ static func _try_deflect(ctx: AttackContext) -> void:
 			var hit := ctx.state.get_unit_at(neighbor)
 			if hit != null and hit.alive and hit.uid != ctx.attacker.uid:
 				candidates.append(hit)
+		var rng := _rng_service()
+		if rng == null:
+			break
 		if candidates.is_empty():
 			var neighbors := BoardUtils.neighbors4(ctx.target.pos)
-			var land: Vector2i = neighbors[RngService.roll_int("pipeline_gravity_land_%s" % ctx.target.uid, 0, neighbors.size() - 1)]
+			var land: Vector2i = neighbors[int(rng.roll_int("pipeline_gravity_land_%s" % ctx.target.uid, 0, neighbors.size() - 1))]
 			ctx.state.log("%s 被引力偏转，投射物落地 %s" % [ctx.target.uid, land])
 			ctx.push_event({"type": "projectile_deflect", "from": ctx.target.pos, "to": land})
 			ctx.add_tag(TAG_DEFLECT_DONE)
 		else:
-			var new_target: UnitState = candidates[RngService.roll_int("pipeline_gravity_redirect_%s" % ctx.target.uid, 0, candidates.size() - 1)]
+			var new_target: UnitState = candidates[int(rng.roll_int("pipeline_gravity_redirect_%s" % ctx.target.uid, 0, candidates.size() - 1))]
 			ctx.state.log("%s 被引力偏转，投射物转向 %s" % [ctx.target.uid, new_target.uid])
 			ctx.push_event({"type": "projectile_deflect", "from": ctx.target.pos, "to": new_target.pos})
 			ctx.target = new_target
@@ -320,9 +331,9 @@ static func _trigger_red_active(ctx: AttackContext) -> void:
 
 
 static func _apply_cross_explosion(ctx: AttackContext) -> void:
-	var opts: Dictionary = {}
-	if ctx.target != null:
-		opts["exclude_unit_uid"] = ctx.target.uid
+	var opts: Dictionary = {
+		"center_damage": Constants.EXPLOSION_CROSS_DAMAGE,
+	}
 	var cross_events := GemEffects.explode_cross_at(
 		ctx.state,
 		ctx.aim_cell,
@@ -335,19 +346,6 @@ static func _apply_cross_explosion(ctx: AttackContext) -> void:
 
 static func compute_split_wing_cells(attacker_pos: Vector2i, aim_pos: Vector2i) -> Array[Vector2i]:
 	return SplitShotRules.wing_cells(attacker_pos, aim_pos)
-
-
-static func _projectile_from_cell(attacker: UnitState, target_pos: Vector2i) -> Vector2i:
-	if attacker.footprint_size == Vector2i(1, 1):
-		return attacker.pos
-	var best := attacker.pos
-	var best_dist := 999999
-	for cell in attacker.occupied_cells():
-		var d := BoardUtils.chebyshev(cell, target_pos)
-		if d < best_dist:
-			best_dist = d
-			best = cell
-	return best
 
 
 static func _push_projectile_event(ctx: AttackContext, from_pos: Vector2i, to_pos: Vector2i) -> void:
@@ -365,7 +363,7 @@ static func _apply_split_wings(ctx: AttackContext) -> void:
 	for wing_pos in wing_cells:
 		if not BoardUtils.in_bounds(ctx.state, wing_pos):
 			continue
-		var wing_from := _projectile_from_cell(ctx.attacker, wing_pos)
+		var wing_from := BoardUtils.projectile_origin_cell(ctx.attacker, wing_pos)
 		_push_projectile_event(ctx, wing_from, wing_pos)
 		var wing_target := ctx.state.get_unit_at(wing_pos)
 		if wing_target == null or not wing_target.alive or wing_target.uid == ctx.attacker.uid:

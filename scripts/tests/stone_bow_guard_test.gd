@@ -12,6 +12,7 @@ func _run_test() -> void:
 	_test_spawn_stats()
 	_test_deploy_range()
 	_test_deploy_shot_damage()
+	_test_blocked_shot_not_planned()
 	_test_faulty_blind_shot()
 	_test_kite_retreat_then_shoot()
 	_test_hold_position_when_in_range()
@@ -58,6 +59,21 @@ func _test_deploy_shot_damage() -> void:
 	print("  [OK] deployed ranged hit for 4")
 
 
+func _test_blocked_shot_not_planned() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("stone_bow_test", 42)
+	var state := controller.state
+	var bow := _find_bow(state)
+	var player := state.get_player()
+	bow.pos = Vector2i(5, 2)
+	player.pos = Vector2i(1, 2)
+	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(3, 2))
+	state.add_entity(prop)
+	IntentSystem.refresh_unit_intent(state, bow)
+	assert(bow.intent.type != "ranged_attack", "blocked line should not plan ranged attack")
+	print("  [OK] blocked ranged shot is not planned")
+
+
 func _test_faulty_blind_shot() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("stone_bow_test", 99)
@@ -96,11 +112,18 @@ func _test_kite_retreat_then_shoot() -> void:
 	var player := state.get_player()
 	bow.pos = Vector2i(4, 2)
 	player.pos = Vector2i(4, 3)
+	state.rebuild_occupancy()
 	IntentSystem.refresh_unit_intent(state, bow)
 	assert(bow.intent.type == "ranged_attack", "should shoot after reposition, got %s" % bow.intent.type)
 	assert(not bow.intent.path.is_empty(), "should move before shooting when player is adjacent")
-	var dist_after := BoardUtils.manhattan(bow.intent.path[bow.intent.path.size() - 1], player.pos)
+	var landing := bow.intent.path[bow.intent.path.size() - 1]
+	var dist_after := BoardUtils.manhattan(landing, player.pos)
 	assert(dist_after >= Constants.STONE_BOW_KITE_MIN_RANGE, "kite position should keep distance")
+	var saved_pos := bow.pos
+	bow.pos = landing
+	var clear_line := StoneBowGuardRules.in_range(state, bow, landing, player, bow.intent.path)
+	bow.pos = saved_pos
+	assert(clear_line, "kite position should keep an open shot")
 	var hp_before := player.hp
 	IntentSystem.execute_intent(state, bow)
 	assert(player.hp < hp_before, "kite shot should damage player")

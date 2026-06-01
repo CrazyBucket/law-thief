@@ -216,12 +216,16 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	var anim_events: Array[Dictionary] = []
 	if not unit.alive:
 		return anim_events
+	if unit.team != Constants.TEAM_ENEMY:
+		return anim_events
+	if not StatusRules.can_act(unit):
+		return anim_events
 	var intent := unit.intent
 	if intent == null:
 		return anim_events
 
 	var move_start_pos: Vector2i = unit.pos
-	if not intent.path.is_empty():
+	if StatusRules.can_move(unit) and not intent.path.is_empty():
 		var move_events := _execute_move(state, unit, intent)
 		anim_events.append_array(move_events)
 

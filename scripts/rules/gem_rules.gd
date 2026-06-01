@@ -4,6 +4,10 @@ extends RefCounted
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 
 
+static func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
+
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
@@ -29,9 +33,11 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	slot.gem_uid = ""
 	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, _data_registry().get_gem_display_name(gem)])
 	_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot.slot_type, gem.uid)
-	RelicEffectRegistry.fire_event("after_extract", state, {
-		"unit_uid": actor.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
-	})
+	var registry := _relic_effect_registry()
+	if registry != null:
+		registry.fire_event("after_extract", state, {
+			"unit_uid": actor.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+		})
 	IntentSystem.refresh_all_intents(state)
 	return _ok({"gem_uid": gem.uid})
 
@@ -67,11 +73,13 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
 	_behavior_for(target_unit).on_gem_inserted(state, target_unit, gem.uid)
-	RelicEffectRegistry.fire_event("after_insert", state, {
-		"unit_uid": target_unit.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
-	})
+	var registry := _relic_effect_registry()
+	if registry != null:
+		registry.fire_event("after_insert", state, {
+			"unit_uid": target_unit.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+		})
 	IntentSystem.refresh_all_intents(state)
-	return _ok()
+	return _ok({"gem_uid": gem.uid})
 
 
 static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -171,7 +179,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	state.held_gem_uid = ""
 	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, _data_registry().get_gem_display_name(gem), tile.tile_id])
 	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
-	return _ok()
+	return _ok({"gem_uid": gem.uid})
 
 
 static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:

@@ -148,6 +148,7 @@ func setup(encounter_id: String) -> void:
 
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
+	_board.clear_gem_visuals()
 	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
 	_mark_visible_enemies_seen()
 	_inspect_uid = _controller.selected_unit_uid
@@ -265,19 +266,20 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 
 func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 	_hover_cell = cell if valid else Vector2i(-1, -1)
+	if _controller == null:
+		return
 	if not valid:
 		_hide_preview_panel()
 		_board.set_hover(Vector2i(-1, -1))
 		if _timeline_hover_uid.is_empty():
 			_board.set_timeline_hover_unit("")
-		if _controller != null and _controller.selected_action == Constants.ACTION_ATTACK:
-			_board.set_highlights(_controller.get_highlights())
+		_board.set_highlights(_controller.get_highlights())
 		return
 	_board.set_hover(cell)
-	if _controller != null and _controller.selected_action == Constants.ACTION_ATTACK:
-		_board.set_highlights(_controller.get_highlights(_hover_cell))
+	_board.set_highlights(_controller.get_highlights(_hover_cell))
 	if _timeline_hover_uid.is_empty():
-		var hovered_unit := _view_state().get_unit_at(cell)
+		var hovered_state := _view_state()
+		var hovered_unit := hovered_state.get_unit_at(cell) if hovered_state != null else null
 		_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
 	var preview: Dictionary = _controller.get_cell_preview(cell)
 	_preview_title.text = preview.get("title", "")
@@ -373,9 +375,11 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 	if result.get("ok", false):
 		match action:
 			Constants.ACTION_EXTRACT:
+				_begin_held_gem_extract(tile_pos, result)
 				_controller.select_action(Constants.ACTION_INSERT)
 				_message_label.text = "已从地块拔出，点击目标嵌入"
 			Constants.ACTION_INSERT:
+				_begin_held_gem_insert(tile_pos, result)
 				_controller.select_action(Constants.ACTION_ATTACK)
 				_message_label.text = "已嵌入地块，可攻击或触发"
 			Constants.ACTION_TRIGGER:
@@ -410,9 +414,15 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 	if result.get("ok", false):
 		match action:
 			Constants.ACTION_EXTRACT:
+				var extract_target: UnitState = _controller.state.units.get(unit_uid, null)
+				if extract_target != null:
+					_begin_held_gem_extract(extract_target.pos, result)
 				_controller.select_action(Constants.ACTION_INSERT)
 				_message_label.text = "已拔出，点击目标嵌入（免费）"
 			Constants.ACTION_INSERT:
+				var insert_target: UnitState = _controller.state.units.get(unit_uid, null)
+				if insert_target != null:
+					_begin_held_gem_insert(insert_target.pos, result)
 				_controller.select_action(Constants.ACTION_ATTACK)
 				_message_label.text = "已嵌入，可攻击或触发"
 			Constants.ACTION_TRIGGER:
@@ -430,6 +440,26 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 	_refresh()
 
 
+func _begin_held_gem_extract(source_grid: Vector2i, result: Dictionary) -> void:
+	var gem_uid := str(result.get("gem_uid", ""))
+	if gem_uid.is_empty() or _controller.state == null:
+		return
+	var gem: GemState = _controller.state.gems.get(gem_uid, null)
+	if gem == null:
+		return
+	_board.start_held_gem_extract(source_grid, gem)
+
+
+func _begin_held_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
+	var gem_uid := str(result.get("gem_uid", ""))
+	if gem_uid.is_empty() or _controller.state == null:
+		return
+	var gem: GemState = _controller.state.gems.get(gem_uid, null)
+	if gem == null:
+		return
+	_board.start_held_gem_insert(target_grid, gem)
+
+
 func _on_popup_cancelled() -> void:
 	_refresh()
 
@@ -443,12 +473,18 @@ func _on_end_turn_pressed() -> void:
 	if _enemy_phase_running:
 		return
 	_dismiss_popup()
+	_controller.begin_enemy_phase()
+	# 若分身切换后仍在玩家回合，刷新 UI 继续操控下一个分身
+	if _controller.state != null and _controller.state.phase == Constants.PHASE_PLAYER:
+		_message_label.text = _controller.get_action_hint()
+		_refresh()
+		return
 	_run_enemy_phase_async()
 
 
 func _run_enemy_phase_async() -> void:
 	_enemy_phase_running = true
-	_controller.begin_enemy_phase()
+	# begin_enemy_phase 已在 _on_end_turn_pressed 中调用，此处不重复调用
 	_message_label.text = "敌方行动中..."
 	_refresh()
 	var enemies := _controller.get_sorted_enemies()
@@ -463,6 +499,7 @@ func _run_enemy_phase_async() -> void:
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
+		await get_tree().create_timer(_scaled_anim_time(0.22)).timeout
 		_presentation_playing = true
 		_refresh_deferred = false
 		var execution: Dictionary = _controller.execute_single_enemy(enemy)
@@ -505,7 +542,7 @@ func _play_anim_event(ev: Dictionary) -> void:
 			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
 		"poison_burst":
 			var ppos: Variant = ev.get("pos", Vector2i.ZERO)
-			var prad_i: Variant = ev.get("radius", 1)
+			var prad_i: Variant = ev.get("radius", 0)
 			_board.play_poison_burst(ppos, int(prad_i))
 			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
 			_board.queue_redraw()
@@ -636,6 +673,36 @@ func _play_presented_events(events: Array) -> void:
 			i += batch.size()
 			await _play_projectile_volley(batch)
 			continue
+		if ev_type == "explode":
+			_prime_event_state(ev)
+			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
+			_board.queue_redraw()
+			_apply_event_state(ev)
+			i += 1
+			# 紧跟爆炸的所有 damage 事件同时弹出，并行显示伤害数字
+			var dmg_batch: Array = _collect_consecutive_events(events, i, ["damage"])
+			i += dmg_batch.size()
+			for dmg_ev in dmg_batch:
+				_prime_event_state(dmg_ev)
+				var dpos: Vector2i = dmg_ev.get("pos", Vector2i.ZERO)
+				var dval: int = dmg_ev.get("damage", 1)
+				var dcrit: bool = dmg_ev.get("is_crit", false)
+				_board.play_damage_effect(dpos, dval, dcrit)
+				_spawn_damage_text(dpos, dval, dcrit, dmg_ev.get("reason", ""))
+				_apply_event_state(dmg_ev)
+			# 紧跟的所有 move_step（knockback）并行播放
+			var kb_batch: Array = _collect_consecutive_events(events, i, ["move_step"])
+			i += kb_batch.size()
+			if not kb_batch.is_empty():
+				for kb_ev in kb_batch:
+					_prime_event_state(kb_ev)
+				_board.animate_moves_parallel(kb_batch)
+				await _board.animation_finished
+				for kb_ev in kb_batch:
+					_apply_event_state(kb_ev)
+			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
+			_board.queue_redraw()
+			continue
 		if ev_type == "move_step":
 			var batch: Array = _collect_consecutive_events(events, i, ["move_step"])
 			if _move_batch_is_parallel(batch):
@@ -727,7 +794,7 @@ func _apply_event_state(ev: Dictionary) -> void:
 				victim.alive = false
 		"poison_burst":
 			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var poison_radius: int = int(ev.get("radius", 1))
+			var poison_radius: int = int(ev.get("radius", 0))
 			for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
 				if not BoardUtils.in_bounds(_display_state, cell):
 					continue
@@ -755,7 +822,8 @@ func _flush_pending_battle_end() -> void:
 func _apply_battle_end(result: String) -> void:
 	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
 	_hint_label.text = ""
-	_phase_badge.text = "结束"
+	var end_turn := _controller.state.turn_index if _controller.state != null else 0
+	_phase_badge.text = "结束 · 第%d回合" % end_turn
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 	if result == "win" and RunService.is_run_active():
 		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
@@ -931,15 +999,21 @@ func _refresh() -> void:
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
 	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
 
+	var turn_suffix := " · 第%d回合" % state.turn_index
 	match state.phase:
 		Constants.PHASE_PLAYER:
-			_phase_badge.text = "你的回合"
+			var queue_suffix := ""
+			if not state.controllable_queue.is_empty():
+				var total := 1 + state.controllable_queue.size()
+				var current := total - state.controllable_queue.size()
+				queue_suffix = " · %d/%d" % [current, total]
+			_phase_badge.text = "你的回合" + turn_suffix + queue_suffix
 			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_PLAYER)
 		Constants.PHASE_ENDED:
-			_phase_badge.text = "战斗结束"
+			_phase_badge.text = "战斗结束" + turn_suffix
 			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 		_:
-			_phase_badge.text = "敌方回合"
+			_phase_badge.text = "敌方回合" + turn_suffix
 			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_ENEMY)
 
 	var held := _controller.get_held_gem()

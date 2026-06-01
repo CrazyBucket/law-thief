@@ -2,6 +2,7 @@ class_name BoardUtils
 extends RefCounted
 
 const _MIN_STEP_COST: float = 0.05
+const _FULL_PATH_BUDGET_FACTOR: float = 8.0
 const _DEFAULT_PATH_COST_PROFILE := {
 	"base_step_cost": 1.0,
 	"spike_damage_weight": 0.4,
@@ -242,9 +243,8 @@ static func astar_path(
 	return path
 
 
-## path_toward: 使用 A* 寻路（替代旧的贪心直线算法）
-## 用于敌人 AI 移动——目标可能被占据（如玩家位置），寻路到最近可达点
-## moving_unit 不为 null 时传递给 astar_path 做 footprint 通道宽度校验
+## path_toward: 使用完整路径规划后再截断到本回合可走步数
+## 这样在需要先横移/绕路时，也不会因为本回合没缩短曼哈顿距离而原地发呆
 static func path_toward(
 	state: GameState,
 	from_pos: Vector2i,
@@ -255,30 +255,100 @@ static func path_toward(
 	cell_blockers: Dictionary = {},
 	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
+	if from_pos == to_pos or max_steps <= 0:
+		return [] as Array[Vector2i]
+	var profile := path_cost_profile(cost_profile)
+	var path_result := _best_full_path_toward(
+		state, from_pos, to_pos, ignore_uid, profile, cell_blockers, moving_unit
+	)
+	if bool(path_result.get("ok", false)):
+		var full_path: Array[Vector2i] = path_result.get("path", [] as Array[Vector2i])
+		return _trim_path_to_budget(state, full_path, max_steps, profile)
+	if not bool(profile.get("allow_partial_path", true)):
+		return [] as Array[Vector2i]
+	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, profile, cell_blockers, moving_unit)
+
+
+static func _best_full_path_toward(
+	state: GameState,
+	from_pos: Vector2i,
+	to_pos: Vector2i,
+	ignore_uid: String,
+	profile: Dictionary,
+	cell_blockers: Dictionary,
+	moving_unit: UnitState
+) -> Dictionary:
 	var use_footprint := moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
 	var goal_ok := is_passable(state, to_pos, ignore_uid, cell_blockers)
 	if use_footprint:
 		goal_ok = goal_ok and unit_footprint_passable(state, moving_unit, to_pos, ignore_uid, cell_blockers)
+	var goals: Array[Vector2i] = []
 	if goal_ok:
-		return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit)
+		goals.append(to_pos)
+	else:
+		goals = _path_goal_candidates(state, to_pos, ignore_uid, cell_blockers, moving_unit)
+	if goals.is_empty():
+		return {"ok": false, "path": [] as Array[Vector2i]}
 
-	var candidates := _path_goal_candidates(state, to_pos, ignore_uid, cell_blockers, moving_unit)
-	if candidates.is_empty():
-		return [] as Array[Vector2i]
-
+	var full_profile := profile.duplicate(true)
+	full_profile["allow_partial_path"] = false
+	var full_budget := _full_path_budget(state, full_profile)
+	var found := false
 	var best_path: Array[Vector2i] = []
-	var best_score := 999999
-	for goal in candidates:
+	var best_cost: float = 0.0
+	var best_goal_dist := 0
+
+	for goal in goals:
 		var path := astar_path(
-			state, from_pos, goal, max_steps, ignore_uid, cost_profile, cell_blockers, moving_unit
+			state, from_pos, goal, full_budget, ignore_uid, full_profile, cell_blockers, moving_unit
 		)
-		if path.is_empty() and goal != from_pos:
+		if goal != from_pos and (path.is_empty() or path[path.size() - 1] != goal):
 			continue
-		var score := path.size() * 1000 + manhattan(goal, to_pos)
-		if score < best_score:
-			best_score = score
+		var cost := _path_cost(state, path, full_profile)
+		var goal_dist := manhattan(goal, to_pos)
+		if not found \
+		or cost < best_cost \
+		or (is_equal_approx(cost, best_cost) and goal_dist < best_goal_dist) \
+		or (is_equal_approx(cost, best_cost) and goal_dist == best_goal_dist and path.size() < best_path.size()):
+			found = true
 			best_path = path
-	return best_path
+			best_cost = cost
+			best_goal_dist = goal_dist
+
+	return {
+		"ok": found,
+		"path": best_path,
+	}
+
+
+static func _full_path_budget(state: GameState, profile: Dictionary) -> int:
+	var cells := maxi(1, state.board_size.x * state.board_size.y)
+	var base_cost := maxf(1.0, float(profile.get("base_step_cost", 1.0)))
+	return int(ceili(float(cells) * base_cost * _FULL_PATH_BUDGET_FACTOR))
+
+
+static func _path_cost(state: GameState, path: Array[Vector2i], profile: Dictionary) -> float:
+	var total := 0.0
+	for step in path:
+		total += _step_cost_with_profile(state, step, profile)
+	return total
+
+
+static func _trim_path_to_budget(
+	state: GameState,
+	path: Array[Vector2i],
+	max_steps: int,
+	profile: Dictionary
+) -> Array[Vector2i]:
+	var trimmed: Array[Vector2i] = []
+	var spent := 0.0
+	for step in path:
+		var step_cost := _step_cost_with_profile(state, step, profile)
+		if spent + step_cost > float(max_steps):
+			break
+		spent += step_cost
+		trimmed.append(step)
+	return trimmed
 
 
 static func _path_goal_candidates(
@@ -486,8 +556,53 @@ static func cells_toward(from_pos: Vector2i, to_pos: Vector2i) -> Array[Vector2i
 	return cells
 
 
+## Bresenham 直线光栅化：返回从 from_pos 到 to_pos 之间所有格子（不含起点，含终点）
+## 用于射线/LOS 检测，避免贪心步进在非正交方向走错路径
+static func los_cells_between(from_pos: Vector2i, to_pos: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if from_pos == to_pos:
+		return cells
+	var dx := absi(to_pos.x - from_pos.x)
+	var dy := absi(to_pos.y - from_pos.y)
+	var sx := signi(to_pos.x - from_pos.x)
+	var sy := signi(to_pos.y - from_pos.y)
+	var x := from_pos.x
+	var y := from_pos.y
+	var err := dx - dy
+	while true:
+		if x == to_pos.x and y == to_pos.y:
+			cells.append(Vector2i(x, y))
+			break
+		var e2 := err * 2
+		if e2 > -dy:
+			err -= dy
+			x += sx
+		if e2 < dx:
+			err += dx
+			y += sy
+		cells.append(Vector2i(x, y))
+	return cells
+
+
+static func projectile_origin_cell(attacker: UnitState, target_pos: Vector2i) -> Vector2i:
+	if attacker == null:
+		return target_pos
+	if attacker.footprint_size == Vector2i(1, 1):
+		return attacker.pos
+	var best := attacker.pos
+	var best_dist := 999999
+	for cell in attacker.occupied_cells():
+		var dist := chebyshev(cell, target_pos)
+		if dist < best_dist:
+			best_dist = dist
+			best = cell
+	return best
+
+
 static func resolve_projectile_impact(state: GameState, from_pos: Vector2i, to_pos: Vector2i) -> Vector2i:
-	for cell in cells_toward(from_pos, to_pos):
+	for cell in los_cells_between(from_pos, to_pos):
+		if cell == to_pos:
+			break
 		var entity := state.get_entity_at(cell)
 		if entity != null and entity.alive and entity.blocks_projectile():
 			return cell
@@ -502,7 +617,7 @@ static func projectile_blocked_before_aim(
 	return resolve_projectile_impact(state, from_pos, aim_cell) != aim_cell
 
 
-## 到目标格的最短寻路步数；不可达时返回 -1
+## 到目标格的最短寻路步数；若已在可攻击位则返回 0，不可达时返回 -1
 static func path_distance_to_cell(
 	state: GameState,
 	from_pos: Vector2i,
@@ -513,10 +628,16 @@ static func path_distance_to_cell(
 ) -> int:
 	if from_pos == to_pos:
 		return 0
-	var max_steps := maxi(state.board_size.x, state.board_size.y) * 2
-	var path := path_toward(
-		state, from_pos, to_pos, max_steps, ignore_uid, {}, cell_blockers, moving_unit
+	var path_result := _best_full_path_toward(
+		state,
+		from_pos,
+		to_pos,
+		ignore_uid,
+		path_cost_profile(),
+		cell_blockers,
+		moving_unit
 	)
-	if path.is_empty():
+	if not bool(path_result.get("ok", false)):
 		return -1
+	var path: Array[Vector2i] = path_result.get("path", [] as Array[Vector2i])
 	return path.size()

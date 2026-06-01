@@ -5,6 +5,14 @@ const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 
+
+static func _rng_service() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RngService")
+
+
+static func _relic_effect_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+
 const TIMING_ACTIVE := "active"
 const TIMING_TURN_START := "turn_start"
 const TIMING_OWNER_DAMAGED := "owner_damaged"
@@ -131,7 +139,10 @@ static func intercept_damage_for_split(state: GameState, unit: UnitState, source
 			candidates.append(other)
 	if candidates.is_empty():
 		return damage
-	var redirect_target: UnitState = candidates[RngService.roll_int("gem_split_redirect_%s" % unit.uid, 0, candidates.size() - 1)]
+	var rng := _rng_service()
+	if rng == null:
+		return damage
+	var redirect_target: UnitState = candidates[int(rng.roll_int("gem_split_redirect_%s" % unit.uid, 0, candidates.size() - 1))]
 	state.log("%s 分裂宝石将 %d 点伤害转移给 %s" % [unit.uid, redirect_amount, redirect_target.uid])
 	CombatRules.apply_damage(state, redirect_target, redirect_amount, source_uid, "split_redirect")
 	return damage - redirect_amount
@@ -223,6 +234,7 @@ static func explode_cross_at(
 						state, center_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
 					)
 	var splashed: Dictionary = {}
+	var knockback_targets: Array[UnitState] = []
 	for cell in BoardUtils.neighbors4(center):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
@@ -243,9 +255,12 @@ static func explode_cross_at(
 			if gem_slot.locked and gem_slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, gem_slot, state.turn_index)
 		if hit_unit.alive:
-			_Displacement.knockback(
-				state, hit_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
-			)
+			knockback_targets.append(hit_unit)
+	# knockback 事件统一追加在所有 damage 之后，保证 UI 层可批量并行播放
+	for kb_unit in knockback_targets:
+		_Displacement.knockback(
+			state, kb_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
+		)
 	return events
 
 
@@ -450,11 +465,9 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			var poison_target: UnitState = state.units.get(ctx.get("target_uid", ""), null)
 			if poison_target != null and poison_target.alive:
 				poison_center = resolve_blast_center(poison_target.pos, ctx.get("target_pos", null))
-			out_events.append({"type": "poison_burst", "pos": poison_center, "radius": 1})
-			for cell in BoardUtils.cells_in_radius(poison_center, 1):
-				if not BoardUtils.in_bounds(state, cell):
-					continue
-				TileRules.create_poison_fog(state, cell)
+			out_events.append({"type": "poison_burst", "pos": poison_center, "radius": 0})
+			if BoardUtils.in_bounds(state, poison_center):
+				TileRules.create_poison_fog(state, poison_center)
 			if poison_target != null and poison_target.alive:
 				StatusRules.apply_poison(state, poison_target, 1, 0, owner.uid)
 			return true
@@ -536,7 +549,8 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 				# 若无单位则弹到自身脚下地块（不造成单位伤害，仅标记事件）
 			return true
 		"arc":
-			if source != null and source.alive and RngService.chance("gem_arc_rebound_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE):
+			var rng := _rng_service()
+			if source != null and source.alive and rng != null and bool(rng.chance("gem_arc_rebound_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE)):
 				var rebound_events: Array[Dictionary] = []
 				_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), rebound_events)
 			return true
@@ -592,14 +606,15 @@ static func _run_unit_death_effect_with_events(state: GameState, owner: UnitStat
 					continue
 				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
 					candidates.append(unit)
-			if not candidates.is_empty():
-				var strike_target: UnitState = candidates[RngService.roll_int("gem_arc_death_strike_%s" % owner.uid, 0, candidates.size() - 1)]
+			var rng := _rng_service()
+			if not candidates.is_empty() and rng != null:
+				var strike_target: UnitState = candidates[int(rng.roll_int("gem_arc_death_strike_%s" % owner.uid, 0, candidates.size() - 1))]
 				var dealt := CombatRules.apply_true_damage(
 					state, strike_target, Constants.LIGHTNING_DEATH_DAMAGE, owner.uid, "lightning_death"
 				)
 				if dealt > 0:
 					out_events.append({"type": "damage", "pos": strike_target.pos, "damage": dealt, "is_crit": false})
-				if strike_target.alive and RngService.chance("gem_arc_death_paralyze_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE):
+				if strike_target.alive and bool(rng.chance("gem_arc_death_paralyze_%s" % owner.uid, Constants.ARC_PARALYSIS_CHANCE)):
 					StatusRules.apply_paralyzed(state, strike_target, 1, owner.uid)
 				out_events.append({"type": "lightning", "pos": owner.pos, "target_pos": strike_target.pos})
 			return true
@@ -724,7 +739,10 @@ static func _random_neighbor_unit(state: GameState, center: UnitState, exclude_u
 			candidates.append(unit)
 	if candidates.is_empty():
 		return null
-	return candidates[RngService.roll_int("gem_gravity_deflect_%s" % center.uid, 0, candidates.size() - 1)]
+	var rng := _rng_service()
+	if rng == null:
+		return null
+	return candidates[int(rng.roll_int("gem_gravity_deflect_%s" % center.uid, 0, candidates.size() - 1))]
 
 
 static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
@@ -736,7 +754,9 @@ static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 static func _calc_arc_damage(base_damage: int, state: GameState = null) -> int:
 	var mult: float = 1.0
 	if state != null:
-		mult = RelicEffectRegistry.query_modifier("arc_damage_mult", state)
+		var registry := _relic_effect_registry()
+		if registry != null:
+			mult = float(registry.query_modifier("arc_damage_mult", state))
 	return maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO * mult))
 
 
@@ -803,7 +823,10 @@ static func apply_arc_bounce_from_victim(
 			candidates.append(unit)
 	if candidates.is_empty():
 		return
-	var bounce_target: UnitState = candidates[RngService.roll_int("gem_arc_bounce_%s" % attacker.uid, 0, candidates.size() - 1)]
+	var rng := _rng_service()
+	if rng == null:
+		return
+	var bounce_target: UnitState = candidates[int(rng.roll_int("gem_arc_bounce_%s" % attacker.uid, 0, candidates.size() - 1))]
 	_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
 
 
@@ -831,7 +854,8 @@ static func _arc_to(
 	var dealt := CombatRules.apply_damage(state, target, damage, source_uid, "arc")
 	if dealt > 0:
 		events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
-	if target.alive and RngService.chance("gem_arc_proc_%s" % source_uid, Constants.ARC_PROC_CHANCE):
+	var rng := _rng_service()
+	if target.alive and rng != null and bool(rng.chance("gem_arc_proc_%s" % source_uid, Constants.ARC_PROC_CHANCE)):
 		StatusRules.apply_paralyzed(state, target, 1, source_uid)
 	events.append({"type": "arc", "pos": target.pos})
 
@@ -868,8 +892,11 @@ static func _scatter_fire_on_death(state: GameState, owner: UnitState, out_event
 		else:
 			occupied_cells.append(cell)
 	# 打乱顺序后取前 N 个
-	RngService.shuffle_in_place("gem_fire_death_scatter_%s" % owner.uid, empty_cells)
-	RngService.shuffle_in_place("gem_fire_death_scatter_occ_%s" % owner.uid, occupied_cells)
+	var rng := _rng_service()
+	if rng == null:
+		return
+	rng.shuffle_in_place("gem_fire_death_scatter_%s" % owner.uid, empty_cells)
+	rng.shuffle_in_place("gem_fire_death_scatter_occ_%s" % owner.uid, occupied_cells)
 	var pool: Array[Vector2i] = empty_cells
 	pool.append_array(occupied_cells)
 	var count := mini(Constants.FIRE_DEATH_FIRE_COUNT, pool.size())
@@ -894,8 +921,11 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 			candidates.append(unit)
 	if candidates.is_empty():
 		return
+	var rng := _rng_service()
+	if rng == null:
+		return
 	for debuff in debuffs:
-		var target: UnitState = candidates[RngService.roll_int("gem_death_spread_%s" % owner.uid, 0, candidates.size() - 1)]
+		var target: UnitState = candidates[int(rng.roll_int("gem_death_spread_%s" % owner.uid, 0, candidates.size() - 1))]
 		var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, owner.uid, debuff.payload.duplicate(true))
 		copy.value = debuff.value
 		StatusRegistry.apply_to_unit(target, copy)
@@ -967,7 +997,8 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 	clone.facing = owner.facing
 	clone.alive = true
 	clone.ai_profile_id = owner.ai_profile_id
-	clone.behavior_id = "generic_melee"
+	# 玩家分身继承 owner behavior（不走 AI 行动路径）；敌方分身用 generic_melee
+	clone.behavior_id = owner.behavior_id if owner.team == Constants.TEAM_PLAYER else "generic_melee"
 	clone.split_origin_uid = owner.uid
 	clone.footprint_size = Vector2i(1, 1)
 	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
@@ -1026,7 +1057,7 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 	return clone
 
 
-## 生成两个分身：找空地、分槽、创建单位
+## 生成两个分身：找空地、分槽、创建单位，并推入可操控队列
 static func _spawn_split_clones(state: GameState, owner: UnitState, out_events: Array[Dictionary]) -> void:
 	var spawn_cells := _find_split_spawn_cells(state, owner, 2)
 	if spawn_cells.is_empty():
@@ -1034,10 +1065,16 @@ static func _spawn_split_clones(state: GameState, owner: UnitState, out_events: 
 		return
 	var slot_groups := _partition_slots_for_clones(owner.slots)
 	var count := mini(2, spawn_cells.size())
+	var clones: Array = []
 	for i in range(count):
 		var clone := _create_split_clone(state, owner, spawn_cells[i], slot_groups[i])
+		clones.append(clone)
 		out_events.append({"type": "split_spawn", "pos": spawn_cells[i], "uid": clone.uid})
 		state.log("%s 分裂生成分身 %s 于 %s" % [owner.uid, clone.uid, spawn_cells[i]])
+	if not clones.is_empty() and owner.team == Constants.TEAM_PLAYER:
+		var uids: Array = clones.map(func(c: UnitState) -> String: return c.uid)
+		state.push_controllable_batch(uids)
+		state.log("分裂激活：操控 %s，队列 %s" % [state.player_uid, state.controllable_queue])
 
 
 

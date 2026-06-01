@@ -1,6 +1,10 @@
 class_name TileRules
 extends RefCounted
 
+
+static func _rng_service() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RngService")
+
 # ─── Overlay 进入效果表 ────────────────────────────────────────────────────────
 # 每条记录：{ modifier → Callable(state, unit) }
 # 新增一种 overlay 的进入效果只需在此表加一行，不改其他任何函数
@@ -145,6 +149,9 @@ static func create_fire(state: GameState, pos: Vector2i) -> void:
 
 ## 火焰蔓延：[着火] 的地块引燃相邻可燃格（每回合 50% 概率）
 static func spread_fire(state: GameState) -> void:
+	var rng := _rng_service()
+	if rng == null:
+		return
 	var fire_positions: Array[Vector2i] = []
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
@@ -158,7 +165,7 @@ static func spread_fire(state: GameState) -> void:
 			if ntile.has_modifier(Constants.TILE_MOD_FIRE):
 				continue
 			if ntile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
-				if RngService.chance("tile_fire_spread_%s" % str(neighbor), Constants.FIRE_SPREAD_CHANCE):
+				if bool(rng.chance("tile_fire_spread_%s" % str(neighbor), Constants.FIRE_SPREAD_CHANCE)):
 					create_fire(state, neighbor)
 
 	# [着火] 的单位路过可燃格也会点燃（已在 on_unit_moved_through 的 burning 触发中隐含，
