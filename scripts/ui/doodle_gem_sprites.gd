@@ -28,6 +28,11 @@ func texture_for_gem_id(gem_id: String) -> Texture2D:
 	return _ensure_texture("%sLoot_%d.png" % [LOOT_ROOT, loot_idx])
 
 
+func texture_for_relic_id(relic_id: String) -> Texture2D:
+	var loot_idx: int = absi(relic_id.hash()) % 5
+	return _ensure_texture("%sLoot_%d.png" % [LOOT_ROOT, loot_idx])
+
+
 func modulate_for_gem_id(gem_id: String) -> Color:
 	return _GEM_MODULATE.get(gem_id, Color.WHITE)
 

@@ -84,7 +84,7 @@ static func short_label(status: StatusInstance) -> String:
 		Constants.STATUS_SLUGGISH:
 			return "滞"
 		Constants.STATUS_ARMOR:
-			return "甲%d" % status.value
+			return "盾%d" % status.value
 		Constants.STATUS_ROOTED:
 			return "缚%d" % maxi(status.duration, 1)
 		Constants.STATUS_EXPOSED:
@@ -125,7 +125,7 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_SLUGGISH:
 			return "迟滞：下回合行动顺序垫底"
 		Constants.STATUS_ARMOR:
-			return "护甲 +%d，剩余 %d 回合" % [status.value, status.duration]
+			return "护盾 +%d，剩余 %d 回合" % [status.value, status.duration] if status.duration > 0 else "护盾 +%d" % status.value
 		Constants.STATUS_ROOTED:
 			return "束缚：无法移动，剩余 %d 回合" % status.duration
 		Constants.STATUS_EXPOSED:
@@ -182,7 +182,7 @@ static var _DEFS: Dictionary = {
 		"blocks_movement": false,
 	},
 	Constants.STATUS_ARMOR: {
-		"display_name": "护甲",
+		"display_name": "护盾",
 		"type": TYPE_BUFF,
 		"color": Color(0.72, 0.78, 0.88),
 		"stack_rule": STACK_MAX_VALUE,

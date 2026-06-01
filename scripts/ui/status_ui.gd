@@ -13,10 +13,17 @@ static func build_status_row(unit: UnitState, compact: bool = false) -> HBoxCont
 	return row
 
 
-static func populate_status_row(container: HBoxContainer, unit: UnitState, compact: bool = false) -> void:
+static func populate_status_row(
+	container: HBoxContainer,
+	unit: UnitState,
+	compact: bool = false,
+	exclude_status_ids: Array[String] = []
+) -> void:
 	while container.get_child_count() > 0:
 		container.get_child(0).free()
 	for status in _StatusRegistry.sort_statuses(unit.statuses):
+		if status.status_id in exclude_status_ids:
+			continue
 		container.add_child(build_status_chip(status, compact))
 
 

@@ -17,21 +17,23 @@ static var _death_event_sink: Array[Dictionary] = []
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
-	# 止痛药：本场战斗首次受伤降为 1
+	var incoming := amount
 	if unit.uid == state.player_uid:
 		var registry := _relic_effect_registry()
 		var absorb: bool = registry != null and bool(registry.query_modifier("first_damage_absorb", state))
 		if absorb:
-			amount = 1
+			incoming = 1
 			state.battle_temp_flags["painkiller_used"] = true
-	var total_armor := current_armor(state, unit)
-	var final_amount := maxi(0, amount - total_armor)
-	if final_amount <= 0:
-		state.log("%s 的护甲吸收了 %d 点伤害 (%s)" % [unit.uid, amount, reason])
+	var blocked := incoming
+	var remaining := StatusRules.absorb_with_shield(state, unit, incoming)
+	blocked -= remaining
+	if blocked > 0:
+		state.log("%s 的护盾抵挡了 %d 点伤害 (%s)" % [unit.uid, blocked, reason])
+	if remaining <= 0:
 		return 0
+	var final_amount := remaining
 	if StatusRules.is_vulnerable(unit):
 		final_amount = int(final_amount * 1.5)
-	# 分裂宝石蓝槽：拦截伤害，将一部分转移给周围随机单位
 	final_amount = GemEffects.intercept_damage_for_split(state, unit, source_uid, reason, final_amount)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
@@ -46,6 +48,8 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 static func apply_true_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	if reason == "burning" or reason == "tile_fire":
+		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount)
 	unit.hp -= amount
 	state.log("%s 受到 %d 点真实伤害 (%s)" % [unit.uid, amount, reason])
 	state.on_damage_taken.emit(unit.uid, amount, reason)
@@ -166,17 +170,22 @@ static func attack_damage(state: GameState, attacker: UnitState) -> int:
 	return maxi(0, int(float(base) * mult) + bonus)
 
 
+static func current_shield(_state: GameState, unit: UnitState) -> int:
+	return StatusRules.get_shield(unit)
+
+
 static func current_armor(state: GameState, unit: UnitState) -> int:
-	var armor := maxi(unit.armor, 0) + GemEffects.get_armor_bonus(state, unit)
-	armor += StatusRules.get_armor_bonus(unit)
-	return maxi(0, armor)
+	return current_shield(state, unit)
 
 
 static func _apply_blue_reactive_effects(state: GameState, owner: UnitState, source_uid: String, reason: String, damage: int = 0) -> void:
+	var ctx := {"source_uid": source_uid, "reason": reason, "damage": damage}
+	if state.has_combat_event_sink():
+		ctx["events"] = state.get_combat_event_sink()
 	GemEffects.run_unit_hooks(
 		state,
 		owner,
 		Constants.SLOT_BLUE,
 		GemEffects.TIMING_OWNER_DAMAGED,
-		{"source_uid": source_uid, "reason": reason, "damage": damage}
+		ctx
 	)

@@ -527,7 +527,6 @@ func _register_gem_effect_profiles() -> void:
 			"ability_descriptions": {
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
-				ABILITY_BLUE_TURN_START: {"key": "gem.effect.gravity.blue_turn_start"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.gravity.black_death"},
 				ABILITY_TILE_ACTIVE: {"key": "gem.effect.gravity.tile_active"},
 				ABILITY_TILE_TURN_START: {"key": "gem.effect.gravity.tile_turn_start"},
@@ -634,7 +633,6 @@ func _register_gem_defs() -> void:
 			"ability_profiles": {
 					ABILITY_UNIT_RED_ACTIVE: "gravity",
 				ABILITY_ENEMY_RED_ACTION: "gravity",
-				ABILITY_BLUE_TURN_START: "gravity",
 				ABILITY_BLUE_DAMAGED: "gravity",
 				ABILITY_BLACK_DEATH: "gravity",
 				ABILITY_TILE_ACTIVE: "gravity",

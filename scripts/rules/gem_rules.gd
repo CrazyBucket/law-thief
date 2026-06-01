@@ -59,8 +59,6 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 		return _fail("手中没有宝石")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
-	if not slot.is_empty():
-		return _fail("槽位已被占用")
 	if BoardUtils.distance_between_units(actor, target_unit) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
@@ -79,10 +77,19 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
+	var swapped_uid := ""
+	if not slot.gem_uid.is_empty():
+		var replaced: GemState = state.gems.get(slot.gem_uid, null)
+		if replaced != null:
+			_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot.slot_type, replaced.uid)
+			replaced.owner_uid = actor.uid
+			replaced.slot_index = -1
+			swapped_uid = replaced.uid
+		slot.gem_uid = ""
 	gem.owner_uid = target_unit.uid
 	gem.slot_index = target_unit.slots.find(slot)
 	slot.gem_uid = gem.uid
-	state.held_gem_uid = ""
+	state.held_gem_uid = swapped_uid
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
 	_behavior_for(target_unit).on_gem_inserted(state, target_unit, gem.uid)
 	var registry := _relic_effect_registry()
@@ -94,7 +101,7 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 			"from_uid": actor.uid,
 		})
 	IntentSystem.refresh_all_intents(state)
-	return _ok({"gem_uid": gem.uid})
+	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid})
 
 
 static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -168,8 +175,6 @@ static func can_insert_tile(state: GameState, actor: UnitState, tile: TileState,
 		return _fail("手中没有宝石")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
-	if not slot.is_empty():
-		return _fail("槽位已被占用")
 	if BoardUtils.manhattan(actor.pos, tile.pos) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
@@ -188,13 +193,21 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
+	var swapped_uid := ""
+	if not slot.gem_uid.is_empty():
+		var replaced: GemState = state.gems.get(slot.gem_uid, null)
+		if replaced != null:
+			replaced.owner_uid = actor.uid
+			replaced.slot_index = -1
+			swapped_uid = replaced.uid
+		slot.gem_uid = ""
 	gem.owner_uid = ""
 	gem.slot_index = tile.slots.find(slot)
 	slot.gem_uid = gem.uid
-	state.held_gem_uid = ""
+	state.held_gem_uid = swapped_uid
 	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, _data_registry().get_gem_display_name(gem), tile.tile_id])
 	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
-	return _ok({"gem_uid": gem.uid})
+	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid})
 
 
 static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:

@@ -61,10 +61,10 @@ func _test_armor_blocks_explosion() -> void:
 	assert(player.hp == hp_before, "armor should fully block explosion damage")
 	var blocked := false
 	for line in state.combat_log:
-		if "护甲吸收" in line:
+		if "护盾" in line:
 			blocked = true
-	assert(blocked, "armor block should be logged")
-	print("  [OK] armor blocks explosion with log")
+	assert(blocked, "shield block should be logged")
+	print("  [OK] shield blocks explosion with log")
 
 
 func _test_melee_attack() -> void:

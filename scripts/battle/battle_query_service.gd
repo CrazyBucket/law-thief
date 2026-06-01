@@ -171,7 +171,7 @@ func get_action_hint() -> String:
 		Constants.ACTION_EXTRACT:
 			return "拔出：点击目标 → 选槽位（免费）"
 		Constants.ACTION_INSERT:
-			return "嵌入：点击目标 → 选空槽（免费）"
+			return "嵌入：点击目标 → 选槽位（免费，替换时原宝石回到手中）"
 		Constants.ACTION_TRIGGER:
 			return "触发：点击目标 → 选槽位（消耗行动）"
 	return "请选择操作"
@@ -291,9 +291,13 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 	else:
 		cells.append(target_pos)
 	if GemEffects.unit_has_red_explosion(state, player):
-		for cell in GemEffects.cross_explosion_cells(target_pos):
-			if BoardUtils.in_bounds(state, cell) and not cell in cells:
-				cells.append(cell)
+		var blast_anchors: Array = cells.duplicate()
+		if not has_split:
+			blast_anchors = [target_pos]
+		for anchor in blast_anchors:
+			for cell in GemEffects.cross_explosion_cells(anchor):
+				if BoardUtils.in_bounds(state, cell) and not cell in cells:
+					cells.append(cell)
 	var victim: UnitState = state.get_unit_at(target_pos)
 	if victim != null and victim.alive and victim.hp <= 1:
 		for slot in victim.slots:

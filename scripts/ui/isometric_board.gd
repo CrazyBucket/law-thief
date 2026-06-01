@@ -555,6 +555,11 @@ func _draw_unit(unit: UnitState) -> void:
 		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
 	_draw_gem_icons(unit, hp_bar_pos)
+	var shield_value := StatusRules.get_shield(unit)
+	if shield_value > 0:
+		var shield_gap := IsoCoordinates.visual(2.0)
+		var shield_h := IsoCoordinates.visual(5.0)
+		_draw_shield_bar(hp_bar_pos - Vector2(0, shield_h + shield_gap), unit, shield_value)
 	_draw_hp_bar(hp_bar_pos, unit)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		_draw_intent_badge(center + Vector2(0, -sprite_size.y + IsoCoordinates.visual(8.0)) + ground_nudge, unit.intent)
@@ -837,7 +842,12 @@ func _draw_unit_nameplate(unit: UnitState, anchor: Vector2, alpha: float = 1.0) 
 
 
 func _draw_unit_statuses(unit: UnitState, origin: Vector2) -> void:
-	if unit.statuses.is_empty():
+	var has_other := false
+	for status in unit.statuses:
+		if status.status_id != Constants.STATUS_ARMOR:
+			has_other = true
+			break
+	if not has_other:
 		return
 	_draw_status_row(origin, unit, IsoCoordinates.visual(12.0), IsoCoordinates.visual(2.0), IsoCoordinates.visual(44.0))
 
@@ -939,6 +949,19 @@ func _gem_visual_progress(visual: Dictionary) -> float:
 	return clampf(float(visual.get("elapsed", 0.0)) / duration, 0.0, 1.0)
 
 
+func _draw_shield_bar(origin: Vector2, unit: UnitState, shield_value: int) -> void:
+	var icon_size := IsoCoordinates.visual(8.0)
+	var gap := IsoCoordinates.visual(2.0)
+	var bar_w := IsoCoordinates.visual(28.0)
+	var bar_h := IsoCoordinates.visual(4.0)
+	var bar_x := origin.x + icon_size + gap
+	StatusIcons.draw_icon(self, origin, Constants.STATUS_ARMOR, icon_size)
+	draw_rect(Rect2(bar_x, origin.y, bar_w, bar_h), BattleUiTheme.SHIELD_BG.darkened(0.05))
+	var max_ref := maxi(unit.max_hp, shield_value)
+	var ratio := clampf(float(shield_value) / float(maxi(max_ref, 1)), 0.0, 1.0)
+	draw_rect(Rect2(bar_x, origin.y, bar_w * ratio, bar_h), BattleUiTheme.SHIELD_FILL)
+
+
 func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 	var width := IsoCoordinates.visual(36.0)
 	var bar_h := IsoCoordinates.visual(5.0)
@@ -1028,6 +1051,8 @@ func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0,
 	var cursor := Vector2.ZERO
 	var row_h := ICON_SIZE + GAP
 	for status in sorted:
+		if status.status_id == Constants.STATUS_ARMOR:
+			continue
 		var draw_pos := origin + cursor
 		var item_w := ICON_SIZE
 		var item_h := ICON_SIZE
@@ -1250,6 +1275,10 @@ func clear_gem_visuals() -> void:
 
 func has_active_held_gem_visual() -> bool:
 	return not _held_gem_visual.is_empty()
+
+
+func gem_insert_anim_duration() -> float:
+	return _scaled_duration(_GEM_INSERT_DURATION)
 
 
 func start_held_gem_extract(source_grid: Vector2i, gem: GemState) -> void:

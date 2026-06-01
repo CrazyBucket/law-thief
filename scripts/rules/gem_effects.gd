@@ -33,17 +33,27 @@ const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
 
+const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
+	"arc",
+	"gravity",
+	"ice",
+	"poison",
+	"fire_gem",
+	"explosion",
+	"split",
+]
+
 
 static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
 	for slot in unit.slots:
-		if slot.slot_type != slot_type or slot.gem_uid.is_empty():
+		if not slot.accepts_slot_type(slot_type) or slot.gem_uid.is_empty():
 			continue
 		_run_slot_hook(state, unit, slot, timing, ctx)
 
 
 static func run_tile_hooks(state: GameState, tile: TileState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
 	for slot in tile.slots:
-		if slot.slot_type != slot_type or slot.gem_uid.is_empty():
+		if not slot.accepts_slot_type(slot_type) or slot.gem_uid.is_empty():
 			continue
 		_run_slot_hook(state, tile, slot, timing, ctx)
 
@@ -117,8 +127,8 @@ static func intercept_damage_for_split(state: GameState, unit: UnitState, source
 	if damage <= 0:
 		return damage
 	var has_split_blue := false
-	for slot in unit.slots:
-		if slot.slot_type != Constants.SLOT_BLUE or slot.gem_uid.is_empty() or slot.locked:
+	for slot in unit.slots_accepting(Constants.SLOT_BLUE):
+		if slot.gem_uid.is_empty() or slot.locked:
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem != null and _ability_profile(gem, ABILITY_BLUE_DAMAGED) == "split":
@@ -157,13 +167,7 @@ static func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictiona
 
 
 static func unit_has_red_arc(state: GameState, unit: UnitState) -> bool:
-	var slot := unit.get_slot(Constants.SLOT_RED)
-	if slot == null or slot.gem_uid.is_empty():
-		return false
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return false
-	return _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == "arc"
+	return _unit_has_red_active_profile(state, unit, "arc")
 
 
 static func on_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
@@ -187,26 +191,39 @@ static func resolve_blast_center(fallback: Vector2i, aim_cell: Variant = null) -
 
 
 static func unit_has_red_explosion(state: GameState, unit: UnitState) -> bool:
-	var slot := unit.get_slot(Constants.SLOT_RED)
-	if slot == null or slot.gem_uid.is_empty():
-		return false
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return false
-	return _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == "explosion"
+	return _unit_has_red_active_profile(state, unit, "explosion")
 
 
 static func unit_has_red_split(state: GameState, unit: UnitState) -> bool:
-	var slot := unit.get_slot(Constants.SLOT_RED)
-	if slot == null or slot.gem_uid.is_empty():
-		return false
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return false
-	var player_profile: String = _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE)
-	if player_profile == "split":
+	if _unit_has_red_active_profile(state, unit, "split"):
 		return true
-	return _ability_profile(gem, ABILITY_ENEMY_RED_ACTION) == "split"
+	for slot in unit.slots_accepting(Constants.SLOT_RED):
+		if slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null and _ability_profile(gem, ABILITY_ENEMY_RED_ACTION) == "split":
+			return true
+	return false
+
+
+static func _unit_has_red_active_profile(state: GameState, unit: UnitState, profile: String) -> bool:
+	for slot in unit.slots_accepting(Constants.SLOT_RED):
+		if slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null and _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == profile:
+			return true
+	return false
+
+
+static func find_red_active_gem(state: GameState, unit: UnitState, profile: String) -> GemState:
+	for slot in unit.slots_accepting(Constants.SLOT_RED):
+		if slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null and _ability_profile(gem, ABILITY_UNIT_RED_ACTIVE) == profile:
+			return gem
+	return null
 
 
 ## 红槽爆炸：以 center 为中心，十字四邻各结算一次（同一单位只结算一次）
@@ -317,17 +334,15 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 ## 强制位移钩子：携带爆炸宝石的单位被强制位移时自爆
 static func on_forced_displacement(state: GameState, unit: UnitState, events: Array[Dictionary]) -> void:
 	for slot in unit.slots:
-		if slot.gem_uid.is_empty():
+		if not slot.accepts_slot_type(Constants.SLOT_BLUE) or slot.gem_uid.is_empty():
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			continue
-		# 蓝槽爆炸宝石：被强制位移时引发爆炸
-		if slot.slot_type == Constants.SLOT_BLUE and _ability_profile(gem, ABILITY_BLUE_DAMAGED) == "explosion":
+		if _ability_profile(gem, ABILITY_BLUE_DAMAGED) == "explosion":
 			state.log("%s 被强制位移触发爆炸！" % unit.uid)
 			events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
 			events.append_array(_explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
-			break
 
 
 static func pull_around(state: GameState, center: Vector2i, pull_range: int, steps: int, source_uid: String = "") -> void:
@@ -339,10 +354,6 @@ static func pull_around(state: GameState, center: Vector2i, pull_range: int, ste
 		if BoardUtils.chebyshev(center, unit.pos) > pull_range:
 			continue
 		pull_unit_toward_with_events(state, unit, center, steps, source_uid)
-
-
-static func _pull_unit_toward(state: GameState, unit: UnitState, anchor: Vector2i, steps: int, source_uid: String = "") -> void:
-	pull_unit_toward_with_events(state, unit, anchor, steps, source_uid)
 
 
 static func pull_unit_toward_with_events(
@@ -376,11 +387,11 @@ static func _run_slot_hook(state: GameState, owner: Variant, slot: SlotState, ti
 static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotState, gem: GemState, timing: String, ctx: Dictionary) -> bool:
 	match timing:
 		TIMING_ACTIVE:
-			if slot.slot_type != Constants.SLOT_RED:
+			if not slot.accepts_slot_type(Constants.SLOT_RED):
 				return false
 			return _run_unit_active_effect(state, owner, slot, gem, ctx)
 		TIMING_TURN_START:
-			if slot.slot_type != Constants.SLOT_BLUE:
+			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
 				return false
 			var triggered := _run_unit_turn_start_effect(state, owner, gem)
 			if triggered:
@@ -389,7 +400,7 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
 			return triggered
 		TIMING_OWNER_DAMAGED:
-			if slot.slot_type != Constants.SLOT_BLUE:
+			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
 				return false
 			var triggered := _run_unit_damaged_effect(state, owner, gem, ctx)
 			if triggered:
@@ -398,15 +409,15 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
 			return triggered
 		TIMING_ON_DEATH:
-			if slot.slot_type != Constants.SLOT_BLACK:
+			if not slot.accepts_slot_type(Constants.SLOT_BLACK):
 				return false
 			return _run_unit_death_effect(state, owner, gem)
 		TIMING_MOVED_THROUGH:
-			if slot.slot_type != Constants.SLOT_BLUE:
+			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
 				return false
 			return _run_unit_moved_through_effect(state, owner, gem, ctx)
 		TIMING_ON_CONTACT:
-			if slot.slot_type != Constants.SLOT_BLUE:
+			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
 				return false
 			return _run_unit_contact_effect(state, owner, gem, ctx)
 	return false
@@ -479,11 +490,6 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 
 static func _run_unit_turn_start_effect(state: GameState, owner: UnitState, gem: GemState) -> bool:
 	match _ability_profile(gem, ABILITY_BLUE_TURN_START):
-		"gravity":
-			var nearest := _nearest_opponent(state, owner)
-			if nearest != null and BoardUtils.chebyshev(owner.pos, nearest.pos) <= 3:
-				_pull_unit_toward(state, nearest, owner.pos, 1, owner.uid)
-			return true
 		"explosion":
 			for cell in BoardUtils.neighbors4(owner.pos):
 				var target := state.get_unit_at(cell)
@@ -503,9 +509,9 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 		"explosion":
 			if reason == "burning" or reason == "tile_fire":
 				state.log("%s 被火焰点燃引爆！" % owner.uid)
-				var dummy_events: Array[Dictionary] = []
-				dummy_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
-				dummy_events.append_array(_explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid))
+				var out_events: Array[Dictionary] = _events_from_ctx(ctx)
+				out_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
+				out_events.append_array(_explode_at(state, owner.pos, Constants.EXPLOSION_DAMAGE, owner.uid))
 			return true
 		"gravity":
 			if source != null and source.alive and BoardUtils.manhattan(owner.pos, source.pos) > 1 and damage > 0:
@@ -530,15 +536,29 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, gem: Ge
 static func _run_death_hooks_with_events(state: GameState, unit: UnitState, out_events: Array[Dictionary]) -> void:
 	if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
 		return
+	var death_gems: Array[GemState] = []
 	for slot in unit.slots:
-		if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
+		if not slot.accepts_slot_type(Constants.SLOT_BLACK) or slot.gem_uid.is_empty():
 			continue
 		if slot.locked and slot.lock_type == "split_disabled":
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			continue
+		death_gems.append(gem)
+	death_gems.sort_custom(func(a: GemState, b: GemState) -> bool:
+		return _black_death_order_index(a) < _black_death_order_index(b)
+	)
+	for gem in death_gems:
 		_run_unit_death_effect_with_events(state, unit, gem, out_events)
+
+
+static func _black_death_order_index(gem: GemState) -> int:
+	var profile := _ability_profile(gem, ABILITY_BLACK_DEATH)
+	var idx := BLACK_DEATH_PROFILE_ORDER.find(profile)
+	if idx < 0:
+		return BLACK_DEATH_PROFILE_ORDER.size()
+	return idx
 
 
 static func _run_unit_death_effect_with_events(state: GameState, owner: UnitState, gem: GemState, out_events: Array[Dictionary]) -> bool:
@@ -680,19 +700,6 @@ static func _gem_id(state: GameState, slot: SlotState) -> String:
 
 static func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
-
-
-static func _nearest_opponent(state: GameState, unit: UnitState) -> UnitState:
-	var best: UnitState = null
-	var best_dist := 999
-	for other in state.units.values():
-		if not other.alive or other.team == unit.team:
-			continue
-		var dist := BoardUtils.manhattan(unit.pos, other.pos)
-		if dist < best_dist:
-			best_dist = dist
-			best = other
-	return best
 
 
 static func _random_neighbor_unit(state: GameState, center: UnitState, exclude_uid: String = "") -> UnitState:

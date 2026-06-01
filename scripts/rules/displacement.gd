@@ -7,6 +7,15 @@ const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 static func _relic_effect_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 
+
+static func _is_forced_move_immune(state: GameState, unit: UnitState) -> bool:
+	if unit.uid != state.player_uid:
+		return false
+	var registry := _relic_effect_registry()
+	if registry == null:
+		return false
+	return bool(registry.query_modifier("forced_move_immune", state))
+
 enum Direction { AWAY, TOWARD, NORTH, SOUTH, EAST, WEST }
 
 
@@ -22,8 +31,7 @@ static func knockback(
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
-	var registry := _relic_effect_registry()
-	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
+	if _is_forced_move_immune(state, unit):
 		return
 	_push_directional(state, unit, origin, Direction.AWAY, steps, source_uid, events, collision_damage, skip_gem_hooks)
 
@@ -41,8 +49,7 @@ static func pull_toward(
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
-	var registry := _relic_effect_registry()
-	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
+	if _is_forced_move_immune(state, unit):
 		return
 	_push_directional(state, unit, anchor, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, skip_contact_hooks)
 

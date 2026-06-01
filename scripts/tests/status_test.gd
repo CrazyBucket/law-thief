@@ -9,6 +9,8 @@ func _run_tests() -> void:
 	print("=== Status System Test ===")
 	_test_poison_stack_and_tick()
 	_test_armor_max_value_merge()
+	_test_shield_consumed_on_hit()
+	_test_relic_grants_shield_not_unit_armor()
 	_test_rooted_blocks_move()
 	_test_lawless_payload()
 	_test_exposed_expires()
@@ -37,8 +39,36 @@ func _test_armor_max_value_merge() -> void:
 	var armor: StatusInstance = unit.get_status(Constants.STATUS_ARMOR)
 	assert(armor.value == 4, "armor should keep higher value")
 	assert(armor.duration == 2, "armor duration should extend")
-	assert(StatusRules.get_armor_bonus(unit) == 4, "armor bonus from status")
-	print("  [OK] armor merge")
+	assert(StatusRules.get_shield(unit) == 4, "shield value from status")
+	print("  [OK] shield merge")
+
+
+func _test_shield_consumed_on_hit() -> void:
+	var state := _make_state()
+	var unit := _make_unit(state, "u_shield")
+	StatusRules.apply_shield(state, unit, 5, 0)
+	CombatRules.apply_damage(state, unit, 3, "", "test_hit")
+	assert(StatusRules.get_shield(unit) == 2, "shield should drop to 2 after blocking 3")
+	assert(unit.hp == 10, "hp unchanged when fully blocked")
+	CombatRules.apply_damage(state, unit, 4, "", "test_hit")
+	assert(not unit.has_status(Constants.STATUS_ARMOR), "shield should be removed when depleted")
+	assert(unit.hp == 8, "overflow damage should hit hp")
+	print("  [OK] shield consumed on hit")
+
+
+func _test_relic_grants_shield_not_unit_armor() -> void:
+	var state := _make_state()
+	var player := _make_unit(state, "player")
+	player.team = Constants.TEAM_PLAYER
+	state.player_uid = player.uid
+	var registry: Node = Engine.get_main_loop().root.get_node("RelicEffectRegistry")
+	registry.call("_action_add_shield", "relic_cracked_amulet", {
+		"target": "player",
+		"amount": 3,
+	}, state, {})
+	assert(player.armor == 0, "relic should not modify unit.armor stat")
+	assert(StatusRules.get_shield(player) == 3, "relic should grant shield status")
+	print("  [OK] relic grants shield status")
 
 
 func _test_rooted_blocks_move() -> void:

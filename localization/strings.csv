@@ -55,7 +55,6 @@ gem.effect.poison.tile_turn_start,光环：2 格内敌人每回合中毒,Aura: p
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害,Gravity: pull the target toward you and deal {damage} collision damage
 gem.effect.gravity.unit_red_active,触发：周围 2 格拉扯 1 步,Trigger: pull units within 2 tiles by 1 step
 gem.effect.gravity.enemy_red_action,引力拉近+碰撞({damage}),Pull and collide for {damage}
-gem.effect.gravity.blue_turn_start,被动：回合开始拉最近敌人,Passive: pull the nearest enemy at turn start
 gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
 gem.effect.gravity.tile_turn_start,光环：2 格内单位每回合被拉拽,Aura: pull units within 2 tiles each turn
 gem.effect.heavy_armor.player_skill,重甲：给自己加 3 点护甲（2 回合）,Heavy Armor: gain 3 armor for 2 turns

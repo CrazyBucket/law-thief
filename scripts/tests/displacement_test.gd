@@ -25,6 +25,7 @@ func _run_tests() -> void:
 	_test_large_unit_knockback_wall()
 	_test_large_unit_pull_boundary()
 	_test_invariants_after_all_moves()
+	_test_iron_boots_player_only_forced_move_immune()
 	print("DISPLACEMENT_TEST_PASS")
 	quit()
 
@@ -261,6 +262,32 @@ func _test_invariants_after_all_moves() -> void:
 
 
 # ─── 辅助 ─────────────────────────────────────────────────────────────────────
+
+func _test_iron_boots_player_only_forced_move_immune() -> void:
+	var state := _make_state()
+	var player := _make_unit(state, "player", Constants.TEAM_PLAYER, Vector2i(2, 3))
+	state.player_uid = player.uid
+	var enemy := _make_unit(state, "enemy", Constants.TEAM_ENEMY, Vector2i(2, 5))
+	var run_svc: Node = Engine.get_main_loop().root.get_node("RunService")
+	var saved_relics: Array = []
+	var run: RunState = run_svc.get_run()
+	if run != null:
+		saved_relics = run.owned_relics.duplicate()
+		run.owned_relics = ["relic_iron_boots"]
+	var player_events: Array[Dictionary] = []
+	Displacement.knockback(state, player, Vector2i(0, 3), 2, "", player_events)
+	assert(player.pos == Vector2i(2, 3), "player with iron boots should ignore knockback")
+	assert(player_events.is_empty(), "immune knockback should emit no move_step")
+	var enemy_start := enemy.pos
+	var enemy_events: Array[Dictionary] = []
+	Displacement.knockback(state, enemy, Vector2i(0, 5), 2, "", enemy_events)
+	assert(enemy.pos == Vector2i(4, 5), "enemy should still be knocked back, got %s" % enemy.pos)
+	assert(enemy.pos != enemy_start, "enemy should move under knockback")
+	assert(enemy_events.size() == 2, "enemy knockback should emit 2 move_step events")
+	if run != null:
+		run.owned_relics = saved_relics
+	print("  [OK] iron boots forced move immune (player only)")
+
 
 func _make_state() -> GameState:
 	var state := GameState.new()

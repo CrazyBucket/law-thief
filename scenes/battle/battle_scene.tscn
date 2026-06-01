@@ -185,6 +185,32 @@ theme_override_font_sizes/font_size = 15
 text = "窃律者"
 text_overrun_behavior = 3
 
+[node name="ShieldRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ShieldIcon" type="TextureRect" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ShieldBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+value = 0.0
+show_percentage = false
+
+[node name="ShieldText" type="Label" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
+custom_minimum_size = Vector2(22, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+text = "0"
+horizontal_alignment = 2
+
 [node name="HpBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info" unique_id=881329093]
 custom_minimum_size = Vector2(68, 14)
 layout_mode = 2

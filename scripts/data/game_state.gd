@@ -38,6 +38,8 @@ var result: String = ""
 ## 单场战斗临时 flags，战斗结束即丢弃，不参与 clone/序列化
 ## key: String（如 "first_hit_absorbed"）→ Variant
 var battle_temp_flags: Dictionary = {}
+## 战斗事件收集绑定点；bind 期间蓝槽 reactive 伤害效果写入此数组
+var _combat_event_sink: Variant = null
 # O(1) 占格索引：tile_key → UnitState；单位移动/生成/死亡时通过封装方法同步
 var _cell_occupancy: Dictionary = {}
 
@@ -45,6 +47,24 @@ var _cell_occupancy: Dictionary = {}
 func log(message: String) -> void:
 	combat_log.append(message)
 	print("[COMBAT] ", message)
+
+
+func bind_combat_events(sink: Array) -> void:
+	_combat_event_sink = sink
+
+
+func unbind_combat_events() -> void:
+	_combat_event_sink = null
+
+
+func get_combat_event_sink() -> Array:
+	if _combat_event_sink is Array:
+		return _combat_event_sink
+	return []
+
+
+func has_combat_event_sink() -> bool:
+	return _combat_event_sink is Array
 
 
 func get_player() -> UnitState:
@@ -90,6 +110,39 @@ func purge_dead_controllable() -> void:
 			var u: UnitState = units.get(uid, null)
 			return u != null and u.alive
 	)
+
+
+## 收集同一原体下的存活玩家分身
+func get_alive_split_clones(origin_uid: String) -> Array[UnitState]:
+	var clones: Array[UnitState] = []
+	for unit in units.values():
+		if not unit.alive or unit.team != Constants.TEAM_PLAYER:
+			continue
+		if not unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			continue
+		if unit.split_origin_uid != origin_uid:
+			continue
+		clones.append(unit)
+	clones.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
+	return clones
+
+
+## 玩家回合开始时重建分身操控队列（每回合依次操控所有存活分身）
+func bootstrap_split_controllable_turn() -> void:
+	var player := get_player()
+	if player == null or not player.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+		return
+	var clones := get_alive_split_clones(player.split_origin_uid)
+	if clones.is_empty():
+		return
+	if clones.size() == 1:
+		player_uid = clones[0].uid
+		controllable_queue.clear()
+		player_moved = false
+		player_acted = false
+		return
+	var uids: Array = clones.map(func(c: UnitState) -> String: return c.uid)
+	push_controllable_batch(uids, true)
 
 
 # ─── 占格索引维护 ─────────────────────────────────────────────────────────────

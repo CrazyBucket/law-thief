@@ -24,7 +24,7 @@ extends Node
 ##   extract_range_bonus        拔出射程加成（叠加）
 ##   insert_range_bonus         嵌入射程加成（叠加）
 ##   move_bonus                 移动力加成（叠加）
-##   forced_move_immune         强制位移免疫（bool）
+##   forced_move_immune         强制位移免疫（bool，仅玩家受铁靴等遗物保护）
 ##   tile_effect_immune         地块效果免疫（bool）
 ##   first_damage_absorb        首次受伤吸收为 1（bool）
 ##   attack_damage_bonus        攻击额外固定伤害（叠加，整数）
@@ -39,7 +39,8 @@ extends Node
 ##   split_black_stat_ratio     分裂黑槽分身属性比例覆盖（取最大值）
 ##
 ## Action 词表（_dispatch_action 的 action 字段）：
-##   add_armor                  给目标增加护甲（amount）
+##   add_shield                 给目标增加护盾（amount，可选 duration）
+##   add_armor                  add_shield 的别名
 ##   heal                       给目标回血（amount，可选 condition）
 ##   add_move                   给玩家增加移动力（amount）
 ##   add_temp_move              给玩家增加临时移动力（amount，移动一次后重置）
@@ -151,8 +152,8 @@ func query_override_modifier(modifier_id: String, state: GameState, default_valu
 func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
 	var action: String = str(effect.get("action", ""))
 	match action:
-		"add_armor":
-			_action_add_armor(relic_id, effect, state, payload)
+		"add_armor", "add_shield":
+			_action_add_shield(relic_id, effect, state, payload)
 		"heal":
 			_action_heal(relic_id, effect, state, payload)
 		"add_move":
@@ -181,13 +182,14 @@ func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, pa
 
 # ─── 内置 actions ──────────────────────────────────────────────────────────────
 
-func _action_add_armor(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
+func _action_add_shield(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var unit := _resolve_target(effect, state)
 	if unit == null:
 		return
 	var amount: int = int(effect.get("amount", 1))
-	unit.armor += amount
-	state.log("[Relic] %s -> +%d armor for %s" % [_relic_id, amount, unit.uid])
+	var duration: int = int(effect.get("duration", 0))
+	StatusRules.apply_shield(state, unit, amount, duration)
+	state.log("[Relic] %s -> +%d shield for %s" % [_relic_id, amount, unit.uid])
 
 
 func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:

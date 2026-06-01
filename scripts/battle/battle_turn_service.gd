@@ -44,6 +44,7 @@ func _try_activate_next_controllable(ctrl) -> bool:
 	var activated: String = ctrl.state.activate_next_controllable()
 	if activated.is_empty():
 		return false
+	ctrl.selected_unit_uid = activated
 	ctrl.state.log("切换操控单位 → %s（剩余队列: %s）" % [activated, ctrl.state.controllable_queue])
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl._emit_changed()
@@ -92,8 +93,11 @@ func finish_enemy_phase() -> void:
 	ctrl.state.turn_index += 1
 	StatusRules.tick_turn_start(ctrl.state)
 	ctrl.state.phase = Constants.PHASE_PLAYER
+	ctrl.state.bootstrap_split_controllable_turn()
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	if ctrl.state.get_player() != null:
+		ctrl.selected_unit_uid = ctrl.state.player_uid
 	_apply_move_bonus(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
@@ -144,12 +148,14 @@ func check_battle_end() -> void:
 		ctrl.battle_ended.emit("lose")
 		return
 	if ctrl.state.get_alive_enemies().is_empty():
-		_merge_split_clone_hp(ctrl)
+		_merge_split_clones_on_win(ctrl)
 		ctrl.state.phase = Constants.PHASE_ENDED
 		ctrl.state.result = "win"
 		ctrl.state.log("战斗胜利")
 		ctrl.state.on_battle_end.emit("win")
 		ctrl.battle_ended.emit("win")
+		return
+	ctrl._emit_changed()
 
 
 func _apply_move_bonus(state: GameState) -> void:
@@ -178,6 +184,7 @@ func _try_inherit_split_clone(ctrl) -> bool:
 		return false
 	var heir: UnitState = survivors[0]
 	ctrl.state.player_uid = heir.uid
+	ctrl.selected_unit_uid = heir.uid
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
 	ctrl.state.log("玩家死亡，%s 接班" % heir.uid)
@@ -186,20 +193,34 @@ func _try_inherit_split_clone(ctrl) -> bool:
 	return true
 
 
-func _merge_split_clone_hp(ctrl) -> void:
+func _merge_split_clones_on_win(ctrl) -> void:
 	var player: UnitState = ctrl.state.get_player()
 	if player == null or not player.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
 		return
 	var origin_uid: String = player.split_origin_uid
-	var all_clones: Array = []
-	for unit in ctrl.state.units.values():
-		if not unit.alive:
-			continue
-		if unit.split_origin_uid == origin_uid or unit.uid == player.uid:
-			all_clones.append(unit)
+	var origin: UnitState = ctrl.state.units.get(origin_uid, null)
+	if origin == null:
+		return
+	var clones: Array[UnitState] = ctrl.state.get_alive_split_clones(origin_uid)
+	if clones.is_empty():
+		return
 	var total_hp := 0
-	for clone in all_clones:
+	for clone in clones:
 		total_hp += clone.hp
 	var merged_hp := maxi(1, total_hp / Constants.SPLIT_DEATH_HP_MERGE_DIVISOR)
-	player.hp = mini(merged_hp, player.max_hp)
-	ctrl.state.log("战斗结算：分身血量合并 %d / %d = %d" % [total_hp, Constants.SPLIT_DEATH_HP_MERGE_DIVISOR, merged_hp])
+	for clone in clones:
+		for slot in clone.slots:
+			if slot.gem_uid.is_empty():
+				continue
+			ctrl.state.gems.erase(slot.gem_uid)
+		ctrl.state.unregister_unit(clone)
+	origin.alive = true
+	origin.hp = mini(merged_hp, origin.max_hp)
+	origin.pos = player.pos
+	origin.facing = player.facing
+	ctrl.state.player_uid = origin.uid
+	ctrl.state.controllable_queue.clear()
+	ctrl.selected_unit_uid = origin.uid
+	ctrl.state.rebuild_occupancy()
+	IntentSystem.refresh_all_intents(ctrl.state)
+	ctrl.state.log("战斗结算：分身合并回归原体 HP=%d" % origin.hp)

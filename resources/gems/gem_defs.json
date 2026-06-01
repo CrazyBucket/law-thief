@@ -42,7 +42,6 @@
       "player_skill": "gravity",
       "unit_red_active": "gravity",
       "enemy_red_action": "gravity",
-      "blue_turn_start": "gravity",
       "blue_damaged": "gravity",
       "black_death": "gravity",
       "tile_active": "gravity",

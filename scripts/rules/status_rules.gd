@@ -43,6 +43,18 @@ static func apply_armor(
 	duration: int = 1,
 	source_uid: String = ""
 ) -> void:
+	apply_shield(state, unit, value, duration, source_uid)
+
+
+static func apply_shield(
+	state: GameState,
+	unit: UnitState,
+	value: int,
+	duration: int = 0,
+	source_uid: String = ""
+) -> void:
+	if value <= 0:
+		return
 	_apply(state, unit, Constants.STATUS_ARMOR, {
 		"value": value,
 		"duration": duration,
@@ -50,8 +62,18 @@ static func apply_armor(
 	})
 
 
-static func apply_shield(state: GameState, unit: UnitState, value: int, duration: int = 1) -> void:
-	apply_armor(state, unit, value, duration)
+## 护盾优先抵挡伤害；抵挡后按实际消耗扣减，归零则移除
+static func absorb_with_shield(state: GameState, unit: UnitState, amount: int) -> int:
+	if amount <= 0:
+		return 0
+	var shield: StatusInstance = unit.get_status(Constants.STATUS_ARMOR)
+	if shield == null or shield.value <= 0:
+		return amount
+	var blocked := mini(amount, shield.value)
+	shield.value -= blocked
+	if shield.value <= 0:
+		unit.remove_status(Constants.STATUS_ARMOR)
+	return amount - blocked
 
 
 static func apply_rooted(
@@ -148,10 +170,14 @@ static func move_block_reason(unit: UnitState) -> String:
 
 
 static func get_armor_bonus(unit: UnitState) -> int:
-	var armor: StatusInstance = unit.get_status(Constants.STATUS_ARMOR)
-	if armor == null:
+	return get_shield(unit)
+
+
+static func get_shield(unit: UnitState) -> int:
+	var shield: StatusInstance = unit.get_status(Constants.STATUS_ARMOR)
+	if shield == null:
 		return 0
-	return maxi(0, armor.value)
+	return maxi(0, shield.value)
 
 
 static func apply_paralyzed(

@@ -432,17 +432,7 @@ func _relic_desc(def: Dictionary) -> String:
 	var desc := str(def.get("desc", ""))
 	if not desc.is_empty():
 		return desc
-	var lines: Array[String] = []
-	for effect in def.get("effects", []):
-		if not effect is Dictionary:
-			continue
-		if effect.has("on"):
-			lines.append("%s -> %s" % [str(effect.get("on", "")), str(effect.get("action", ""))])
-		elif effect.has("modifier"):
-			lines.append("modifier: %s" % str(effect.get("modifier", "")))
-	if lines.is_empty():
-		return "效果待补充。"
-	return "\n".join(lines)
+	return "效果待补充。"
 
 
 func _rarity_color(rarity: String) -> Color:

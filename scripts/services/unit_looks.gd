@@ -75,6 +75,10 @@ func sprite_modulate_for_unit(team: String, unit_def_id: String) -> Color:
 	return Color.WHITE.lerp(body.lightened(0.1), 0.52)
 
 
+func get_relic_texture(relic_id: String) -> Texture2D:
+	return _sheet_gem().texture_for_relic_id(relic_id)
+
+
 func gem_color(gem_ref: Variant) -> Color:
 	return _data_registry().get_gem_color(gem_ref)
 

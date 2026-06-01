@@ -13,7 +13,7 @@ var max_hp: int = 1
 var move_points: int = 1
 var speed: int = 10
 var base_attack: int = 1
-var armor: int = 0
+var armor: int = 0  # 编辑器/单位模板字段，战斗减伤仅走护盾状态
 var slots: Array = []
 var statuses: Array = []
 var intent: IntentState = null
@@ -72,6 +72,14 @@ func get_slot(slot_type: String) -> SlotState:
 		if slot.slot_type == slot_type:
 			return slot
 	return null
+
+
+func slots_accepting(slot_type: String) -> Array:
+	var result: Array = []
+	for slot in slots:
+		if slot.accepts_slot_type(slot_type):
+			result.append(slot)
+	return result
 
 
 func get_slot_by_index(index: int) -> SlotState:

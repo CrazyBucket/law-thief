@@ -5,8 +5,8 @@ const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display
 const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 
 @onready var _board: _IsometricBoard = $BoardLayer/IsometricBoard
-@onready var _title: Label = $HudLayer/TopBar/HBox/Title
-@onready var _hint: Label = $HudLayer/TopBar/HBox/Hint
+@onready var _title: Label = $HudLayer/TopBar/VBox/HBox/Title
+@onready var _hint: Label = $HudLayer/TopBar/VBox/HBox/Hint
 @onready var _seed_label: Label = $HudLayer/TopBar/VBox/HBox/SeedLabel
 @onready var _run_summary: Label = $HudLayer/TopBar/VBox/RunSummary
 @onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title

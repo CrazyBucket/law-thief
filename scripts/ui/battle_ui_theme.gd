@@ -13,6 +13,10 @@ const TEXT_HINT := Color(0.78, 0.72, 0.48)
 const HP_HIGH := Color(0.28, 0.78, 0.48)
 const HP_MID := Color(0.9, 0.72, 0.22)
 const HP_LOW := Color(0.9, 0.28, 0.28)
+const SHIELD_FILL := Color(0.78, 0.82, 0.88)
+const SHIELD_FILL_HI := Color(0.88, 0.91, 0.96)
+const SHIELD_BG := Color(0.12, 0.13, 0.18)
+const SHIELD_BORDER := Color(0.38, 0.4, 0.46)
 const PHASE_PLAYER := Color(0.35, 0.72, 0.95)
 const PHASE_ENEMY := Color(0.92, 0.38, 0.38)
 const PHASE_END := Color(0.55, 0.58, 0.65)
@@ -138,6 +142,31 @@ static func hp_fill_color(ratio: float) -> Color:
 	if ratio <= 0.6:
 		return HP_MID
 	return HP_HIGH
+
+
+static func shield_bar_styles() -> Dictionary:
+	return {
+		"background": shield_bg_style(),
+		"fill": shield_fill_style(),
+	}
+
+
+static func shield_bg_style() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = SHIELD_BG
+	box.border_color = SHIELD_BORDER
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(3)
+	return box
+
+
+static func shield_fill_style() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = SHIELD_FILL
+	box.border_color = SHIELD_FILL_HI
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(3)
+	return box
 
 
 static func section_label(text: String) -> Label:

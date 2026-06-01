@@ -3,6 +3,7 @@ extends Control
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
+const StatusIcons = preload("res://scripts/ui/status_icons.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 const DamageTextManagerScript = preload("res://scripts/ui/damage_text_manager.gd")
 
@@ -16,6 +17,10 @@ var _dmg_text: Node = null
 @onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Portrait
 @onready var _inspect_name: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/Name
 @onready var _info_col: VBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info
+@onready var _shield_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow
+@onready var _shield_icon: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldIcon
+@onready var _shield_bar: ProgressBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldBar
+@onready var _shield_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldText
 @onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBar
 @onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpText
 @onready var _inspect_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip/StatusRow
@@ -70,8 +75,9 @@ var _preview_fade_serial: int = 0
 var _relic_reward_overlay: Node = null
 var _held_gem_icon: TextureRect = null
 var _relic_bar_scroll: ScrollContainer = null
-var _relic_bar_vbox: VBoxContainer = null
+var _relic_bar_vbox: HFlowContainer = null
 var _relic_bar_ids: Array[String] = []
+var _tracked_player_uid: String = ""
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
@@ -119,6 +125,11 @@ func _apply_ui_theme() -> void:
 	_hint_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
 	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	_hp_bar.add_theme_stylebox_override("background", _flat_style(Color(0.12, 0.13, 0.18), Color(0.22, 0.24, 0.3)))
+	var shield_styles := BattleUiTheme.shield_bar_styles()
+	_shield_bar.add_theme_stylebox_override("background", shield_styles.background)
+	_shield_bar.add_theme_stylebox_override("fill", shield_styles.fill)
+	_shield_icon.texture = StatusIcons.get_icon(Constants.STATUS_ARMOR)
+	_shield_text.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
 
 
@@ -153,6 +164,7 @@ func setup(encounter_id: String) -> void:
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
 	_board.clear_gem_visuals()
+	_tracked_player_uid = ""
 	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
 	_mark_visible_enemies_seen()
 	_inspect_uid = _controller.selected_unit_uid
@@ -384,8 +396,12 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 				_message_label.text = "已从地块拔出，点击目标嵌入"
 			Constants.ACTION_INSERT:
 				_begin_held_gem_insert(tile_pos, result)
-				_controller.select_action(Constants.ACTION_ATTACK)
-				_message_label.text = "已嵌入地块，可攻击或触发"
+				if str(result.get("swapped_gem_uid", "")).is_empty():
+					_controller.select_action(Constants.ACTION_ATTACK)
+					_message_label.text = "已嵌入地块，可攻击或触发"
+				else:
+					_controller.select_action(Constants.ACTION_INSERT)
+					_message_label.text = "已替换，原宝石回到手中"
 			Constants.ACTION_TRIGGER:
 				_player_animating = true
 				_presentation_playing = true
@@ -427,8 +443,12 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 				var insert_target: UnitState = _controller.state.units.get(unit_uid, null)
 				if insert_target != null:
 					_begin_held_gem_insert(insert_target.pos, result)
-				_controller.select_action(Constants.ACTION_ATTACK)
-				_message_label.text = "已嵌入，可攻击或触发"
+				if str(result.get("swapped_gem_uid", "")).is_empty():
+					_controller.select_action(Constants.ACTION_ATTACK)
+					_message_label.text = "已嵌入，可攻击或触发"
+				else:
+					_controller.select_action(Constants.ACTION_INSERT)
+					_message_label.text = "已替换，原宝石回到手中"
 			Constants.ACTION_TRIGGER:
 				_player_animating = true
 				_presentation_playing = true
@@ -462,6 +482,36 @@ func _begin_held_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
 	if gem == null:
 		return
 	_board.start_held_gem_insert(target_grid, gem)
+	var swapped_uid := str(result.get("swapped_gem_uid", ""))
+	if swapped_uid.is_empty():
+		return
+	var swapped_gem: GemState = _controller.state.gems.get(swapped_uid, null)
+	if swapped_gem == null:
+		return
+	_schedule_swapped_gem_extract(target_grid, swapped_gem)
+
+
+func _schedule_swapped_gem_extract(target_grid: Vector2i, gem: GemState) -> void:
+	var duration: float = 0.38
+	if _board != null and _board.has_method("gem_insert_anim_duration"):
+		duration = float(_board.call("gem_insert_anim_duration"))
+	get_tree().create_timer(_scaled_anim_time(duration)).timeout.connect(
+		_on_swapped_gem_extract_ready.bind(target_grid, gem.uid),
+		CONNECT_ONE_SHOT
+	)
+
+
+func _on_swapped_gem_extract_ready(target_grid: Vector2i, gem_uid: String) -> void:
+	if not is_instance_valid(_board) or _controller == null or _controller.state == null:
+		return
+	if _controller.state.held_gem_uid != gem_uid:
+		return
+	if _board.has_active_held_gem_visual():
+		return
+	var gem: GemState = _controller.state.gems.get(gem_uid, null)
+	if gem == null:
+		return
+	_board.start_held_gem_extract(target_grid, gem)
 
 
 func _on_popup_cancelled() -> void:
@@ -865,10 +915,13 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_ctrl.add_child(bg)
 
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(center)
+
 	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	vbox.add_theme_constant_override("separation", 16)
-	root_ctrl.add_child(vbox)
+	center.add_child(vbox)
 
 	var is_no_relics := offer.size() == 1 and offer[0] == "relic_placeholder"
 
@@ -912,6 +965,16 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	vb.add_theme_constant_override("separation", 8)
 	panel.add_child(vb)
 
+	var icon_tex := UnitLooks.get_relic_texture(relic_id)
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(48, 48)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		vb.add_child(icon)
+
 	var name_lbl := Label.new()
 	name_lbl.text = str(def.get("name", relic_id))
 	name_lbl.add_theme_font_size_override("font_size", 16)
@@ -921,16 +984,14 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	vb.add_child(name_lbl)
 
 	var rarity_lbl := Label.new()
-	rarity_lbl.text = "[%s]" % rarity
+	rarity_lbl.text = "[%s]" % _rarity_display_name(rarity)
 	rarity_lbl.add_theme_font_size_override("font_size", 11)
 	rarity_lbl.add_theme_color_override("font_color", rarity_color.darkened(0.15))
 	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(rarity_lbl)
 
 	var desc_lbl := RichTextLabel.new()
-	var desc_text := str(def.get("desc", ""))
-	if desc_text.is_empty():
-		desc_text = _build_effect_hint(def)
+	var desc_text := _relic_desc_text(def)
 	desc_lbl.bbcode_enabled = false
 	desc_lbl.text = desc_text
 	desc_lbl.add_theme_font_size_override("normal_font_size", 12)
@@ -951,18 +1012,21 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	return panel
 
 
-func _build_effect_hint(def: Dictionary) -> String:
-	var lines: Array[String] = []
-	for effect in def.get("effects", []):
-		if not effect is Dictionary:
-			continue
-		if effect.has("on"):
-			lines.append("%s → %s" % [effect.get("on", ""), effect.get("action", "")])
-		elif effect.has("modifier"):
-			lines.append("mod: %s" % effect.get("modifier", ""))
-	if lines.is_empty():
-		return "（暂无描述）"
-	return "\n".join(lines)
+func _relic_desc_text(def: Dictionary) -> String:
+	var desc := str(def.get("desc", ""))
+	if not desc.is_empty():
+		return desc
+	return "（暂无描述）"
+
+
+func _rarity_display_name(rarity: String) -> String:
+	match rarity:
+		"common": return "普通"
+		"rare": return "稀有"
+		"epic": return "史诗"
+		"legendary": return "传说"
+		"boss": return "首领"
+		_: return rarity
 
 
 func _rarity_color(rarity: String) -> Color:
@@ -1021,6 +1085,7 @@ func _refresh() -> void:
 	var state := _view_state()
 	if state == null:
 		return
+	_sync_controlled_player_inspect(state)
 	_turn_label.text = "T%d" % state.turn_index
 	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
 	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
@@ -1093,6 +1158,7 @@ func _fit_status_panel() -> void:
 	var header_gap := float(_header_row.get_theme_constant("separation", "HBoxContainer"))
 	var info_w := inner_w - _portrait.custom_minimum_size.x - header_gap
 	_info_col.custom_minimum_size.x = info_w
+	_shield_bar.custom_minimum_size.x = maxf(0.0, info_w - 40.0)
 	_hp_bar.custom_minimum_size.x = info_w
 	_status_clip.custom_minimum_size.x = info_w
 	_inspect_status_row.offset_right = info_w
@@ -1121,6 +1187,17 @@ func _sync_toggle_btn_x() -> void:
 		_toggle_panel_btn.position.x = _status_panel.position.x + _status_panel.size.x + 8.0
 
 
+func _sync_controlled_player_inspect(state: GameState) -> void:
+	var player: UnitState = state.get_player()
+	if player == null or not player.alive:
+		return
+	if player.uid == _tracked_player_uid:
+		return
+	_tracked_player_uid = player.uid
+	_inspect_uid = player.uid
+	_controller.selected_unit_uid = player.uid
+
+
 func _apply_status_inner_width(inner_w: float) -> void:
 	_status_vbox.custom_minimum_size.x = inner_w
 	_header_row.custom_minimum_size.x = inner_w
@@ -1129,6 +1206,8 @@ func _apply_status_inner_width(inner_w: float) -> void:
 	_held_label.custom_minimum_size.x = inner_w
 	_slot_clip.custom_minimum_size.x = inner_w
 	_slot_box.size.x = inner_w
+	if _relic_bar_scroll != null:
+		_relic_bar_scroll.custom_minimum_size.x = inner_w
 
 
 func _status_panel_content_margins() -> Vector2:
@@ -1186,15 +1265,29 @@ func _refresh_inspect() -> void:
 	var ratio := float(unit.hp) / float(maxi(unit.max_hp, 1))
 	_hp_bar.add_theme_stylebox_override("fill", _flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08)))
 	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
-	StatusUi.populate_status_row(_inspect_status_row, unit, true)
-	var armor_value := CombatRules.current_armor(state, unit)
+	_refresh_inspect_shield(state, unit)
+	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR])
 	var attack_value := CombatRules.attack_damage(state, unit)
-	var stat_parts: Array[String] = ["攻击 %d · 护甲 %d · 速度 %d" % [attack_value, armor_value, unit.speed]]
+	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		stat_parts.append(unit.intent.preview_text)
 	_inspect_stats.text = "\n".join(stat_parts)
 	for slot in unit.slots:
 		_slot_box.add_child(_create_slot_chip(state, unit, slot))
+
+
+func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
+	var shield_value := CombatRules.current_shield(state, unit)
+	_shield_row.visible = shield_value > 0
+	if shield_value <= 0:
+		_shield_bar.value = 0.0
+		_shield_text.text = ""
+		return
+	var shield_max := maxi(unit.max_hp, shield_value)
+	_shield_bar.max_value = float(shield_max)
+	_shield_bar.value = float(shield_value)
+	_shield_text.text = str(shield_value)
+	_shield_row.tooltip_text = "护盾 %d" % shield_value
 
 
 func _clear_inspect_header(title: String) -> void:
@@ -1204,6 +1297,9 @@ func _clear_inspect_header(title: String) -> void:
 	_hp_bar.max_value = 1.0
 	_hp_bar.value = 0.0
 	_hp_text.text = ""
+	_shield_row.visible = false
+	_shield_bar.value = 0.0
+	_shield_text.text = ""
 	while _inspect_status_row.get_child_count() > 0:
 		_inspect_status_row.get_child(0).free()
 
@@ -1615,37 +1711,42 @@ func _setup_relic_bar() -> void:
 	scroll.name = "RelicBarScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.custom_minimum_size = Vector2(50, 0)
-	scroll.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	scroll.anchor_bottom = 1.0
-	scroll.anchor_top = 1.0
-	scroll.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	scroll.offset_left = 10.0
-	scroll.offset_bottom = -80.0
-	$HudLayer.add_child(scroll)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 5)
-	scroll.add_child(vbox)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.visible = false
+	var flow := HFlowContainer.new()
+	flow.name = "RelicBarFlow"
+	flow.add_theme_constant_override("h_separation", 4)
+	flow.add_theme_constant_override("v_separation", 4)
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(flow)
+	_status_vbox.add_child(scroll)
+	_status_vbox.move_child(scroll, _header_row.get_index() + 1)
 	_relic_bar_scroll = scroll
-	_relic_bar_vbox = vbox
+	_relic_bar_vbox = flow
 
 
 func _refresh_relic_bar() -> void:
-	if _relic_bar_vbox == null:
+	if _relic_bar_vbox == null or _relic_bar_scroll == null:
 		return
 	var owned: Array[String] = RunService.get_owned_relics() if RunService.is_run_active() else []
-	if owned == _relic_bar_ids:
+	var ids_changed := owned != _relic_bar_ids
+	if ids_changed:
+		_relic_bar_ids = owned.duplicate()
+		for child in _relic_bar_vbox.get_children():
+			child.queue_free()
+		for relic_id in owned:
+			_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
+	_relic_bar_scroll.visible = not owned.is_empty()
+	if owned.is_empty():
+		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
 		return
-	_relic_bar_ids = owned.duplicate()
-	for child in _relic_bar_vbox.get_children():
-		child.queue_free()
-	var max_visible_h: float = get_viewport_rect().size.y * 0.55
-	var item_h: float = 44.0
-	var scroll_h: float = minf(float(owned.size()) * item_h, max_visible_h)
-	_relic_bar_scroll.custom_minimum_size = Vector2(50.0, scroll_h)
-	_relic_bar_scroll.size = Vector2(50.0, scroll_h)
-	for relic_id in owned:
-		_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
+	var inner_w := _status_vbox.custom_minimum_size.x
+	if inner_w <= 0.0:
+		inner_w = _STATUS_PANEL_WIDTH - _status_panel_content_margins().x
+	_relic_bar_scroll.custom_minimum_size.x = inner_w
+	var content_h := _relic_bar_vbox.get_minimum_size().y
+	var max_h := 92.0
+	_relic_bar_scroll.custom_minimum_size.y = minf(content_h, max_h)
 
 
 func _create_relic_badge(relic_id: String) -> Control:
@@ -1662,19 +1763,16 @@ func _create_relic_badge(relic_id: String) -> Control:
 	style.set_content_margin_all(3)
 	badge.add_theme_stylebox_override("panel", style)
 	var name_str: String = str(def.get("name", relic_id))
-	var abbrev: String = name_str.left(2) if name_str.length() >= 2 else name_str
-	var lbl := Label.new()
-	lbl.text = abbrev
-	lbl.add_theme_font_size_override("font_size", 11)
-	lbl.add_theme_color_override("font_color", rarity_col.lightened(0.3))
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	badge.add_child(lbl)
-	var desc_str: String = str(def.get("desc", ""))
-	var tooltip_text: String = name_str
-	if not desc_str.is_empty():
-		tooltip_text += "\n" + desc_str
+	var icon_tex := UnitLooks.get_relic_texture(relic_id)
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		badge.add_child(icon)
+	var tooltip_text: String = name_str + "\n" + _relic_desc_text(def)
 	badge.tooltip_text = tooltip_text
 	return badge
 

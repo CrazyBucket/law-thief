@@ -1,6 +1,7 @@
 {
   "relic_prism": {
     "name": "棱镜",
+    "desc": "每场战斗开始时，随机将一个单色槽升级为双色槽（每局限一次）。",
     "rarity": "boss",
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
@@ -13,6 +14,7 @@
   },
   "relic_phase_wrench": {
     "name": "相位扳手",
+    "desc": "每场战斗开始时，随机获得一个额外宝石槽（每局限一次）。",
     "rarity": "boss",
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
@@ -25,6 +27,7 @@
   },
   "relic_chaos_launcher": {
     "name": "混沌发射器",
+    "desc": "你的攻击命中时，随机附加中毒、燃烧、电弧、引火或减速中的一种效果。",
     "rarity": "boss",
     "pool_types": ["boss_drop"],
     "base_weight": 1.0,
@@ -35,6 +38,7 @@
   },
   "relic_autopsy_log": {
     "name": "验尸记录",
+    "desc": "用黑色宝石击杀敌人后，回复 1 点生命。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -49,6 +53,7 @@
   },
   "relic_empty_coffin": {
     "name": "空棺",
+    "desc": "战斗开始时最大生命减少 30%，并随机获得一个额外槽位（每局限一次）。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -66,6 +71,7 @@
   },
   "relic_empty_shell": {
     "name": "空壳",
+    "desc": "每个空槽使拔出与嵌入的射程各 +1。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -80,6 +86,7 @@
   },
   "relic_night_heron_wings": {
     "name": "夜鹭翅膀",
+    "desc": "免疫地块上的环境效果（毒雾、火焰等）。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -90,6 +97,7 @@
   },
   "relic_frame_up": {
     "name": "嫁祸",
+    "desc": "将敌人身上的宝石嵌入另一名敌人时，对被嵌入者施加易伤。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -101,6 +109,7 @@
   },
   "relic_mini_casino": {
     "name": "微型赌场",
+    "desc": "每回合开始时，随机将场上的一颗宝石变为另一颗。（赌徒专属）",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -112,6 +121,7 @@
   },
   "relic_slime_crown": {
     "name": "史莱姆皇冠",
+    "desc": "持有分裂宝石时：红分裂伤害 80%、蓝转移 60%、黑分身属性 50%。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -131,6 +141,7 @@
   },
   "relic_gas_mask": {
     "name": "呼吸面罩",
+    "desc": "穿越毒雾或火焰地块时，移动消耗减少 1。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -141,6 +152,7 @@
   },
   "relic_cracked_amulet": {
     "name": "破损护符",
+    "desc": "战斗开始时获得 3 点护盾。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -151,6 +163,7 @@
   },
   "relic_copper_wire": {
     "name": "导热铜线",
+    "desc": "导电宝石的电弧额外弹射 1 个目标。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -164,6 +177,7 @@
   },
   "relic_broken_rib": {
     "name": "断裂肋骨",
+    "desc": "碰撞造成的伤害 ×1.5。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -174,6 +188,7 @@
   },
   "relic_pressure_valve": {
     "name": "旧式压力阀",
+    "desc": "你触发蓝色宝石效果后，本回合获得 +1 临时移动力。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -188,6 +203,7 @@
   },
   "relic_crowbar": {
     "name": "应急撬棍",
+    "desc": "攻击时对目标的护甲锁造成额外 4 点结构伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -198,6 +214,7 @@
   },
   "relic_adrenaline": {
     "name": "肾上腺素",
+    "desc": "生命较低时，移动力与拔/嵌射程各 +1。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -210,6 +227,7 @@
   },
   "relic_reinforced_base": {
     "name": "加固底座",
+    "desc": "向自己嵌入宝石后，获得 4 点护盾。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -224,6 +242,7 @@
   },
   "relic_silver_cable": {
     "name": "镀银电缆",
+    "desc": "电弧伤害 ×1.2。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -238,6 +257,7 @@
   },
   "relic_cracked_goggles": {
     "name": "破损护目镜",
+    "desc": "攻击有 10% 落空，但命中额外 +2 伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -249,6 +269,7 @@
   },
   "relic_painkiller": {
     "name": "止痛药",
+    "desc": "每场战斗首次受到伤害时，仅承受 1 点伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -259,6 +280,7 @@
   },
   "relic_iron_boots": {
     "name": "铁靴",
+    "desc": "免疫强制位移，移动力 -1。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,

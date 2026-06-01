@@ -362,7 +362,7 @@ func _make_bare_state() -> GameState:
 
 func _make_slime(state: GameState, pos: Vector2i) -> UnitState:
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var uid := reg.next_runtime_uid("slime")
+	var uid: String = reg.next_runtime_uid("slime")
 	var unit := UnitState.from_def(uid, "unit_fission_slime", Constants.TEAM_ENEMY, pos, reg.get_unit_def("unit_fission_slime"))
 	state.register_unit(unit)
 	return unit
