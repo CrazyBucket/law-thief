@@ -3,50 +3,58 @@ extends Node
 ## 遗物事件系统与 Modifier 查询层
 ##
 ## 事件词表（fire_event 的 event_id）：
-##   battle_start       战斗开始
-##   turn_start         回合开始（payload: turn_index）
-##   turn_end           回合结束（payload: turn_index）
-##   before_attack      攻击前（payload: attacker_uid, target_uid）
-##   after_attack_hit   命中后（payload: attacker_uid, target_uid, damage）
-##   before_damage_taken 受伤前（payload: unit_uid, amount, reason）
-##   after_damage_taken 受伤后（payload: unit_uid, amount, reason）
-##   unit_die           击杀后（payload: unit_uid, killer_uid, reason）
-##   after_extract      拔出宝石后（payload: unit_uid, gem_id, slot_type）
-##   after_insert       嵌入宝石后（payload: unit_uid, gem_id, slot_type）
-##   move_step          走一步（payload: unit_uid, from, to）
-##   battle_win         战斗胜利（payload: encounter_id）
+##   battle_start         战斗开始
+##   turn_start           回合开始（payload: turn_index）
+##   turn_end             回合结束（payload: turn_index）
+##   before_attack        攻击前（payload: attacker_uid, target_uid）
+##   after_attack_hit     命中后（payload: attacker_uid, target_uid, damage）
+##   before_damage_taken  受伤前（payload: unit_uid, amount, reason）
+##   after_damage_taken   受伤后（payload: unit_uid, amount, reason）
+##   unit_die             击杀后（payload: unit_uid, killer_uid, reason, kill_reason）
+##   after_extract        拔出宝石后（payload: unit_uid, gem_id, slot_type, from_uid, to_uid）
+##   after_insert         嵌入宝石后（payload: unit_uid, gem_id, slot_type, from_uid）
+##   blue_gem_triggered   蓝色宝石效果触发后（payload: actor_uid）
+##   move_step            走一步（payload: unit_uid, from, to）
+##   battle_win           战斗胜利（payload: encounter_id）
 ##
 ## Modifier 词表（query_modifier 的 modifier_id）：
-##   attack_damage_mult      攻击伤害乘数（叠乘）
-##   arc_damage_mult         电弧伤害乘数（叠乘）
-##   collision_damage_mult   碰撞伤害乘数（叠乘）
-##   extract_range_bonus     拔出射程加成（叠加）
-##   insert_range_bonus      嵌入射程加成（叠加）
-##   move_bonus              移动力加成（叠加）
-##   forced_move_immune      强制位移免疫（bool，任一遗物为 true 则免疫）
-##   tile_effect_immune      地块效果免疫（bool）
-##   first_damage_absorb     首次受伤吸收为 1（bool，使用后消耗 battle_temp_flag）
-##   attack_damage_bonus     攻击额外固定伤害（叠加，整数）
-##   attack_split_count      攻击分裂次数加成（叠加，整数；基础值 1，每层+1）
+##   attack_damage_mult         攻击伤害乘数（叠乘）
+##   arc_damage_mult            电弧伤害乘数（叠乘）
+##   collision_damage_mult      碰撞伤害乘数（叠乘）
+##   extract_range_bonus        拔出射程加成（叠加）
+##   insert_range_bonus         嵌入射程加成（叠加）
+##   move_bonus                 移动力加成（叠加）
+##   forced_move_immune         强制位移免疫（bool）
+##   tile_effect_immune         地块效果免疫（bool）
+##   first_damage_absorb        首次受伤吸收为 1（bool）
+##   attack_damage_bonus        攻击额外固定伤害（叠加，整数）
+##   attack_split_count         攻击分裂次数加成（叠加，整数）
+##   arc_bounce_count_bonus     电弧弹射目标数加成（叠加，整数）
+##   chaos_launcher_active      混沌发射器激活（bool）
+##   attack_miss_chance         攻击命中率降低（叠加，浮点）
+##   armor_lock_break_bonus     攻击护甲锁额外拆除伤害（叠加，整数）
+##   overlay_move_cost_reduction 地块覆盖层移动消耗减少（需 ctx.overlay_type）
+##   split_red_damage_ratio     分裂红槽攻击伤害倍率覆盖（替换常量；取最大值）
+##   split_blue_redirect_ratio  分裂蓝槽转移伤害比例覆盖（取最大值）
+##   split_black_stat_ratio     分裂黑槽分身属性比例覆盖（取最大值）
 ##
 ## Action 词表（_dispatch_action 的 action 字段）：
-##   add_armor          给目标增加护甲（amount）
-##   heal               给目标回血（amount，可选 condition）
-##   add_move           给玩家增加移动力（amount）
-##   mark_flag          向 battle_temp_flags 写 flag（flag）
-##   add_slot           给玩家新增槽位（slot_type，可选 once_per_run flag）
-##   upgrade_slot       将玩家指定槽位升级为双色槽（from_type, to_dual_type，可选 once_per_run flag）
-##   replace_gem_random 随机将玩家某个槽的宝石替换为另一个随机宝石（once_per_run flag）
-
-## effect 格式（JSON effects 数组中一条）：
-##   {"on": "<event_id>", "action": "<action_id>", ...params}
-##   {"modifier": "<modifier_id>", ...params}
-## modifier 格式：返回数值或 bool，由 query_modifier 汇总
-
+##   add_armor                  给目标增加护甲（amount）
+##   heal                       给目标回血（amount，可选 condition）
+##   add_move                   给玩家增加移动力（amount）
+##   add_temp_move              给玩家增加临时移动力（amount，移动一次后重置）
+##   mark_flag                  向 battle_temp_flags 写 flag
+##   add_slot                   给玩家新增槽位（slot_type: red/blue/black/random）
+##   upgrade_slot               将玩家指定槽位升级为双色槽
+##   upgrade_slot_random        随机升级玩家某个单色槽为双色槽
+##   replace_gem_random         随机替换玩家某个槽的宝石
+##   apply_max_hp_reduction     减少玩家最大 HP（ratio）
+##   apply_weak_on_insert_target 对嵌入宝石的目标施加虚弱（condition: insert_to_enemy_from_enemy）
+##   random_gem_transform_one   每回合随机将场上一颗宝石变为另一颗
 
 # ─── 内部结构 ──────────────────────────────────────────────────────────────────
 
-## _handlers[event_id] → Array[Callable]（每个 Callable 接受 state, payload）
+## _event_handlers[event_id] → Array[Callable]（每个 Callable 接受 state, payload）
 var _event_handlers: Dictionary = {}
 
 ## _modifier_handlers[modifier_id] → Array[Callable]（返回 Variant）
@@ -60,7 +68,6 @@ func _ready() -> void:
 # ─── 对外接口 ─────────────────────────────────────────────────────────────────
 
 ## 对当前局持有的所有遗物触发事件
-## 调用方只需传 state 和 payload，不用关心谁持有哪些遗物
 func fire_event(event_id: String, state: GameState, payload: Dictionary = {}) -> void:
 	var owned := RunService.get_owned_relics()
 	for relic_id in owned:
@@ -77,14 +84,15 @@ func fire_event(event_id: String, state: GameState, payload: Dictionary = {}) ->
 
 
 ## 查询 modifier：对当前局持有的所有遗物累计查询
-## 对于乘数类 modifier，返回叠乘结果；对于加成类，返回叠加；对于 bool 类，返回任一为 true
 func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {}) -> Variant:
 	var owned := RunService.get_owned_relics()
 	var mult_result := 1.0
 	var add_result := 0
 	var bool_result := false
 	var is_mult := modifier_id.ends_with("_mult")
-	var is_bool := modifier_id.ends_with("_immune") or modifier_id == "first_damage_absorb"
+	var is_bool := (modifier_id.ends_with("_immune")
+		or modifier_id == "first_damage_absorb"
+		or modifier_id == "chaos_launcher_active")
 
 	for relic_id in owned:
 		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
@@ -113,6 +121,31 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 		return add_result
 
 
+## 查询带替换语义的 modifier（取最大值替代，而非叠加）
+## 用于 split_red_damage_ratio / split_blue_redirect_ratio / split_black_stat_ratio
+func query_override_modifier(modifier_id: String, state: GameState, default_value: float) -> float:
+	var owned := RunService.get_owned_relics()
+	var best := default_value
+	for relic_id in owned:
+		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+		var effects: Variant = def.get("effects", [])
+		if not effects is Array:
+			continue
+		for effect in effects:
+			if not effect is Dictionary:
+				continue
+			if str(effect.get("modifier", "")) != modifier_id:
+				continue
+			var cond: String = str(effect.get("condition", ""))
+			if not cond.is_empty():
+				if not _check_modifier_condition(cond, state):
+					continue
+			var v: float = float(effect.get("value", default_value))
+			if v > best:
+				best = v
+	return best
+
+
 # ─── Action 分发 ──────────────────────────────────────────────────────────────
 
 func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
@@ -124,39 +157,47 @@ func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, pa
 			_action_heal(relic_id, effect, state, payload)
 		"add_move":
 			_action_add_move(relic_id, effect, state, payload)
+		"add_temp_move":
+			_action_add_temp_move(relic_id, effect, state, payload)
 		"mark_flag":
 			_action_mark_flag(relic_id, effect, state, payload)
 		"add_slot":
 			_action_add_slot(relic_id, effect, state)
 		"upgrade_slot":
 			_action_upgrade_slot(relic_id, effect, state)
+		"upgrade_slot_random":
+			_action_upgrade_slot_random(relic_id, effect, state)
 		"replace_gem_random":
 			_action_replace_gem_random(relic_id, effect, state, payload)
+		"apply_max_hp_reduction":
+			_action_apply_max_hp_reduction(relic_id, effect, state)
+		"apply_weak_on_insert_target":
+			_action_apply_weak_on_insert_target(relic_id, effect, state, payload)
+		"random_gem_transform_one":
+			_action_random_gem_transform_one(relic_id, state)
 		_:
 			DebugService.log_info("RelicEffectRegistry: unknown action '%s' for %s" % [action, relic_id])
 
 
 # ─── 内置 actions ──────────────────────────────────────────────────────────────
 
-## add_armor：给目标单位增加临时护甲
-## effect: {"on": ..., "action": "add_armor", "target": "player", "amount": <int>}
-func _action_add_armor(relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
+func _action_add_armor(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var unit := _resolve_target(effect, state)
 	if unit == null:
 		return
 	var amount: int = int(effect.get("amount", 1))
 	unit.armor += amount
-	state.log("[Relic] %s -> +%d armor for %s" % [relic_id, amount, unit.uid])
+	state.log("[Relic] %s -> +%d armor for %s" % [_relic_id, amount, unit.uid])
 
 
-## heal：给目标单位回血
-## effect: {"on": ..., "action": "heal", "target": "player", "amount": <int>}
-## 可选 "condition": "killer_is_player" 要求 payload.killer_uid == player_uid
 func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
 	var condition: String = str(effect.get("condition", ""))
 	if condition == "killer_is_player":
 		var killer: String = str(payload.get("killer_uid", ""))
 		if killer != state.player_uid:
+			return
+	elif condition == "black_gem_kill":
+		if not _check_black_gem_kill(state, payload):
 			return
 	var unit := _resolve_target(effect, state)
 	if unit == null:
@@ -168,8 +209,6 @@ func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payloa
 	state.log("[Relic] %s -> +%d hp for %s" % [relic_id, amount, unit.uid])
 
 
-## add_move：给玩家本回合增加额外移动力
-## effect: {"on": ..., "action": "add_move", "amount": <int>}
 func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var amount: int = int(effect.get("amount", 1))
 	var player := state.get_player()
@@ -178,8 +217,23 @@ func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _
 	player.move_points += amount
 
 
-## mark_flag：在 battle_temp_flags 里写一个 flag（供单次触发遗物使用）
-## effect: {"on": ..., "action": "mark_flag", "flag": "<key>"}
+## 临时移动力：加 1 点，但只能用于移动一次后重置
+## 通过 battle_temp_flags 标记是否已消耗
+func _action_add_temp_move(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
+	var condition: String = str(effect.get("condition", ""))
+	if condition == "actor_is_player":
+		var actor_uid: String = str(payload.get("actor_uid", ""))
+		if actor_uid != state.player_uid:
+			return
+	var amount: int = int(effect.get("amount", 1))
+	var player := state.get_player()
+	if player == null:
+		return
+	player.move_points += amount
+	state.battle_temp_flags["pressure_valve_temp_move"] = amount
+	state.log("[Relic] %s -> 蓝槽触发，临时 +%d 移动力" % [relic_id, amount])
+
+
 func _action_mark_flag(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var flag: String = str(effect.get("flag", ""))
 	if flag.is_empty():
@@ -187,9 +241,8 @@ func _action_mark_flag(_relic_id: String, effect: Dictionary, state: GameState, 
 	state.battle_temp_flags[flag] = true
 
 
-## add_slot：持久给玩家新增一个槽位（写入 RunState，下一场战斗生效）
-## 同时当场也追加到 GameState.player.slots，保证当局立即可用
-## effect: {"on": ..., "action": "add_slot", "slot_type": "red|blue|black", "once_per_run": "<flag>"}
+## add_slot：持久给玩家新增一个槽位
+## slot_type 支持 "random"（随机 red/blue/black 之一）
 func _action_add_slot(relic_id: String, effect: Dictionary, state: GameState) -> void:
 	var once_flag: String = str(effect.get("once_per_run", ""))
 	if not once_flag.is_empty():
@@ -197,6 +250,9 @@ func _action_add_slot(relic_id: String, effect: Dictionary, state: GameState) ->
 		if rt != null and rt.flags.get(once_flag, false):
 			return
 	var slot_type: String = str(effect.get("slot_type", Constants.SLOT_RED))
+	if slot_type == "random":
+		var types := [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]
+		slot_type = types[RngService.roll_int("add_slot_random_%s" % relic_id, 0, 2)]
 	var player := state.get_player()
 	if player == null:
 		return
@@ -213,9 +269,7 @@ func _action_add_slot(relic_id: String, effect: Dictionary, state: GameState) ->
 		RunService.save_run()
 
 
-## upgrade_slot：持久将玩家某类型槽升级为双色槽（写入 RunState，下一场战斗生效）
-## 同时当场也修改 GameState.player.slots，保证当局立即可用
-## effect: {"on": ..., "action": "upgrade_slot", "from_type": "blue", "to_dual_type": "red", "once_per_run": "<flag>"}
+## upgrade_slot：持久将玩家指定类型槽升级为双色槽
 func _action_upgrade_slot(relic_id: String, effect: Dictionary, state: GameState) -> void:
 	var once_flag: String = str(effect.get("once_per_run", ""))
 	if not once_flag.is_empty():
@@ -244,8 +298,45 @@ func _action_upgrade_slot(relic_id: String, effect: Dictionary, state: GameState
 			return
 
 
-## replace_gem_random：随机将玩家某个非空槽的宝石替换为另一个随机宝石
-## effect: {"on": ..., "action": "replace_gem_random", "once_per_run": "<flag>", "condition": "killer_is_player"}
+## upgrade_slot_random：随机选玩家一个单色槽升级为双色槽（另一种颜色随机）
+func _action_upgrade_slot_random(relic_id: String, effect: Dictionary, state: GameState) -> void:
+	var once_flag: String = str(effect.get("once_per_run", ""))
+	if not once_flag.is_empty():
+		var rt := RunService.get_relic_runtime(relic_id)
+		if rt != null and rt.flags.get(once_flag, false):
+			return
+	var player := state.get_player()
+	if player == null:
+		return
+	var eligible: Array[SlotState] = []
+	for slot in player.slots:
+		if slot.dual_type.is_empty():
+			eligible.append(slot)
+	if eligible.is_empty():
+		return
+	var target_slot: SlotState = eligible[RngService.roll_int(
+		"upgrade_slot_random_%s" % relic_id, 0, eligible.size() - 1
+	)]
+	var all_colors := [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]
+	all_colors.erase(target_slot.slot_type)
+	var dual_color: String = all_colors[RngService.roll_int(
+		"upgrade_slot_dual_color_%s" % relic_id, 0, all_colors.size() - 1
+	)]
+	target_slot.dual_type = dual_color
+	state.log("[Relic] %s -> upgraded %s slot to dual(%s/%s)" % [
+		relic_id, target_slot.slot_type, target_slot.slot_type, dual_color
+	])
+	var run := RunService.get_run()
+	if run != null:
+		run.add_slot_upgrade(target_slot.slot_type, dual_color)
+	if not once_flag.is_empty():
+		var rt2 := RunService.get_relic_runtime(relic_id)
+		if rt2 != null:
+			rt2.flags[once_flag] = true
+		RunService.save_run()
+
+
+## replace_gem_random：随机将玩家某个槽的宝石替换为另一个随机宝石
 func _action_replace_gem_random(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary = {}) -> void:
 	var condition: String = str(effect.get("condition", ""))
 	if condition == "killer_is_player":
@@ -286,23 +377,83 @@ func _action_replace_gem_random(relic_id: String, effect: Dictionary, state: Gam
 			RunService.save_run()
 
 
+## apply_max_hp_reduction：减少玩家最大 HP（ratio = 比例，如 0.3 = 减少30%）
+func _action_apply_max_hp_reduction(relic_id: String, effect: Dictionary, state: GameState) -> void:
+	var once_flag: String = str(effect.get("once_per_run", ""))
+	if not once_flag.is_empty():
+		var rt := RunService.get_relic_runtime(relic_id)
+		if rt != null and rt.flags.get(once_flag, false):
+			return
+	var player := state.get_player()
+	if player == null:
+		return
+	var ratio: float = float(effect.get("ratio", 0.3))
+	var reduction: int = maxi(1, int(float(player.max_hp) * ratio))
+	player.max_hp = maxi(1, player.max_hp - reduction)
+	player.hp = mini(player.hp, player.max_hp)
+	state.log("[Relic] %s -> player max_hp reduced by %d (now %d)" % [relic_id, reduction, player.max_hp])
+	if not once_flag.is_empty():
+		var rt2 := RunService.get_relic_runtime(relic_id)
+		if rt2 != null:
+			rt2.flags[once_flag] = true
+		RunService.save_run()
+
+
+## apply_weak_on_insert_target：嫁祸——玩家将宝石从敌人身上拔出再嵌入另一敌人时，施加虚弱
+## condition: "insert_to_enemy_from_enemy" 要求 payload.from_uid 是敌人、unit_uid 是敌人
+func _action_apply_weak_on_insert_target(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
+	var condition: String = str(effect.get("condition", ""))
+	if condition == "insert_to_enemy_from_enemy":
+		var unit_uid: String = str(payload.get("unit_uid", ""))
+		var from_uid: String = str(payload.get("from_uid", ""))
+		var target_unit: UnitState = state.units.get(unit_uid, null)
+		if target_unit == null or target_unit.team != Constants.TEAM_ENEMY:
+			return
+		var from_unit: UnitState = state.units.get(from_uid, null)
+		if from_unit == null or from_unit.team != Constants.TEAM_ENEMY:
+			return
+	StatusRules.apply_vulnerable(state, state.units.get(str(payload.get("unit_uid", "")), null), 1, relic_id)
+	state.log("[Relic] %s -> 嫁祸：对 %s 施加易伤" % [relic_id, payload.get("unit_uid", "?")])
+
+
+## random_gem_transform_one：每回合开始时随机将场上一颗宝石变为另一颗（包含地块宝石）
+func _action_random_gem_transform_one(relic_id: String, state: GameState) -> void:
+	var all_gem_uids: Array[String] = []
+	for gem_uid in state.gems.keys():
+		all_gem_uids.append(str(gem_uid))
+	if all_gem_uids.is_empty():
+		return
+	var idx: int = RngService.roll_int("mini_casino_pick_%s_%d" % [relic_id, state.turn_index], 0, all_gem_uids.size() - 1)
+	var target_uid: String = all_gem_uids[idx]
+	var target_gem: GemState = state.gems.get(target_uid, null)
+	if target_gem == null:
+		return
+	var old_id := target_gem.gem_id
+	var new_id := DataRegistry.roll_spawnable_gem_id("mini_casino_roll_%s_%d" % [relic_id, state.turn_index])
+	if new_id.is_empty() or new_id == old_id:
+		return
+	target_gem.gem_id = new_id
+	target_gem.def_overrides = {}
+	state.log("[Relic] %s -> 微型赌场：%s 变为 %s" % [relic_id, old_id, new_id])
+
+
 # ─── Modifier 求值 ────────────────────────────────────────────────────────────
 
-## modifier entry 格式：
-##   乘数: {"modifier": "attack_damage_mult", "value": 1.3}
-##   加成: {"modifier": "move_bonus", "value": 1}
-##   bool: {"modifier": "forced_move_immune", "value": true}
-##   首次伤害吸收: {"modifier": "first_damage_absorb", "flag": "painkiller_used"}
-##   空槽乘数: {"modifier": "attack_damage_mult", "empty_slot_mult": 0.15}（每个空槽额外乘以 1+factor）
-##   概率加成: {"modifier": "move_bonus", "rng_chance": 0.4, "value": 1}（chance 概率触发，触发后返回 value）
-func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState, _ctx: Dictionary) -> Variant:
+func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState, ctx: Dictionary) -> Variant:
 	var modifier_id: String = str(effect.get("modifier", ""))
+
+	# 首次伤害吸收
 	if modifier_id == "first_damage_absorb":
 		var flag: String = str(effect.get("flag", "painkiller_%s_used" % relic_id))
 		if state.battle_temp_flags.has(flag):
 			return false
 		return true
-	# 空槽乘数：每个空槽额外乘以 (1 + factor)，基础值为 1.0
+
+	# 混沌发射器激活（bool）
+	if modifier_id == "chaos_launcher_active":
+		return bool(effect.get("value", false))
+
+	# 空槽倍数：每个空槽额外乘以 (1 + factor)，基础值 1.0
 	if effect.has("empty_slot_mult"):
 		var factor: float = float(effect.get("empty_slot_mult", 0.0))
 		var player := state.get_player()
@@ -312,24 +463,45 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 				if slot.gem_uid.is_empty():
 					empty_count += 1
 		return 1.0 + factor * float(empty_count)
-	# 概率触发加成：在 query_modifier 帧内按给定概率决定是否返回 value
+
+	# 每个空槽加成（extract/insert range）
+	if effect.has("per_empty_slot"):
+		var per: int = int(effect.get("per_empty_slot", 1))
+		var player := state.get_player()
+		var empty_count := 0
+		if player != null:
+			for slot in player.slots:
+				if slot.gem_uid.is_empty():
+					empty_count += 1
+		return per * empty_count
+
+	# 覆盖层移动消耗减少：需要 ctx.overlay_type 匹配
+	if modifier_id == "overlay_move_cost_reduction":
+		var overlays: Array = effect.get("overlays", [])
+		var ctx_overlay: String = str(ctx.get("overlay_type", ""))
+		if ctx_overlay.is_empty() or not (ctx_overlay in overlays):
+			return 0
+		return int(effect.get("value", 1))
+
+	# 概率触发加成
 	if effect.has("rng_chance"):
 		var chance: float = float(effect.get("rng_chance", 0.0))
 		var roll: float = float(RngService.roll_int("rng_chance_%s" % relic_id, 0, 999)) / 1000.0
 		if roll < chance:
 			return effect.get("value", 0)
 		return 0
+
 	# condition 前置检查
 	var cond: String = str(effect.get("condition", ""))
 	if not cond.is_empty():
 		if not _check_modifier_condition(cond, state):
-			var modifier_id2: String = str(effect.get("modifier", ""))
-			if modifier_id2.ends_with("_mult"):
+			if modifier_id.ends_with("_mult"):
 				return 1.0
-			elif modifier_id2.ends_with("_immune") or modifier_id2 == "first_damage_absorb":
+			elif modifier_id.ends_with("_immune") or modifier_id == "first_damage_absorb":
 				return false
 			else:
 				return 0
+
 	var val: Variant = effect.get("value", 0)
 	return val
 
@@ -347,8 +519,31 @@ func _check_modifier_condition(condition: String, state: GameState) -> bool:
 					if gem != null and gem.gem_id == Constants.GEM_SPLIT:
 						return true
 			return false
+		"player_hp_low":
+			var player := state.get_player()
+			if player == null:
+				return false
+			return float(player.hp) / float(maxi(player.max_hp, 1)) < 0.3
 		_:
 			return true
+
+
+## 检查是否是黑槽宝石导致的死亡（unit_die payload 中的 reason 含 black gem 相关原因）
+func _check_black_gem_kill(state: GameState, payload: Dictionary) -> bool:
+	var reason: String = str(payload.get("reason", ""))
+	var black_reasons := ["explosion", "explosion_cross", "explosion_death", "poison", "arc", "fire", "ice_death"]
+	for r in black_reasons:
+		if reason.contains(r):
+			return true
+	# 检查击杀单位是否使用了黑色槽宝石
+	var killer_uid: String = str(payload.get("killer_uid", ""))
+	if killer_uid == state.player_uid:
+		var player := state.get_player()
+		if player != null:
+			for slot in player.slots:
+				if slot.slot_type == Constants.SLOT_BLACK and not slot.gem_uid.is_empty():
+					return true
+	return false
 
 
 # ─── 工具 ────────────────────────────────────────────────────────────────────

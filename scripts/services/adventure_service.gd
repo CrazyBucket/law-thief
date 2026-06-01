@@ -97,6 +97,55 @@ func get_room_scene_path(room_type: String) -> String:
 			return PLACEHOLDER_SCENE
 
 
+func room_id_for_cell(cell: Vector2i) -> String:
+	return "%d_%d" % [cell.x, cell.y]
+
+
+func current_room_id() -> String:
+	return room_id_for_cell(current_pos)
+
+
+func resolve_pending_room() -> Dictionary:
+	if not RunService.is_run_active():
+		return {}
+	var room_id := current_room_id()
+	var existing := RunService.get_resolved_room(room_id)
+	if not existing.is_empty():
+		return existing
+	var result := {
+		"room_id": room_id,
+		"room_type": pending_room_type,
+	}
+	match pending_room_type:
+		"REST_SITE":
+			var heal_result := RunService.heal_player_percent(0.2)
+			result["summary"] = "营地休整，恢复 %d 点生命，当前 %d/%d。" % [
+				int(heal_result.get("amount", 0)),
+				int(heal_result.get("after_hp", 0)),
+				int(heal_result.get("max_hp", 0)),
+			]
+		"EVENT":
+			var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, "normal_chest", 1)
+			var relic_id := str(offer[0]) if not offer.is_empty() else ""
+			if relic_id == "relic_placeholder":
+				relic_id = ""
+			result["relic_id"] = relic_id
+			if not relic_id.is_empty():
+				RunService.acquire_relic(relic_id)
+				var relic_def: Dictionary = DataRegistry.get_relic_def(relic_id)
+				result["summary"] = "神秘房间改为直接获得遗物：%s。" % str(relic_def.get("name", relic_id))
+			else:
+				result["summary"] = "神秘房间没有可发放的遗物。"
+		"SHOP":
+			result["summary"] = "商店节点先保留，占位等待后续接入商品与购买流程。"
+		"END":
+			result["summary"] = "已抵达终点节点，后续可在这里接 Boss 或章节结算。"
+		_:
+			result["summary"] = "房间已结算。"
+	RunService.mark_room_resolved(room_id, result)
+	return result
+
+
 func finish_room_and_return() -> void:
 	_sync_run_progress()
 	get_tree().change_scene_to_file(MAP_SCENE)
@@ -155,12 +204,12 @@ func import_progress(progress: Dictionary) -> bool:
 
 
 func _navigate_to_room(room_type: String) -> void:
+	GameService.pending_room_id = current_room_id()
 	match room_type:
 		"NORMAL_COMBAT", "ELITE_COMBAT":
 			var pool: Array = COMBAT_ENCOUNTERS.get(room_type, ["tutorial_001"])
 			var idx: int = (current_pos.x + current_pos.y + map_seed) % pool.size()
 			GameService.adventure_return = true
-			GameService.pending_room_id = "%d_%d" % [current_pos.x, current_pos.y]
 			GameService.start_battle(pool[idx])
 			RunService.save_run()
 			get_tree().change_scene_to_file(BATTLE_SCENE)

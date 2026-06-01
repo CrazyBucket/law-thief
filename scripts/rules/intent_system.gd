@@ -306,7 +306,7 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 		TileRules.on_unit_moved_through(state, unit, step)
 		state.on_unit_move.emit(unit.uid, from_pos, step)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": step})
-	TileRules.on_unit_entered(state, unit, previous)
+	TileRules.finish_voluntary_move(state, unit, previous)
 	return events
 
 

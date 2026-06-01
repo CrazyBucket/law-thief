@@ -17,7 +17,7 @@ const ROOM_DISPLAY: Dictionary = {
 	"ELITE_COMBAT": {"glyph": "💀", "label": "精", "color": Color(0.75, 0.25, 0.55)},
 	"REST_SITE": {"glyph": "🏕", "label": "营", "color": Color(0.35, 0.72, 0.95)},
 	"SHOP": {"glyph": "🛒", "label": "店", "color": Color(0.95, 0.82, 0.42)},
-	"EVENT": {"glyph": "❓", "label": "事", "color": Color(0.65, 0.55, 0.95)},
+	"EVENT": {"glyph": "🎁", "label": "遗", "color": Color(0.65, 0.55, 0.95)},
 }
 
 

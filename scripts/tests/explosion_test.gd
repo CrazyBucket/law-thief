@@ -22,10 +22,10 @@ func _test_cross_splash_damages_neighbor() -> void:
 	var player := state.get_player()
 	_equip_red_explosion(state, player)
 	var guards := _guards(state)
-	assert(guards.size() >= 2)
+	assert(guards.size() >= 1)
 	var primary := guards[0]
-	var neighbor := guards[1]
-	neighbor.pos = primary.pos + Vector2i(1, 0)
+	var neighbor := _spawn_guard(state, primary.pos + Vector2i(1, 0))
+	state.rebuild_occupancy()
 	var neighbor_hp := neighbor.hp
 	var result := ctrl.try_attack_cell(primary.pos)
 	assert(result.get("ok", false))
@@ -40,6 +40,8 @@ func _test_multicell_target_no_splash_self() -> void:
 	var player := state.get_player()
 	var slime := _find_slime(state)
 	_equip_red_explosion(state, player)
+	player.pos = slime.pos + Vector2i(-2, 0)
+	state.rebuild_occupancy()
 	var aim := slime.pos + Vector2i(1, 0)
 	assert(slime.pos in slime.occupied_cells())
 	assert(aim in slime.occupied_cells())
@@ -81,6 +83,8 @@ func _test_aim_cell_shifts_cross_center() -> void:
 	var player := state.get_player()
 	var slime := _find_slime(state)
 	_equip_red_explosion(state, player)
+	player.pos = slime.pos + Vector2i(-2, 0)
+	state.rebuild_occupancy()
 	var guard := _spawn_guard(state, slime.pos + Vector2i(2, 0))
 	var aim := slime.pos + Vector2i(1, 0)
 	var guard_hp := guard.hp

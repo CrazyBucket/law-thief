@@ -192,11 +192,15 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 	var pos_text := "(%d, %d)" % [int(current_pos.get("x", 0)), int(current_pos.get("y", 0))]
 	var has_run := not run_payload.is_empty()
 	var has_data := has_run or not flags.is_empty() or not records.is_empty()
+	var invalid_reason := str(meta.get("run_invalid_reason", ""))
 	var status := "空白档案"
 	var subtitle := "尚未开始"
 	if has_run:
 		status = "进行中"
 		subtitle = "种子 %d · 位置 %s" % [int(run_payload.get("map_seed", 0)), pos_text]
+	elif not invalid_reason.is_empty():
+		status = "进行中的这一局已失效"
+		subtitle = invalid_reason
 	elif has_data:
 		status = "历史档案"
 		subtitle = "累计胜利 %d 场" % wins
@@ -211,6 +215,7 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 		"is_active": resolved_slot_id == _active_slot_id,
 		"has_run": has_run,
 		"has_data": has_data,
+		"run_invalid_reason": invalid_reason,
 		"status": status,
 		"subtitle": subtitle,
 		"flag_count": flags.size(),

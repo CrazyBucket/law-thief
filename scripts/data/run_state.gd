@@ -13,6 +13,14 @@ var relic_runtime: Dictionary = {}
 var extra_slots: Array = []
 ## 玩家遗物赋予的持久槽位升级：Array of {"from_type": String, "to_dual_type": String}
 var upgraded_slots: Array = []
+var player_hp: int = -1
+var player_max_hp: int = -1
+## 与玩家槽位顺序一一对应；空字典代表该槽当前没有宝石
+var player_slot_gems: Array = []
+## 跨战斗携带的手持宝石快照
+var carried_gem: Dictionary = {}
+## room_id -> 结算结果快照，避免房间奖励在重进时重复结算
+var resolved_rooms: Dictionary = {}
 
 
 static func create(master_seed: int, map_seed: int) -> RunState:
@@ -77,6 +85,11 @@ func export_dict() -> Dictionary:
 		"relic_runtime": runtime_raw,
 		"extra_slots": extra_slots.duplicate(true),
 		"upgraded_slots": upgraded_slots.duplicate(true),
+		"player_hp": player_hp,
+		"player_max_hp": player_max_hp,
+		"player_slot_gems": player_slot_gems.duplicate(true),
+		"carried_gem": carried_gem.duplicate(true),
+		"resolved_rooms": resolved_rooms.duplicate(true),
 	}
 
 
@@ -102,4 +115,15 @@ static func from_dict(d: Dictionary) -> RunState:
 	var raw_upgraded: Variant = d.get("upgraded_slots", [])
 	if raw_upgraded is Array:
 		s.upgraded_slots = (raw_upgraded as Array).duplicate(true)
+	s.player_hp = int(d.get("player_hp", -1))
+	s.player_max_hp = int(d.get("player_max_hp", -1))
+	var raw_player_slot_gems: Variant = d.get("player_slot_gems", [])
+	if raw_player_slot_gems is Array:
+		s.player_slot_gems = (raw_player_slot_gems as Array).duplicate(true)
+	var raw_carried_gem: Variant = d.get("carried_gem", {})
+	if raw_carried_gem is Dictionary:
+		s.carried_gem = (raw_carried_gem as Dictionary).duplicate(true)
+	var raw_resolved_rooms: Variant = d.get("resolved_rooms", {})
+	if raw_resolved_rooms is Dictionary:
+		s.resolved_rooms = (raw_resolved_rooms as Dictionary).duplicate(true)
 	return s

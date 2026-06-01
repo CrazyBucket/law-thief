@@ -23,6 +23,10 @@ func _run_test() -> void:
 	_test_attack_range_uses_nearest_footprint_cell()
 	_test_approach_around_prop()
 	_test_clone_approaches_around_pillar()
+	_test_trample_occupancy_override()
+	_test_trample_star_relocation()
+	_test_trample_squeeze_all_blocked()
+	_test_trample_landing_terrain_settlement()
 	print("FISSION_SLIME_TEST_PASS")
 	quit()
 
@@ -260,6 +264,122 @@ func _test_clone_approaches_around_pillar() -> void:
 		var after := BoardUtils.path_distance_to_cell(state, end_pos, player.pos, clone.uid, {}, clone)
 		assert(after < before, "move should reduce path distance (%d -> %d)" % [before, after])
 	print("  [OK] clone approaches via path distance")
+
+
+## 践踏：玩家站在大史莱姆占格上时，执行践踏后玩家被震飞，史莱姆仍然占据原格
+func _test_trample_occupancy_override() -> void:
+	var state := _make_bare_state()
+	# 大史莱姆 2x2，锚点 (2,2)，占格 (2,2)(3,2)(2,3)(3,3)
+	var slime := _make_slime(state, Vector2i(2, 2))
+	# 玩家站在史莱姆某个占格上
+	var player := _make_player(state, Vector2i(3, 3))
+	assert(slime.occupied_cells().has(player.pos), "precondition: player on slime footprint")
+	var hp_before := player.hp
+	var events: Array[Dictionary] = []
+	events.append_array(FissionSlimeRules.execute_trample(state, slime, _trample_intent(slime, player)))
+	# 玩家应该被震飞（pos 已变）
+	assert(player.pos != Vector2i(3, 3), "player should be relocated after trample, got %s" % player.pos)
+	# 玩家受到伤害
+	assert(player.hp < hp_before, "player should take trample damage")
+	# 史莱姆仍然占据原位
+	assert(slime.pos == Vector2i(2, 2), "slime should remain at anchor, got %s" % slime.pos)
+	print("  [OK] trample: player relocated, slime stays, player takes damage")
+
+
+## 践踏：星状落点搜索——玩家优先落在距离 1 的合法空格
+func _test_trample_star_relocation() -> void:
+	var state := _make_bare_state()
+	var slime := _make_slime(state, Vector2i(2, 2))
+	# 玩家站在 (3,3) 被踩
+	var player := _make_player(state, Vector2i(3, 3))
+	var events: Array[Dictionary] = []
+	events.append_array(FissionSlimeRules.execute_trample(state, slime, _trample_intent(slime, player)))
+	# 距离 (3,3) 最近的合法空格应在距离 ≤ 2 以内
+	var dist := BoardUtils.manhattan(Vector2i(3, 3), player.pos)
+	assert(dist <= 2, "player should land within ring 2 of origin (3,3), got dist=%d pos=%s" % [dist, player.pos])
+	print("  [OK] trample star relocation: player lands within ring 2")
+
+
+## 践踏：全堵死时触发空间挤压惩罚伤害，玩家停留在原位（保底保留）
+func _test_trample_squeeze_all_blocked() -> void:
+	var state := _make_bare_state()
+	var slime := _make_slime(state, Vector2i(0, 0))
+	# 玩家在 (1,1)（史莱姆 footprint 内）
+	var player := _make_player(state, Vector2i(1, 1))
+	# 围死 (1,1) 周围所有合法格（距离 1 和 2 的可用格用实体或单位堵死）
+	# 在 3x3 角落，距离 1 的格子有限，用临时单位填满
+	state.add_entity(EntityState.create("e1", Constants.ENTITY_ROCK, Vector2i(0, 1)))
+	state.add_entity(EntityState.create("e2", Constants.ENTITY_ROCK, Vector2i(1, 0)))
+	state.add_entity(EntityState.create("e3", Constants.ENTITY_ROCK, Vector2i(0, 2)))
+	state.add_entity(EntityState.create("e4", Constants.ENTITY_ROCK, Vector2i(2, 0)))
+	state.add_entity(EntityState.create("e5", Constants.ENTITY_ROCK, Vector2i(2, 1)))
+	state.add_entity(EntityState.create("e6", Constants.ENTITY_ROCK, Vector2i(1, 2)))
+	state.add_entity(EntityState.create("e7", Constants.ENTITY_ROCK, Vector2i(2, 2)))
+	# 越界格：(-1,*) (*,-1) 不需要堵，find_star_relocation_cell 会跳过
+	var hp_before := player.hp
+	var events: Array[Dictionary] = []
+	events.append_array(FissionSlimeRules.execute_trample(state, slime, _trample_intent(slime, player)))
+	# 挤压惩罚伤害
+	assert(player.hp < hp_before, "squeezed player should take squeeze damage")
+	print("  [OK] trample squeeze: all blocked, player takes squeeze penalty")
+
+
+## 践踏：落点有地刺时，结算地刺伤害（落点地形二次结算）
+func _test_trample_landing_terrain_settlement() -> void:
+	var state := _make_bare_state()
+	var slime := _make_slime(state, Vector2i(2, 2))
+	var player := _make_player(state, Vector2i(3, 3))
+	# 把距离 (3,3) 最近的合法落点（优先上方 (3,2)）改成地刺
+	# 先模拟找到落点，然后在那里放地刺
+	var reloc := BoardUtils.find_star_relocation_cell(state, Vector2i(3, 3), player.uid)
+	var landing: Vector2i = reloc.get("pos", Vector2i(3, 2))
+	state.add_entity(EntityState.create("spike_land", Constants.ENTITY_SPIKE, landing))
+	var hp_before := player.hp
+	var events: Array[Dictionary] = []
+	events.append_array(FissionSlimeRules.execute_trample(state, slime, _trample_intent(slime, player)))
+	# 践踏伤害 + 地刺伤害，总血量应低于只受践踏伤害
+	assert(player.hp < hp_before - Constants.FISSION_SLIME_TRAMPLE_DAMAGE, "landing spike should add extra damage on top of trample")
+	print("  [OK] trample landing terrain: spike damage applied after relocation")
+
+
+func _trample_intent(slime: UnitState, target: UnitState) -> IntentState:
+	var intent := IntentState.new()
+	intent.type = "trample"
+	intent.source_uid = slime.uid
+	intent.target_uid = target.uid
+	intent.path = []
+	intent.target_pos = slime.pos
+	intent.damage = Constants.FISSION_SLIME_TRAMPLE_DAMAGE
+	return intent
+
+
+func _make_bare_state() -> GameState:
+	var state := GameState.new()
+	state.board_size = Constants.BOARD_SIZE
+	state.units = {}
+	return state
+
+
+func _make_slime(state: GameState, pos: Vector2i) -> UnitState:
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	var uid := reg.next_runtime_uid("slime")
+	var unit := UnitState.from_def(uid, "unit_fission_slime", Constants.TEAM_ENEMY, pos, reg.get_unit_def("unit_fission_slime"))
+	state.register_unit(unit)
+	return unit
+
+
+func _make_player(state: GameState, pos: Vector2i) -> UnitState:
+	var unit := UnitState.new()
+	unit.uid = "player"
+	unit.team = Constants.TEAM_PLAYER
+	unit.pos = pos
+	unit.hp = 20
+	unit.max_hp = 20
+	unit.alive = true
+	unit.footprint_size = Vector2i(1, 1)
+	state.register_unit(unit)
+	state.player_uid = unit.uid
+	return unit
 
 
 func _spawn_dummy(state: GameState, pos: Vector2i) -> UnitState:

@@ -146,6 +146,15 @@ static func execute(
 
 static func _phase_prepare(ctx: AttackContext) -> void:
 	_gem_hooks_prepare(ctx)
+	# 破损护目镜：攻击命中率降低，玩家攻击有概率强制 miss
+	if ctx.attacker.uid == ctx.state.player_uid:
+		var registry := _relic_effect_registry()
+		if registry != null:
+			var miss_chance: float = float(registry.query_modifier("attack_miss_chance", ctx.state))
+			if miss_chance > 0.0:
+				var rng := _rng_service()
+				if rng != null and bool(rng.chance("goggles_miss_%d" % ctx.state.turn_index, miss_chance)):
+					ctx.payload["force_miss"] = true
 
 
 static func _phase_damage_calculate(ctx: AttackContext) -> void:
@@ -157,7 +166,11 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	if bonus_damage > 0:
 		ctx.base_damage += bonus_damage
 	if ctx.has_tag(TAG_SPLIT_SHOT):
-		ctx.base_damage = maxi(1, int(ctx.base_damage * Constants.SPLIT_ATTACK_DAMAGE_RATIO))
+		var _split_registry := _relic_effect_registry()
+		var split_red_ratio := Constants.SPLIT_ATTACK_DAMAGE_RATIO
+		if _split_registry != null:
+			split_red_ratio = _split_registry.query_override_modifier("split_red_damage_ratio", ctx.state, split_red_ratio)
+		ctx.base_damage = maxi(1, int(ctx.base_damage * split_red_ratio))
 	if ctx.target == null:
 		ctx.final_damage = 0
 		return
@@ -184,14 +197,7 @@ static func _phase_hit(ctx: AttackContext) -> void:
 
 	if ctx.has_tag(TAG_RANGED):
 		var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
-		if ctx.has_tag(TAG_SPLIT_SHOT):
-			_push_projectile_event(ctx, from_cell, ctx.aim_cell)
-		else:
-			var impact_cell := BoardUtils.resolve_projectile_impact(ctx.state, from_cell, ctx.aim_cell)
-			_push_projectile_event(ctx, from_cell, impact_cell)
-			if impact_cell != ctx.aim_cell:
-				ctx.target = null
-				ctx.final_damage = 0
+		_push_projectile_event(ctx, from_cell, ctx.aim_cell)
 	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, ctx.aim_cell)
 
 	var dealt := 0
@@ -204,12 +210,24 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	if dealt > 0 and ctx.target != null:
 		_ContactResolver.on_attack_contact(ctx.state, ctx.attacker, ctx.target)
 		_gem_hooks_on_hit(ctx)
+		# 混沌发射器：命中时随机附加一种元素/机制状态
+		if ctx.attacker.uid == ctx.state.player_uid and ctx.target.alive:
+			var _chaos_registry := _relic_effect_registry()
+			if _chaos_registry != null and bool(_chaos_registry.query_modifier("chaos_launcher_active", ctx.state)):
+				_apply_chaos_launcher_effect(ctx)
 		if ctx.has_tag(TAG_KNOCKBACK) and ctx.target.alive:
 			_Displacement.knockback(ctx.state, ctx.target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 		if ctx.has_tag(TAG_FIRE_ON_HIT) and ctx.target.alive:
 			StatusRules.apply_burning(ctx.state, ctx.target, 1, ctx.attacker.uid)
 		if ctx.has_tag(TAG_SLOW_ON_HIT) and ctx.target.alive:
 			GemEffects.apply_ice_hit_effect(ctx.state, ctx.target, ctx.attacker.uid)
+		# 应急撬棍：命中时若目标有护甲锁槽位，对每个护甲锁附加结构伤害并尝试解锁
+		if ctx.attacker.uid == ctx.state.player_uid and ctx.target.alive:
+			var _registry := _relic_effect_registry()
+			if _registry != null:
+				var break_bonus: int = int(_registry.query_modifier("armor_lock_break_bonus", ctx.state))
+				if break_bonus > 0:
+					_apply_crowbar_break(ctx, break_bonus)
 
 	if ctx.has_tag(TAG_EXPLOSIVE):
 		_apply_cross_explosion(ctx)
@@ -307,6 +325,40 @@ static func _gem_hooks_on_hit(ctx: AttackContext) -> void:
 
 static func _gem_hooks_on_kill(ctx: AttackContext) -> void:
 	pass
+
+
+## 混沌发射器：命中时随机附加一种基础元素状态
+static func _apply_chaos_launcher_effect(ctx: AttackContext) -> void:
+	var rng := _rng_service()
+	if rng == null or ctx.target == null or not ctx.target.alive:
+		return
+	var effects := ["poison", "burning", "arc_proc", "fire_on_hit", "slow"]
+	var pick: int = int(rng.roll_int("chaos_launcher_%d" % ctx.state.turn_index, 0, effects.size() - 1))
+	match effects[pick]:
+		"poison":
+			StatusRules.apply_poison(ctx.state, ctx.target, 1, 0, ctx.attacker.uid)
+		"burning":
+			StatusRules.apply_burning(ctx.state, ctx.target, 1, ctx.attacker.uid)
+		"arc_proc":
+			GemEffects.apply_arc_bounce_from_victim(ctx.state, ctx.target, ctx.attacker, ctx.base_damage, ctx.events)
+		"fire_on_hit":
+			TileRules.create_fire(ctx.state, ctx.target.pos)
+		"slow":
+			GemEffects.apply_ice_hit_effect(ctx.state, ctx.target, ctx.attacker.uid)
+	ctx.state.log("[Relic] relic_chaos_launcher -> %s 附加 %s" % [ctx.target.uid, effects[pick]])
+
+
+## 应急撬棍：对目标每个护甲锁槽位造成额外结构拆除伤害，足够伤害时解锁
+static func _apply_crowbar_break(ctx: AttackContext, break_damage: int) -> void:
+	if ctx.target == null or not ctx.target.alive:
+		return
+	for slot in ctx.target.slots:
+		if not slot.locked or slot.lock_type != Constants.LOCK_ARMOR:
+			continue
+		var dealt := CombatRules.apply_damage(ctx.state, ctx.target, break_damage, ctx.attacker.uid, "crowbar_break")
+		if dealt > 0:
+			ctx.push_damage_event(ctx.target.pos, dealt)
+		StatusRules.apply_exposed(ctx.state, ctx.target, slot, ctx.state.turn_index)
 
 
 static func _trigger_red_active(ctx: AttackContext) -> void:

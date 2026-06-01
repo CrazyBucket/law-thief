@@ -128,7 +128,11 @@ static func intercept_damage_for_split(state: GameState, unit: UnitState, source
 		return damage
 	if not _behavior_for(unit).should_trigger_split_blue(unit, reason):
 		return damage
-	var redirect_amount := int(damage * Constants.SPLIT_DAMAGE_REDIRECT_RATIO)
+	var _split_blue_registry := _relic_effect_registry()
+	var split_blue_ratio: float = Constants.SPLIT_DAMAGE_REDIRECT_RATIO
+	if _split_blue_registry != null:
+		split_blue_ratio = _split_blue_registry.query_override_modifier("split_blue_redirect_ratio", state, split_blue_ratio)
+	var redirect_amount := int(damage * split_blue_ratio)
 	if redirect_amount <= 0:
 		return damage
 	var candidates: Array[UnitState] = []
@@ -234,6 +238,12 @@ static func explode_cross_at(
 						state, center_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
 					)
 	var splashed: Dictionary = {}
+	if center_damage > 0:
+		var center_unit_check := state.get_unit_at(center)
+		if center_unit_check != null and center_unit_check.alive \
+				and center_unit_check.uid != source_uid \
+				and (exclude_unit_uid.is_empty() or center_unit_check.uid != exclude_unit_uid):
+			splashed[center_unit_check.uid] = true
 	var knockback_targets: Array[UnitState] = []
 	for cell in BoardUtils.neighbors4(center):
 		if not BoardUtils.in_bounds(state, cell):
@@ -343,66 +353,12 @@ static func pull_unit_toward_with_events(
 	source_uid: String = ""
 ) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
-	if not unit.alive or steps <= 0:
-		return events
-	var start_pos := unit.pos
-	var current := unit.pos
-	for _i in range(steps):
-		if current == anchor:
-			break
-		var next := BoardUtils.step_toward(current, anchor)
-		if next == current:
-			break
-		if not BoardUtils.in_bounds(state, next):
-			break
-		if not BoardUtils.unit_footprint_passable(state, unit, next, unit.uid):
-			break
-		var blocker: UnitState = state.get_unit_at(next)
-		if blocker != null:
-			events.append_array(_apply_gravity_collision(state, unit, blocker, source_uid))
-			break
-		var from_pos := unit.pos
-		unit.facing = UnitState.facing_from_step(from_pos, next)
-		state.move_unit(unit, next)
-		TileRules.on_unit_moved_through(state, unit, next)
-		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
-		current = next
-	if unit.pos != start_pos:
-		TileRules.on_unit_position_changed(state, unit, start_pos)
-		var enter_opts := {"forced": true, "source_uid": source_uid}
-		TileRules.on_unit_entered(state, unit, start_pos, enter_opts)
-		GemEffects.on_forced_displacement(state, unit, events)
-	return events
-
-
-static func _apply_gravity_collision(
-	state: GameState,
-	mover: UnitState,
-	blocker: UnitState,
-	source_uid: String
-) -> Array[Dictionary]:
-	var events: Array[Dictionary] = []
-	if not mover.alive or not blocker.alive:
-		return events
-	state.log("%s 与 %s 引力碰撞" % [mover.uid, blocker.uid])
-	var mover_dealt := CombatRules.apply_damage(
-		state,
-		mover,
-		Constants.GRAVITY_COLLISION_DAMAGE,
-		blocker.uid,
-		"gravity_collision"
+	_Displacement.pull_toward(
+		state, unit, anchor, steps, source_uid, events,
+		-1,   # 按实际位移格数自动算碰撞伤
+		false,
+		true
 	)
-	var blocker_dealt := CombatRules.apply_damage(
-		state,
-		blocker,
-		Constants.GRAVITY_COLLISION_DAMAGE,
-		source_uid if not source_uid.is_empty() else mover.uid,
-		"gravity_collision"
-	)
-	if mover_dealt > 0:
-		events.append({"type": "damage", "pos": mover.pos, "damage": mover_dealt, "is_crit": false})
-	if blocker_dealt > 0:
-		events.append({"type": "damage", "pos": blocker.pos, "damage": blocker_dealt, "is_crit": false})
 	return events
 
 
@@ -426,11 +382,21 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 		TIMING_TURN_START:
 			if slot.slot_type != Constants.SLOT_BLUE:
 				return false
-			return _run_unit_turn_start_effect(state, owner, gem)
+			var triggered := _run_unit_turn_start_effect(state, owner, gem)
+			if triggered:
+				var _rr := _relic_effect_registry()
+				if _rr != null:
+					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
+			return triggered
 		TIMING_OWNER_DAMAGED:
 			if slot.slot_type != Constants.SLOT_BLUE:
 				return false
-			return _run_unit_damaged_effect(state, owner, gem, ctx)
+			var triggered := _run_unit_damaged_effect(state, owner, gem, ctx)
+			if triggered:
+				var _rr := _relic_effect_registry()
+				if _rr != null:
+					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
+			return triggered
 		TIMING_ON_DEATH:
 			if slot.slot_type != Constants.SLOT_BLACK:
 				return false
@@ -813,11 +779,14 @@ static func apply_arc_bounce_from_victim(
 	if not victim.alive:
 		return
 	var arc_damage := _calc_arc_damage(base_damage, state)
+	var registry := _relic_effect_registry()
+	var bounce_count: int = 1 + (int(registry.query_modifier("arc_bounce_count_bonus", state)) if registry != null else 0)
+	var hit_uids: Dictionary = {victim.uid: true, attacker.uid: true}
 	var candidates: Array[UnitState] = []
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		if unit.uid == victim.uid or unit.uid == attacker.uid:
+		if hit_uids.has(unit.uid):
 			continue
 		if BoardUtils.chebyshev(victim.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
 			candidates.append(unit)
@@ -826,8 +795,16 @@ static func apply_arc_bounce_from_victim(
 	var rng := _rng_service()
 	if rng == null:
 		return
-	var bounce_target: UnitState = candidates[int(rng.roll_int("gem_arc_bounce_%s" % attacker.uid, 0, candidates.size() - 1))]
-	_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
+	var bounced := 0
+	var i := 0
+	while bounced < bounce_count and not candidates.is_empty():
+		var pick_idx: int = int(rng.roll_int("gem_arc_bounce_%s_%d" % [attacker.uid, i], 0, candidates.size() - 1))
+		var bounce_target: UnitState = candidates[pick_idx]
+		_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
+		hit_uids[bounce_target.uid] = true
+		candidates.erase(bounce_target)
+		bounced += 1
+		i += 1
 
 
 ## 兼容旧调用名（攻击管线）
@@ -1003,6 +980,9 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 	clone.footprint_size = Vector2i(1, 1)
 	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
 	var ratio: float = _behavior_for(owner).split_clone_ratio(owner)
+	var _split_black_registry := _relic_effect_registry()
+	if _split_black_registry != null and owner.team == Constants.TEAM_PLAYER:
+		ratio = _split_black_registry.query_override_modifier("split_black_stat_ratio", state, ratio)
 	clone.base_attack = ceili(owner.base_attack * ratio)
 	clone.armor = ceili(owner.armor * ratio)
 	clone.move_points = ceili(owner.move_points * ratio)

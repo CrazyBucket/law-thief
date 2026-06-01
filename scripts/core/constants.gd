@@ -163,9 +163,9 @@ const STONE_BOW_KITE_MIN_RANGE := 2        # 低于此距离优先后撤
 const FISSION_SLIME_HP_ROLL_MAX := 6
 const FISSION_SLIME_SPLIT_STAT_RATIO := 0.5
 const FISSION_SLIME_SLAM_PUSH_STEPS := 1
+const FISSION_SLIME_TRAMPLE_DAMAGE := 3
 const DAMAGE_REASON_SLAM := "slam_attack"
-const DISPLACEMENT_CHAIN_MAX_DEPTH := 8
-const DISPLACEMENT_LANDING_SCAN := 6
+const DAMAGE_REASON_TRAMPLE := "trample"
 
 # ─── 地块语义标签 ──────────────────────────────────────────────────────────────
 # 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部

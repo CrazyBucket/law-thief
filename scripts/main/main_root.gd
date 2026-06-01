@@ -116,7 +116,11 @@ func _refresh_all() -> void:
 		str(active_slot.get("subtitle", "尚未开始")),
 		str(active_slot.get("last_played_text", "未记录")),
 	]
-	_footer_hint.text = "开始/继续会切换到流程场景；存档、成就、图鉴、设置都通过弹窗查看。"
+	var run_invalid_reason := str(active_slot.get("run_invalid_reason", ""))
+	if run_invalid_reason.is_empty():
+		_footer_hint.text = "开始/继续会切换到流程场景；存档、成就、图鉴、设置都通过弹窗查看。"
+	else:
+		_footer_hint.text = "当前进行中的这一局已失效：%s" % run_invalid_reason
 	_bottom_info.text = "%s  ·  成就 %d/%d  ·  遗物 %d  ·  敌人 %d" % [
 		SaveService.get_active_slot_label(),
 		int(achievement_summary.get("unlocked", 0)),

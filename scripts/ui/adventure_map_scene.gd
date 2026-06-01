@@ -7,11 +7,12 @@ const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 @onready var _board: _IsometricBoard = $BoardLayer/IsometricBoard
 @onready var _title: Label = $HudLayer/TopBar/HBox/Title
 @onready var _hint: Label = $HudLayer/TopBar/HBox/Hint
-@onready var _seed_label: Label = $HudLayer/TopBar/HBox/SeedLabel
+@onready var _seed_label: Label = $HudLayer/TopBar/VBox/HBox/SeedLabel
+@onready var _run_summary: Label = $HudLayer/TopBar/VBox/RunSummary
 @onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title
 @onready var _preview_body: RichTextLabel = $HudLayer/PreviewPanel/VBox/Body
-@onready var _back_btn: Button = $HudLayer/TopBar/HBox/BackBtn
-@onready var _regen_btn: Button = $HudLayer/TopBar/HBox/RegenBtn
+@onready var _back_btn: Button = $HudLayer/TopBar/VBox/HBox/BackBtn
+@onready var _regen_btn: Button = $HudLayer/TopBar/VBox/HBox/RegenBtn
 
 var _map_state: GameState = null
 
@@ -35,6 +36,7 @@ func _apply_theme() -> void:
 	_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_seed_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	_run_summary.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
 
 
 func _rebuild_board() -> void:
@@ -54,6 +56,7 @@ func _refresh_hud() -> void:
 	_title.text = "%s · 冒险地图" % SaveService.get_active_slot_label()
 	_hint.text = "当前：%s %s  |  层级 L%d  |  点击高亮相邻格前进" % [display["glyph"], display["label"], int(node.layer)]
 	_seed_label.text = "种子 %d" % AdventureService.map_seed
+	_run_summary.text = _build_run_summary_text()
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
@@ -74,10 +77,13 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type)
 	var reachable: bool = AdventureService.can_enter_cell(cell)
 	var is_current: bool = (cell == AdventureService.current_pos)
+	var room_id := AdventureService.room_id_for_cell(cell)
+	var resolved: bool = RunService.is_room_resolved(room_id)
 	_preview_title.text = "%s %s" % [display["glyph"], display["label"]]
 	var lines: PackedStringArray = PackedStringArray([
 		"[color=#c8ccd8]层数：[/color] L%d" % node.layer,
 		"[color=#c8ccd8]坐标：[/color] (%d, %d)" % [cell.x, cell.y],
+		"[color=#c8ccd8]状态：[/color] %s" % ("[color=#8fd18a]已结算[/color]" if resolved else "[color=#f2d46a]未结算[/color]"),
 	])
 	if is_current:
 		lines.append("[color=#f2d46a]当前位置[/color]")
@@ -99,3 +105,18 @@ func _on_regen_pressed() -> void:
 	AdventureService.start_new_run(int(Time.get_unix_time_from_system()) % 100000)
 	_rebuild_board()
 	_refresh_hud()
+
+
+func _build_run_summary_text() -> String:
+	var snapshot := RunService.get_player_run_snapshot()
+	if snapshot.is_empty():
+		return "HP --/--  ·  遗物 0  ·  手持 无"
+	var carried_gem_name := str(snapshot.get("carried_gem_name", ""))
+	if carried_gem_name.is_empty():
+		carried_gem_name = "无"
+	return "HP %d/%d  ·  遗物 %d  ·  手持 %s" % [
+		int(snapshot.get("hp", 0)),
+		int(snapshot.get("max_hp", 0)),
+		int(snapshot.get("owned_relic_count", 0)),
+		carried_gem_name,
+	]

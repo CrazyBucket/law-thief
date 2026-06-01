@@ -18,6 +18,11 @@ static func execute_custom_intent(
 			"handled": true,
 			"events": FissionSlimeRules.execute_slam(state, unit, intent),
 		}
+	if intent.type == "trample":
+		return {
+			"handled": true,
+			"events": FissionSlimeRules.execute_trample(state, unit, intent),
+		}
 	return EnemyBehavior.execute_custom_intent(state, unit, intent, _move_start_pos)
 
 

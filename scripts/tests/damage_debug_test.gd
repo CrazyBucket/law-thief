@@ -11,7 +11,7 @@ func _run() -> void:
 	_test_explosion_diagonal()
 	_test_armor_blocks_explosion()
 	_test_melee_attack()
-	_test_player_blocked_ranged_attack_rejected()
+	_test_player_ranged_attack_penetrates_obstacle()
 	print("DAMAGE_DEBUG_PASS")
 	quit()
 
@@ -81,7 +81,7 @@ func _test_melee_attack() -> void:
 	print("  [OK] melee attack deals damage (%d -> %d)" % [hp_before, player.hp])
 
 
-func _test_player_blocked_ranged_attack_rejected() -> void:
+func _test_player_ranged_attack_penetrates_obstacle() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
@@ -94,10 +94,9 @@ func _test_player_blocked_ranged_attack_rejected() -> void:
 	state.add_entity(prop)
 	var hp_before := guard.hp
 	var result := ctrl.try_attack_cell(guard.pos)
-	assert(not result.get("ok", false), "blocked ranged attack should fail")
-	assert(result.get("reason", "") == "射线被障碍物阻挡", "blocked attack should expose obstacle reason")
-	assert(guard.hp == hp_before, "blocked target should not lose hp")
-	print("  [OK] blocked ranged attack is rejected before execution")
+	assert(result.get("ok", false), "ranged attack should penetrate obstacles")
+	assert(guard.hp < hp_before, "target behind obstacle should take damage")
+	print("  [OK] ranged attack penetrates obstacle and damages target")
 
 
 func _force_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: String) -> void:

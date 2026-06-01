@@ -8,6 +8,18 @@ static func _relic_effect_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 
 
+static func _effective_extract_range(state: GameState) -> int:
+	var registry := _relic_effect_registry()
+	var bonus: int = int(registry.query_modifier("extract_range_bonus", state)) if registry != null else 0
+	return Constants.EXTRACT_RANGE + bonus
+
+
+static func _effective_insert_range(state: GameState) -> int:
+	var registry := _relic_effect_registry()
+	var bonus: int = int(registry.query_modifier("insert_range_bonus", state)) if registry != null else 0
+	return Constants.INSERT_RANGE + bonus
+
+
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
@@ -15,7 +27,7 @@ static func can_extract(state: GameState, actor: UnitState, target_unit: UnitSta
 		return _fail("槽位为空")
 	if not state.held_gem_uid.is_empty():
 		return _fail("手中已有宝石")
-	if BoardUtils.distance_between_units(actor, target_unit) > Constants.EXTRACT_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > _effective_extract_range(state):
 		return _fail("超出范围")
 	return _ok()
 
@@ -49,7 +61,7 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 		return _fail("槽位被锁定")
 	if not slot.is_empty():
 		return _fail("槽位已被占用")
-	if BoardUtils.distance_between_units(actor, target_unit) > Constants.INSERT_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	if gem != null:
@@ -76,7 +88,10 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	var registry := _relic_effect_registry()
 	if registry != null:
 		registry.fire_event("after_insert", state, {
-			"unit_uid": target_unit.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+			"unit_uid": target_unit.uid,
+			"gem_id": gem.gem_id,
+			"slot_type": slot.slot_type,
+			"from_uid": actor.uid,
 		})
 	IntentSystem.refresh_all_intents(state)
 	return _ok({"gem_uid": gem.uid})
@@ -126,7 +141,7 @@ static func can_extract_tile(state: GameState, actor: UnitState, tile: TileState
 		return _fail("槽位为空")
 	if not state.held_gem_uid.is_empty():
 		return _fail("手中已有宝石")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > Constants.EXTRACT_RANGE:
+	if BoardUtils.manhattan(actor.pos, tile.pos) > _effective_extract_range(state):
 		return _fail("超出范围")
 	return _ok()
 
@@ -155,7 +170,7 @@ static func can_insert_tile(state: GameState, actor: UnitState, tile: TileState,
 		return _fail("槽位被锁定")
 	if not slot.is_empty():
 		return _fail("槽位已被占用")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > Constants.INSERT_RANGE:
+	if BoardUtils.manhattan(actor.pos, tile.pos) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	if gem != null:

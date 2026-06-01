@@ -10,8 +10,9 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 func _ready() -> void:
 	_apply_theme()
+	var room_result := AdventureService.resolve_pending_room()
 	_title.text = "%s · %s" % [SaveService.get_active_slot_label(), AdventureService.pending_room_label]
-	_body.text = _placeholder_body(AdventureService.pending_room_type)
+	_body.text = _placeholder_body(AdventureService.pending_room_type, room_result)
 	BattleUiTheme.apply_button(_continue_btn, "end")
 	BattleUiTheme.apply_button(_back_btn, "ghost")
 
@@ -22,14 +23,17 @@ func _apply_theme() -> void:
 	_body.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 
 
-func _placeholder_body(room_type: String) -> String:
+func _placeholder_body(room_type: String, room_result: Dictionary = {}) -> String:
+	var summary := str(room_result.get("summary", ""))
+	if not summary.is_empty():
+		return summary
 	match room_type:
 		"REST_SITE":
-			return "营地场景占位\n后续可在这里放入治疗、移除负面状态、整理宝石与遗物事件。"
+			return "营地可用于恢复生命，当前先实现固定回血。"
 		"SHOP":
-			return "商店场景占位\n后续可接入货币、商品池、刷新与购买逻辑。"
+			return "商店节点暂时保留占位，后续再接商品与购买流程。"
 		"EVENT":
-			return "随机事件场景占位\n后续可扩展多分支文本、风险收益和局外解锁联动。"
+			return "问号节点已改为直接发放遗物。"
 		"END":
 			return "终点 / Boss 场景占位\n后续可接入章节结算、成就判定与通关演出。"
 		_:

@@ -45,6 +45,7 @@ static func sync_all_units_standing_ground(state: GameState) -> void:
 
 ## 单位进入格子时（主动移动与强制位移共用）
 ## opts.forced / opts.source_uid：强制位移踩入地刺时附加易伤
+## opts.skip_overlay：为 true 时跳过 overlay 进入效果（已由 on_unit_moved_through 处理过的最终格使用）
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i, opts: Dictionary = {}) -> void:
 	var tile := state.get_tile(unit.pos)
 
@@ -52,8 +53,8 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 
 	EntityRules.on_unit_entered(state, unit, opts)
 
-	# Overlay 进入效果（数据驱动）
-	_apply_enter_effects(state, unit, tile)
+	if not opts.get("skip_overlay", false):
+		_apply_enter_effects(state, unit, tile)
 
 
 ## 单位经过某格时触发（移动路径中间格）
@@ -79,6 +80,15 @@ static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos:
 	var new_tile := state.get_tile(unit.pos)
 	if not new_tile.has_modifier(Constants.TILE_MOD_FIRE):
 		StatusRules.clear_burning(unit)
+
+
+## 主动移动路径走完后的收尾：清 burning、触发 entity 钩子、避免 overlay 重复触发
+## 路径中间步已由 on_unit_moved_through 处理 overlay，落点只补 entity 钩子（skip_overlay=true）
+static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: Vector2i) -> void:
+	if unit.pos == start_pos:
+		return
+	on_unit_position_changed(state, unit, start_pos)
+	on_unit_entered(state, unit, start_pos, {"skip_overlay": true})
 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────
@@ -183,6 +193,10 @@ static func spread_fire(state: GameState) -> void:
 # ─── 内部工具 ──────────────────────────────────────────────────────────────────
 
 static func _apply_enter_effects(state: GameState, unit: UnitState, tile: TileState) -> void:
+	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
+	if tile_immune:
+		return
 	for modifier_type in _ENTER_EFFECTS.keys():
 		if tile.has_modifier(modifier_type):
 			_ENTER_EFFECTS[modifier_type].call(state, unit)

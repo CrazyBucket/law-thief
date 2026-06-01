@@ -62,38 +62,47 @@ mouse_filter = 2
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 56.0
+offset_bottom = 88.0
 grow_horizontal = 2
 
-[node name="HBox" type="HBoxContainer" parent="HudLayer/TopBar"]
+[node name="VBox" type="VBoxContainer" parent="HudLayer/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HBox" type="HBoxContainer" parent="HudLayer/TopBar/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Title" type="Label" parent="HudLayer/TopBar/HBox"]
+[node name="Title" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "冒险地图"
 
-[node name="Hint" type="Label" parent="HudLayer/TopBar/HBox"]
+[node name="Hint" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 14
 text = "点击相邻节点前进"
 
-[node name="SeedLabel" type="Label" parent="HudLayer/TopBar/HBox"]
+[node name="SeedLabel" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "种子 0"
 
-[node name="RegenBtn" type="Button" parent="HudLayer/TopBar/HBox"]
+[node name="RegenBtn" type="Button" parent="HudLayer/TopBar/VBox/HBox"]
 custom_minimum_size = Vector2(88, 36)
 layout_mode = 2
 text = "重新生成"
 
-[node name="BackBtn" type="Button" parent="HudLayer/TopBar/HBox"]
+[node name="BackBtn" type="Button" parent="HudLayer/TopBar/VBox/HBox"]
 custom_minimum_size = Vector2(88, 36)
 layout_mode = 2
 text = "主菜单"
+
+[node name="RunSummary" type="Label" parent="HudLayer/TopBar/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "HP 0/0  ·  遗物 0  ·  手持 无"
 
 [node name="PreviewPanel" type="PanelContainer" parent="HudLayer"]
 layout_mode = 1
@@ -126,5 +135,5 @@ text = "将鼠标移到棋盘格子上查看房间信息。"
 fit_content = true
 scroll_active = false
 
-[connection signal="pressed" from="HudLayer/TopBar/HBox/BackBtn" to="." method="_on_back_pressed"]
-[connection signal="pressed" from="HudLayer/TopBar/HBox/RegenBtn" to="." method="_on_regen_pressed"]
+[connection signal="pressed" from="HudLayer/TopBar/VBox/HBox/BackBtn" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HudLayer/TopBar/VBox/HBox/RegenBtn" to="." method="_on_regen_pressed"]

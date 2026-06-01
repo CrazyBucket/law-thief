@@ -14,7 +14,7 @@ const ROOM_LABELS: Dictionary = {
 	"ELITE_COMBAT":  "精英战斗",
 	"REST_SITE":     "营地",
 	"SHOP":          "商店",
-	"EVENT":         "随机事件",
+	"EVENT":         "遗物节点",
 }
 
 

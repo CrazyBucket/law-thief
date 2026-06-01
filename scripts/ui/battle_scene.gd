@@ -69,6 +69,9 @@ var _preview_visible_target: bool = false
 var _preview_fade_serial: int = 0
 var _relic_reward_overlay: Node = null
 var _held_gem_icon: TextureRect = null
+var _relic_bar_scroll: ScrollContainer = null
+var _relic_bar_vbox: VBoxContainer = null
+var _relic_bar_ids: Array[String] = []
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
@@ -96,6 +99,7 @@ func _ready() -> void:
 	_create_damage_text_manager()
 	_create_level_console()
 	_apply_animation_speed()
+	_setup_relic_bar()
 	_start_battle(GameService.pending_encounter_id)
 
 
@@ -664,6 +668,8 @@ func _finish_presentation() -> void:
 
 
 func _play_presented_events(events: Array) -> void:
+	if OS.is_debug_build():
+		EventValidator.assert_valid(events, "play_presented_events")
 	var i := 0
 	while i < events.size():
 		var ev: Dictionary = events[i]
@@ -832,7 +838,10 @@ func _apply_battle_end(result: String) -> void:
 		var room_id := GameService.pending_room_id
 		var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
 		if not offer.is_empty():
-			_show_relic_reward(offer, result)
+			var all_placeholder := offer.all(func(rid: String) -> bool:
+				return rid == "relic_placeholder"
+			)
+			_show_relic_reward(["relic_placeholder"] if all_placeholder else offer, result)
 			return
 	_finish_battle_and_navigate(result)
 
@@ -861,10 +870,12 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 	vbox.add_theme_constant_override("separation", 16)
 	root_ctrl.add_child(vbox)
 
+	var is_no_relics := offer.size() == 1 and offer[0] == "relic_placeholder"
+
 	var title := Label.new()
-	title.text = "选择遗物"
+	title.text = "无可选遗物" if is_no_relics else "选择遗物"
 	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED if is_no_relics else BattleUiTheme.TEXT_GOLD)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -891,8 +902,9 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 
 
 func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
+	var is_placeholder := bool(def.get("placeholder", false))
 	var panel := PanelContainer.new()
-	var rarity_color := _rarity_color(rarity)
+	var rarity_color := BattleUiTheme.TEXT_MUTED if is_placeholder else _rarity_color(rarity)
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
 	panel.custom_minimum_size = Vector2(180, 220)
 
@@ -928,11 +940,11 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	vb.add_child(desc_lbl)
 
 	var pick_btn := Button.new()
-	pick_btn.text = "选择"
+	pick_btn.text = "收下" if is_placeholder else "选择"
 	pick_btn.custom_minimum_size = Vector2(0, 40)
-	BattleUiTheme.apply_button(pick_btn, "end")
+	BattleUiTheme.apply_button(pick_btn, "ghost" if is_placeholder else "end")
 	pick_btn.pressed.connect(func() -> void:
-		_on_relic_chosen(relic_id, battle_result)
+		_on_relic_chosen("" if is_placeholder else relic_id, battle_result)
 	)
 	vb.add_child(pick_btn)
 
@@ -966,6 +978,14 @@ func _rarity_color(rarity: String) -> Color:
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 	if not relic_id.is_empty():
 		RunService.acquire_relic(relic_id)
+	if GameService.adventure_return and RunService.is_run_active():
+		RunService.mark_room_resolved(GameService.pending_room_id, {
+			"room_id": GameService.pending_room_id,
+			"room_type": AdventureService.pending_room_type,
+			"battle_result": battle_result,
+			"summary": "战斗房间已结算。",
+			"relic_id": relic_id,
+		})
 	if _relic_reward_overlay != null:
 		_relic_reward_overlay.queue_free()
 		_relic_reward_overlay = null
@@ -974,10 +994,18 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 
 func _finish_battle_and_navigate(result: String) -> void:
 	_record_enemy_codex_progress()
+	if result == "win" and _controller.state != null:
+		RunService.capture_player_battle_state(_controller.state)
+	elif result != "win" and RunService.is_run_active():
+		RunService.end_run()
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
 	if GameService.adventure_return:
 		GameService.adventure_return = false
-		AdventureService.finish_room_and_return()
+		if result == "win" and RunService.is_run_active():
+			AdventureService.finish_room_and_return()
+		else:
+			AdventureService.reset_local_state()
+			get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
@@ -1050,6 +1078,7 @@ func _refresh() -> void:
 	_refresh_turn_queue()
 	_refresh_inspect()
 	_refresh_action_buttons()
+	_refresh_relic_bar()
 	_board.queue_redraw()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -1579,6 +1608,75 @@ func _style_chip(label: Label, highlight: bool, color: Color) -> void:
 		return
 	label.add_theme_stylebox_override("normal", BattleUiTheme.chip_style(color))
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+
+
+func _setup_relic_bar() -> void:
+	var scroll := ScrollContainer.new()
+	scroll.name = "RelicBarScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.custom_minimum_size = Vector2(50, 0)
+	scroll.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	scroll.anchor_bottom = 1.0
+	scroll.anchor_top = 1.0
+	scroll.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	scroll.offset_left = 10.0
+	scroll.offset_bottom = -80.0
+	$HudLayer.add_child(scroll)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 5)
+	scroll.add_child(vbox)
+	_relic_bar_scroll = scroll
+	_relic_bar_vbox = vbox
+
+
+func _refresh_relic_bar() -> void:
+	if _relic_bar_vbox == null:
+		return
+	var owned: Array[String] = RunService.get_owned_relics() if RunService.is_run_active() else []
+	if owned == _relic_bar_ids:
+		return
+	_relic_bar_ids = owned.duplicate()
+	for child in _relic_bar_vbox.get_children():
+		child.queue_free()
+	var max_visible_h: float = get_viewport_rect().size.y * 0.55
+	var item_h: float = 44.0
+	var scroll_h: float = minf(float(owned.size()) * item_h, max_visible_h)
+	_relic_bar_scroll.custom_minimum_size = Vector2(50.0, scroll_h)
+	_relic_bar_scroll.size = Vector2(50.0, scroll_h)
+	for relic_id in owned:
+		_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
+
+
+func _create_relic_badge(relic_id: String) -> Control:
+	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
+	var rarity_col := _rarity_color(rarity)
+	var badge := PanelContainer.new()
+	badge.custom_minimum_size = Vector2(40, 40)
+	var style := StyleBoxFlat.new()
+	style.bg_color = rarity_col.darkened(0.55)
+	style.border_color = rarity_col
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(5)
+	style.set_content_margin_all(3)
+	badge.add_theme_stylebox_override("panel", style)
+	var name_str: String = str(def.get("name", relic_id))
+	var abbrev: String = name_str.left(2) if name_str.length() >= 2 else name_str
+	var lbl := Label.new()
+	lbl.text = abbrev
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", rarity_col.lightened(0.3))
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	badge.add_child(lbl)
+	var desc_str: String = str(def.get("desc", ""))
+	var tooltip_text: String = name_str
+	if not desc_str.is_empty():
+		tooltip_text += "\n" + desc_str
+	badge.tooltip_text = tooltip_text
+	return badge
 
 
 func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:

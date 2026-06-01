@@ -15,6 +15,7 @@ signal on_attack_hit(attacker_uid: String, target_uid: String, damage: int)
 signal on_damage_taken(unit_uid: String, amount: int, reason: String)
 signal on_unit_die(unit_uid: String, killer_uid: String, reason: String)
 signal on_unit_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
+signal on_forced_displacement(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, source_uid: String)
 
 var version: int = 1
 var run_seed: int = 0

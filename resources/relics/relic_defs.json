@@ -6,8 +6,8 @@
     "base_weight": 1.0,
     "unique": true,
     "effects": [
-      {"on": "battle_start", "action": "upgrade_slot",
-       "from_type": "blue", "to_dual_type": "red",
+      {"on": "battle_start", "action": "upgrade_slot_random",
+       "to_dual_color": "random",
        "once_per_run": "prism_upgraded"}
     ]
   },
@@ -19,7 +19,7 @@
     "unique": true,
     "effects": [
       {"on": "battle_start", "action": "add_slot",
-       "slot_type": "black",
+       "slot_type": "random",
        "once_per_run": "phase_wrench_added"}
     ]
   },
@@ -30,7 +30,7 @@
     "base_weight": 1.0,
     "unique": true,
     "effects": [
-      {"modifier": "attack_damage_bonus", "value": 2}
+      {"modifier": "chaos_launcher_active", "value": true}
     ]
   },
   "relic_autopsy_log": {
@@ -43,8 +43,8 @@
       {"type": "has_gem_color", "value": "black", "multiplier": 2.5}
     ],
     "effects": [
-      {"on": "unit_die", "action": "heal", "target": "player", "amount": 2,
-       "condition": "killer_is_player"}
+      {"on": "unit_die", "action": "heal", "target": "player", "amount": 1,
+       "condition": "black_gem_kill"}
     ]
   },
   "relic_empty_coffin": {
@@ -57,7 +57,11 @@
       {"type": "empty_slot_count_gte", "value": 2, "multiplier": 3.0}
     ],
     "effects": [
-      {"modifier": "attack_damage_mult", "empty_slot_mult": 0.2}
+      {"on": "battle_start", "action": "apply_max_hp_reduction",
+       "ratio": 0.3, "once_per_run": "empty_coffin_applied"},
+      {"on": "battle_start", "action": "add_slot",
+       "slot_type": "random",
+       "once_per_run": "empty_coffin_slot_added"}
     ]
   },
   "relic_empty_shell": {
@@ -69,7 +73,10 @@
     "weight_rules": [
       {"type": "empty_slot_count_gte", "value": 1, "multiplier": 2.0}
     ],
-    "effects": []
+    "effects": [
+      {"modifier": "extract_range_bonus", "per_empty_slot": 1},
+      {"modifier": "insert_range_bonus", "per_empty_slot": 1}
+    ]
   },
   "relic_night_heron_wings": {
     "name": "夜鹭翅膀",
@@ -77,7 +84,9 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"modifier": "tile_effect_immune", "value": true}
+    ]
   },
   "relic_frame_up": {
     "name": "嫁祸",
@@ -86,9 +95,8 @@
     "base_weight": 1.0,
     "unique": true,
     "effects": [
-      {"on": "unit_die", "action": "replace_gem_random",
-       "once_per_run": "frame_up_replaced",
-       "condition": "killer_is_player"}
+      {"on": "after_insert", "action": "apply_weak_on_insert_target",
+       "condition": "insert_to_enemy_from_enemy"}
     ]
   },
   "relic_mini_casino": {
@@ -99,7 +107,7 @@
     "unique": true,
     "unlock_condition": "class_gambler",
     "effects": [
-      {"modifier": "move_bonus", "rng_chance": 0.4, "value": 1}
+      {"on": "turn_start", "action": "random_gem_transform_one"}
     ]
   },
   "relic_slime_crown": {
@@ -113,7 +121,11 @@
       {"type": "has_gem", "value": "gem_split", "multiplier": 5.0}
     ],
     "effects": [
-      {"modifier": "attack_split_count", "value": 1,
+      {"modifier": "split_red_damage_ratio", "value": 0.8,
+       "condition": "has_gem_split"},
+      {"modifier": "split_blue_redirect_ratio", "value": 0.6,
+       "condition": "has_gem_split"},
+      {"modifier": "split_black_stat_ratio", "value": 0.5,
        "condition": "has_gem_split"}
     ]
   },
@@ -123,7 +135,9 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
-    "effects": []
+    "effects": [
+      {"modifier": "overlay_move_cost_reduction", "overlays": ["poison_fog", "fire"], "value": 1}
+    ]
   },
   "relic_cracked_amulet": {
     "name": "破损护符",
@@ -132,7 +146,7 @@
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"on": "battle_start", "action": "add_armor", "target": "player", "amount": 2}
+      {"on": "battle_start", "action": "add_armor", "target": "player", "amount": 3}
     ]
   },
   "relic_copper_wire": {
@@ -145,7 +159,7 @@
       {"type": "has_gem", "value": "gem_conductive", "multiplier": 3.0}
     ],
     "effects": [
-      {"modifier": "arc_damage_mult", "value": 1.3}
+      {"modifier": "arc_bounce_count_bonus", "value": 1}
     ]
   },
   "relic_broken_rib": {
@@ -154,7 +168,9 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
-    "effects": []
+    "effects": [
+      {"modifier": "collision_damage_mult", "value": 1.5}
+    ]
   },
   "relic_pressure_valve": {
     "name": "旧式压力阀",
@@ -165,7 +181,10 @@
     "weight_rules": [
       {"type": "has_gem_color", "value": "blue", "multiplier": 2.0}
     ],
-    "effects": []
+    "effects": [
+      {"on": "blue_gem_triggered", "action": "add_temp_move", "amount": 1,
+       "condition": "actor_is_player"}
+    ]
   },
   "relic_crowbar": {
     "name": "应急撬棍",
@@ -173,7 +192,9 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
-    "effects": []
+    "effects": [
+      {"modifier": "armor_lock_break_bonus", "value": 4}
+    ]
   },
   "relic_adrenaline": {
     "name": "肾上腺素",
@@ -181,7 +202,11 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
-    "effects": []
+    "effects": [
+      {"modifier": "move_bonus", "condition": "player_hp_low", "value": 1},
+      {"modifier": "extract_range_bonus", "condition": "player_hp_low", "value": 1},
+      {"modifier": "insert_range_bonus", "condition": "player_hp_low", "value": 1}
+    ]
   },
   "relic_reinforced_base": {
     "name": "加固底座",
@@ -193,7 +218,8 @@
       {"type": "slot_count_gte", "value": 3, "multiplier": 2.0}
     ],
     "effects": [
-      {"on": "after_insert", "action": "add_armor", "target": "player", "amount": 1}
+      {"on": "after_insert", "action": "add_armor", "target": "player",
+       "amount": 4, "condition": "insert_to_player"}
     ]
   },
   "relic_silver_cable": {
@@ -206,7 +232,9 @@
       {"type": "has_gem", "value": "gem_conductive", "multiplier": 2.5},
       {"type": "has_relic", "value": "relic_copper_wire", "multiplier": 2.0}
     ],
-    "effects": []
+    "effects": [
+      {"modifier": "arc_damage_mult", "value": 1.2}
+    ]
   },
   "relic_cracked_goggles": {
     "name": "破损护目镜",
@@ -214,7 +242,10 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
-    "effects": []
+    "effects": [
+      {"modifier": "attack_miss_chance", "value": 0.1},
+      {"modifier": "attack_damage_bonus", "value": 2}
+    ]
   },
   "relic_painkiller": {
     "name": "止痛药",
@@ -232,6 +263,19 @@
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
+    "effects": [
+      {"modifier": "forced_move_immune", "value": true},
+      {"modifier": "move_bonus", "value": -1}
+    ]
+  },
+  "relic_placeholder": {
+    "name": "破碎遗物",
+    "desc": "已残损，毫无用处。",
+    "rarity": "common",
+    "pool_types": [],
+    "base_weight": 0.0,
+    "unique": false,
+    "placeholder": true,
     "effects": []
   }
 }

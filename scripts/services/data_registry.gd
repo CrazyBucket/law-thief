@@ -76,6 +76,7 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	)
 	state.units[state.player_uid] = player
 	_apply_run_slot_overrides(player)
+	_restore_run_player_state(state, player)
 	for enemy_data in encounter.get("enemies", []):
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
@@ -342,8 +343,8 @@ func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array =
 			continue
 		if rarity == "boss" and float(source_weights.get("boss", 0.0)) <= 0.0:
 			continue
-		# unique 遗物不重复
-		if def.get("unique", false) and relic_id in owned_ids:
+		# 每局每种遗物只能拥有一次
+		if relic_id in owned_ids:
 			continue
 		# 解锁条件检查
 		var unlock_cond: String = str(def.get("unlock_condition", ""))
@@ -398,6 +399,7 @@ func roll_relic_for_source(
 
 
 ## 一次生成 count 个不重复的遗物 id（三选一 UI 用）
+## 可用遗物不足时，剩余位置填充占位遗物；全部为占位时上层 UI 应给出提示
 ## weight_ctx 同 roll_relic_for_source
 func roll_relic_offer(
 	domain: String,
@@ -414,9 +416,10 @@ func roll_relic_offer(
 			domain + "_%d" % i, source, excluded, unlock_flags, weight_ctx
 		)
 		if picked.is_empty():
-			break
-		result.append(picked)
-		excluded.append(picked)
+			result.append("relic_placeholder")
+		else:
+			result.append(picked)
+			excluded.append(picked)
 	return result
 
 
@@ -1128,6 +1131,54 @@ func _apply_run_slot_overrides(player: UnitState) -> void:
 				break
 		if not applied:
 			upgrades_applied += 1
+
+
+func _restore_run_player_state(state: GameState, player: UnitState) -> void:
+	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
+	if run_svc == null:
+		return
+	var run: RunState = run_svc.get_run()
+	if run == null:
+		return
+	if run.player_max_hp > 0:
+		player.max_hp = run.player_max_hp
+	if run.player_hp >= 0:
+		player.hp = mini(player.max_hp, maxi(0, run.player_hp))
+	for i in range(mini(player.slots.size(), run.player_slot_gems.size())):
+		var raw_slot: Variant = run.player_slot_gems[i]
+		if not raw_slot is Dictionary:
+			continue
+		var slot_snapshot := raw_slot as Dictionary
+		if slot_snapshot.is_empty():
+			continue
+		var gem := create_gem_instance(
+			_next_uid("gem"),
+			str(slot_snapshot.get("gem_id", "")),
+			slot_snapshot.get("def_overrides", {}) if slot_snapshot.get("def_overrides", {}) is Dictionary else {}
+		)
+		if gem.gem_id.is_empty():
+			continue
+			
+		var slot: SlotState = player.slots[i]
+		slot.gem_uid = gem.uid
+		if slot.dual_type.is_empty():
+			var dual_type := str(slot_snapshot.get("dual_type", ""))
+			if not dual_type.is_empty():
+				slot.dual_type = dual_type
+		gem.owner_uid = player.uid
+		gem.slot_index = i
+		state.gems[gem.uid] = gem
+	if not run.carried_gem.is_empty():
+		var carried := create_gem_instance(
+			_next_uid("gem"),
+			str(run.carried_gem.get("gem_id", "")),
+			run.carried_gem.get("def_overrides", {}) if run.carried_gem.get("def_overrides", {}) is Dictionary else {}
+		)
+		if not carried.gem_id.is_empty():
+			carried.owner_uid = player.uid
+			carried.slot_index = -1
+			state.gems[carried.uid] = carried
+			state.held_gem_uid = carried.uid
 
 
 func _read_json_file(path: String) -> Dictionary:

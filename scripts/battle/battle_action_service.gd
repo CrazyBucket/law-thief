@@ -54,7 +54,12 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		TileRules.on_unit_moved_through(state, player, step)
 		state.on_unit_move.emit(player.uid, from_pos, step)
 		move_events.append({"type": "move_step", "uid": player.uid, "from": from_pos, "to": step})
-	TileRules.on_unit_entered(state, player, previous)
+	TileRules.finish_voluntary_move(state, player, previous)
+	# 旧式压力阀临时移动力：移动一次后重置剩余临时点数
+	if state.battle_temp_flags.has("pressure_valve_temp_move"):
+		var temp_move: int = int(state.battle_temp_flags["pressure_valve_temp_move"])
+		state.battle_temp_flags.erase("pressure_valve_temp_move")
+		player.move_points = maxi(0, player.move_points - temp_move)
 	state.player_moved = true
 	state.log("玩家移动到 %s" % target_pos)
 	IntentSystem.refresh_all_intents(state)

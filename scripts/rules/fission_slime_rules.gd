@@ -54,6 +54,18 @@ static func compute_intent(
 			best_anchor = anchor
 			best_path = path
 
+	# 践踏优先：玩家已站在本体占格内，直接踩
+	if _can_trample(state, unit, player):
+		var trample_intent := IntentState.new()
+		trample_intent.type = "trample"
+		trample_intent.source_uid = unit.uid
+		trample_intent.target_uid = player.uid
+		trample_intent.path = []
+		trample_intent.target_pos = unit.pos
+		trample_intent.damage = Constants.FISSION_SLIME_TRAMPLE_DAMAGE
+		trample_intent.preview_text = "践踏 (%d)" % trample_intent.damage
+		return trample_intent
+
 	if best_cost < 999:
 		var intent := IntentState.new()
 		intent.type = "slam_attack"
@@ -185,3 +197,39 @@ static func _knockback_origin_toward(unit: UnitState, target_pos: Vector2i) -> V
 			best_dist = dist
 			best = cell
 	return best
+
+
+## 践踏执行：
+## 1. 先强行占位（目标单位写出当前格子），大史莱姆写入该格子
+## 2. 目标通过 star_relocate 震飞到最近空格（含技能伤害 + 碰撞保底）
+## 3. 落点触发地形结算（在 star_relocate 内部完成）
+static func execute_trample(
+	state: GameState,
+	unit: UnitState,
+	intent: IntentState
+) -> Array[Dictionary]:
+	var events: Array[Dictionary] = []
+	var target: UnitState = state.units.get(intent.target_uid, null)
+	if target == null or not target.alive:
+		return events
+	if not _can_trample(state, unit, target):
+		return events
+
+	events.append({"type": "trample_start", "uid": unit.uid, "target_uid": target.uid, "pos": target.pos})
+
+	# 技能伤害 = FISSION_SLIME_TRAMPLE_DAMAGE + 1 点碰撞保底
+	var total_skill_dmg := Constants.FISSION_SLIME_TRAMPLE_DAMAGE + 1
+	# star_relocate 内部会先施加 skill_damage，然后搜索落点并结算落点地形
+	Displacement.star_relocate(state, target, target.pos, unit.uid, events, total_skill_dmg)
+
+	return events
+
+
+## 判断目标单位是否站在大史莱姆的任意一个占格内
+static func _can_trample(state: GameState, unit: UnitState, target: UnitState) -> bool:
+	if not target.alive:
+		return false
+	for cell in unit.occupied_cells():
+		if target.pos == cell:
+			return true
+	return false

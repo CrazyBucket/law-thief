@@ -18,31 +18,33 @@ static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary 
 			_unlock_armor_locks(state, unit)
 
 
-## 单位被强制位移撞上阻挡实体（石块、油桶）
+## 单位被强制位移撞上阻挡实体（石块、油桶等）
+## collision_damage = max(1, 实际位移格数)
+## 有血量实体（max_hp > 0）：碰撞者与实体双方同伤
+## 无血量实体（max_hp <= 0，如石柱）：仅碰撞者受伤
 ## 返回是否真正发生了碰撞（用于 Displacement 决定是否停止位移）
 static func on_unit_collide_entity(
 	state: GameState,
 	unit: UnitState,
 	entity: EntityState,
 	source_uid: String,
-	events: Array[Dictionary]
+	events: Array[Dictionary],
+	actual_steps: int = 1
 ) -> bool:
 	if not entity.alive:
 		return false
-	match entity.entity_id:
-		Constants.ENTITY_ROCK, Constants.ENTITY_PROP:
-			CombatRules.apply_damage(state, unit, Constants.KNOCKBACK_COLLISION_DAMAGE, source_uid, "rock_collision")
-			if events != null:
-				events.append({"type": "damage", "pos": unit.pos, "damage": Constants.KNOCKBACK_COLLISION_DAMAGE, "is_crit": false})
-			return true
-		Constants.ENTITY_BARREL:
-			_damage_barrel(state, entity, Constants.KNOCKBACK_COLLISION_DAMAGE, source_uid, events)
-			CombatRules.apply_damage(state, unit, Constants.KNOCKBACK_COLLISION_DAMAGE, source_uid, "barrel_collision")
-			return true
-	return false
+	if not entity.blocks_movement():
+		return false
+	var collision_damage := maxi(1, actual_steps)
+	var unit_dealt := CombatRules.apply_damage(state, unit, collision_damage, source_uid, "entity_collision")
+	if unit_dealt > 0:
+		events.append({"type": "damage", "pos": unit.pos, "damage": unit_dealt, "is_crit": false})
+	if entity.max_hp > 0:
+		_damage_entity(state, entity, collision_damage, source_uid, events)
+	return true
 
 
-## 对油桶造成伤害，归零时触发爆炸
+## 对油桶造成伤害，归零时触发爆炸（保留旧接口兼容）
 static func damage_barrel(
 	state: GameState,
 	entity: EntityState,
@@ -51,6 +53,26 @@ static func damage_barrel(
 	events: Array[Dictionary]
 ) -> void:
 	_damage_barrel(state, entity, amount, source_uid, events)
+
+
+## 有血量实体通用伤害派发（碰撞伤结算入口）
+static func _damage_entity(
+	state: GameState,
+	entity: EntityState,
+	amount: int,
+	source_uid: String,
+	events: Array[Dictionary]
+) -> void:
+	if not entity.alive or amount <= 0:
+		return
+	match entity.entity_id:
+		Constants.ENTITY_BARREL:
+			_damage_barrel(state, entity, amount, source_uid, events)
+		_:
+			entity.take_damage(amount)
+			state.log("实体 %s 受到 %d 伤害，剩余 HP: %d" % [entity.uid, amount, entity.hp])
+			if not entity.alive:
+				events.append({"type": "entity_destroyed", "pos": entity.pos, "entity_id": entity.entity_id})
 
 
 ## 检查指定格子的油桶是否处于火焰中，是则触发爆炸（回合结算时调用）

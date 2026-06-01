@@ -17,7 +17,7 @@ static func knockback(
 	steps: int,
 	source_uid: String,
 	events: Array[Dictionary],
-	collision_damage: int = Constants.KNOCKBACK_COLLISION_DAMAGE,
+	collision_damage: int = -1,
 	skip_gem_hooks: bool = false
 ) -> void:
 	if not unit.alive or steps <= 0:
@@ -25,7 +25,7 @@ static func knockback(
 	var registry := _relic_effect_registry()
 	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
 		return
-	_push_directional(state, unit, origin, Direction.AWAY, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
+	_push_directional(state, unit, origin, Direction.AWAY, steps, source_uid, events, collision_damage, skip_gem_hooks)
 
 
 static func pull_toward(
@@ -35,15 +35,32 @@ static func pull_toward(
 	steps: int,
 	source_uid: String,
 	events: Array[Dictionary],
-	collision_damage: int = Constants.KNOCKBACK_COLLISION_DAMAGE,
-	skip_gem_hooks: bool = false
+	collision_damage: int = -1,
+	skip_gem_hooks: bool = false,
+	skip_contact_hooks: bool = false
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
 	var registry := _relic_effect_registry()
 	if registry != null and bool(registry.query_modifier("forced_move_immune", state)):
 		return
-	_push_directional(state, unit, anchor, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, 0)
+	_push_directional(state, unit, anchor, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, skip_contact_hooks)
+
+
+## 冲刺：向目标位置冲刺指定步数，碰到阻挡时停在上一格，不触发碰撞伤
+static func dash_toward(
+	state: GameState,
+	unit: UnitState,
+	target_pos: Vector2i,
+	steps: int,
+	source_uid: String,
+	events: Array[Dictionary],
+	collision_damage: int = 0,
+	skip_gem_hooks: bool = false
+) -> void:
+	if not unit.alive or steps <= 0:
+		return
+	_push_directional(state, unit, target_pos, Direction.TOWARD, steps, source_uid, events, collision_damage, skip_gem_hooks, true)
 
 
 static func push_cardinal(
@@ -53,13 +70,16 @@ static func push_cardinal(
 	steps: int,
 	source_uid: String,
 	events: Array[Dictionary],
-	collision_damage: int = Constants.KNOCKBACK_COLLISION_DAMAGE
+	collision_damage: int = -1
 ) -> void:
 	if not unit.alive or steps <= 0:
 		return
-	_push_directional(state, unit, unit.pos, direction, steps, source_uid, events, collision_damage, false, 0)
+	_push_directional(state, unit, unit.pos, direction, steps, source_uid, events, collision_damage, false)
 
 
+## 强制位移核心：按方向逐格推进，立即截停（不链推、不侧滑）
+## collision_damage == -1 表示由实际位移格数自动计算（max(1, steps)）
+## collision_damage == 0 表示无碰撞伤（冲刺）
 static func _push_directional(
 	state: GameState,
 	unit: UnitState,
@@ -70,12 +90,11 @@ static func _push_directional(
 	events: Array[Dictionary],
 	collision_damage: int,
 	skip_gem_hooks: bool = false,
-	chain_depth: int = 0
+	skip_contact_hooks: bool = false
 ) -> void:
 	var start_pos := unit.pos
 	var remaining := steps
 	var i := 0
-	var is_large := unit.footprint_size != Vector2i(1, 1)
 
 	while i < remaining:
 		var step_vec := _step_vector(unit.pos, reference_pos, dir)
@@ -85,34 +104,32 @@ static func _push_directional(
 		if next == unit.pos:
 			break
 
+		# ─── 越界撞墙 ───────────────────────────────────────────────────────
 		if not _footprint_in_bounds(state, unit, next):
-			if collision_damage > 0:
-				_deal_collision_damage(state, unit, source_uid, collision_damage, "wall_collision", events)
+			var dmg := _resolve_collision_damage(collision_damage, i)
+			if dmg > 0:
+				_deal_unit_collision_damage(state, unit, source_uid, dmg, "wall_collision", events)
 			break
 
+		# ─── 撞静态实体（立即截停，按 max_hp 分单/双伤）───────────────────
 		var entity := _blocking_entity_at_anchor(state, unit, next)
 		if entity != null:
-			EntityRules.on_unit_collide_entity(state, unit, entity, source_uid, events)
-			_land_after_block(state, unit, next, step_vec, source_uid, events, skip_gem_hooks)
+			var dmg := _resolve_collision_damage(collision_damage, i)
+			EntityRules.on_unit_collide_entity(state, unit, entity, source_uid, events, dmg)
 			break
 
+		# ─── 撞可位移单位（立即截停，A/B 同伤，不链推）─────────────────────
 		var blocker := _blocking_unit_at_anchor(state, unit, next)
 		if blocker != null:
-			if chain_depth < Constants.DISPLACEMENT_CHAIN_MAX_DEPTH:
-				var chain_events: Array[Dictionary] = []
-				var pushed := _push_unit_one_step(
-					state, blocker, step_vec, source_uid, chain_events, collision_damage, skip_gem_hooks, chain_depth + 1
-				)
-				events.append_array(chain_events)
-				if pushed:
-					blocker = _blocking_unit_at_anchor(state, unit, next)
-			if blocker != null:
-				if collision_damage > 0:
-					_deal_collision_damage(state, unit, source_uid, collision_damage, "knockback_collision", events)
-					_deal_collision_damage(state, blocker, unit.uid, collision_damage, "knockback_collision", events)
+			var dmg := _resolve_collision_damage(collision_damage, i)
+			if dmg > 0:
+				_deal_unit_collision_damage(state, unit, source_uid, dmg, "unit_collision", events)
+				_deal_unit_collision_damage(state, blocker, unit.uid, dmg, "unit_collision", events)
+			if not skip_contact_hooks:
 				_ContactResolver.on_collision(state, unit, blocker)
-				break
+			break
 
+		# ─── 正常移动一格 ───────────────────────────────────────────────────
 		var from_pos := unit.pos
 		unit.facing = UnitState.facing_from_step(from_pos, next)
 		state.move_unit(unit, next)
@@ -121,94 +138,85 @@ static func _push_directional(
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
 
 		var moved_tile := state.get_tile(next)
-		if moved_tile.has_ground_tag(Constants.GROUND_TAG_ICE):
+		var _ice_registry := _relic_effect_registry()
+		var _ice_immune: bool = _ice_registry != null and bool(_ice_registry.query_modifier("tile_effect_immune", state))
+		if not _ice_immune and moved_tile.has_ground_tag(Constants.GROUND_TAG_ICE):
 			remaining += 1
 
 		i += 1
 
+	# ─── 位移结束后统一结算 ──────────────────────────────────────────────────
 	if unit.pos != start_pos:
 		TileRules.on_unit_position_changed(state, unit, start_pos)
-		TileRules.on_unit_entered(state, unit, start_pos, {"forced": true, "source_uid": source_uid})
+		TileRules.on_unit_entered(state, unit, start_pos, {"forced": true, "source_uid": source_uid, "skip_overlay": true})
+		state.on_forced_displacement.emit(unit.uid, start_pos, unit.pos, source_uid)
 		if not skip_gem_hooks:
 			GemEffects.on_forced_displacement(state, unit, events)
 
 
-static func _push_unit_one_step(
+## 星状震飞落位：将 unit 从当前位置强制迁移到最近的合法空格（践踏 / 空间挤压共用）
+## 先通过 find_star_relocation_cell 找合法格，找到则正常落位并结算地形
+## 找不到则触发挤压惩罚伤害，然后留在原地（最终保底）
+static func star_relocate(
 	state: GameState,
 	unit: UnitState,
-	step_vec: Vector2i,
+	origin: Vector2i,
 	source_uid: String,
 	events: Array[Dictionary],
-	collision_damage: int,
-	skip_gem_hooks: bool,
-	chain_depth: int
-) -> bool:
-	if not unit.alive or step_vec == Vector2i.ZERO:
-		return false
-	var next := unit.pos + step_vec
-	if not _footprint_in_bounds(state, unit, next):
-		return false
-	if _blocking_entity_at_anchor(state, unit, next) != null:
-		return false
-	if not BoardUtils.can_unit_push_to(state, unit, step_vec):
-		var blocker := _blocking_unit_at_anchor(state, unit, next)
-		if blocker == null:
-			return false
-		if chain_depth >= Constants.DISPLACEMENT_CHAIN_MAX_DEPTH:
-			return false
-		if not _push_unit_one_step(state, blocker, step_vec, source_uid, events, collision_damage, skip_gem_hooks, chain_depth + 1):
-			return false
-		if not BoardUtils.can_unit_push_to(state, unit, step_vec):
-			return false
-	var from_pos := unit.pos
-	state.move_unit(unit, next)
-	TileRules.on_unit_moved_through(state, unit, next)
-	state.on_unit_move.emit(unit.uid, from_pos, next)
-	events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
-	return true
-
-
-static func _land_after_block(
-	state: GameState,
-	unit: UnitState,
-	blocked_anchor: Vector2i,
-	step_vec: Vector2i,
-	source_uid: String,
-	events: Array[Dictionary],
-	skip_gem_hooks: bool
+	skill_damage: int = 0
 ) -> void:
-	var landing := _find_landing_anchor(state, unit, blocked_anchor, step_vec)
-	if landing == unit.pos:
+	if not unit.alive:
 		return
-	var from_pos := unit.pos
-	state.move_unit(unit, landing)
-	TileRules.on_unit_moved_through(state, unit, landing)
-	TileRules.on_unit_entered(state, unit, from_pos, {"forced": true, "source_uid": source_uid})
-	state.on_unit_move.emit(unit.uid, from_pos, landing)
-	events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": landing})
-	if not skip_gem_hooks:
+	# 先施加技能本身的伤害（践踏伤害 + 1 点碰撞保底）
+	if skill_damage > 0:
+		_deal_unit_collision_damage(state, unit, source_uid, skill_damage, "trample", events)
+
+	var result := BoardUtils.find_star_relocation_cell(state, origin, unit.uid)
+	if result.get("found", false):
+		var landing: Vector2i = result.get("pos", origin)
+		var from_pos := unit.pos
+		state.move_unit(unit, landing)
+		state.on_unit_move.emit(unit.uid, from_pos, landing)
+		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": landing})
+		TileRules.on_unit_position_changed(state, unit, from_pos)
+		# 落地后结算目标格地形（地刺、火焰、毒雾等）
+		TileRules.on_unit_entered(state, unit, from_pos, {"forced": true, "source_uid": source_uid})
+		state.on_forced_displacement.emit(unit.uid, from_pos, landing, source_uid)
 		GemEffects.on_forced_displacement(state, unit, events)
+	else:
+		# 全堵死：空间挤压惩罚（按最大扫描半径距离伤害）
+		var squeeze_dmg := 2
+		_deal_unit_collision_damage(state, unit, source_uid, squeeze_dmg, "space_squeeze", events)
+		state.log("%s 被挤压，无法逃离！" % unit.uid)
 
 
-static func _find_landing_anchor(
+## 计算碰撞伤害：-1 表示按实际步数自动算，0 表示无伤，>0 表示固定值
+static func _resolve_collision_damage(collision_damage: int, actual_steps: int) -> int:
+	if collision_damage == 0:
+		return 0
+	if collision_damage < 0:
+		return maxi(1, actual_steps)
+	return collision_damage
+
+
+static func _deal_unit_collision_damage(
 	state: GameState,
 	unit: UnitState,
-	blocked_anchor: Vector2i,
-	step_vec: Vector2i
-) -> Vector2i:
-	var lateral: Array[Vector2i] = [
-		Vector2i(-step_vec.y, step_vec.x),
-		Vector2i(step_vec.y, -step_vec.x),
-	]
-	for dist in range(1, Constants.DISPLACEMENT_LANDING_SCAN + 1):
-		var along: Vector2i = blocked_anchor + step_vec * (dist - 1)
-		if BoardUtils.unit_footprint_passable(state, unit, along, unit.uid):
-			return along
-		for side: Vector2i in lateral:
-			var candidate: Vector2i = along + side
-			if BoardUtils.unit_footprint_passable(state, unit, candidate, unit.uid):
-				return candidate
-	return unit.pos
+	source_uid: String,
+	amount: int,
+	reason: String,
+	events: Array[Dictionary]
+) -> void:
+	if not unit.alive or amount <= 0:
+		return
+	var registry := _relic_effect_registry()
+	var final_amount := amount
+	if registry != null:
+		var mult: float = float(registry.query_modifier("collision_damage_mult", state))
+		final_amount = maxi(1, int(float(amount) * mult))
+	var dealt := CombatRules.apply_damage(state, unit, final_amount, source_uid, reason)
+	if dealt > 0:
+		events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
 
 
 static func _blocking_entity_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> EntityState:
@@ -251,10 +259,6 @@ static func _step_vector(current: Vector2i, reference: Vector2i, dir: Direction)
 	return Vector2i.ZERO
 
 
-static func _resolve_next_cell(current: Vector2i, reference: Vector2i, dir: Direction) -> Vector2i:
-	return current + _step_vector(current, reference, dir)
-
-
 static func _away_step(from: Vector2i, origin: Vector2i) -> Vector2i:
 	var delta := from - origin
 	if delta == Vector2i.ZERO:
@@ -271,18 +275,3 @@ static func _toward_step(from: Vector2i, anchor: Vector2i) -> Vector2i:
 	if absi(delta.x) >= absi(delta.y):
 		return Vector2i(signi(delta.x), 0)
 	return Vector2i(0, signi(delta.y))
-
-
-static func _deal_collision_damage(
-	state: GameState,
-	unit: UnitState,
-	source_uid: String,
-	amount: int,
-	reason: String,
-	events: Array[Dictionary]
-) -> void:
-	if not unit.alive or amount <= 0:
-		return
-	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason)
-	if dealt > 0:
-		events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
