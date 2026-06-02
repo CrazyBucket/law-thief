@@ -271,6 +271,19 @@ func get_relic_ids() -> Array[String]:
 	return ids
 
 
+func get_relic_unlock_condition_ids() -> Array[String]:
+	var seen: Dictionary = {}
+	var result: Array[String] = []
+	for relic_id in _relic_defs.keys():
+		var cond := str(_relic_defs[relic_id].get("unlock_condition", ""))
+		if cond.is_empty() or seen.has(cond):
+			continue
+		seen[cond] = true
+		result.append(cond)
+	result.sort()
+	return result
+
+
 ## 计算单个遗物在当前上下文下的最终权重
 ## weight_ctx 字段（均可选，缺省视为空/0）：
 ##   owned_gems    Array[String]  当前持有宝石 gem_id 列表
@@ -320,22 +333,30 @@ func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> floa
 ## source: 来源标识（"normal_chest" / "elite_combat" / "large_chest" / "shop"）
 ## owned_ids: 当前局内已持有的遗物 id 集合（用于过滤 unique 遗物重复）
 ## unlock_flags: 当前已解锁的 flag 集合（String 数组）
+func _relic_matches_source(def: Dictionary, source: String, source_weights: Dictionary) -> bool:
+	var pool_types: Array = def.get("pool_types", ["global"])
+	var allows_boss := source_weights.has("boss") and float(source_weights.get("boss", 0.0)) > 0.0
+	if "global" in pool_types:
+		match source:
+			"shop":
+				return true
+			"normal_chest", "elite_combat", "large_chest":
+				return true
+			_:
+				return true
+	if source == "shop" and "shop_only" in pool_types:
+		return true
+	if allows_boss and "boss_drop" in pool_types:
+		return true
+	return false
+
+
 func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array = []) -> Array[String]:
 	var results: Array[String] = []
 	var source_weights: Dictionary = _SOURCE_RARITY_WEIGHTS.get(source, {})
 	for relic_id in _relic_defs.keys():
 		var def: Dictionary = _relic_defs[relic_id]
-		# 检查来源兼容
-		var pool_types: Array = def.get("pool_types", ["global"])
-		var source_ok := false
-		match source:
-			"normal_chest", "elite_combat", "large_chest":
-				source_ok = "global" in pool_types
-			"shop":
-				source_ok = "global" in pool_types or "shop_only" in pool_types
-			_:
-				source_ok = "global" in pool_types
-		if not source_ok:
+		if not _relic_matches_source(def, source, source_weights):
 			continue
 		# boss 遗物只在 source_weights 允许时出现
 		var rarity := str(def.get("rarity", "common"))
@@ -487,10 +508,10 @@ func _register_gem_effect_profiles() -> void:
 	_gem_effect_profiles = {
 		"explosion": {
 			"enemy_intent": {
-				"type": "charge_explode",
-				"preview_key": "gem.intent.charge_explode",
-				"params": {"damage": Constants.EXPLOSION_DAMAGE},
-				"damage": Constants.EXPLOSION_DAMAGE,
+				"type": "explosion_attack",
+				"preview_key": "gem.intent.explosion_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
 			},
 			"ability_descriptions": {
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": Constants.EXPLOSION_DAMAGE}},

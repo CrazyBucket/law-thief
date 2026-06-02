@@ -1,6 +1,8 @@
 class_name EnemyBehavior
 extends RefCounted
 
+const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
+
 
 static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
 	if StatusRules.is_lawless(unit):
@@ -8,8 +10,12 @@ static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dic
 	return build_normal_intent(state, unit, cell_blockers)
 
 
+static func run_ai_decide(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> Dictionary:
+	return _EnemyAI.decide(state, unit, cell_blockers)
+
+
 static func build_normal_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
-	var decision := EnemyAI.decide(state, unit, cell_blockers)
+	var decision := run_ai_decide(state, unit, cell_blockers)
 	return IntentSystem.enemy_intent_from_decision(state, unit, decision, cell_blockers)
 
 
@@ -137,6 +143,16 @@ static func is_single_target_damage_reason(reason: String) -> bool:
 
 static func execute_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
 	match intent.type:
+		"explosion_attack":
+			var boom_target: UnitState = state.units.get(intent.target_uid, null)
+			if boom_target == null or not boom_target.alive:
+				return [] as Array[Dictionary]
+			if not BoardUtils.are_units_adjacent(unit, boom_target):
+				return [] as Array[Dictionary]
+			var boom_result := CombatRules.melee_attack(state, unit, boom_target)
+			if not boom_result.get("ok", false):
+				return [] as Array[Dictionary]
+			return boom_result.get("events", [] as Array[Dictionary])
 		"charge_explode":
 			return _execute_charge_explosion(state, unit, intent.target_uid)
 		"poison_attack":

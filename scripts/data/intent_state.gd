@@ -16,6 +16,7 @@ static func intent_icon(intent_type: String) -> String:
 		"melee_attack":  return "⚔"
 		"slam_attack":   return "🔨"
 		"ranged_attack": return "🏹"
+		"explosion_attack": return "💥"
 		"charge_explode": return "💣"
 		"pull":          return "🪝"
 		"poison_attack": return "☠"

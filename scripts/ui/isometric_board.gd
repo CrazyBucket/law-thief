@@ -68,6 +68,7 @@ var _particles: Array[Dictionary] = [] # {pos, color, life, max_life, velocity, 
 var _strike_elapsed: Dictionary = {}
 var _walk_phase: Dictionary = {}
 var _idle_phase: Dictionary = {}
+## 移动 tween 插值元数据，用于把行走帧与位移进度对齐
 
 var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
@@ -1189,6 +1190,7 @@ func _intent_badge_color(intent_type: String) -> Color:
 		"melee_attack": return Color(0.95, 0.35, 0.35, 0.95)
 		"slam_attack": return Color(0.55, 0.85, 0.45, 0.95)
 		"ranged_attack": return Color(0.75, 0.82, 0.55, 0.95)
+		"explosion_attack": return Color(1.0, 0.55, 0.1, 0.95)
 		"charge_explode": return Color(1.0, 0.55, 0.1, 0.95)
 		"pull": return Color(0.6, 0.35, 0.9, 0.95)
 		"poison_attack": return Color(0.35, 0.85, 0.45, 0.95)
@@ -1236,7 +1238,6 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 		var mover: UnitState = state.units.get(unit_uid, null)
 		if mover != null:
 			mover.facing = _facing_from_grid_pos(from_pos, to_pos)
-	_walk_phase[unit_uid] = 0.0
 	var from_screen: Vector2 = grid_to_screen(from_pos)
 	var to_screen: Vector2 = grid_to_screen(to_pos)
 	var logical_pos: Vector2i = to_pos
@@ -1248,6 +1249,7 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 	var from_offset: Vector2 = from_screen - logical_screen
 	var to_offset: Vector2 = to_screen - logical_screen
 	_move_offsets[unit_uid] = from_offset
+	_walk_phase[unit_uid] = 0.0
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)

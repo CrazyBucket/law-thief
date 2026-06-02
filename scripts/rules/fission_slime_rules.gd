@@ -2,9 +2,6 @@ class_name FissionSlimeRules
 extends RefCounted
 
 const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
-const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
-
-
 static func split_stat_ratio(_unit: UnitState) -> float:
 	return Constants.FISSION_SLIME_SPLIT_STAT_RATIO
 
@@ -102,8 +99,8 @@ static func execute_slam(
 	if not _can_slam_at_anchor(state, unit, unit.pos, target):
 		return events
 	var payload := {"damage_reason": Constants.DAMAGE_REASON_SLAM}
-	var result := _AttackPipeline.execute(
-		state, unit, target, [_AttackPipeline.TAG_MELEE], payload
+	var result := AttackPipeline.execute(
+		state, unit, target, [AttackPipeline.TAG_MELEE], payload
 	)
 	if not result.get("ok", false):
 		return events

@@ -775,7 +775,7 @@ static func _unit_in_water_conduction_zone(state: GameState, unit: UnitState, zo
 	return StatusRules.is_wet(unit)
 
 
-## 红槽攻击 TAG_ARC：以被击者为锚，向切比雪夫 2 格内另一敌方弹射 1 次（伤害为普攻 ARC_CHAIN_DAMAGE_RATIO）
+## 红槽 TAG_ARC：被击者锚点 2 格内敌方各弹一次；遗物 arc_bounce_count_bonus 增加向外扩的跳数。
 static func apply_arc_bounce_from_victim(
 	state: GameState,
 	victim: UnitState,
@@ -787,31 +787,29 @@ static func apply_arc_bounce_from_victim(
 		return
 	var arc_damage := _calc_arc_damage(base_damage, state)
 	var registry := _relic_effect_registry()
-	var bounce_count: int = 1 + (int(registry.query_modifier("arc_bounce_count_bonus", state)) if registry != null else 0)
+	var bounce_hops: int = 1 + (int(registry.query_modifier("arc_bounce_count_bonus", state)) if registry != null else 0)
 	var hit_uids: Dictionary = {victim.uid: true, attacker.uid: true}
-	var candidates: Array[UnitState] = []
-	for unit in state.units.values():
-		if not unit.alive:
-			continue
-		if hit_uids.has(unit.uid):
-			continue
-		if BoardUtils.chebyshev(victim.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
-			candidates.append(unit)
-	if candidates.is_empty():
-		return
-	var rng := _rng_service()
-	if rng == null:
-		return
-	var bounced := 0
-	var i := 0
-	while bounced < bounce_count and not candidates.is_empty():
-		var pick_idx: int = int(rng.roll_int("gem_arc_bounce_%s_%d" % [attacker.uid, i], 0, candidates.size() - 1))
-		var bounce_target: UnitState = candidates[pick_idx]
-		_arc_to(state, bounce_target, attacker.uid, arc_damage, events)
-		hit_uids[bounce_target.uid] = true
-		candidates.erase(bounce_target)
-		bounced += 1
-		i += 1
+	var anchors: Array[UnitState] = [victim]
+	var hop := 0
+	while hop < bounce_hops:
+		var next_anchors: Array[UnitState] = []
+		for anchor in anchors:
+			for unit in state.units.values():
+				if not unit.alive:
+					continue
+				if hit_uids.has(unit.uid):
+					continue
+				if unit.team == attacker.team:
+					continue
+				if BoardUtils.chebyshev(anchor.pos, unit.pos) > Constants.ARC_CHAIN_RANGE:
+					continue
+				_arc_to(state, unit, attacker.uid, arc_damage, events)
+				hit_uids[unit.uid] = true
+				next_anchors.append(unit)
+		if next_anchors.is_empty():
+			break
+		anchors = next_anchors
+		hop += 1
 
 
 ## 兼容旧调用名（攻击管线）

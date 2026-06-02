@@ -35,7 +35,7 @@ func _placeholder_body(room_type: String, room_result: Dictionary = {}) -> Strin
 		"EVENT":
 			return "问号节点已改为直接发放遗物。"
 		"END":
-			return "终点 / Boss 场景占位\n后续可接入章节结算、成就判定与通关演出。"
+			return "大关终点：结算后进入下一关或通关回主菜单。"
 		_:
 			return "房间场景占位，当前用于承接整体流程跳转。"
 

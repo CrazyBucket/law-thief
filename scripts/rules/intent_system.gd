@@ -3,6 +3,7 @@ extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 ## 敌人回合执行时按照预计算的意图行动
@@ -97,7 +98,7 @@ static func enemy_intent_from_decision(
 	decision: Dictionary,
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
-	var action: EnemyAI.ActionCandidate = decision.get("action", null)
+	var action = decision.get("action", null)
 	var move_path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
 	if action == null:
 		return IntentState.wait(unit.uid)
@@ -107,21 +108,21 @@ static func enemy_intent_from_decision(
 	intent.path = move_path
 
 	match action.type:
-		EnemyAI.ActionType.RANGED_ATTACK:
+		_EnemyAI.ActionType.RANGED_ATTACK:
 			intent.type = "ranged_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
 			_apply_explosion_intent_cells(state, unit, intent)
 			_behavior_for(unit).build_ranged_intent(state, unit, move_path, intent)
 
-		EnemyAI.ActionType.ATTACK:
+		_EnemyAI.ActionType.ATTACK:
 			intent.type = "melee_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
 			_apply_explosion_intent_cells(state, unit, intent)
 			_behavior_for(unit).build_melee_intent(state, unit, move_path, intent)
 
-		EnemyAI.ActionType.SKILL_RED:
+		_EnemyAI.ActionType.SKILL_RED:
 			var red_slot := unit.get_slot(Constants.SLOT_RED)
 			if red_slot != null and not red_slot.gem_uid.is_empty():
 				var gem: GemState = state.gems.get(red_slot.gem_uid, null)
@@ -132,13 +133,13 @@ static func enemy_intent_from_decision(
 			else:
 				intent = IntentState.wait(unit.uid)
 
-		EnemyAI.ActionType.EXTRACT:
+		_EnemyAI.ActionType.EXTRACT:
 			intent.type = "extract"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
 			intent.preview_text = "窃取宝石"
 
-		EnemyAI.ActionType.MOVE:
+		_EnemyAI.ActionType.MOVE:
 			intent.type = "move"
 			intent.target_pos = action.move_target
 			intent.preview_text = "移动"
@@ -146,7 +147,7 @@ static func enemy_intent_from_decision(
 			if player != null:
 				intent.target_uid = player.uid
 
-		EnemyAI.ActionType.WAIT:
+		_EnemyAI.ActionType.WAIT:
 			return IntentState.wait(unit.uid)
 
 	return intent
@@ -165,7 +166,7 @@ static func _build_skill_intent(
 	state: GameState,
 	unit: UnitState,
 	gem: GemState,
-	action: EnemyAI.ActionCandidate,
+	action,
 	move_path: Array[Vector2i],
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
@@ -180,6 +181,10 @@ static func _build_skill_intent(
 	intent.damage = int(meta.get("damage", 0))
 	if intent.type == "wait":
 		return IntentState.wait(unit.uid)
+	if intent.type == "explosion_attack":
+		var boom_target: UnitState = state.units.get(action.action_target_uid, null)
+		if boom_target != null:
+			intent.affected_cells = GemEffects.cross_explosion_cells(boom_target.pos)
 	if intent.type == "charge_explode":
 		var target: UnitState = state.units.get(action.action_target_uid, null)
 		if target != null:
@@ -239,7 +244,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append_array(_execute_melee(state, unit, intent, move_start_pos))
 		"ranged_attack":
 			anim_events.append_array(_execute_ranged(state, unit, intent, move_start_pos))
-		"charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack":
+		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack":
 			anim_events.append_array(_behavior_for(unit).execute_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)

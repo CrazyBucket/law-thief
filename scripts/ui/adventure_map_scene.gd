@@ -52,8 +52,10 @@ func _refresh_hud() -> void:
 	var node = AdventureService.get_current_node()
 	if node == null:
 		return
-	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type)
-	_title.text = "%s · 冒险地图" % SaveService.get_active_slot_label()
+	var display: Dictionary = _AdventureRoomDisplay.get_display(
+		node.room_type, AdventureService.get_current_chapter(), AdventureService.get_chapter_count()
+	)
+	_title.text = "%s · %s" % [SaveService.get_active_slot_label(), AdventureService.get_chapter_label()]
 	_hint.text = "当前：%s %s  |  层级 L%d  |  点击高亮相邻格前进" % [display["glyph"], display["label"], int(node.layer)]
 	_seed_label.text = "种子 %d" % AdventureService.map_seed
 	_run_summary.text = _build_run_summary_text()
@@ -74,7 +76,9 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 	var node = AdventureService.get_node_at(cell)
 	if node == null:
 		return
-	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type)
+	var display: Dictionary = _AdventureRoomDisplay.get_display(
+		node.room_type, AdventureService.get_current_chapter(), AdventureService.get_chapter_count()
+	)
 	var reachable: bool = AdventureService.can_enter_cell(cell)
 	var is_current: bool = (cell == AdventureService.current_pos)
 	var room_id := AdventureService.room_id_for_cell(cell)
@@ -114,7 +118,8 @@ func _build_run_summary_text() -> String:
 	var carried_gem_name := str(snapshot.get("carried_gem_name", ""))
 	if carried_gem_name.is_empty():
 		carried_gem_name = "无"
-	return "HP %d/%d  ·  遗物 %d  ·  手持 %s" % [
+	return "%s  ·  HP %d/%d  ·  遗物 %d  ·  手持 %s" % [
+		AdventureService.get_chapter_label(),
 		int(snapshot.get("hp", 0)),
 		int(snapshot.get("max_hp", 0)),
 		int(snapshot.get("owned_relic_count", 0)),

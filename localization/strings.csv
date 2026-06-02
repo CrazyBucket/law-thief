@@ -34,6 +34,7 @@ unit.bomb_rat.name,炸弹鼠,Bomb Rat
 unit.patrol_guard.name,巡路甲兵,Patrol Guard
 unit.stone_bow_guard.name,石弓卫士,Stone Bow Guard
 unit.fission_slime.name,裂变史莱姆,Fission Slime
+gem.intent.explosion_attack,爆炸攻击 ({damage}),Explosion Strike ({damage})
 gem.intent.charge_explode,冲刺爆炸 ({damage}),Charge Explosion ({damage})
 gem.intent.poison_attack,毒攻击 ({damage}+毒),Poison Strike ({damage}+Poison)
 gem.intent.pull,引力拉近+碰撞({damage}),Gravity Pull + Collision ({damage})
@@ -76,7 +77,7 @@ gem.effect.fragile.enemy_red_action,冲撞自毁 ({damage}),Fragile charge ({dam
 gem.effect.fragile.attack_bonus,被动：攻击 +1 伤害,Passive: attacks deal +1 damage
 gem.effect.fragile.black_death,死亡：四邻格 1 伤害,Death: deal 1 damage to the 4 neighboring cells
 gem.effect.arc.player_skill,技能：电击相连水域，水域及边缘潮湿单位各受一次电弧（6.6%麻痹）,Skill: shock connected water; each wet unit on water or its edge takes arc damage (6.6% paralyze)
-gem.effect.arc.unit_red_active,攻击水域：导电潮湿单位；攻击陆地单位则2格内弹射1次,Attack water to shock wet units; on land targets arc once within 2 tiles (6.6% paralyze)
+gem.effect.arc.unit_red_active,攻击水域：导电潮湿单位；攻击陆地单位则2格内敌方各弹射1次（6.6%麻痹）,Attack water to shock wet units; on land each enemy within 2 tiles arcs once (6.6% paralyze)
 gem.effect.arc.enemy_red_action,电击 ({damage}),Shock ({damage})
 gem.effect.arc.blue_damaged,被动：受击概率反击电击,Passive: chance to shock the attacker when damaged
 gem.effect.arc.black_death,死亡：周围水洼导电连锁,Death: chain conductive shocks through nearby water

@@ -12,6 +12,7 @@ func _run_tests() -> void:
 	_test_arc_execute_rejects_ranged()
 	_test_fire_gem_ai_and_execute()
 	_test_ice_gem_ai_and_execute()
+	_test_explosion_attack_does_not_suicide()
 	_test_enemy_red_damage_includes_attacker_uid()
 	_test_pull_execute_respects_range()
 	_test_custom_intent_keeps_move_events()
@@ -90,6 +91,27 @@ func _test_ice_gem_ai_and_execute() -> void:
 	var dmg_ev: Dictionary = events[0]
 	assert(dmg_ev.get("attacker_uid", "") == guard.uid, "ice damage should include attacker_uid")
 	print("  [OK] ice gem AI + execute")
+
+
+func _test_explosion_attack_does_not_suicide() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("template_c", 42)
+	var state := ctrl.state
+	var guard := _find_guard(state)
+	var player := state.get_player()
+	_embed_red_gem(state, guard, Constants.GEM_EXPLOSION)
+	guard.pos = player.pos + Vector2i(1, 0)
+	state.rebuild_occupancy()
+	IntentSystem.refresh_unit_intent(state, guard)
+	assert(guard.intent.type == "explosion_attack", "explosion gem should use explosion_attack, got %s" % guard.intent.type)
+	var guard_hp := guard.hp
+	var player_hp := player.hp
+	var events := IntentSystem.execute_intent(state, guard)
+	assert(guard.alive, "explosion attack should not kill the attacker")
+	assert(guard.hp == guard_hp, "attacker should take no self damage")
+	assert(player.hp < player_hp, "explosion attack should damage the target")
+	assert(events.any(func(e): return e.get("type", "") == "explode"), "should emit explode event")
+	print("  [OK] explosion attack cross burst without suicide")
 
 
 func _test_enemy_red_damage_includes_attacker_uid() -> void:

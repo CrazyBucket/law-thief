@@ -9,6 +9,8 @@ const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 
+const CHAPTER_COUNT := 3
+
 const COMBAT_ENCOUNTERS: Dictionary = {
 	"NORMAL_COMBAT": ["template_a", "template_b", "template_c"],
 	"ELITE_COMBAT": ["template_d", "template_b"],
@@ -27,14 +29,20 @@ func start_new_run(seed_value: int = -1) -> void:
 		seed_value = int(Time.get_unix_time_from_system()) % 100000
 	map_seed = seed_value
 	RunService.start_run(map_seed, map_seed)
-	var gen := _AdventureMapGenerator.new()
-	map_matrix = gen.generate(map_seed)
-	current_pos = Vector2i.ZERO
-	run_active = true
-	pending_room_type = "START"
-	pending_room_label = "🏁 起点"
-	_sync_run_progress()
+	_begin_chapter_map(1, map_seed)
 	DebugService.log_info("Adventure run started seed=%d" % map_seed)
+
+
+func get_chapter_count() -> int:
+	return CHAPTER_COUNT
+
+
+func get_current_chapter() -> int:
+	return RunService.get_current_chapter()
+
+
+func get_chapter_label() -> String:
+	return "第 %d / %d 关" % [get_current_chapter(), CHAPTER_COUNT]
 
 
 func build_board_state() -> GameState:
@@ -81,7 +89,7 @@ func enter_cell(cell: Vector2i) -> void:
 	if node == null:
 		return
 	pending_room_type = node.room_type
-	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type)
+	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type, get_current_chapter(), CHAPTER_COUNT)
 	pending_room_label = "%s %s" % [display["glyph"], display["label"]]
 	_sync_run_progress()
 	_navigate_to_room(node.room_type)
@@ -139,7 +147,15 @@ func resolve_pending_room() -> Dictionary:
 		"SHOP":
 			result["summary"] = "商店节点先保留，占位等待后续接入商品与购买流程。"
 		"END":
-			result["summary"] = "已抵达终点节点，后续可在这里接 Boss 或章节结算。"
+			var chapter := get_current_chapter()
+			if chapter < CHAPTER_COUNT:
+				var completed := chapter
+				_advance_to_next_chapter()
+				result["chapter_advanced"] = true
+				result["summary"] = "完成第 %d 关，进入第 %d 关。" % [completed, get_current_chapter()]
+			else:
+				result["run_complete"] = true
+				result["summary"] = "三条线路全部打通，本局胜利。"
 		_:
 			result["summary"] = "房间已结算。"
 	RunService.mark_room_resolved(room_id, result)
@@ -147,6 +163,13 @@ func resolve_pending_room() -> Dictionary:
 
 
 func finish_room_and_return() -> void:
+	var room_id := current_room_id()
+	var resolved := RunService.get_resolved_room(room_id)
+	if bool(resolved.get("run_complete", false)):
+		RunService.end_run()
+		reset_local_state()
+		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+		return
 	_sync_run_progress()
 	get_tree().change_scene_to_file(MAP_SCENE)
 
@@ -156,7 +179,8 @@ func resume_loaded_run() -> bool:
 		return false
 	var progress := RunService.get_progress_payload()
 	if progress.is_empty():
-		_restore_generated_map(RunService.get_run().map_seed, Vector2i.ZERO)
+		var run := RunService.get_run()
+		_restore_generated_map(_chapter_map_seed(run.map_seed, run.current_chapter), Vector2i.ZERO)
 		_sync_run_progress()
 		return true
 	return import_progress(progress)
@@ -179,6 +203,7 @@ func reset_local_state() -> void:
 func export_progress() -> Dictionary:
 	return {
 		"map_seed": map_seed,
+		"current_chapter": get_current_chapter(),
 		"current_map_pos": _vec_to_dict(current_pos),
 		"run_active": run_active,
 		"pending_room_type": pending_room_type,
@@ -199,7 +224,11 @@ func import_progress(progress: Dictionary) -> bool:
 	if raw_map is Array and not (raw_map as Array).is_empty():
 		map_matrix = _deserialize_map_matrix(raw_map as Array)
 		return true
-	_restore_generated_map(map_seed, current_pos)
+	var run := RunService.get_run()
+	var base_seed := map_seed
+	if run != null:
+		base_seed = run.map_seed
+	_restore_generated_map(_chapter_map_seed(base_seed, RunService.get_current_chapter()), current_pos)
 	return true
 
 
@@ -227,7 +256,9 @@ func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
 	if pending_room_label.is_empty():
 		var current_node = get_current_node()
 		if current_node != null:
-			var display: Dictionary = _AdventureRoomDisplay.get_display(current_node.room_type)
+			var display: Dictionary = _AdventureRoomDisplay.get_display(
+				current_node.room_type, get_current_chapter(), CHAPTER_COUNT
+			)
 			pending_room_label = "%s %s" % [display["glyph"], display["label"]]
 
 
@@ -291,6 +322,38 @@ func _dict_to_vec(raw_value: Variant, fallback: Vector2i) -> Vector2i:
 	if raw_value is Dictionary:
 		return Vector2i(int(raw_value.get("x", fallback.x)), int(raw_value.get("y", fallback.y)))
 	return fallback
+
+
+func _chapter_map_seed(base_seed: int, chapter: int) -> int:
+	return base_seed + (maxi(1, chapter) - 1) * 9973
+
+
+func _begin_chapter_map(chapter: int, base_seed: int) -> void:
+	var run := RunService.get_run()
+	if run != null:
+		run.current_chapter = maxi(1, chapter)
+		base_seed = run.map_seed
+	var chapter_seed := _chapter_map_seed(base_seed, chapter)
+	var gen := _AdventureMapGenerator.new()
+	map_matrix = gen.generate(chapter_seed)
+	map_seed = chapter_seed
+	current_pos = Vector2i.ZERO
+	run_active = true
+	pending_room_type = "START"
+	var display: Dictionary = _AdventureRoomDisplay.get_display("START", chapter, CHAPTER_COUNT)
+	pending_room_label = "%s %s" % [display["glyph"], display["label"]]
+	_sync_run_progress()
+
+
+func _advance_to_next_chapter() -> void:
+	var run := RunService.get_run()
+	if run == null:
+		return
+	var next_chapter := mini(CHAPTER_COUNT, run.current_chapter + 1)
+	run.resolved_rooms.clear()
+	run.relic_offer_snapshots.clear()
+	_begin_chapter_map(next_chapter, run.map_seed)
+	RunService.save_run()
 
 
 func _sync_run_progress() -> void:

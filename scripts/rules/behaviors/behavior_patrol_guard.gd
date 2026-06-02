@@ -16,7 +16,7 @@ static func build_normal_intent(state: GameState, unit: UnitState, cell_blockers
 static func build_lawless_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
 	var saved_mp: int = unit.move_points
 	unit.move_points = PatrolGuardRules.rampage_move_points(unit)
-	var decision: Dictionary = EnemyAI.decide(state, unit, cell_blockers)
+	var decision: Dictionary = EnemyBehavior.run_ai_decide(state, unit, cell_blockers)
 	unit.move_points = saved_mp
 	var intent: IntentState = IntentSystem.enemy_intent_from_decision(state, unit, decision, cell_blockers)
 	if intent.type != "wait":

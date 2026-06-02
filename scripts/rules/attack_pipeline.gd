@@ -261,6 +261,8 @@ static func _apply_tags_at_cell(
 				ctx.state, hit_unit, ctx.attacker, ctx.base_damage, ctx.events
 			)
 
+	_try_apply_chaos_launcher_at_cell(ctx, hit_cell, hit_unit)
+
 
 static func _apply_direct_hit_extras(ctx: AttackContext, target: UnitState) -> void:
 	if target == null or not target.alive:
@@ -269,9 +271,6 @@ static func _apply_direct_hit_extras(ctx: AttackContext, target: UnitState) -> v
 	if ctx.has_tag(TAG_KNOCKBACK) and target.alive:
 		_Displacement.knockback(ctx.state, target, ctx.attacker.pos, 1, ctx.attacker.uid, ctx.events)
 	if ctx.attacker.uid == ctx.state.player_uid and target.alive:
-		var _chaos_registry := _relic_effect_registry()
-		if _chaos_registry != null and bool(_chaos_registry.query_modifier("chaos_launcher_active", ctx.state)):
-			_apply_chaos_launcher_effect(ctx, target)
 		var _registry := _relic_effect_registry()
 		if _registry != null:
 			var break_bonus: int = int(_registry.query_modifier("armor_lock_break_bonus", ctx.state))
@@ -405,24 +404,59 @@ static func _gem_hooks_on_kill(ctx: AttackContext) -> void:
 	pass
 
 
-static func _apply_chaos_launcher_effect(ctx: AttackContext, target: UnitState) -> void:
-	var rng := _rng_service()
-	if rng == null or target == null or not target.alive:
+static func _try_apply_chaos_launcher_at_cell(
+	ctx: AttackContext,
+	hit_cell: Vector2i,
+	hit_unit: UnitState
+) -> void:
+	if ctx.attacker.uid != ctx.state.player_uid:
 		return
-	var effects := ["poison", "burning", "arc_proc", "fire_on_hit", "slow"]
-	var pick: int = int(rng.roll_int("chaos_launcher_%d" % ctx.state.turn_index, 0, effects.size() - 1))
-	match effects[pick]:
+	var registry := _relic_effect_registry()
+	if registry == null or not bool(registry.query_modifier("chaos_launcher_active", ctx.state)):
+		return
+	_apply_chaos_launcher_effect(ctx, hit_cell, hit_unit)
+
+
+static func _apply_chaos_launcher_effect(
+	ctx: AttackContext,
+	hit_cell: Vector2i,
+	hit_unit: UnitState
+) -> void:
+	var rng := _rng_service()
+	if rng == null:
+		return
+	var effects: Array[String] = ["poison", "burning", "arc_proc", "fire_on_hit", "slow"]
+	if hit_unit == null or not hit_unit.alive:
+		effects = ["poison", "fire_on_hit"]
+	var roll_key := "chaos_launcher_%d_%d_%d" % [ctx.state.turn_index, hit_cell.x, hit_cell.y]
+	var pick: int = int(rng.roll_int(roll_key, 0, effects.size() - 1))
+	var picked: String = effects[pick]
+	var applied: bool = false
+	match picked:
 		"poison":
-			StatusRules.apply_poison(ctx.state, target, 1, 0, ctx.attacker.uid)
+			_apply_poison_at_cell(ctx, hit_cell, hit_unit)
+			applied = true
 		"burning":
-			StatusRules.apply_burning(ctx.state, target, 1, ctx.attacker.uid)
+			if hit_unit != null and hit_unit.alive:
+				StatusRules.apply_burning(ctx.state, hit_unit, 1, ctx.attacker.uid)
+				applied = true
 		"arc_proc":
-			GemEffects.apply_arc_bounce_from_victim(ctx.state, target, ctx.attacker, ctx.base_damage, ctx.events)
+			if hit_unit != null and hit_unit.alive:
+				GemEffects.apply_arc_bounce_from_victim(
+					ctx.state, hit_unit, ctx.attacker, ctx.base_damage, ctx.events
+				)
+				applied = true
 		"fire_on_hit":
-			TileRules.create_fire(ctx.state, target.pos)
+			_apply_fire_tile_at_cell(ctx, hit_cell)
+			applied = true
 		"slow":
-			GemEffects.apply_ice_hit_effect(ctx.state, target, ctx.attacker.uid)
-	ctx.state.log("[Relic] relic_chaos_launcher -> %s 附加 %s" % [target.uid, effects[pick]])
+			if hit_unit != null and hit_unit.alive:
+				GemEffects.apply_ice_hit_effect(ctx.state, hit_unit, ctx.attacker.uid)
+				applied = true
+	if not applied:
+		return
+	var log_target: String = hit_unit.uid if hit_unit != null else str(hit_cell)
+	ctx.state.log("[Relic] relic_chaos_launcher -> %s 附加 %s" % [log_target, picked])
 
 
 static func _apply_crowbar_break(ctx: AttackContext, target: UnitState, break_damage: int) -> void:

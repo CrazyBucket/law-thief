@@ -27,6 +27,10 @@ class ActionCandidate:
 	var description: String = ""
 
 
+static func make_candidate() -> ActionCandidate:
+	return ActionCandidate.new()
+
+
 # ─── 辅助：从 profile 字典安全取 float ─────────────────────────────────────
 static func _w(profile: Dictionary, key: String, fallback: float = 0.0) -> float:
 	return float(profile.get(key, fallback))
@@ -229,6 +233,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 		return results
 
 	match str(GemEffects.get_enemy_red_intent_meta(gem, CombatRules.attack_damage(state, enemy)).get("type", "wait")):
+		"explosion_attack":
+			results.append_array(_score_explosion_attack(state, enemy, from_pos, player, profile))
 		"charge_explode":
 			results.append_array(_score_explosion_skill(state, enemy, from_pos, player, profile))
 		"pull":
@@ -246,7 +252,26 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 	return results
 
 
-# ─── 爆炸技能评分 ─────────────────────────────────────────────────────────
+# ─── 爆炸宝石：近战十字溅射（与玩家红槽攻击同源，不自爆）────────────────────
+static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var damage: int = CombatRules.attack_damage(state, enemy)
+	candidate.score = float(damage) * _w(profile, "w_damage", 10.0)
+	if player.hp <= damage:
+		candidate.score += _w(profile, "w_kill_player", 200.0)
+	candidate.score += _evaluate_tile_safety(state, from_pos, profile)
+	candidate.description = "爆炸攻击"
+	results.append(candidate)
+	return results
+
+
+# ─── 冲刺自爆（遗留 intent，非爆炸宝石默认路径）────────────────────────────
 static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var dist_to_player: int = BoardUtils.manhattan(from_pos, player.pos)

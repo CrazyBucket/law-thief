@@ -1,6 +1,8 @@
 class_name StoneBowGuardRules
 extends RefCounted
 
+const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
+
 
 static func is_deployed(_start_pos: Vector2i, move_path: Array) -> bool:
 	return move_path.is_empty()
@@ -110,8 +112,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if not in_range(state, enemy, move_pos, player, move_path):
 			continue
-		var candidate := EnemyAI.ActionCandidate.new()
-		candidate.type = EnemyAI.ActionType.RANGED_ATTACK
+		var candidate := _EnemyAI.make_candidate()
+		candidate.type = _EnemyAI.ActionType.RANGED_ATTACK
 		candidate.move_target = move_pos
 		candidate.action_target_uid = player.uid
 		candidate.score = _score_ranged_position(
@@ -143,8 +145,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if can_shoot_here and new_dist < current_dist:
 			continue
-		var candidate := EnemyAI.ActionCandidate.new()
-		candidate.type = EnemyAI.ActionType.MOVE
+		var candidate := _EnemyAI.make_candidate()
+		candidate.type = _EnemyAI.ActionType.MOVE
 		candidate.move_target = move_pos
 		if current_dist > max_shoot_range:
 			candidate.score = _score_approach_out_of_range(current_dist, new_dist, move_pos, enemy.pos)
@@ -153,8 +155,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		candidate.description = "风筝走位" if current_dist <= max_shoot_range else "逼近射程"
 		candidates.append(candidate)
 
-	var wait := EnemyAI.ActionCandidate.new()
-	wait.type = EnemyAI.ActionType.WAIT
+	var wait := _EnemyAI.make_candidate()
+	wait.type = _EnemyAI.ActionType.WAIT
 	wait.move_target = enemy.pos
 	wait.score = -5.0
 	wait.description = "等待"
@@ -163,13 +165,13 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	if candidates.is_empty():
 		return {"move_path": [] as Array[Vector2i], "action": null}
 
-	var best: EnemyAI.ActionCandidate = candidates[0]
+	var best = candidates[0]
 	for c in candidates:
 		if c.score > best.score:
 			best = c
 
 	var result_path: Array[Vector2i] = []
-	if best.move_target != enemy.pos and best.type != EnemyAI.ActionType.WAIT:
+	if best.move_target != enemy.pos and best.type != _EnemyAI.ActionType.WAIT:
 		result_path = BoardUtils.path_toward(
 			state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, {}, cell_blockers
 		)

@@ -20,6 +20,61 @@ func unlock_flag(flag: String) -> void:
 	save_profile()
 
 
+func unlock_all_for_active_slot() -> Dictionary:
+	var added_conditions := 0
+	for cond in DataRegistry.get_relic_unlock_condition_ids():
+		if _flags.has(cond):
+			continue
+		_flags[cond] = true
+		added_conditions += 1
+		_dirty = true
+	var added_seen_relics := 0
+	for relic_id in DataRegistry.get_relic_ids():
+		var flag := "seen_relic_%s" % relic_id
+		if _flags.has(flag):
+			continue
+		_flags[flag] = true
+		added_seen_relics += 1
+		_dirty = true
+	var added_enemies := 0
+	for unit_id in DataRegistry.get_unit_def_ids():
+		if unit_id == "unit_player":
+			continue
+		for prefix in ["enemy_seen_", "enemy_killed_"]:
+			var enemy_flag := "%s%s" % [prefix, unit_id]
+			if _flags.has(enemy_flag):
+				continue
+			_flags[enemy_flag] = true
+			added_enemies += 1
+			_dirty = true
+	var added_achievements := 0
+	for flag in AchievementService.get_all_achievement_flag_ids():
+		if _flags.has(flag):
+			continue
+		_flags[flag] = true
+		added_achievements += 1
+		_dirty = true
+	var added_boss_flags := 0
+	for encounter_id in DataRegistry.get_encounter_ids():
+		var boss_flag := "boss_%s" % str(encounter_id)
+		if _flags.has(boss_flag):
+			continue
+		_flags[boss_flag] = true
+		added_boss_flags += 1
+		_dirty = true
+	if _dirty:
+		save_profile()
+	AchievementService.refresh_progress_flags()
+	DebugService.log_info("ProfileService: unlock_all_for_active_slot")
+	return {
+		"unlock_conditions": added_conditions,
+		"seen_relics": added_seen_relics,
+		"seen_enemies": added_enemies,
+		"achievements": added_achievements,
+		"boss_flags": added_boss_flags,
+	}
+
+
 func is_flag_unlocked(flag: String) -> bool:
 	return _flags.has(flag)
 

@@ -83,6 +83,7 @@ var _tracked_player_uid: String = ""
 const _ENCOUNTER_RELIC_SOURCE := {
 	"NORMAL_COMBAT": "normal_chest",
 	"ELITE_COMBAT": "elite_combat",
+	"END": "large_chest",
 }
 const _STATUS_PANEL_WIDTH := 320.0
 
@@ -577,7 +578,6 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"move_step":
 			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
 			await _board.animation_finished
-			await get_tree().create_timer(_scaled_anim_time(0.06)).timeout
 		"damage":
 			var atk_uid: String = str(ev.get("attacker_uid", ""))
 			var dmg_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
@@ -891,9 +891,16 @@ func _apply_battle_end(result: String) -> void:
 			var all_placeholder := offer.all(func(rid: String) -> bool:
 				return rid == "relic_placeholder"
 			)
-			_show_relic_reward(["relic_placeholder"] if all_placeholder else offer, result)
+			var display_offer: Array[String] = offer if not all_placeholder else _placeholder_relic_offer()
+			_show_relic_reward(display_offer, result)
 			return
 	_finish_battle_and_navigate(result)
+
+
+func _placeholder_relic_offer() -> Array[String]:
+	var offer: Array[String] = []
+	offer.append("relic_placeholder")
+	return offer
 
 
 func _show_relic_reward(offer: Array[String], battle_result: String) -> void:

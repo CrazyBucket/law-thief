@@ -3,6 +3,7 @@ extends RefCounted
 
 var master_seed: int = 0
 var map_seed: int = 0
+var current_chapter: int = 1
 ## relic_id 有序列表，顺序等于获取顺序
 var owned_relics: Array[String] = []
 ## room_id → Array[String]：已锁定的奖励候选快照，SL 安全
@@ -80,6 +81,7 @@ func export_dict() -> Dictionary:
 	return {
 		"master_seed": master_seed,
 		"map_seed": map_seed,
+		"current_chapter": current_chapter,
 		"owned_relics": owned_relics.duplicate(),
 		"relic_offer_snapshots": relic_offer_snapshots.duplicate(true),
 		"relic_runtime": runtime_raw,
@@ -97,10 +99,13 @@ static func from_dict(d: Dictionary) -> RunState:
 	var s := RunState.new()
 	s.master_seed = int(d.get("master_seed", 0))
 	s.map_seed = int(d.get("map_seed", 0))
+	s.current_chapter = maxi(1, int(d.get("current_chapter", 1)))
 	var raw_relics: Variant = d.get("owned_relics", [])
 	if raw_relics is Array:
 		for item in raw_relics:
-			s.owned_relics.append(str(item))
+			var relic_id := str(item)
+			if not relic_id.is_empty():
+				s.owned_relics.append(relic_id)
 	var raw_snapshots: Variant = d.get("relic_offer_snapshots", {})
 	if raw_snapshots is Dictionary:
 		for key in raw_snapshots.keys():

@@ -36,5 +36,19 @@ static func is_room_tile(tile_id: String) -> bool:
 	return tile_id in Constants.ROOM_TILE_IDS
 
 
-static func get_display(room_type: String) -> Dictionary:
+static func get_display(room_type: String, chapter: int = 1, chapter_count: int = 3) -> Dictionary:
+	if room_type == "END":
+		var safe_chapter := maxi(1, chapter)
+		var safe_total := maxi(1, chapter_count)
+		if safe_chapter >= safe_total:
+			return {
+				"glyph": "👑",
+				"label": "终局 Boss",
+				"color": Color(0.95, 0.75, 0.25),
+			}
+		return {
+			"glyph": "🚪",
+			"label": "大关出口",
+			"color": Color(0.55, 0.82, 0.95),
+		}
 	return ROOM_DISPLAY.get(room_type, {"glyph": "?", "label": room_type, "color": Color(0.6, 0.6, 0.65)})

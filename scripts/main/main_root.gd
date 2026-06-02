@@ -1,6 +1,8 @@
 extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
+const MetaConsoleCli = preload("res://scripts/debug/meta_console_cli.gd")
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 
 @onready var _particle_canvas: Control = $ParticleCanvas
@@ -32,10 +34,14 @@ var _particles: Array[Dictionary] = []
 var _time: float = 0.0
 var _title_glow: float = 0.0
 var _navigating: bool = false
+var _console_layer: CanvasLayer = null
+var _console: Control = null
+var _meta_cli: MetaConsoleCli = null
 
 
 func _ready() -> void:
 	DebugService.log_info("Main scene ready")
+	_create_meta_console()
 	_spawn_background_particles()
 	_wire_actions()
 	_apply_theme()
@@ -59,6 +65,15 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F9 and _console != null:
+			_console.toggle()
+			get_viewport().set_input_as_handled()
+			return
+		if event.keycode == KEY_ESCAPE and _console != null and _console.is_open():
+			_console.close()
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("ui_cancel") and _modal_layer.visible:
 		_close_modal()
 		get_viewport().set_input_as_handled()
@@ -567,6 +582,31 @@ func _draw_particles() -> void:
 			pos + Vector2(-size * 0.6, 0),
 		])
 		_particle_canvas.draw_colored_polygon(points, color)
+
+
+func _create_meta_console() -> void:
+	_meta_cli = MetaConsoleCli.new()
+	_console_layer = CanvasLayer.new()
+	_console_layer.layer = 64
+	add_child(_console_layer)
+	_console = EditorConsoleScene.instantiate()
+	_console.command_submitted.connect(_on_meta_console_submitted)
+	_console_layer.add_child(_console)
+	_console.append_log("存档调试（F9）", "#6bdc8e")
+	_console.append_log("unlock all — 解锁当前档案全部未解锁标记", "#7a9a82")
+
+
+func _on_meta_console_submitted(command: String) -> void:
+	_console.append_log("> %s" % command, "#ffd166")
+	var result: Dictionary = _meta_cli.run(command)
+	if result.get("ok", false):
+		_console.append_log(str(result.get("message", "ok")), "#8fd4a8")
+		for line in result.get("lines", []):
+			_console.append_log("- %s" % str(line), "#c8cad4")
+		_refresh_all()
+	else:
+		_console.append_log(str(result.get("reason", "failed")), "#ff8a80")
+	_console.clear_input()
 
 
 func _play_intro_animation() -> void:

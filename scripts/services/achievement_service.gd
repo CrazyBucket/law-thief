@@ -82,6 +82,16 @@ func get_achievement_entries() -> Array[Dictionary]:
 	return entries
 
 
+func get_all_achievement_flag_ids() -> Array[String]:
+	var result: Array[String] = []
+	for definition in _ACHIEVEMENTS:
+		var achievement_id := str(definition.get("id", ""))
+		if achievement_id.is_empty():
+			continue
+		result.append(_achievement_flag(achievement_id))
+	return result
+
+
 func get_summary() -> Dictionary:
 	var entries := get_achievement_entries()
 	var unlocked := 0

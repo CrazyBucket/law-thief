@@ -1,7 +1,6 @@
 class_name CombatRules
 extends RefCounted
 
-const _AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
 
@@ -100,7 +99,7 @@ static func melee_attack(
 	var payload: Dictionary = {}
 	if charge_bonus > 0:
 		payload["charge_bonus"] = charge_bonus
-	return _AttackPipeline.execute(state, attacker, target, [_AttackPipeline.TAG_MELEE], payload)
+	return AttackPipeline.execute(state, attacker, target, [AttackPipeline.TAG_MELEE], payload)
 
 
 ## 远程射击：唯一入口是瞄准格；格上单位在 pipeline 内解析为 target（可为 null）
@@ -113,11 +112,11 @@ static func ranged_attack(
 ) -> Dictionary:
 	if not attacker.alive:
 		return {"ok": false, "reason": "攻击者无效", "events": []}
-	return _AttackPipeline.execute_aimed(
+	return AttackPipeline.execute_aimed(
 		state,
 		attacker,
 		aim_cell,
-		[_AttackPipeline.TAG_RANGED],
+		[AttackPipeline.TAG_RANGED],
 		payload,
 		max_range
 	)
@@ -149,11 +148,11 @@ static func split_melee_attack(state: GameState, attacker: UnitState, target: Un
 	if not BoardUtils.are_units_adjacent(attacker, target):
 		return {"ok": false, "reason": "目标不在近战范围", "events": []}
 	var aim_cell: Vector2i = _SplitShotRules.aim_pos_for_target(attacker.pos, target)
-	return _AttackPipeline.execute_aimed(
+	return AttackPipeline.execute_aimed(
 		state,
 		attacker,
 		aim_cell,
-		[_AttackPipeline.TAG_MELEE, _AttackPipeline.TAG_SPLIT_SHOT],
+		[AttackPipeline.TAG_MELEE, AttackPipeline.TAG_SPLIT_SHOT],
 		{"aim_cell": aim_cell},
 		Constants.SPLIT_ATTACK_RANGE
 	)

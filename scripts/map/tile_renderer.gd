@@ -149,7 +149,9 @@ static func _draw_floor_noise(canvas: Control, center: Vector2, variant: int) ->
 
 static func _draw_room_label(canvas: Control, center: Vector2, tile_id: String) -> void:
 	var room_type: String = _AdventureRoomDisplay.room_type_from_tile(tile_id)
-	var display: Dictionary = _AdventureRoomDisplay.get_display(room_type)
+	var display: Dictionary = _AdventureRoomDisplay.get_display(
+		room_type, AdventureService.get_current_chapter(), AdventureService.get_chapter_count()
+	)
 	var font: Font = ThemeDB.fallback_font
 	var glyph: String = display["glyph"]
 	var label: String = display["label"]
@@ -170,7 +172,9 @@ static func _draw_room_label(canvas: Control, center: Vector2, tile_id: String) 
 
 static func _room_palette(tile_id: String) -> Dictionary:
 	var room_type: String = _AdventureRoomDisplay.room_type_from_tile(tile_id)
-	var base: Color = _AdventureRoomDisplay.get_display(room_type)["color"]
+	var base: Color = _AdventureRoomDisplay.get_display(
+		room_type, AdventureService.get_current_chapter(), AdventureService.get_chapter_count()
+	)["color"]
 	return {
 		"top": base.darkened(0.15),
 		"left": base.darkened(0.35),

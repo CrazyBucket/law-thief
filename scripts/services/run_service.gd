@@ -40,6 +40,12 @@ func get_run() -> RunState:
 	return _run
 
 
+func get_current_chapter() -> int:
+	if _run == null:
+		return 1
+	return maxi(1, _run.current_chapter)
+
+
 func get_progress_payload() -> Dictionary:
 	return _progress_payload.duplicate(true)
 
@@ -149,7 +155,10 @@ func has_relic(relic_id: String) -> bool:
 func get_owned_relics() -> Array[String]:
 	if _run == null:
 		return []
-	return _run.owned_relics.duplicate()
+	var result: Array[String] = []
+	for relic_id in _run.owned_relics:
+		result.append(str(relic_id))
+	return result
 
 
 func get_relic_runtime(relic_id: String) -> RelicRuntimeState:
@@ -244,6 +253,7 @@ func save_run() -> void:
 	SaveService.touch_active_slot({
 		"has_run": true,
 		"map_seed": _run.map_seed,
+		"current_chapter": _run.current_chapter,
 		"owned_relic_count": _run.owned_relics.size(),
 		"run_invalid_reason": "",
 	})
