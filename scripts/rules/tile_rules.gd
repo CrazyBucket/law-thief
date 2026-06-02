@@ -33,9 +33,10 @@ static var _OVERLAY_REACTIONS: Dictionary = {
 static func sync_standing_ground_effects(state: GameState, unit: UnitState) -> void:
 	if not unit.alive:
 		return
-	var tile := state.get_tile(unit.pos)
-	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
-		StatusRules.apply_wet(state, unit, 2)
+	for tile in _occupied_tiles(state, unit):
+		if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+			StatusRules.apply_wet(state, unit, 2)
+			return
 
 
 static func sync_all_units_standing_ground(state: GameState) -> void:
@@ -47,22 +48,18 @@ static func sync_all_units_standing_ground(state: GameState) -> void:
 ## opts.forced / opts.source_uid：强制位移踩入地刺时附加易伤
 ## opts.skip_overlay：为 true 时跳过 overlay 进入效果（已由 on_unit_moved_through 处理过的最终格使用）
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i, opts: Dictionary = {}) -> void:
-	var tile := state.get_tile(unit.pos)
-
 	sync_standing_ground_effects(state, unit)
 
 	EntityRules.on_unit_entered(state, unit, opts)
 
 	if not opts.get("skip_overlay", false):
-		_apply_enter_effects(state, unit, tile)
+		_apply_enter_effects_for_occupied_cells(state, unit)
 
 
 ## 单位经过某格时触发（移动路径中间格）
 static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector2i) -> void:
-	var tile := state.get_tile(pos)
-
 	sync_standing_ground_effects(state, unit)
-	_apply_enter_effects(state, unit, tile)
+	_apply_enter_effects_for_occupied_cells(state, unit)
 
 	GemEffects.run_unit_hooks(
 		state,
@@ -77,8 +74,7 @@ static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector
 static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos: Vector2i) -> void:
 	if unit.pos == old_pos:
 		return
-	var new_tile := state.get_tile(unit.pos)
-	if not new_tile.has_modifier(Constants.TILE_MOD_FIRE):
+	if not _unit_occupies_modifier(state, unit, Constants.TILE_MOD_FIRE):
 		StatusRules.clear_burning(unit)
 
 
@@ -202,6 +198,22 @@ static func _apply_enter_effects(state: GameState, unit: UnitState, tile: TileSt
 			_ENTER_EFFECTS[modifier_type].call(state, unit)
 
 
+static func _apply_enter_effects_for_occupied_cells(state: GameState, unit: UnitState) -> void:
+	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
+	if tile_immune:
+		return
+	var applied: Dictionary = {}
+	for tile in _occupied_tiles(state, unit):
+		for modifier_type in _ENTER_EFFECTS.keys():
+			if applied.has(modifier_type):
+				continue
+			if not tile.has_modifier(modifier_type):
+				continue
+			_ENTER_EFFECTS[modifier_type].call(state, unit)
+			applied[modifier_type] = true
+
+
 static func _apply_enter_effects_to_occupant(state: GameState, pos: Vector2i, tile: TileState) -> void:
 	var occupant := state.get_unit_at(pos)
 	if occupant == null or not occupant.alive:
@@ -219,3 +231,18 @@ static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, Constants.POISON_FOG_DURATION)
 	_apply_enter_effects_to_occupant(state, tile.pos, tile)
+
+
+static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileState]:
+	var tiles: Array[TileState] = []
+	for cell in unit.occupied_cells():
+		if BoardUtils.in_bounds(state, cell):
+			tiles.append(state.get_tile(cell))
+	return tiles
+
+
+static func _unit_occupies_modifier(state: GameState, unit: UnitState, modifier_type: String) -> bool:
+	for tile in _occupied_tiles(state, unit):
+		if tile.has_modifier(modifier_type):
+			return true
+	return false

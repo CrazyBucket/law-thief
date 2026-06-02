@@ -298,6 +298,7 @@ static func explode_at(state: GameState, center: Vector2i, damage: int, source_u
 static func _explosion_damage_event(unit: UnitState, dealt: int, source_uid: String) -> Dictionary:
 	return {
 		"type": "damage",
+		"uid": unit.uid,
 		"pos": unit.pos,
 		"damage": dealt,
 		"is_crit": false,
@@ -308,6 +309,7 @@ static func _explosion_damage_event(unit: UnitState, dealt: int, source_uid: Str
 static func _explode_at(state: GameState, center: Vector2i, damage: int, source_uid: String) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
 	var hit_uids: Dictionary = {}
+	var knockback_targets: Array[UnitState] = []
 	state.log("爆炸于 %s" % [center])
 	for cell in BoardUtils.cells_in_radius(center, Constants.EXPLOSION_RADIUS):
 		if not BoardUtils.in_bounds(state, cell):
@@ -327,7 +329,9 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 			if slot.locked and slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, slot, state.turn_index)
 		if hit_unit.alive and hit_unit.pos != center:
-			_Displacement.knockback(state, hit_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
+			knockback_targets.append(hit_unit)
+	for kb_unit in knockback_targets:
+		_Displacement.knockback(state, kb_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true)
 	return events
 
 
@@ -1060,6 +1064,5 @@ static func _spawn_split_clones(state: GameState, owner: UnitState, out_events: 
 		var uids: Array = clones.map(func(c: UnitState) -> String: return c.uid)
 		state.push_controllable_batch(uids)
 		state.log("分裂激活：操控 %s，队列 %s" % [state.player_uid, state.controllable_queue])
-
 
 

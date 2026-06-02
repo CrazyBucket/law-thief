@@ -479,6 +479,9 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 		"base_attack":
 			resolved_damage = damage
 			params["damage"] = damage
+		"cross_burst":
+			resolved_damage = Constants.EXPLOSION_CROSS_DAMAGE
+			params["damage"] = resolved_damage
 		_:
 			if resolved_damage != 0 and not params.has("damage"):
 				params["damage"] = resolved_damage
@@ -510,7 +513,7 @@ func _register_gem_effect_profiles() -> void:
 			"enemy_intent": {
 				"type": "explosion_attack",
 				"preview_key": "gem.intent.explosion_attack",
-				"damage_mode": "base_attack",
+				"damage_mode": "cross_burst",
 				"damage": 0,
 			},
 			"ability_descriptions": {

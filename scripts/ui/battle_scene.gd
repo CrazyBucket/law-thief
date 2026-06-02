@@ -735,42 +735,39 @@ func _play_presented_events(events: Array) -> void:
 			_board.queue_redraw()
 			_apply_event_state(ev)
 			i += 1
-			# 紧跟爆炸的所有 damage 事件同时弹出，并行显示伤害数字
-			var dmg_batch: Array = _collect_consecutive_events(events, i, ["damage"])
-			i += dmg_batch.size()
-			for dmg_ev in dmg_batch:
-				_prime_event_state(dmg_ev)
-				var dpos: Vector2i = dmg_ev.get("pos", Vector2i.ZERO)
-				var dval: int = dmg_ev.get("damage", 1)
-				var dcrit: bool = dmg_ev.get("is_crit", false)
-				_board.play_damage_effect(dpos, dval, dcrit)
-				_spawn_damage_text(dpos, dval, dcrit, dmg_ev.get("reason", ""))
-				_apply_event_state(dmg_ev)
-			# 紧跟的所有 move_step（knockback）并行播放
-			var kb_batch: Array = _collect_consecutive_events(events, i, ["move_step"])
-			i += kb_batch.size()
+			var blast_tail := _collect_blast_tail(events, i)
+			i = int(blast_tail.get("next_index", i))
+			var dmg_batch: Array = blast_tail.get("damage", [])
+			var kb_batch: Array = blast_tail.get("move_step", [])
+			_play_damage_batch(dmg_batch)
 			if not kb_batch.is_empty():
-				for kb_ev in kb_batch:
-					_prime_event_state(kb_ev)
-				_board.animate_moves_parallel(kb_batch)
-				await _board.animation_finished
-				for kb_ev in kb_batch:
-					_apply_event_state(kb_ev)
+				await _play_parallel_move_batch(kb_batch)
 			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
+			_board.queue_redraw()
+			continue
+		if ev_type == "damage":
+			var damage_batch: Array = _collect_consecutive_events(events, i, ["damage"])
+			i += damage_batch.size()
+			_play_damage_batch(damage_batch)
+			await get_tree().create_timer(_scaled_anim_time(0.34)).timeout
 			_board.queue_redraw()
 			continue
 		if ev_type == "move_step":
 			var batch: Array = _collect_consecutive_events(events, i, ["move_step"])
+			i += batch.size()
 			if _move_batch_is_parallel(batch):
-				i += batch.size()
-				for step_ev in batch:
-					_prime_event_state(step_ev)
-				_board.animate_moves_parallel(batch)
-				await _board.animation_finished
-				for step_ev in batch:
-					_apply_event_state(step_ev)
-				_board.queue_redraw()
-				continue
+				await _play_parallel_move_batch(batch)
+			else:
+				await _play_move_path_batch(batch)
+			_board.queue_redraw()
+			continue
+		if ev_type in ["poison_burst", "fire_burst", "frost_pulse"]:
+			var fx_batch: Array = _collect_consecutive_events(events, i, [ev_type])
+			i += fx_batch.size()
+			_play_area_fx_batch(fx_batch)
+			await get_tree().create_timer(_scaled_anim_time(0.42)).timeout
+			_board.queue_redraw()
+			continue
 		if ev_type == "split_spawn":
 			_apply_event_state(ev)
 			i += 1
@@ -790,6 +787,84 @@ func _collect_consecutive_events(events: Array, start: int, types: Array) -> Arr
 		batch.append(events[i])
 		i += 1
 	return batch
+
+
+func _collect_blast_tail(events: Array, start: int) -> Dictionary:
+	var damage_batch: Array = []
+	var move_batch: Array = []
+	var i := start
+	while i < events.size():
+		var tail_type := str(events[i].get("type", ""))
+		if tail_type == "damage":
+			damage_batch.append(events[i])
+		elif tail_type == "move_step":
+			move_batch.append(events[i])
+		else:
+			break
+		i += 1
+	return {
+		"damage": damage_batch,
+		"move_step": move_batch,
+		"next_index": i,
+	}
+
+
+func _play_damage_batch(batch: Array) -> void:
+	for dmg_ev in batch:
+		_prime_event_state(dmg_ev)
+	for dmg_ev in batch:
+		var dpos: Vector2i = dmg_ev.get("pos", Vector2i.ZERO)
+		var dval: int = dmg_ev.get("damage", 1)
+		var dcrit: bool = dmg_ev.get("is_crit", false)
+		_board.play_damage_effect(dpos, dval, dcrit)
+		_spawn_damage_text(dpos, dval, dcrit, dmg_ev.get("reason", ""))
+	for dmg_ev in batch:
+		_apply_event_state(dmg_ev)
+
+
+func _play_area_fx_batch(batch: Array) -> void:
+	for fx_ev in batch:
+		_prime_event_state(fx_ev)
+	for fx_ev in batch:
+		match str(fx_ev.get("type", "")):
+			"poison_burst":
+				_board.play_poison_burst(fx_ev.get("pos", Vector2i.ZERO), int(fx_ev.get("radius", 0)))
+			"fire_burst":
+				_board.play_explosion(fx_ev.get("pos", Vector2i.ZERO))
+			"frost_pulse":
+				_board.play_heal_effect(fx_ev.get("pos", Vector2i.ZERO))
+	for fx_ev in batch:
+		_apply_event_state(fx_ev)
+
+
+func _play_parallel_move_batch(batch: Array) -> void:
+	for step_ev in batch:
+		_prime_event_state(step_ev)
+	_board.animate_moves_parallel(batch)
+	await _board.animation_finished
+	for step_ev in batch:
+		_apply_event_state(step_ev)
+
+
+func _play_move_path_batch(batch: Array) -> void:
+	if batch.is_empty():
+		return
+	if batch.size() == 1 or not _board.has_method("animate_move_path"):
+		for step_ev in batch:
+			_prime_event_state(step_ev)
+			_board.animate_move(step_ev.get("uid", ""), step_ev.get("from", Vector2i.ZERO), step_ev.get("to", Vector2i.ZERO))
+			await _board.animation_finished
+			_apply_event_state(step_ev)
+		return
+	for step_ev in batch:
+		_prime_event_state(step_ev)
+	var path: Array = [batch[0].get("from", Vector2i.ZERO)]
+	for step_ev in batch:
+		path.append(step_ev.get("to", Vector2i.ZERO))
+	_board.animate_move_path(str(batch[0].get("uid", "")), path)
+	await _board.animation_finished
+	for step_ev in batch:
+		_apply_event_state(step_ev)
 
 
 func _play_projectile_volley(batch: Array) -> void:
@@ -842,7 +917,10 @@ func _apply_event_state(ev: Dictionary) -> void:
 	match str(ev.get("type", "")):
 		"damage":
 			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var victim := _display_state.get_unit_at(pos)
+			var victim_uid := str(ev.get("uid", ev.get("victim_uid", "")))
+			var victim: UnitState = _display_state.units.get(victim_uid, null) if not victim_uid.is_empty() else null
+			if victim == null:
+				victim = _display_state.get_unit_at(pos)
 			if victim == null:
 				return
 			victim.hp = maxi(0, victim.hp - int(ev.get("damage", 0)))

@@ -223,7 +223,7 @@ static func _deal_unit_collision_damage(
 		final_amount = maxi(1, int(float(amount) * mult))
 	var dealt := CombatRules.apply_damage(state, unit, final_amount, source_uid, reason)
 	if dealt > 0:
-		events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
+		events.append({"type": "damage", "uid": unit.uid, "pos": unit.pos, "damage": dealt, "is_crit": false})
 
 
 static func _blocking_entity_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> EntityState:

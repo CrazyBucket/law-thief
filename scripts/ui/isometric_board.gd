@@ -737,7 +737,7 @@ func _resolve_knight_pose(unit: UnitState, facing: String) -> Dictionary:
 		var fidx := clampi(int(st / (0.28 / 3.0)), 0, 2)
 		tex = _knight_sprites.texture_sword_swing(facing, fidx)
 	elif _move_offsets.has(unit.uid):
-		var wfr := int(_walk_phase.get(unit.uid, 0.0)) % 3
+		var wfr := int(float(_walk_phase.get(unit.uid, 0.0)) * _SLIME_WALK_FPS) % 3
 		tex = _knight_sprites.texture_walk(facing, wfr)
 	else:
 		tex = _knight_sprites.texture_walk(facing, 0)
@@ -1257,6 +1257,36 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset, emit_finished))
 
 
+## 播放一整条路径。逻辑位置已提前写到终点，视觉 offset 沿路径连续归零。
+func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true) -> void:
+	if path.size() < 2:
+		if emit_finished:
+			animation_finished.emit()
+		return
+	if state != null:
+		var mover: UnitState = state.units.get(unit_uid, null)
+		if mover != null:
+			mover.facing = _facing_from_grid_pos(path[path.size() - 2], path[path.size() - 1])
+	var logical_pos: Vector2i = path[path.size() - 1]
+	if state != null:
+		var unit: UnitState = state.units.get(unit_uid, null)
+		if unit != null:
+			logical_pos = unit.pos
+	var logical_screen := grid_to_screen(logical_pos)
+	var offset_path: Array[Vector2] = []
+	for cell in path:
+		offset_path.append(grid_to_screen(cell) - logical_screen)
+	_move_offsets[unit_uid] = offset_path[0]
+	_walk_phase[unit_uid] = 0.0
+	var segment_count := maxi(1, offset_path.size() - 1)
+	var duration := _scaled_duration(0.18 * float(segment_count))
+	var tween: Tween = create_tween()
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.tween_method(_set_move_path_progress.bind(unit_uid, offset_path), 0.0, float(segment_count), duration)
+	tween.tween_callback(_on_move_anim_done.bind(unit_uid, Vector2.ZERO, emit_finished))
+
+
 ## 多单位同时位移（爆炸击退等）
 func animate_moves_parallel(moves: Array) -> void:
 	if moves.is_empty():
@@ -1340,6 +1370,19 @@ func _set_move_offset(offset: Vector2, uid: String) -> void:
 	queue_redraw()
 
 
+func _set_move_path_progress(progress: float, uid: String, offset_path: Array[Vector2]) -> void:
+	if offset_path.is_empty():
+		return
+	var max_segment := offset_path.size() - 1
+	var seg := clampi(int(floor(progress)), 0, max_segment)
+	if seg >= max_segment:
+		_move_offsets[uid] = offset_path[max_segment]
+	else:
+		var local_t := clampf(progress - float(seg), 0.0, 1.0)
+		_move_offsets[uid] = offset_path[seg].lerp(offset_path[seg + 1], local_t)
+	queue_redraw()
+
+
 func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool = true) -> void:
 	_walk_phase.erase(uid)
 	_move_offsets.erase(uid)
@@ -1369,6 +1412,7 @@ func _update_gem_visuals(scaled_dt: float) -> bool:
 					_masked_embedded_gems.erase(gem_uid)
 				play_gem_flash(visual.get("target_grid", Vector2i.ZERO), visual.get("tint", Color.WHITE))
 				_inserting_gem_visuals.remove_at(idx)
+				queue_redraw()
 			idx -= 1
 	return dirty
 

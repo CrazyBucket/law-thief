@@ -261,7 +261,7 @@ static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var damage: int = CombatRules.attack_damage(state, enemy)
+	var damage: int = Constants.EXPLOSION_CROSS_DAMAGE
 	candidate.score = float(damage) * _w(profile, "w_damage", 10.0)
 	if player.hp <= damage:
 		candidate.score += _w(profile, "w_kill_player", 200.0)

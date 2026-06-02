@@ -99,18 +99,31 @@ func _test_explosion_attack_does_not_suicide() -> void:
 	var state := ctrl.state
 	var guard := _find_guard(state)
 	var player := state.get_player()
+	_clear_run_relics()
+	state.battle_temp_flags.clear()
 	_embed_red_gem(state, guard, Constants.GEM_EXPLOSION)
 	guard.pos = player.pos + Vector2i(1, 0)
 	state.rebuild_occupancy()
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "explosion_attack", "explosion gem should use explosion_attack, got %s" % guard.intent.type)
+	assert(
+		guard.intent.damage == Constants.EXPLOSION_CROSS_DAMAGE,
+		"intent preview should show cross burst %d, got %d" % [Constants.EXPLOSION_CROSS_DAMAGE, guard.intent.damage]
+	)
 	var guard_hp := guard.hp
 	var player_hp := player.hp
 	var events := IntentSystem.execute_intent(state, guard)
 	assert(guard.alive, "explosion attack should not kill the attacker")
 	assert(guard.hp == guard_hp, "attacker should take no self damage")
-	assert(player.hp < player_hp, "explosion attack should damage the target")
+	var dealt := player_hp - player.hp
+	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE, "cross burst should deal %d+, got %d" % [Constants.EXPLOSION_CROSS_DAMAGE, dealt])
 	assert(events.any(func(e): return e.get("type", "") == "explode"), "should emit explode event")
+	var dmg_ev: Dictionary = {}
+	for ev in events:
+		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == player.pos:
+			dmg_ev = ev
+			break
+	assert(int(dmg_ev.get("damage", 0)) >= Constants.EXPLOSION_CROSS_DAMAGE, "damage event should reflect cross burst")
 	print("  [OK] explosion attack cross burst without suicide")
 
 
@@ -171,6 +184,15 @@ func _test_custom_intent_keeps_move_events() -> void:
 			break
 	assert(has_move, "custom intent should preserve move_step events")
 	print("  [OK] custom intent keeps move events")
+
+
+func _clear_run_relics() -> void:
+	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
+	if run_svc == null:
+		return
+	var run: RunState = run_svc.get_run()
+	if run != null:
+		run.owned_relics.clear()
 
 
 func _find_guard(state: GameState) -> UnitState:

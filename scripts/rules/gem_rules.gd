@@ -20,6 +20,19 @@ static func _effective_insert_range(state: GameState) -> int:
 	return Constants.INSERT_RANGE + bonus
 
 
+static func _effective_trigger_range(state: GameState, slot: SlotState) -> int:
+	if slot == null or slot.gem_uid.is_empty():
+		return Constants.TRIGGER_RANGE
+	var gem: GemState = state.gems.get(slot.gem_uid, null)
+	if gem == null:
+		return Constants.TRIGGER_RANGE
+	var profile := _data_registry().get_gem_ability_profile(gem, GemEffects.ABILITY_UNIT_RED_ACTIVE)
+	match profile:
+		"explosion", "poison", "gravity", "fire_gem", "ice", "split":
+			return 1
+	return Constants.TRIGGER_RANGE
+
+
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
@@ -113,7 +126,7 @@ static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitSta
 		return _fail("槽位为空")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
-	if BoardUtils.distance_between_units(actor, target_unit) > Constants.TRIGGER_RANGE:
+	if BoardUtils.distance_between_units(actor, target_unit) > _effective_trigger_range(state, slot):
 		return _fail("超出范围")
 	return _ok()
 

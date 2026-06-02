@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 单位步入实体格
 static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary = {}) -> void:
-	var entity := state.get_entity_at(unit.pos)
+	var entity := _hazard_entity_under_unit(state, unit)
 	if entity == null or not entity.alive:
 		return
 	var forced: bool = opts.get("forced", false)
@@ -11,8 +11,8 @@ static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary 
 	match entity.entity_id:
 		Constants.ENTITY_SPIKE:
 			if forced:
-				StatusRules.apply_vulnerable(state, unit, 1, source_uid)
 				CombatRules.apply_damage(state, unit, Constants.SPIKE_COLLISION_DAMAGE, source_uid, "spike_collision")
+				StatusRules.apply_vulnerable(state, unit, 1, source_uid)
 			else:
 				CombatRules.apply_damage(state, unit, Constants.SPIKE_DAMAGE, "", "spike_enter")
 			_unlock_armor_locks(state, unit)
@@ -38,7 +38,7 @@ static func on_unit_collide_entity(
 	var collision_damage := maxi(1, actual_steps)
 	var unit_dealt := CombatRules.apply_damage(state, unit, collision_damage, source_uid, "entity_collision")
 	if unit_dealt > 0:
-		events.append({"type": "damage", "pos": unit.pos, "damage": unit_dealt, "is_crit": false})
+		events.append({"type": "damage", "uid": unit.uid, "pos": unit.pos, "damage": unit_dealt, "is_crit": false})
 	if entity.max_hp > 0:
 		_damage_entity(state, entity, collision_damage, source_uid, events)
 	return true
@@ -107,6 +107,14 @@ static func _unlock_armor_locks(state: GameState, unit: UnitState) -> void:
 			StatusRules.apply_exposed(state, unit, slot, state.turn_index)
 
 
+static func _hazard_entity_under_unit(state: GameState, unit: UnitState) -> EntityState:
+	for cell in unit.occupied_cells():
+		var entity := state.get_entity_at(cell)
+		if entity != null and entity.alive and entity.has_tag("hazard"):
+			return entity
+	return null
+
+
 static func _explode_barrel(
 	state: GameState,
 	entity: EntityState,
@@ -127,5 +135,5 @@ static func _explode_barrel(
 			hit_uids[hit_unit.uid] = true
 			var dealt := CombatRules.apply_damage(state, hit_unit, Constants.BARREL_EXPLOSION_DAMAGE, source_uid, "barrel_explosion")
 			if dealt > 0:
-				events.append({"type": "damage", "pos": hit_unit.pos, "damage": dealt, "is_crit": false})
+				events.append({"type": "damage", "uid": hit_unit.uid, "pos": hit_unit.pos, "damage": dealt, "is_crit": false})
 		TileRules.create_fire(state, cell)

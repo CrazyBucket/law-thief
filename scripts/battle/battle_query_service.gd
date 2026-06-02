@@ -254,8 +254,6 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		if BoardUtils.distance_between_units(player, unit) > Constants.EXTRACT_RANGE:
-			continue
 		if not _valid_slot_indices(ctrl, unit).is_empty():
 			for cell in unit.occupied_cells():
 				if not cell in cells:
@@ -263,8 +261,6 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
 		if not tile.has_slots():
-			continue
-		if BoardUtils.manhattan(player.pos, tile.pos) > Constants.EXTRACT_RANGE:
 			continue
 		if not _valid_tile_slot_indices(ctrl, tile).is_empty():
 			if not tile.pos in cells:
