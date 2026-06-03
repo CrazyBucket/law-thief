@@ -50,6 +50,8 @@ const ROOM_TILE_IDS: Array[String] = [
 ]
 
 const LOCK_ARMOR := "armor_lock"
+const LOCK_SPLIT_BOUND := "split_bound"
+const LOCK_SPLIT_DISABLED := "split_disabled"
 
 const ACTION_MOVE := "move"
 const ACTION_ATTACK := "attack"
@@ -70,7 +72,7 @@ const EXPLOSION_DEATH_RADIUS := 1   # 死亡爆炸半径（3x3 = radius 1 的 ch
 const CHARGE_EXPLODE_DASH_RANGE := 2  # 红槽冲刺爆炸：自爆前最大冲刺格数
 const GRAVITY_COLLISION_DAMAGE := 3
 const ENEMY_GRAVITY_PULL_RANGE := 4
-const KNOCKBACK_COLLISION_DAMAGE := 3  # 击退撞墙/撞单位碰撞伤害
+const KNOCKBACK_COLLISION_DAMAGE := -1  # 击退碰撞伤害：-1 = 按实际位移格数自动算（max(1, steps)）
 const SPIKE_DAMAGE := 5
 const POISON_FOG_DAMAGE := 3
 const POISON_FOG_DURATION := 2

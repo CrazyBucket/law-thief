@@ -544,7 +544,7 @@ static func _run_death_hooks_with_events(state: GameState, unit: UnitState, out_
 	for slot in unit.slots:
 		if not slot.accepts_slot_type(Constants.SLOT_BLACK) or slot.gem_uid.is_empty():
 			continue
-		if slot.locked and slot.lock_type == "split_disabled":
+		if slot.locked and slot.lock_type == Constants.LOCK_SPLIT_DISABLED:
 			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
@@ -1029,7 +1029,7 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 			state.gems[split_gem_uid] = split_gem
 			slot.gem_uid = split_gem_uid
 			slot.locked = true
-			slot.lock_type = "split_disabled"
+			slot.lock_type = Constants.LOCK_SPLIT_DISABLED
 			break
 	if not has_black_slot:
 		# 没有黑槽时补一个黑槽
@@ -1037,7 +1037,7 @@ static func _create_split_clone(state: GameState, owner: UnitState, spawn_pos: V
 		var split_gem := GemState.create(split_gem_uid, Constants.GEM_SPLIT, {})
 		split_gem.owner_uid = clone_uid
 		state.gems[split_gem_uid] = split_gem
-		var black_slot := SlotState.create(Constants.SLOT_BLACK, split_gem_uid, true, "split_disabled")
+		var black_slot := SlotState.create(Constants.SLOT_BLACK, split_gem_uid, true, Constants.LOCK_SPLIT_DISABLED)
 		clone.slots.append(black_slot)
 
 	state.register_unit(clone)

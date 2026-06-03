@@ -1,7 +1,7 @@
 extends SceneTree
 
-const FissionSlimeRules = preload("res://scripts/rules/fission_slime_rules.gd")
 const GemEffectsScript = preload("res://scripts/rules/gem_effects.gd")
+const GemRules = preload("res://scripts/rules/gem_rules.gd")
 
 
 func _initialize() -> void:
@@ -11,7 +11,8 @@ func _initialize() -> void:
 func _run_test() -> void:
 	print("=== Fission Slime Test ===")
 	_test_spawn()
-	_test_split_gems_mounted()
+	_test_split_black_gem_mounted_and_bound()
+	_test_bound_black_split_cannot_extract()
 	_test_blue_only_on_single_target()
 	_test_clone_hp_ratio()
 	_test_slam_pushes_adjacent_target()
@@ -42,18 +43,32 @@ func _test_spawn() -> void:
 	print("  [OK] spawn hp=%d footprint 2x2" % slime.max_hp)
 
 
-func _test_split_gems_mounted() -> void:
+func _test_split_black_gem_mounted_and_bound() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("fission_slime_test", 42)
 	var slime := _find_slime(controller.state)
 	var blue := slime.get_slot(Constants.SLOT_BLUE)
 	var black := slime.get_slot(Constants.SLOT_BLACK)
 	assert(blue != null and black != null)
-	var blue_gem: GemState = controller.state.gems.get(blue.gem_uid, null)
+	assert(blue.gem_uid.is_empty(), "blue slot should start empty")
 	var black_gem: GemState = controller.state.gems.get(black.gem_uid, null)
-	assert(blue_gem != null and blue_gem.gem_id == Constants.GEM_SPLIT)
 	assert(black_gem != null and black_gem.gem_id == Constants.GEM_SPLIT)
-	print("  [OK] blue/black split gems mounted")
+	assert(black.locked, "black split slot should be bound")
+	assert(black.lock_type == Constants.LOCK_SPLIT_BOUND, "black split slot should use split bound lock")
+	print("  [OK] only black split gem mounted and bound")
+
+
+func _test_bound_black_split_cannot_extract() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var player := state.get_player()
+	var black := slime.get_slot(Constants.SLOT_BLACK)
+	var check := GemRules.can_extract(state, player, slime, black)
+	assert(not check.get("ok", false), "bound black split should not be extractable")
+	assert(check.get("reason", "") == "该分裂宝石绑定在黑槽上，无法拆下")
+	print("  [OK] bound black split cannot extract")
 
 
 func _test_blue_only_on_single_target() -> void:
@@ -65,12 +80,17 @@ func _test_blue_only_on_single_target() -> void:
 	var melee_remaining := GemEffectsScript.intercept_damage_for_split(
 		state, slime, dummy.uid, "melee_attack", 10
 	)
-	assert(melee_remaining == 5, "single target should redirect 50%%, got %d" % melee_remaining)
+	assert(melee_remaining == 10, "without blue split, single target should not redirect, got %d" % melee_remaining)
+	_mount_gem(state, slime, Constants.SLOT_BLUE, Constants.GEM_SPLIT)
+	melee_remaining = GemEffectsScript.intercept_damage_for_split(
+		state, slime, dummy.uid, "melee_attack", 10
+	)
+	assert(melee_remaining == 5, "with blue split, single target should redirect 50%%, got %d" % melee_remaining)
 	var boom_remaining := GemEffectsScript.intercept_damage_for_split(
 		state, slime, dummy.uid, "explosion", 10
 	)
 	assert(boom_remaining == 10, "aoe should not redirect for fission slime")
-	print("  [OK] split blue on single target only")
+	print("  [OK] blue split only affects single target")
 
 
 func _test_clone_hp_ratio() -> void:
@@ -99,6 +119,7 @@ func _test_slam_pushes_adjacent_target() -> void:
 	var slime := _find_slime(state)
 	var player := state.get_player()
 	player.pos = Vector2i(3, 3)
+	state.rebuild_occupancy()
 	assert(BoardUtils.are_units_adjacent(slime, player), "player should be adjacent to slime footprint")
 	IntentSystem.refresh_unit_intent(state, slime)
 	assert(slime.intent.type == "slam_attack", "expected slam, got %s" % slime.intent.type)
@@ -129,6 +150,7 @@ func _test_split_surround_uses_footprint_ring() -> void:
 	var slime := _find_slime(state)
 	slime.pos = Vector2i(2, 2)
 	var dummy := _spawn_dummy(state, Vector2i(4, 4))
+	_mount_gem(state, slime, Constants.SLOT_BLUE, Constants.GEM_SPLIT)
 	assert(
 		not BoardUtils.chebyshev(slime.pos, dummy.pos) <= 1,
 		"anchor chebyshev should miss far corner"
@@ -173,6 +195,7 @@ func _test_clone_death_no_resplit() -> void:
 	for unit in state.units.values():
 		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
 			before_count += 1
+	state.kill_unit(clone)
 	GemEffectsScript.on_unit_death(state, clone, events)
 	var after_count := 0
 	for unit in state.units.values():
@@ -388,6 +411,20 @@ func _spawn_dummy(state: GameState, pos: Vector2i) -> UnitState:
 	var unit := UnitState.from_def(uid, "unit_patrol_guard", Constants.TEAM_ENEMY, pos, reg.get_unit_def("unit_patrol_guard"))
 	state.register_unit(unit)
 	return unit
+
+
+func _mount_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: String) -> void:
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	var slot := unit.get_slot(slot_type)
+	assert(slot != null, "slot should exist")
+	if not slot.gem_uid.is_empty():
+		state.gems.erase(slot.gem_uid)
+	var gem_uid: String = reg.next_runtime_uid("gem")
+	var gem: GemState = reg.create_gem_instance(gem_uid, gem_id, {})
+	gem.owner_uid = unit.uid
+	gem.slot_index = unit.slots.find(slot)
+	state.gems[gem_uid] = gem
+	slot.gem_uid = gem_uid
 
 
 func _find_slime(state: GameState) -> UnitState:

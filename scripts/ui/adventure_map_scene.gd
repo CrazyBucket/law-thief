@@ -3,6 +3,7 @@ extends Control
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
+const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
 
 @onready var _board: _IsometricBoard = $BoardLayer/IsometricBoard
 @onready var _title: Label = $HudLayer/TopBar/VBox/HBox/Title
@@ -15,6 +16,7 @@ const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 @onready var _regen_btn: Button = $HudLayer/TopBar/VBox/HBox/RegenBtn
 
 var _map_state: GameState = null
+var _board_input = BoardInputAdapterScript.new()
 
 
 func _ready() -> void:
@@ -22,6 +24,7 @@ func _ready() -> void:
 		AdventureService.start_new_run()
 	_apply_theme()
 	_board.invert_origin = true
+	_board_input.setup(_board)
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
 	_rebuild_board()
@@ -109,6 +112,10 @@ func _on_regen_pressed() -> void:
 	AdventureService.start_new_run(int(Time.get_unix_time_from_system()) % 100000)
 	_rebuild_board()
 	_refresh_hud()
+
+
+func _exit_tree() -> void:
+	_board_input.teardown()
 
 
 func _build_run_summary_text() -> String:

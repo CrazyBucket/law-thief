@@ -52,6 +52,14 @@ func _ready() -> void:
 
 func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "") -> GameState:
 	var encounter: Dictionary = _encounters.get(encounter_id, {})
+	var current_chapter := 1
+	var pending_room_type := ""
+	var adventure_svc: Node = Engine.get_main_loop().root.get_node_or_null("AdventureService")
+	if adventure_svc != null:
+		pending_room_type = str(adventure_svc.get("pending_room_type"))
+	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
+	if run_svc != null and run_svc.has_method("get_current_chapter"):
+		current_chapter = int(run_svc.call("get_current_chapter"))
 	if encounter.is_empty():
 		push_error("Encounter not found: %s" % encounter_id)
 		return null
@@ -81,16 +89,18 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
 		var base_slots: Array = def.get("slots", [])
-		def["slots"] = []
 		var spawn_gem_slots: Array = def.get("spawn_gem_slots", [])
+		var enemy_slot_budget := _resolve_enemy_slot_budget(current_chapter, pending_room_type, encounter_id, enemy_data, def)
+		def["slots"] = []
 		for slot_data in base_slots:
 			var slot_entry: Dictionary = slot_data.duplicate(true)
 			var slot_type := str(slot_entry.get("slot_type", ""))
 			var should_roll_gem := not slot_entry.has("gem_id")
 			if should_roll_gem and not spawn_gem_slots.is_empty():
 				should_roll_gem = slot_type in spawn_gem_slots
-			if should_roll_gem:
-				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_" + slot_type)
+			if should_roll_gem and enemy_slot_budget > 0:
+				enemy_slot_budget -= 1
+				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_%s_%s_%s" % [encounter_id, enemy_uid, slot_type])
 				if not roll_gem_id.is_empty():
 					slot_entry["gem_id"] = roll_gem_id
 			if slot_entry.has("gem_id"):
@@ -796,8 +806,8 @@ func _register_unit_defs() -> void:
 			"tags": [Constants.TAG_UNIT_FISSION_SLIME],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE, "gem_id": Constants.GEM_SPLIT},
-				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT},
+				{"slot_type": Constants.SLOT_BLUE},
+				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT, "locked": true, "lock_type": Constants.LOCK_SPLIT_BOUND},
 			],
 		},
 	}
@@ -1110,6 +1120,91 @@ func _parse_encounter_json(raw: Dictionary) -> Dictionary:
 			entities[i] = entry
 		result["entities"] = entities
 	return result
+
+
+func _resolve_enemy_slot_budget(
+	chapter: int,
+	room_type: String,
+	encounter_id: String,
+	enemy_data: Dictionary,
+	def: Dictionary
+) -> int:
+	var fixed_count := 0
+	var random_slot_defs: Array[Dictionary] = []
+	var spawn_gem_slots: Array = def.get("spawn_gem_slots", [])
+	for raw_slot in def.get("slots", []):
+		if not raw_slot is Dictionary:
+			continue
+		var slot_def := raw_slot as Dictionary
+		if slot_def.has("gem_id"):
+			fixed_count += 1
+			continue
+		if not spawn_gem_slots.is_empty() and not str(slot_def.get("slot_type", "")) in spawn_gem_slots:
+			continue
+		random_slot_defs.append(slot_def)
+	if random_slot_defs.is_empty():
+		return 0
+	var target_total := _roll_enemy_total_gem_slots(chapter, room_type, encounter_id, enemy_data, def)
+	return clampi(target_total - fixed_count, 0, random_slot_defs.size())
+
+
+func _roll_enemy_total_gem_slots(
+	chapter: int,
+	room_type: String,
+	encounter_id: String,
+	enemy_data: Dictionary,
+	def: Dictionary
+) -> int:
+	var def_id := str(enemy_data.get("def_id", ""))
+	if def_id == "unit_bomb_rat":
+		return 1
+	var slots: Array = def.get("slots", [])
+	var max_slots := slots.size()
+	if max_slots <= 0:
+		return 0
+	var normalized_room_type := room_type.to_upper()
+	var weights := _enemy_total_slot_weights(chapter, normalized_room_type)
+	var items: Array = []
+	var item_weights: Array[float] = []
+	for slot_count in range(weights.size()):
+		if slot_count > max_slots:
+			continue
+		items.append(slot_count)
+		item_weights.append(float(weights[slot_count]))
+	var picked: Variant = RngService.weighted_pick(
+		"enemy_slot_budget_%s_%s_%s" % [encounter_id, def_id, str(enemy_data.get("pos", Vector2i.ZERO))],
+		items,
+		item_weights
+	)
+	return int(picked) if picked != null else mini(1, max_slots)
+
+
+func _enemy_total_slot_weights(chapter: int, room_type: String) -> Array[float]:
+	match room_type:
+		"ELITE_COMBAT":
+			match chapter:
+				1:
+					return [0.0, 40.0, 50.0, 10.0]
+				2:
+					return [0.0, 20.0, 50.0, 30.0]
+				_:
+					return [0.0, 10.0, 40.0, 50.0]
+		"BOSS", "BOSS_COMBAT", "END":
+			match chapter:
+				1:
+					return [0.0, 10.0, 60.0, 30.0]
+				2:
+					return [0.0, 0.0, 55.0, 45.0]
+				_:
+					return [0.0, 0.0, 25.0, 75.0]
+		_:
+			match chapter:
+				1:
+					return [20.0, 70.0, 10.0, 0.0]
+				2:
+					return [10.0, 60.0, 30.0, 0.0]
+				_:
+					return [0.0, 30.0, 60.0, 10.0]
 
 
 func _load_relic_defs_from_json() -> void:

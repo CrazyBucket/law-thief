@@ -45,6 +45,8 @@ func is_empty() -> bool:
 
 func is_operable(turn_index: int) -> bool:
 	if locked:
+		if unlock_until_turn < 0:
+			return false
 		if unlock_until_turn >= turn_index:
 			return false
 		locked = false

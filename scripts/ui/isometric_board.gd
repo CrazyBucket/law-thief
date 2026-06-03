@@ -18,6 +18,32 @@ signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
 signal animation_finished()
 
+class BoardAnimationHostState:
+	var pulse_time: float = 0.0
+	var move_offsets: Dictionary = {}
+	var particles: Array[Dictionary] = []
+	var strike_elapsed: Dictionary = {}
+	var walk_phase: Dictionary = {}
+	var idle_phase: Dictionary = {}
+	var active_projectiles: Array = []
+	var parallel_move_remaining: int = 0
+	var held_gem_visual: Dictionary = {}
+	var inserting_gem_visuals: Array[Dictionary] = []
+	var masked_embedded_gems: Dictionary = {}
+	var cached_puff_paths: PackedStringArray = PackedStringArray()
+
+	func clear_state_runtime() -> void:
+		move_offsets.clear()
+		walk_phase.clear()
+		idle_phase.clear()
+		strike_elapsed.clear()
+
+	func clear_gem_visuals() -> void:
+		held_gem_visual.clear()
+		inserting_gem_visuals.clear()
+		masked_embedded_gems.clear()
+
+
 var highlights: Dictionary = {}
 var hover_cell: Vector2i = Vector2i(-1, -1)
 var selected_unit_uid: String = ""
@@ -33,10 +59,7 @@ var state: GameState = null:
 		state = value
 		var next_id := value.get_instance_id() if value != null else 0
 		if next_id != prev_id:
-			_move_offsets.clear()
-			_walk_phase.clear()
-			_idle_phase.clear()
-			_strike_elapsed.clear()
+			_anim.clear_state_runtime()
 			_facing_screen_refs.clear()
 			_nameplate_alpha_by_uid.clear()
 			_hover_outline_alpha_by_uid.clear()
@@ -57,20 +80,8 @@ var _board_texture: Sprite2D = null
 var _board_texture_region: Rect2 = Rect2()
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
-var _pulse_time: float = 0.0
-
-# 移动动画：单位 uid → 当前屏幕偏移（相对于逻辑位置）
-var _move_offsets: Dictionary = {} # uid → Vector2
-
-# 特效粒子
-var _particles: Array[Dictionary] = [] # {pos, color, life, max_life, velocity, type}
-
-var _strike_elapsed: Dictionary = {}
-var _walk_phase: Dictionary = {}
-var _idle_phase: Dictionary = {}
+var _anim := BoardAnimationHostState.new()
 ## 移动 tween 插值元数据，用于把行走帧与位移进度对齐
-
-var _cached_puff_paths: PackedStringArray = PackedStringArray()
 
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _player_sprites: RefCounted = null ## FemaleAdventurerSprites
@@ -80,11 +91,6 @@ var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
-var _active_projectiles: Array = []
-var _parallel_move_remaining: int = 0
-var _held_gem_visual: Dictionary = {}
-var _inserting_gem_visuals: Array[Dictionary] = []
-var _masked_embedded_gems: Dictionary = {}
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
 const _UNIT_SPRITE_GROUND_OFFSET_Y := 12.0
@@ -205,44 +211,44 @@ func _board_texture_content_rect() -> Rect2:
 
 
 func _process(delta: float) -> void:
-	_pulse_time += delta
+	_anim.pulse_time += delta
 	var scaled_dt := delta * _animation_speed_scale
 	var has_highlights: bool = not highlights.is_empty()
 	var visuals_dirty := _update_overlay_fades(delta)
 	if has_highlights or not active_turn_unit_uid.is_empty():
 		visuals_dirty = true
-	for mv_uid in _move_offsets.keys():
-		if _strike_elapsed.has(mv_uid):
+	for mv_uid in _anim.move_offsets.keys():
+		if _anim.strike_elapsed.has(mv_uid):
 			continue
-		_walk_phase[mv_uid] = _walk_phase.get(mv_uid, 0.0) + scaled_dt
+		_anim.walk_phase[mv_uid] = _anim.walk_phase.get(mv_uid, 0.0) + scaled_dt
 		visuals_dirty = true
 	if state != null:
 		for unit: UnitState in state.units.values():
 			if not unit.alive or not _uses_animated_idle(unit):
 				continue
-			if _strike_elapsed.has(unit.uid) or _move_offsets.has(unit.uid):
+			if _anim.strike_elapsed.has(unit.uid) or _anim.move_offsets.has(unit.uid):
 				continue
-			_idle_phase[unit.uid] = _idle_phase.get(unit.uid, 0.0) + scaled_dt
+			_anim.idle_phase[unit.uid] = _anim.idle_phase.get(unit.uid, 0.0) + scaled_dt
 			visuals_dirty = true
 
 	var strike_done: Array[String] = []
-	for stk in _strike_elapsed.keys():
-		var next_t: float = float(_strike_elapsed[stk]) + scaled_dt
-		_strike_elapsed[stk] = next_t
+	for stk in _anim.strike_elapsed.keys():
+		var next_t: float = float(_anim.strike_elapsed[stk]) + scaled_dt
+		_anim.strike_elapsed[stk] = next_t
 		visuals_dirty = true
 		if next_t >= _strike_duration_for(stk):
 			strike_done.append(str(stk))
 	for stk_rem in strike_done:
-		_strike_elapsed.erase(stk_rem)
+		_anim.strike_elapsed.erase(stk_rem)
 
 	var needs_redraw: bool = false
-	var i: int = _particles.size() - 1
+	var i: int = _anim.particles.size() - 1
 	while i >= 0:
-		var p: Dictionary = _particles[i]
+		var p: Dictionary = _anim.particles[i]
 		var p_kind: String = str(p.get("type", "spark"))
 		p["life"] = p["life"] - delta
 		if p["life"] <= 0.0:
-			_particles.remove_at(i)
+			_anim.particles.remove_at(i)
 		else:
 			if p_kind == "sprite_seq":
 				p["frame_time"] = float(p.get("frame_time", 0.0)) + delta
@@ -424,7 +430,7 @@ func _draw() -> void:
 			drawn_units[unit.uid] = true
 			_draw_unit(unit)
 	_draw_highlight_outlines()
-	_draw_particles()
+	_draw_anim_particles()
 	_draw_projectile()
 	_draw_gem_visuals(true)
 
@@ -475,7 +481,7 @@ func _draw_highlight_outlines() -> void:
 	var targets: Array = highlights.get("targets", [])
 	var danger: Array = highlights.get("danger", [])
 	var effect_list: Array = highlights.get("effect_preview", [])
-	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
+	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
 	for grid in attack_range:
 		var c := Color(0.45, 0.92, 0.55, 0.45 + pulse * 0.25)
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.6))
@@ -504,7 +510,7 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	var paths: Array = highlights.get("paths", [])
 	var danger: Array = highlights.get("danger", [])
 	var effect_list: Array = highlights.get("effect_preview", [])
-	var pulse: float = (sin(_pulse_time * 3.2) * 0.5 + 0.5)
+	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
 	if grid in effect_list:
 		var a: float = 0.5 + pulse * 0.22
 		return Color(1.0, 0.22, 0.22, a)
@@ -532,7 +538,7 @@ func _draw_unit(unit: UnitState) -> void:
 	if fp != Vector2i(1, 1):
 		var anchor_left := grid_to_screen(unit.pos)
 		center.x = (anchor_left.x + center.x) * 0.5
-	var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
+	var offset: Vector2 = _anim.move_offsets.get(unit.uid, Vector2.ZERO)
 	center += offset
 	var facing := unit.facing
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
@@ -657,19 +663,19 @@ func _resolve_player_pose(unit_uid: String, facing: String) -> Dictionary:
 	if _player_sprites == null:
 		return {}
 	var anim := "Idle"
-	var idle_t: float = float(_idle_phase.get(unit_uid, 0.0))
+	var idle_t: float = float(_anim.idle_phase.get(unit_uid, 0.0))
 	var frame := int(idle_t * _PLAYER_IDLE_FPS) % _PLAYER_IDLE_FRAMES
-	if _strike_elapsed.has(unit_uid):
+	if _anim.strike_elapsed.has(unit_uid):
 		anim = "Dash"
-		var st: float = float(_strike_elapsed[unit_uid])
+		var st: float = float(_anim.strike_elapsed[unit_uid])
 		frame = clampi(
 			int(st / (_PLAYER_STRIKE_DURATION / float(_PLAYER_STRIKE_FRAMES))),
 			0,
 			_PLAYER_STRIKE_FRAMES - 1
 		)
-	elif _move_offsets.has(unit_uid):
+	elif _anim.move_offsets.has(unit_uid):
 		anim = "Walk"
-		var walk_t: float = float(_walk_phase.get(unit_uid, 0.0))
+		var walk_t: float = float(_anim.walk_phase.get(unit_uid, 0.0))
 		frame = int(walk_t * _PLAYER_WALK_FPS) % _PLAYER_WALK_FRAMES
 	var pose: Dictionary = _player_sprites.pose_frame(facing, anim, frame)
 	if pose.is_empty():
@@ -685,22 +691,22 @@ func _resolve_slime_pose(unit: UnitState, facing: String) -> Dictionary:
 	if _slime_sprites == null:
 		return {}
 	var display_facing := facing
-	if not _strike_elapsed.has(unit.uid) and not _move_offsets.has(unit.uid):
+	if not _anim.strike_elapsed.has(unit.uid) and not _anim.move_offsets.has(unit.uid):
 		display_facing = _slime_display_facing(unit, facing)
 	var anim := "Idle"
-	var idle_t: float = float(_idle_phase.get(unit.uid, 0.0))
+	var idle_t: float = float(_anim.idle_phase.get(unit.uid, 0.0))
 	var frame := int(idle_t * _SLIME_IDLE_FPS) % _SLIME_IDLE_FRAMES
-	if _strike_elapsed.has(unit.uid):
+	if _anim.strike_elapsed.has(unit.uid):
 		anim = "Strike"
-		var st: float = float(_strike_elapsed[unit.uid])
+		var st: float = float(_anim.strike_elapsed[unit.uid])
 		frame = clampi(
 			int(st / (_SLIME_STRIKE_DURATION / float(_SLIME_STRIKE_FRAMES))),
 			0,
 			_SLIME_STRIKE_FRAMES - 1
 		)
-	elif _move_offsets.has(unit.uid):
+	elif _anim.move_offsets.has(unit.uid):
 		anim = "Walk"
-		var walk_t: float = float(_walk_phase.get(unit.uid, 0.0))
+		var walk_t: float = float(_anim.walk_phase.get(unit.uid, 0.0))
 		frame = int(walk_t * _SLIME_WALK_FPS) % _SLIME_ANIM_FRAMES
 	var pose: Dictionary = _slime_sprites.pose_frame(display_facing, anim, frame)
 	if pose.is_empty():
@@ -732,12 +738,12 @@ func _resolve_knight_pose(unit: UnitState, facing: String) -> Dictionary:
 	var tex: Texture2D = null
 	if _knight_sprites == null:
 		return {}
-	if _strike_elapsed.has(unit.uid):
-		var st: float = float(_strike_elapsed[unit.uid])
+	if _anim.strike_elapsed.has(unit.uid):
+		var st: float = float(_anim.strike_elapsed[unit.uid])
 		var fidx := clampi(int(st / (0.28 / 3.0)), 0, 2)
 		tex = _knight_sprites.texture_sword_swing(facing, fidx)
-	elif _move_offsets.has(unit.uid):
-		var wfr := int(float(_walk_phase.get(unit.uid, 0.0)) * _SLIME_WALK_FPS) % 3
+	elif _anim.move_offsets.has(unit.uid):
+		var wfr := int(float(_anim.walk_phase.get(unit.uid, 0.0)) * _SLIME_WALK_FPS) % 3
 		tex = _knight_sprites.texture_walk(facing, wfr)
 	else:
 		tex = _knight_sprites.texture_walk(facing, 0)
@@ -768,7 +774,7 @@ func _draw_unit_ground_outlines() -> void:
 	for unit: UnitState in state.units.values():
 		if not unit.alive:
 			continue
-		var offset: Vector2 = _move_offsets.get(unit.uid, Vector2.ZERO)
+		var offset: Vector2 = _anim.move_offsets.get(unit.uid, Vector2.ZERO)
 		var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
 		var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
 		if hover_alpha > 0.01:
@@ -802,7 +808,7 @@ func _draw_unit_focus_outline(
 func _draw_active_turn_aura(unit: UnitState, center: Vector2, alpha: float = 1.0) -> void:
 	if alpha <= 0.01:
 		return
-	var pulse := sin(_pulse_time * 4.2) * 0.5 + 0.5
+	var pulse := sin(_anim.pulse_time * 4.2) * 0.5 + 0.5
 	var base_color := BattleUiTheme.PHASE_PLAYER if unit.team == Constants.TEAM_PLAYER else BattleUiTheme.PHASE_ENEMY
 	var size_scale := maxf(float(unit.footprint_size.x + unit.footprint_size.y) * 0.5, 1.0)
 	var radius_x := IsoCoordinates.visual(20.0 + 8.0 * (size_scale - 1.0))
@@ -860,7 +866,7 @@ func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 	for slot in unit.slots:
 		if slot.gem_uid.is_empty():
 			continue
-		if _masked_embedded_gems.has(slot.gem_uid):
+		if _anim.masked_embedded_gems.has(slot.gem_uid):
 			continue
 		occupied_slots.append(slot)
 	if occupied_slots.is_empty():
@@ -899,11 +905,11 @@ func _draw_small_diamond(center: Vector2, width: float, height: float, color: Co
 
 
 func _draw_gem_visuals(front_layer: bool) -> void:
-	for visual in _inserting_gem_visuals:
+	for visual in _anim.inserting_gem_visuals:
 		if _gem_visual_draws_in_front(visual) == front_layer:
 			_draw_single_gem_visual(visual)
-	if not _held_gem_visual.is_empty() and _gem_visual_draws_in_front(_held_gem_visual) == front_layer:
-		_draw_single_gem_visual(_held_gem_visual)
+	if not _anim.held_gem_visual.is_empty() and _gem_visual_draws_in_front(_anim.held_gem_visual) == front_layer:
+		_draw_single_gem_visual(_anim.held_gem_visual)
 
 
 func _gem_visual_draws_in_front(visual: Dictionary) -> bool:
@@ -1206,14 +1212,8 @@ func _intent_badge_color(intent_type: String) -> Color:
 	return Color(0.55, 0.58, 0.68, 0.85)
 
 
-func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, _board_size(), invert_origin)
-		cell_hovered.emit(cell, cell.x >= 0)
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var cell := IsoCoordinates.pick_grid_at(event.position, _board_origin, _board_size(), invert_origin)
-		if cell.x >= 0:
-			cell_clicked.emit(cell)
+func pick_cell(screen_pos: Vector2) -> Vector2i:
+	return IsoCoordinates.pick_grid_at(screen_pos, _board_origin, _board_size(), invert_origin)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1228,7 +1228,7 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 	if attacker == null:
 		return
 	attacker.facing = _facing_from_unit_to_cell(attacker, victim_cell)
-	_strike_elapsed[attacker_uid] = 0.0
+	_anim.strike_elapsed[attacker_uid] = 0.0
 	queue_redraw()
 
 
@@ -1248,12 +1248,12 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 	var logical_screen: Vector2 = grid_to_screen(logical_pos)
 	var from_offset: Vector2 = from_screen - logical_screen
 	var to_offset: Vector2 = to_screen - logical_screen
-	_move_offsets[unit_uid] = from_offset
-	_walk_phase[unit_uid] = 0.0
+	_anim.move_offsets[unit_uid] = from_offset
+	_anim.walk_phase[unit_uid] = 0.0
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
-	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(0.25))
+	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(0.35))
 	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset, emit_finished))
 
 
@@ -1276,10 +1276,10 @@ func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true
 	var offset_path: Array[Vector2] = []
 	for cell in path:
 		offset_path.append(grid_to_screen(cell) - logical_screen)
-	_move_offsets[unit_uid] = offset_path[0]
-	_walk_phase[unit_uid] = 0.0
+	_anim.move_offsets[unit_uid] = offset_path[0]
+	_anim.walk_phase[unit_uid] = 0.0
 	var segment_count := maxi(1, offset_path.size() - 1)
-	var duration := _scaled_duration(0.18 * float(segment_count))
+	var duration := _scaled_duration(0.26 * float(segment_count))
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_IN_OUT)
 	tween.set_trans(Tween.TRANS_SINE)
@@ -1292,21 +1292,19 @@ func animate_moves_parallel(moves: Array) -> void:
 	if moves.is_empty():
 		animation_finished.emit()
 		return
-	_parallel_move_remaining = moves.size()
+	_anim.parallel_move_remaining = moves.size()
 	for mv in moves:
 		var uid := str(mv.get("uid", ""))
 		animate_move(uid, mv.get("from", Vector2i.ZERO), mv.get("to", Vector2i.ZERO), false)
 
 
 func clear_gem_visuals() -> void:
-	_held_gem_visual.clear()
-	_inserting_gem_visuals.clear()
-	_masked_embedded_gems.clear()
+	_anim.clear_gem_visuals()
 	queue_redraw()
 
 
 func has_active_held_gem_visual() -> bool:
-	return not _held_gem_visual.is_empty()
+	return not _anim.held_gem_visual.is_empty()
 
 
 func gem_insert_anim_duration() -> float:
@@ -1317,27 +1315,27 @@ func start_held_gem_extract(source_grid: Vector2i, gem: GemState) -> void:
 	if gem == null:
 		return
 	var source_pos := _consume_inserting_gem_position(gem.uid, _gem_grid_anchor(source_grid))
-	_held_gem_visual = _make_gem_visual(gem, source_pos)
-	_held_gem_visual["phase"] = "extract"
-	_held_gem_visual["from_pos"] = source_pos
-	_held_gem_visual["current_pos"] = source_pos
-	_held_gem_visual["elapsed"] = 0.0
-	_held_gem_visual["duration"] = _scaled_duration(_GEM_LIFT_DURATION)
-	_held_gem_visual["arc_height"] = IsoCoordinates.visual(54.0)
-	_held_gem_visual["orbit_angle"] = _orbit_angle_from_position(source_pos)
-	_held_gem_visual["bob_time"] = randf() * TAU
+	_anim.held_gem_visual = _make_gem_visual(gem, source_pos)
+	_anim.held_gem_visual["phase"] = "extract"
+	_anim.held_gem_visual["from_pos"] = source_pos
+	_anim.held_gem_visual["current_pos"] = source_pos
+	_anim.held_gem_visual["elapsed"] = 0.0
+	_anim.held_gem_visual["duration"] = _scaled_duration(_GEM_LIFT_DURATION)
+	_anim.held_gem_visual["arc_height"] = IsoCoordinates.visual(54.0)
+	_anim.held_gem_visual["orbit_angle"] = _orbit_angle_from_position(source_pos)
+	_anim.held_gem_visual["bob_time"] = randf() * TAU
 	queue_redraw()
 
 
 func start_held_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
 	var visual: Dictionary = {}
-	if not _held_gem_visual.is_empty():
-		visual = _held_gem_visual.duplicate(true)
-		_held_gem_visual.clear()
+	if not _anim.held_gem_visual.is_empty():
+		visual = _anim.held_gem_visual.duplicate(true)
+		_anim.held_gem_visual.clear()
 	elif gem != null:
 		var fallback := {
 			"orbit_angle": 0.0,
-			"bob_time": _pulse_time * _GEM_BOB_SPEED,
+			"bob_time": _anim.pulse_time * _GEM_BOB_SPEED,
 		}
 		visual = _make_gem_visual(gem, _current_player_orbit_position(fallback))
 	if visual.is_empty():
@@ -1352,8 +1350,8 @@ func start_held_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
 	visual["arc_height"] = IsoCoordinates.visual(36.0)
 	var gem_uid := str(visual.get("uid", ""))
 	if not gem_uid.is_empty():
-		_masked_embedded_gems[gem_uid] = true
-	_inserting_gem_visuals.append(visual)
+		_anim.masked_embedded_gems[gem_uid] = true
+	_anim.inserting_gem_visuals.append(visual)
 	queue_redraw()
 
 
@@ -1366,7 +1364,7 @@ func _scaled_duration(base_duration: float) -> float:
 
 
 func _set_move_offset(offset: Vector2, uid: String) -> void:
-	_move_offsets[uid] = offset
+	_anim.move_offsets[uid] = offset
 	queue_redraw()
 
 
@@ -1376,20 +1374,20 @@ func _set_move_path_progress(progress: float, uid: String, offset_path: Array[Ve
 	var max_segment := offset_path.size() - 1
 	var seg := clampi(int(floor(progress)), 0, max_segment)
 	if seg >= max_segment:
-		_move_offsets[uid] = offset_path[max_segment]
+		_anim.move_offsets[uid] = offset_path[max_segment]
 	else:
 		var local_t := clampf(progress - float(seg), 0.0, 1.0)
-		_move_offsets[uid] = offset_path[seg].lerp(offset_path[seg + 1], local_t)
+		_anim.move_offsets[uid] = offset_path[seg].lerp(offset_path[seg + 1], local_t)
 	queue_redraw()
 
 
 func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool = true) -> void:
-	_walk_phase.erase(uid)
-	_move_offsets.erase(uid)
+	_anim.walk_phase.erase(uid)
+	_anim.move_offsets.erase(uid)
 	queue_redraw()
 	if not emit_finished:
-		_parallel_move_remaining = maxi(0, _parallel_move_remaining - 1)
-		if _parallel_move_remaining <= 0:
+		_anim.parallel_move_remaining = maxi(0, _anim.parallel_move_remaining - 1)
+		if _anim.parallel_move_remaining <= 0:
 			animation_finished.emit()
 		return
 	animation_finished.emit()
@@ -1397,45 +1395,45 @@ func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool
 
 func _update_gem_visuals(scaled_dt: float) -> bool:
 	var dirty := false
-	if not _held_gem_visual.is_empty():
+	if not _anim.held_gem_visual.is_empty():
 		dirty = _update_held_gem_visual(scaled_dt) or dirty
-	if not _inserting_gem_visuals.is_empty():
-		var idx := _inserting_gem_visuals.size() - 1
+	if not _anim.inserting_gem_visuals.is_empty():
+		var idx := _anim.inserting_gem_visuals.size() - 1
 		while idx >= 0:
-			var visual: Dictionary = _inserting_gem_visuals[idx]
+			var visual: Dictionary = _anim.inserting_gem_visuals[idx]
 			dirty = true
 			if _step_inserting_gem_visual(visual, scaled_dt):
-				_inserting_gem_visuals[idx] = visual
+				_anim.inserting_gem_visuals[idx] = visual
 			else:
 				var gem_uid := str(visual.get("uid", ""))
 				if not gem_uid.is_empty():
-					_masked_embedded_gems.erase(gem_uid)
+					_anim.masked_embedded_gems.erase(gem_uid)
 				play_gem_flash(visual.get("target_grid", Vector2i.ZERO), visual.get("tint", Color.WHITE))
-				_inserting_gem_visuals.remove_at(idx)
+				_anim.inserting_gem_visuals.remove_at(idx)
 				queue_redraw()
 			idx -= 1
 	return dirty
 
 
 func _update_held_gem_visual(scaled_dt: float) -> bool:
-	var phase := str(_held_gem_visual.get("phase", "orbit"))
+	var phase := str(_anim.held_gem_visual.get("phase", "orbit"))
 	if phase == "extract":
-		var duration := maxf(float(_held_gem_visual.get("duration", 0.01)), 0.01)
-		var elapsed := minf(float(_held_gem_visual.get("elapsed", 0.0)) + scaled_dt, duration)
-		_held_gem_visual["elapsed"] = elapsed
-		_held_gem_visual["bob_time"] = float(_held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
-		var from_pos: Vector2 = _held_gem_visual.get("from_pos", _held_gem_visual.get("current_pos", Vector2.ZERO))
-		var to_pos := _current_player_orbit_position(_held_gem_visual)
-		var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(_held_gem_visual.get("arc_height", IsoCoordinates.visual(54.0))))
+		var duration := maxf(float(_anim.held_gem_visual.get("duration", 0.01)), 0.01)
+		var elapsed := minf(float(_anim.held_gem_visual.get("elapsed", 0.0)) + scaled_dt, duration)
+		_anim.held_gem_visual["elapsed"] = elapsed
+		_anim.held_gem_visual["bob_time"] = float(_anim.held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		var from_pos: Vector2 = _anim.held_gem_visual.get("from_pos", _anim.held_gem_visual.get("current_pos", Vector2.ZERO))
+		var to_pos := _current_player_orbit_position(_anim.held_gem_visual)
+		var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(_anim.held_gem_visual.get("arc_height", IsoCoordinates.visual(54.0))))
 		var pos := _quadratic_bezier(from_pos, ctrl, to_pos, _ease_out_cubic(elapsed / duration))
-		_held_gem_visual["current_pos"] = pos
+		_anim.held_gem_visual["current_pos"] = pos
 		if elapsed >= duration:
-			_held_gem_visual["phase"] = "orbit"
-			_held_gem_visual["orbit_angle"] = _orbit_angle_from_position(pos)
+			_anim.held_gem_visual["phase"] = "orbit"
+			_anim.held_gem_visual["orbit_angle"] = _orbit_angle_from_position(pos)
 	else:
-		_held_gem_visual["orbit_angle"] = float(_held_gem_visual.get("orbit_angle", 0.0)) + scaled_dt * _GEM_ORBIT_SPEED
-		_held_gem_visual["bob_time"] = float(_held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
-		_held_gem_visual["current_pos"] = _current_player_orbit_position(_held_gem_visual)
+		_anim.held_gem_visual["orbit_angle"] = float(_anim.held_gem_visual.get("orbit_angle", 0.0)) + scaled_dt * _GEM_ORBIT_SPEED
+		_anim.held_gem_visual["bob_time"] = float(_anim.held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		_anim.held_gem_visual["current_pos"] = _current_player_orbit_position(_anim.held_gem_visual)
 	return true
 
 
@@ -1466,12 +1464,12 @@ func _make_gem_visual(gem: GemState, start_pos: Vector2) -> Dictionary:
 
 
 func _consume_inserting_gem_position(gem_uid: String, fallback: Vector2) -> Vector2:
-	for idx in range(_inserting_gem_visuals.size() - 1, -1, -1):
-		var visual: Dictionary = _inserting_gem_visuals[idx]
+	for idx in range(_anim.inserting_gem_visuals.size() - 1, -1, -1):
+		var visual: Dictionary = _anim.inserting_gem_visuals[idx]
 		if str(visual.get("uid", "")) != gem_uid:
 			continue
-		_masked_embedded_gems.erase(gem_uid)
-		_inserting_gem_visuals.remove_at(idx)
+		_anim.masked_embedded_gems.erase(gem_uid)
+		_anim.inserting_gem_visuals.remove_at(idx)
 		return visual.get("current_pos", fallback)
 	return fallback
 
@@ -1492,7 +1490,7 @@ func _player_gem_anchor() -> Vector2:
 	if fp != Vector2i(1, 1):
 		var anchor_left := grid_to_screen(player.pos)
 		center.x = (anchor_left.x + center.x) * 0.5
-	return center + _move_offsets.get(player.uid, Vector2.ZERO)
+	return center + _anim.move_offsets.get(player.uid, Vector2.ZERO)
 
 
 func _current_player_orbit_position(visual: Dictionary) -> Vector2:
@@ -1567,7 +1565,7 @@ func _push_sprite_sequence(cfg: Dictionary) -> bool:
 	vel2 = IsoCoordinates.visual_vec(vel2)
 	var extra_life := float(cfg.get("life_pad", 0.05))
 	var dur := float(packed_paths.size()) / maxf(fps_val, 0.01) + extra_life
-	_particles.append({
+	_anim.particles.append({
 		"type": "sprite_seq",
 		"pos": pos,
 		"life": dur,
@@ -1618,7 +1616,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 		base_color = Color(1.0, 0.3, 0.15)
 	
 	# 加入一个居中的打击十字/星形特效（类型 hit_mark）
-	_particles.append({
+	_anim.particles.append({
 		"pos": center + IsoCoordinates.visual_vec(Vector2(0, -15)),
 		"color": Color(1.0, 1.0, 1.0, 0.9) if not is_crit else Color(1.0, 0.4, 0.4, 1.0),
 		"life": 0.25,
@@ -1634,7 +1632,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 		var vel: Vector2 = Vector2(cos(angle), sin(angle)) * speed
 		var life: float = randf_range(0.3, 0.6)
 		var color: Color = base_color.lerp(Color.WHITE, randf() * 0.4)
-		_particles.append({
+		_anim.particles.append({
 			"pos": center + Vector2(randf_range(-IsoCoordinates.visual(8.0), IsoCoordinates.visual(8.0)), randf_range(-IsoCoordinates.visual(20.0), -IsoCoordinates.visual(5.0))),
 			"color": color,
 			"life": life,
@@ -1664,7 +1662,7 @@ func play_heal_effect(grid: Vector2i) -> void:
 		for _i in range(8):
 			var vel: Vector2 = Vector2(randf_range(-IsoCoordinates.visual(20.0), IsoCoordinates.visual(20.0)), randf_range(-IsoCoordinates.visual(80.0), -IsoCoordinates.visual(40.0)))
 			var life: float = randf_range(0.4, 0.8)
-			_particles.append({
+			_anim.particles.append({
 				"pos": center_legacy + Vector2(randf_range(-12, 12), randf_range(0, 10)),
 				"color": Color(0.3, 1.0, 0.5, 0.9),
 				"life": life,
@@ -1697,7 +1695,7 @@ func play_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 			var angle: float = randf() * TAU
 			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * randf_range(IsoCoordinates.visual(30.0), IsoCoordinates.visual(80.0))
 			var life: float = randf_range(0.2, 0.5)
-			_particles.append({
+			_anim.particles.append({
 				"pos": center_legacy,
 				"color": gem_color,
 				"life": life,
@@ -1732,7 +1730,7 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int) -> void:
 			var puff_legacy: PackedStringArray = _puff_sprite_paths()
 			for _j in range(2):
 				var life_here: float = randf_range(0.48, 0.62)
-				_particles.append({
+				_anim.particles.append({
 					"type": "sprite_seq",
 					"pos": base + Vector2(randf_range(-IsoCoordinates.visual(14.0), IsoCoordinates.visual(14.0)), randf_range(-IsoCoordinates.visual(18.0), IsoCoordinates.visual(8.0))),
 					"life": life_here,
@@ -1770,7 +1768,7 @@ func play_explosion(grid: Vector2i) -> void:
 			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * speed
 			var life: float = randf_range(0.4, 0.9)
 			var color: Color = Color(1.0, randf_range(0.2, 0.6), 0.05).lerp(Color.WHITE, randf() * 0.3)
-			_particles.append({
+			_anim.particles.append({
 				"pos": center_legacy + Vector2(randf_range(-6, 6), randf_range(-6, 6)),
 				"color": color,
 				"life": life,
@@ -1783,7 +1781,7 @@ func play_explosion(grid: Vector2i) -> void:
 			var speed2: float = randf_range(20.0, 60.0)
 			var vel2: Vector2 = Vector2(cos(angle2), sin(angle2)) * speed2 + Vector2(0, -30)
 			var life2: float = randf_range(0.6, 1.2)
-			_particles.append({
+			_anim.particles.append({
 				"pos": center_legacy + Vector2(randf_range(-10, 10), randf_range(-5, 5)),
 				"color": Color(0.3, 0.3, 0.35, 0.7),
 				"life": life2,
@@ -1791,7 +1789,7 @@ func play_explosion(grid: Vector2i) -> void:
 				"velocity": vel2,
 				"type": "smoke"
 			})
-		_particles.append({
+		_anim.particles.append({
 			"pos": center_legacy,
 			"color": Color(1.0, 0.6, 0.1, 0.8),
 			"life": 0.4,
@@ -1803,8 +1801,8 @@ func play_explosion(grid: Vector2i) -> void:
 
 
 ## 绘制所有粒子
-func _draw_particles() -> void:
-	for p in _particles:
+func _draw_anim_particles() -> void:
+	for p in _anim.particles:
 		var alpha: float = clampf(p["life"] / p["max_life"], 0.0, 1.0)
 		var color: Color = p.get("color", Color.WHITE)
 		color.a *= alpha
@@ -1857,11 +1855,11 @@ func _draw_particles() -> void:
 
 
 func _puff_sprite_paths() -> PackedStringArray:
-	if not _cached_puff_paths.is_empty():
-		return _cached_puff_paths
+	if not _anim.cached_puff_paths.is_empty():
+		return _anim.cached_puff_paths
 	for fi in range(7):
-		_cached_puff_paths.append(_PUFF_FRAME_PATH % fi)
-	return _cached_puff_paths
+		_anim.cached_puff_paths.append(_PUFF_FRAME_PATH % fi)
+	return _anim.cached_puff_paths
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1878,7 +1876,7 @@ func play_projectiles(shots: Array) -> void:
 	if shots.is_empty():
 		animation_finished.emit()
 		return
-	_active_projectiles.clear()
+	_anim.active_projectiles.clear()
 	var max_duration := 0.0
 	for shot in shots:
 		var from_grid: Vector2i = shot.get("from", Vector2i.ZERO)
@@ -1891,7 +1889,7 @@ func play_projectiles(shots: Array) -> void:
 		var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, IsoCoordinates.visual(28.0), IsoCoordinates.visual(90.0)))
 		var duration: float = _scaled_duration(clampf(dist / IsoCoordinates.visual(520.0), 0.18, 0.38))
 		max_duration = maxf(max_duration, duration)
-		_active_projectiles.append({
+		_anim.active_projectiles.append({
 			"from": from_scr,
 			"to": to_scr,
 			"ctrl": ctrl,
@@ -1906,19 +1904,19 @@ func play_projectiles(shots: Array) -> void:
 
 
 func _set_projectiles_t(t: float) -> void:
-	for projectile in _active_projectiles:
+	for projectile in _anim.active_projectiles:
 		projectile["t"] = t
 	queue_redraw()
 
 
 func _on_projectiles_done() -> void:
-	_active_projectiles.clear()
+	_anim.active_projectiles.clear()
 	queue_redraw()
 	animation_finished.emit()
 
 
 func _draw_projectile() -> void:
-	for projectile in _active_projectiles:
+	for projectile in _anim.active_projectiles:
 		_draw_single_projectile(projectile)
 
 

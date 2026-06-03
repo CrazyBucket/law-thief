@@ -80,8 +80,8 @@
     "tags": ["unit:fission_slime"],
     "slots": [
       {"slot_type": "red"},
-      {"slot_type": "blue", "gem_id": "gem_split"},
-      {"slot_type": "black", "gem_id": "gem_split"}
+      {"slot_type": "blue"},
+      {"slot_type": "black", "gem_id": "gem_split", "locked": true, "lock_type": "split_bound"}
     ]
   }
 }

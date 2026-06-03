@@ -26,7 +26,7 @@ static func _effective_trigger_range(state: GameState, slot: SlotState) -> int:
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return Constants.TRIGGER_RANGE
-	var profile := _data_registry().get_gem_ability_profile(gem, GemEffects.ABILITY_UNIT_RED_ACTIVE)
+	var profile: String = _data_registry().get_gem_ability_profile(gem, GemEffects.ABILITY_UNIT_RED_ACTIVE)
 	match profile:
 		"explosion", "poison", "gravity", "fire_gem", "ice", "split":
 			return 1
@@ -34,6 +34,8 @@ static func _effective_trigger_range(state: GameState, slot: SlotState) -> int:
 
 
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
+	if slot.locked and slot.lock_type == Constants.LOCK_SPLIT_BOUND:
+		return _fail("该分裂宝石绑定在黑槽上，无法拆下")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
 	if slot.gem_uid.is_empty():
@@ -153,6 +155,8 @@ static func trigger(
 # ═══════════════════════════════════════════════════════════════════════════
 
 static func can_extract_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
+	if slot.locked and slot.lock_type == Constants.LOCK_SPLIT_BOUND:
+		return _fail("该分裂宝石绑定在黑槽上，无法拆下")
 	if not tile.has_slots():
 		return _fail("该地块没有槽位")
 	if not slot.is_operable(state.turn_index):

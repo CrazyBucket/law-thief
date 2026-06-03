@@ -6,6 +6,9 @@ const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const StatusIcons = preload("res://scripts/ui/status_icons.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 const DamageTextManagerScript = preload("res://scripts/ui/damage_text_manager.gd")
+const BattleEventPlayerScript = preload("res://scripts/ui/battle_event_player.gd")
+const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
+const BattleHudPresenterScript = preload("res://scripts/ui/battle_hud_presenter.gd")
 
 var _dmg_text: Node = null
 
@@ -52,6 +55,9 @@ var _dmg_text: Node = null
 @onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn
 
 var _controller: BattleController = BattleController.new()
+var _event_player = BattleEventPlayerScript.new()
+var _board_input = BoardInputAdapterScript.new()
+var _hud_presenter = BattleHudPresenterScript.new()
 var _encounter_id: String = "tutorial_001"
 
 var _inspect_uid: String = ""
@@ -65,10 +71,6 @@ var _enemy_turn_queue: Array[String] = []
 var _slot_popup: Control = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
-var _display_state: GameState = null
-var _presentation_playing: bool = false
-var _refresh_deferred: bool = false
-var _pending_battle_result: String = ""
 var _preview_panel_tween: Tween = null
 var _preview_visible_target: bool = false
 var _preview_fade_serial: int = 0
@@ -76,7 +78,6 @@ var _relic_reward_overlay: Node = null
 var _held_gem_icon: TextureRect = null
 var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: HFlowContainer = null
-var _relic_bar_ids: Array[String] = []
 var _tracked_player_uid: String = ""
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
@@ -85,14 +86,13 @@ const _ENCOUNTER_RELIC_SOURCE := {
 	"ELITE_COMBAT": "elite_combat",
 	"END": "large_chest",
 }
-const _STATUS_PANEL_WIDTH := 320.0
-
 func _ready() -> void:
 	_controller.state_changed.connect(_on_controller_state_changed)
 	_controller.battle_ended.connect(_on_battle_ended)
 	_controller.anim_move.connect(_on_anim_move)
 	_controller.anim_damage.connect(_on_anim_damage)
 	_controller.anim_gem_flash.connect(_on_anim_gem_flash)
+	_board_input.setup(_board)
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
 	_apply_ui_theme()
@@ -105,8 +105,57 @@ func _ready() -> void:
 	_create_slot_popup()
 	_create_damage_text_manager()
 	_create_level_console()
-	_apply_animation_speed()
+	_event_player.setup(
+		self,
+		_board,
+		_controller,
+		Callable(self, "_spawn_damage_text"),
+		Callable(self, "_scaled_anim_time")
+	)
 	_setup_relic_bar()
+	_hud_presenter.setup({
+		"controller": _controller,
+		"board": _board,
+		"status_panel": _status_panel,
+		"status_vbox": _status_vbox,
+		"header_row": _header_row,
+		"info_col": _info_col,
+		"status_clip": _status_clip,
+		"slot_clip": _slot_clip,
+		"slot_box": _slot_box,
+		"portrait": _portrait,
+		"inspect_name": _inspect_name,
+		"inspect_stats": _inspect_stats,
+		"inspect_status_row": _inspect_status_row,
+		"shield_row": _shield_row,
+		"shield_bar": _shield_bar,
+		"shield_text": _shield_text,
+		"hp_bar": _hp_bar,
+		"hp_text": _hp_text,
+		"turn_label": _turn_label,
+		"move_chip": _move_chip,
+		"act_chip": _act_chip,
+		"held_label": _held_label,
+		"held_gem_icon": _held_gem_icon,
+		"hint_label": _hint_label,
+		"phase_badge": _phase_badge,
+		"message_label": _message_label,
+		"queue_row": _queue_row,
+		"queue_hint": _queue_hint,
+		"move_btn": _move_btn,
+		"attack_btn": _attack_btn,
+		"extract_btn": _extract_btn,
+		"insert_btn": _insert_btn,
+		"trigger_btn": _trigger_btn,
+		"end_turn_btn": _end_turn_btn,
+		"toggle_panel_btn": _toggle_panel_btn,
+		"relic_bar_scroll": _relic_bar_scroll,
+		"relic_bar_vbox": _relic_bar_vbox,
+		"select_unit_cb": Callable(self, "_select_unit"),
+		"set_timeline_hover_cb": Callable(self, "_set_timeline_hover"),
+		"clear_timeline_hover_cb": Callable(self, "_clear_timeline_hover"),
+	})
+	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
 
 
@@ -216,17 +265,14 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			var move_result := _controller.try_move(cell)
 			if move_result.get("ok", false):
 				_player_animating = true
-				_presentation_playing = true
-				_refresh_deferred = false
-				_start_presentation(
-					move_result.get("presentation_state", _controller.state.clone()),
-					_controller.state
-				)
 				_board.set_highlights({})
 				var events: Array = move_result.get("move_events", [])
-				await _play_presented_events(events)
+				await _play_presentation_sequence(
+					move_result.get("presentation_state", _controller.state.clone()),
+					events,
+					_controller.state
+				)
 				_player_animating = false
-				_finish_presentation()
 			else:
 				_show_result(move_result)
 		Constants.ACTION_ATTACK:
@@ -234,7 +280,6 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			if unit != null:
 				_inspect_uid = unit.uid
 			_player_animating = true
-			_presentation_playing = true
 			var atk_res := _controller.try_attack_cell(cell)
 			_show_result(atk_res)
 			if atk_res.get("ok", false):
@@ -243,11 +288,6 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				var player := _controller.state.get_player()
 				if player != null:
 					_board.start_strike_effect(player.uid, to_pos)
-				_refresh_deferred = false
-				_start_presentation(
-					atk_res.get("presentation_state", _controller.state.clone()),
-					_controller.state
-				)
 				var attack_events: Array = atk_res.get("attack_events", [])
 				var has_projectile := false
 				for ev in attack_events:
@@ -255,15 +295,15 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 						has_projectile = true
 						break
 				if not has_projectile and from_pos.x >= 0:
-					_board.play_projectile(from_pos, to_pos)
-					await _board.animation_finished
-					await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
-				await _play_presented_events(attack_events)
+					await _event_player.play_prefire_projectile(from_pos, to_pos)
+				await _play_presentation_sequence(
+					atk_res.get("presentation_state", _controller.state.clone()),
+					attack_events,
+					_controller.state
+				)
 				_player_animating = false
-				_finish_presentation()
 			else:
 				_player_animating = false
-				_presentation_playing = false
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
@@ -405,16 +445,13 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 					_message_label.text = "已替换，原宝石回到手中"
 			Constants.ACTION_TRIGGER:
 				_player_animating = true
-				_presentation_playing = true
-				_refresh_deferred = false
-				_start_presentation(
+				var trigger_events: Array = result.get("events", [])
+				await _play_presentation_sequence(
 					result.get("presentation_state", _controller.state.clone()),
+					trigger_events,
 					_controller.state
 				)
-				var trigger_events: Array = result.get("events", [])
-				await _play_presented_events(trigger_events)
 				_player_animating = false
-				_finish_presentation()
 	_refresh()
 
 
@@ -452,16 +489,13 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 					_message_label.text = "已替换，原宝石回到手中"
 			Constants.ACTION_TRIGGER:
 				_player_animating = true
-				_presentation_playing = true
-				_refresh_deferred = false
-				_start_presentation(
+				var trigger_events: Array = result.get("events", [])
+				await _play_presentation_sequence(
 					result.get("presentation_state", _controller.state.clone()),
+					trigger_events,
 					_controller.state
 				)
-				var trigger_events: Array = result.get("events", [])
-				await _play_presented_events(trigger_events)
 				_player_animating = false
-				_finish_presentation()
 	_refresh()
 
 
@@ -546,25 +580,21 @@ func _run_enemy_phase_async() -> void:
 	_enemy_turn_queue.clear()
 	for enemy in enemies:
 		_enemy_turn_queue.append(enemy.uid)
-	_refresh_turn_queue()
+	_refresh()
 	for enemy in enemies:
-		_refresh_turn_queue()
+		_refresh()
 		if not enemy.alive:
 			_consume_enemy_turn(enemy.uid)
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
 		await get_tree().create_timer(_scaled_anim_time(0.22)).timeout
-		_presentation_playing = true
-		_refresh_deferred = false
 		var execution: Dictionary = _controller.execute_single_enemy(enemy)
-		_start_presentation(execution.get("presentation_state", _controller.state.clone()))
 		var events: Array[Dictionary] = execution.get("events", [])
-		await _play_presented_events(events)
+		await _play_presentation_sequence(execution.get("presentation_state", _controller.state.clone()), events)
 		await get_tree().create_timer(_scaled_anim_time(0.35)).timeout
-		_finish_presentation()
 		_consume_enemy_turn(enemy.uid)
-		_refresh_turn_queue()
+		_refresh()
 	if _controller.state.phase != Constants.PHASE_ENDED:
 		_controller.finish_enemy_phase()
 	_enemy_phase_running = false
@@ -573,53 +603,8 @@ func _run_enemy_phase_async() -> void:
 	_refresh()
 
 
-func _play_anim_event(ev: Dictionary) -> void:
-	match ev.get("type", ""):
-		"move_step":
-			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
-			await _board.animation_finished
-		"damage":
-			var atk_uid: String = str(ev.get("attacker_uid", ""))
-			var dmg_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var dmg_val: int = ev.get("damage", 1)
-			var is_crit: bool = ev.get("is_crit", false)
-			if atk_uid != "":
-				_board.start_strike_effect(atk_uid, dmg_pos)
-				await get_tree().create_timer(_scaled_anim_time(0.12)).timeout
-			_board.play_damage_effect(dmg_pos, dmg_val, is_crit)
-			_spawn_damage_text(dmg_pos, dmg_val, is_crit, ev.get("reason", ""))
-			await get_tree().create_timer(_scaled_anim_time(0.38)).timeout
-		"explode":
-			var pos_ev: Vector2i = ev.get("pos", Vector2i.ZERO)
-			_board.play_explosion(pos_ev)
-			_board.queue_redraw()
-			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
-		"poison_burst":
-			var ppos: Variant = ev.get("pos", Vector2i.ZERO)
-			var prad_i: Variant = ev.get("radius", 0)
-			_board.play_poison_burst(ppos, int(prad_i))
-			await get_tree().create_timer(_scaled_anim_time(0.6)).timeout
-			_board.queue_redraw()
-		"gem_flash":
-			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
-			await get_tree().create_timer(_scaled_anim_time(0.32)).timeout
-		"projectile", "projectile_deflect":
-			var proj_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
-			_board.play_projectile(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), proj_color)
-			await _board.animation_finished
-			await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
-		"lightning", "arc":
-			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)
-			await get_tree().create_timer(_scaled_anim_time(0.22)).timeout
-		"frost_pulse":
-			_board.play_heal_effect(ev.get("pos", Vector2i.ZERO))
-			await get_tree().create_timer(_scaled_anim_time(0.28)).timeout
-		"fire_burst":
-			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
-			await get_tree().create_timer(_scaled_anim_time(0.4)).timeout
-
-
 func _exit_tree() -> void:
+	_board_input.teardown()
 	if _dmg_text != null and is_instance_valid(_dmg_text):
 		_dmg_text.queue_free()
 		_dmg_text = null
@@ -634,8 +619,8 @@ func _on_back_pressed() -> void:
 
 
 func _on_battle_ended(result: String) -> void:
-	if _presentation_playing:
-		_pending_battle_result = result
+	if _event_player.is_playing():
+		_event_player.queue_battle_end(result)
 		return
 	_apply_battle_end(result)
 
@@ -676,281 +661,35 @@ func _data_registry() -> Node:
 
 
 func _view_state() -> GameState:
-	return _display_state if _display_state != null else _controller.state
+	return _event_player.get_view_state(_controller.state)
 
 
 func _on_controller_state_changed() -> void:
-	if _presentation_playing:
-		_refresh_deferred = true
+	if _event_player.is_playing():
 		return
 	_refresh()
 
 
-func _start_presentation(state_before: GameState, economy_source: GameState = null) -> void:
-	_display_state = state_before
-	if economy_source != null:
-		_display_state.player_moved = economy_source.player_moved
-		_display_state.player_acted = economy_source.player_acted
-	_board.set_battle_state(_display_state)
-	_board.selected_unit_uid = _inspect_uid
-	_board.queue_redraw()
+func _play_presentation_sequence(state_before: GameState, events: Array, economy_source: GameState = null) -> void:
 	if economy_source != null:
 		_refresh_economy_chips()
+	var pending_battle_end: String = await _event_player.play_sequence(
+		state_before,
+		_inspect_uid,
+		_controller.state,
+		events,
+		economy_source
+	)
+	_refresh()
+	if not pending_battle_end.is_empty():
+		_apply_battle_end(pending_battle_end)
 
 
 func _refresh_economy_chips() -> void:
 	var state := _view_state()
 	if state == null:
 		return
-	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
-	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
-	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
-	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
-
-
-func _finish_presentation() -> void:
-	_display_state = null
-	_presentation_playing = false
-	_refresh_deferred = false
-	_board.set_battle_state(_controller.state)
-	_refresh()
-	_flush_pending_battle_end()
-
-
-func _play_presented_events(events: Array) -> void:
-	if OS.is_debug_build():
-		EventValidator.assert_valid(events, "play_presented_events")
-	var i := 0
-	while i < events.size():
-		var ev: Dictionary = events[i]
-		var ev_type := str(ev.get("type", ""))
-		if ev_type in ["projectile", "projectile_deflect"]:
-			var batch: Array = _collect_consecutive_events(events, i, ["projectile", "projectile_deflect"])
-			i += batch.size()
-			await _play_projectile_volley(batch)
-			continue
-		if ev_type == "explode":
-			_prime_event_state(ev)
-			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
-			_board.queue_redraw()
-			_apply_event_state(ev)
-			i += 1
-			var blast_tail := _collect_blast_tail(events, i)
-			i = int(blast_tail.get("next_index", i))
-			var dmg_batch: Array = blast_tail.get("damage", [])
-			var kb_batch: Array = blast_tail.get("move_step", [])
-			_play_damage_batch(dmg_batch)
-			if not kb_batch.is_empty():
-				await _play_parallel_move_batch(kb_batch)
-			await get_tree().create_timer(_scaled_anim_time(0.75)).timeout
-			_board.queue_redraw()
-			continue
-		if ev_type == "damage":
-			var damage_batch: Array = _collect_consecutive_events(events, i, ["damage"])
-			i += damage_batch.size()
-			_play_damage_batch(damage_batch)
-			await get_tree().create_timer(_scaled_anim_time(0.34)).timeout
-			_board.queue_redraw()
-			continue
-		if ev_type == "move_step":
-			var batch: Array = _collect_consecutive_events(events, i, ["move_step"])
-			i += batch.size()
-			if _move_batch_is_parallel(batch):
-				await _play_parallel_move_batch(batch)
-			else:
-				await _play_move_path_batch(batch)
-			_board.queue_redraw()
-			continue
-		if ev_type in ["poison_burst", "fire_burst", "frost_pulse"]:
-			var fx_batch: Array = _collect_consecutive_events(events, i, [ev_type])
-			i += fx_batch.size()
-			_play_area_fx_batch(fx_batch)
-			await get_tree().create_timer(_scaled_anim_time(0.42)).timeout
-			_board.queue_redraw()
-			continue
-		if ev_type == "split_spawn":
-			_apply_event_state(ev)
-			i += 1
-			_board.queue_redraw()
-			continue
-		_prime_event_state(ev)
-		await _play_anim_event(ev)
-		_apply_event_state(ev)
-		i += 1
-		_board.queue_redraw()
-
-
-func _collect_consecutive_events(events: Array, start: int, types: Array) -> Array:
-	var batch: Array = []
-	var i := start
-	while i < events.size() and str(events[i].get("type", "")) in types:
-		batch.append(events[i])
-		i += 1
-	return batch
-
-
-func _collect_blast_tail(events: Array, start: int) -> Dictionary:
-	var damage_batch: Array = []
-	var move_batch: Array = []
-	var i := start
-	while i < events.size():
-		var tail_type := str(events[i].get("type", ""))
-		if tail_type == "damage":
-			damage_batch.append(events[i])
-		elif tail_type == "move_step":
-			move_batch.append(events[i])
-		else:
-			break
-		i += 1
-	return {
-		"damage": damage_batch,
-		"move_step": move_batch,
-		"next_index": i,
-	}
-
-
-func _play_damage_batch(batch: Array) -> void:
-	for dmg_ev in batch:
-		_prime_event_state(dmg_ev)
-	for dmg_ev in batch:
-		var dpos: Vector2i = dmg_ev.get("pos", Vector2i.ZERO)
-		var dval: int = dmg_ev.get("damage", 1)
-		var dcrit: bool = dmg_ev.get("is_crit", false)
-		_board.play_damage_effect(dpos, dval, dcrit)
-		_spawn_damage_text(dpos, dval, dcrit, dmg_ev.get("reason", ""))
-	for dmg_ev in batch:
-		_apply_event_state(dmg_ev)
-
-
-func _play_area_fx_batch(batch: Array) -> void:
-	for fx_ev in batch:
-		_prime_event_state(fx_ev)
-	for fx_ev in batch:
-		match str(fx_ev.get("type", "")):
-			"poison_burst":
-				_board.play_poison_burst(fx_ev.get("pos", Vector2i.ZERO), int(fx_ev.get("radius", 0)))
-			"fire_burst":
-				_board.play_explosion(fx_ev.get("pos", Vector2i.ZERO))
-			"frost_pulse":
-				_board.play_heal_effect(fx_ev.get("pos", Vector2i.ZERO))
-	for fx_ev in batch:
-		_apply_event_state(fx_ev)
-
-
-func _play_parallel_move_batch(batch: Array) -> void:
-	for step_ev in batch:
-		_prime_event_state(step_ev)
-	_board.animate_moves_parallel(batch)
-	await _board.animation_finished
-	for step_ev in batch:
-		_apply_event_state(step_ev)
-
-
-func _play_move_path_batch(batch: Array) -> void:
-	if batch.is_empty():
-		return
-	if batch.size() == 1 or not _board.has_method("animate_move_path"):
-		for step_ev in batch:
-			_prime_event_state(step_ev)
-			_board.animate_move(step_ev.get("uid", ""), step_ev.get("from", Vector2i.ZERO), step_ev.get("to", Vector2i.ZERO))
-			await _board.animation_finished
-			_apply_event_state(step_ev)
-		return
-	for step_ev in batch:
-		_prime_event_state(step_ev)
-	var path: Array = [batch[0].get("from", Vector2i.ZERO)]
-	for step_ev in batch:
-		path.append(step_ev.get("to", Vector2i.ZERO))
-	_board.animate_move_path(str(batch[0].get("uid", "")), path)
-	await _board.animation_finished
-	for step_ev in batch:
-		_apply_event_state(step_ev)
-
-
-func _play_projectile_volley(batch: Array) -> void:
-	if batch.is_empty():
-		return
-	if batch.size() == 1:
-		var single: Dictionary = batch[0]
-		var proj_color: Color = single.get("color", Color(0.95, 0.92, 0.45))
-		_board.play_projectile(single.get("from", Vector2i.ZERO), single.get("to", Vector2i.ZERO), proj_color)
-	else:
-		var shots: Array = []
-		for ev in batch:
-			shots.append({
-				"from": ev.get("from", Vector2i.ZERO),
-				"to": ev.get("to", Vector2i.ZERO),
-				"color": ev.get("color", Color(0.95, 0.92, 0.45)),
-			})
-		_board.play_projectiles(shots)
-	await _board.animation_finished
-	await get_tree().create_timer(_scaled_anim_time(0.08)).timeout
-
-
-func _move_batch_is_parallel(batch: Array) -> bool:
-	if batch.size() <= 1:
-		return false
-	var first_uid := str(batch[0].get("uid", ""))
-	for ev in batch:
-		if str(ev.get("uid", "")) != first_uid:
-			return true
-	return false
-
-
-func _prime_event_state(ev: Dictionary) -> void:
-	if _display_state == null:
-		return
-	match str(ev.get("type", "")):
-		"move_step":
-			var uid := str(ev.get("uid", ""))
-			var unit: UnitState = _display_state.units.get(uid, null)
-			if unit != null:
-				var from_pos: Vector2i = ev.get("from", unit.pos)
-				var to_pos: Vector2i = ev.get("to", unit.pos)
-				unit.pos = to_pos
-				unit.facing = UnitState.facing_from_step(from_pos, to_pos)
-
-
-func _apply_event_state(ev: Dictionary) -> void:
-	if _display_state == null:
-		return
-	match str(ev.get("type", "")):
-		"damage":
-			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var victim_uid := str(ev.get("uid", ev.get("victim_uid", "")))
-			var victim: UnitState = _display_state.units.get(victim_uid, null) if not victim_uid.is_empty() else null
-			if victim == null:
-				victim = _display_state.get_unit_at(pos)
-			if victim == null:
-				return
-			victim.hp = maxi(0, victim.hp - int(ev.get("damage", 0)))
-			if victim.hp <= 0:
-				victim.alive = false
-		"poison_burst":
-			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var poison_radius: int = int(ev.get("radius", 0))
-			for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
-				if not BoardUtils.in_bounds(_display_state, cell):
-					continue
-				TileRules.create_poison_fog(_display_state, cell)
-		"fire_burst":
-			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
-		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc":
-			pass
-		"split_spawn":
-			var clone_uid := str(ev.get("uid", ""))
-			var clone: UnitState = _controller.state.units.get(clone_uid, null)
-			if clone != null and clone.alive:
-				_display_state.register_unit(clone.clone())
-				_display_state.rebuild_occupancy()
-
-
-func _flush_pending_battle_end() -> void:
-	if _pending_battle_result.is_empty():
-		return
-	var result := _pending_battle_result
-	_pending_battle_result = ""
-	_apply_battle_end(result)
+	_hud_presenter.refresh_economy_chips(state)
 
 
 func _apply_battle_end(result: String) -> void:
@@ -1042,7 +781,7 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
 	var is_placeholder := bool(def.get("placeholder", false))
 	var panel := PanelContainer.new()
-	var rarity_color := BattleUiTheme.TEXT_MUTED if is_placeholder else _rarity_color(rarity)
+	var rarity_color: Color = BattleUiTheme.TEXT_MUTED if is_placeholder else _hud_presenter.rarity_color(rarity)
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
 	panel.custom_minimum_size = Vector2(180, 220)
 
@@ -1076,7 +815,7 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	vb.add_child(rarity_lbl)
 
 	var desc_lbl := RichTextLabel.new()
-	var desc_text := _relic_desc_text(def)
+	var desc_text: String = _hud_presenter.relic_desc_text(def)
 	desc_lbl.bbcode_enabled = false
 	desc_lbl.text = desc_text
 	desc_lbl.add_theme_font_size_override("normal_font_size", 12)
@@ -1097,13 +836,6 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	return panel
 
 
-func _relic_desc_text(def: Dictionary) -> String:
-	var desc := str(def.get("desc", ""))
-	if not desc.is_empty():
-		return desc
-	return "（暂无描述）"
-
-
 func _rarity_display_name(rarity: String) -> String:
 	match rarity:
 		"common": return "普通"
@@ -1112,16 +844,6 @@ func _rarity_display_name(rarity: String) -> String:
 		"legendary": return "传说"
 		"boss": return "首领"
 		_: return rarity
-
-
-func _rarity_color(rarity: String) -> Color:
-	match rarity:
-		"common": return Color("#c8cad4")
-		"rare": return Color("#6ec6f5")
-		"epic": return Color("#c77dff")
-		"legendary": return Color("#ffd166")
-		"boss": return Color("#ff6b6b")
-		_: return Color("#c8cad4")
 
 
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
@@ -1163,72 +885,33 @@ func _on_toggle_panel() -> void:
 	_panel_visible = not _panel_visible
 	_status_panel.visible = _panel_visible
 	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
-	_sync_toggle_btn_x()
+	_hud_presenter.sync_toggle_btn_x(_panel_visible)
 
 
 func _refresh() -> void:
 	var state := _view_state()
 	if state == null:
 		return
-	_sync_controlled_player_inspect(state)
-	_turn_label.text = "T%d" % state.turn_index
-	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
-	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
-	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
-	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
-
-	var turn_suffix := " · 第%d回合" % state.turn_index
-	match state.phase:
-		Constants.PHASE_PLAYER:
-			var queue_suffix := ""
-			if not state.controllable_queue.is_empty():
-				var total := 1 + state.controllable_queue.size()
-				var current := total - state.controllable_queue.size()
-				queue_suffix = " · %d/%d" % [current, total]
-			_phase_badge.text = "你的回合" + turn_suffix + queue_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_PLAYER)
-		Constants.PHASE_ENDED:
-			_phase_badge.text = "战斗结束" + turn_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
-		_:
-			_phase_badge.text = "敌方回合" + turn_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_ENEMY)
-
-	var held := _controller.get_held_gem()
-	if held != null:
-		var gem_name: String = _data_registry().get_gem_display_name(held)
-		if _held_gem_icon != null:
-			_held_gem_icon.texture = UnitLooks.get_gem_texture(held)
-			_held_gem_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
-			_held_gem_icon.visible = true
-		_held_label.text = "手持 %s" % gem_name
-		_held_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.15))
-	else:
-		if _held_gem_icon != null:
-			_held_gem_icon.visible = false
-		_held_label.text = ""
-		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-
-	_hint_label.text = _controller.get_tutorial_hint()
-	var tutorial_hint: String = _controller.get_tutorial_hint()
-	if not tutorial_hint.is_empty():
-		_message_label.text = tutorial_hint.split("\n")[0]
-	elif _message_label.text.is_empty():
-		_message_label.text = _controller.get_action_hint()
-
 	_board.set_battle_state(state)
 	_board.selected_unit_uid = _inspect_uid
 	_board.set_timeline_hover_unit(_timeline_hover_uid)
-	_board.set_active_turn_unit(_get_active_turn_uid())
-	_board.set_highlights(_controller.get_highlights(_hover_cell))
 	if not _enemy_phase_running:
 		_enemy_turn_queue.clear()
 		for enemy in _controller.get_sorted_enemies():
 			_enemy_turn_queue.append(enemy.uid)
-	_refresh_turn_queue()
-	_refresh_inspect()
-	_refresh_action_buttons()
-	_refresh_relic_bar()
+	var hud_state := _hud_presenter.refresh({
+		"state": state,
+		"inspect_uid": _inspect_uid,
+		"tracked_player_uid": _tracked_player_uid,
+		"timeline_hover_uid": _timeline_hover_uid,
+		"enemy_phase_running": _enemy_phase_running,
+		"enemy_turn_queue": _enemy_turn_queue,
+	})
+	_inspect_uid = str(hud_state.get("inspect_uid", _inspect_uid))
+	_tracked_player_uid = str(hud_state.get("tracked_player_uid", _tracked_player_uid))
+	var active_turn_uid := str(hud_state.get("active_turn_uid", ""))
+	_board.set_active_turn_unit(active_turn_uid)
+	_board.set_highlights(_controller.get_highlights(_hover_cell))
 	_board.queue_redraw()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -1237,72 +920,13 @@ func _refresh() -> void:
 func _fit_status_panel() -> void:
 	if not is_node_ready():
 		return
-	var margins := _status_panel_content_margins()
-	var panel_w := _STATUS_PANEL_WIDTH
-	var inner_w := panel_w - margins.x
-	var header_gap := float(_header_row.get_theme_constant("separation", "HBoxContainer"))
-	var info_w := inner_w - _portrait.custom_minimum_size.x - header_gap
-	_info_col.custom_minimum_size.x = info_w
-	_shield_bar.custom_minimum_size.x = maxf(0.0, info_w - 40.0)
-	_hp_bar.custom_minimum_size.x = info_w
-	_status_clip.custom_minimum_size.x = info_w
-	_inspect_status_row.offset_right = info_w
-	_apply_status_inner_width(inner_w)
-	var panel_h := _status_vbox.get_minimum_size().y + margins.y
-	_status_panel.custom_minimum_size = Vector2(panel_w, panel_h)
-	_status_panel.size = Vector2(panel_w, panel_h)
-	_status_panel.offset_right = _status_panel.offset_left + panel_w
-	_sync_toggle_btn_x()
+	_hud_presenter.fit_status_panel(_panel_visible)
 
 
 func _fit_status_panel_height() -> void:
 	if not is_node_ready():
 		return
-	var margins := _status_panel_content_margins()
-	var panel_h := _status_vbox.get_minimum_size().y + margins.y
-	if absf(panel_h - _status_panel.size.y) < 0.5:
-		return
-	_status_panel.custom_minimum_size.y = panel_h
-	_status_panel.size.y = panel_h
-	_status_panel.offset_bottom = _status_panel.offset_top + panel_h
-
-
-func _sync_toggle_btn_x() -> void:
-	if _panel_visible:
-		_toggle_panel_btn.position.x = _status_panel.position.x + _status_panel.size.x + 8.0
-
-
-func _sync_controlled_player_inspect(state: GameState) -> void:
-	var player: UnitState = state.get_player()
-	if player == null or not player.alive:
-		return
-	if player.uid == _tracked_player_uid:
-		return
-	_tracked_player_uid = player.uid
-	_inspect_uid = player.uid
-	_controller.selected_unit_uid = player.uid
-
-
-func _apply_status_inner_width(inner_w: float) -> void:
-	_status_vbox.custom_minimum_size.x = inner_w
-	_header_row.custom_minimum_size.x = inner_w
-	_hint_label.custom_minimum_size.x = inner_w
-	_inspect_stats.custom_minimum_size.x = inner_w
-	_held_label.custom_minimum_size.x = inner_w
-	_slot_clip.custom_minimum_size.x = inner_w
-	_slot_box.size.x = inner_w
-	if _relic_bar_scroll != null:
-		_relic_bar_scroll.custom_minimum_size.x = inner_w
-
-
-func _status_panel_content_margins() -> Vector2:
-	var style := _status_panel.get_theme_stylebox("panel") as StyleBoxFlat
-	if style == null:
-		return Vector2(24.0, 20.0)
-	return Vector2(
-		style.content_margin_left + style.content_margin_right,
-		style.content_margin_top + style.content_margin_bottom
-	)
+	_hud_presenter.fit_status_panel_height()
 
 
 func _select_unit(uid: String) -> void:
@@ -1328,124 +952,6 @@ func _clear_timeline_hover(uid: String = "") -> void:
 	_board.queue_redraw()
 
 
-func _refresh_inspect() -> void:
-	var state := _view_state()
-	for child in _slot_box.get_children():
-		child.queue_free()
-	if _inspect_uid.is_empty():
-		_clear_inspect_header("单位详情")
-		_inspect_stats.text = "点击时间轴或棋盘"
-		return
-	var unit: UnitState = state.units.get(_inspect_uid, null)
-	if unit == null or not unit.alive:
-		_clear_inspect_header("已阵亡")
-		_inspect_stats.text = ""
-		return
-	var unit_name: String = _data_registry().get_unit_display_name(unit.unit_def_id)
-	_portrait.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
-	_portrait.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
-	_inspect_name.text = unit_name
-	_hp_bar.max_value = unit.max_hp
-	_hp_bar.value = unit.hp
-	var ratio := float(unit.hp) / float(maxi(unit.max_hp, 1))
-	_hp_bar.add_theme_stylebox_override("fill", _flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08)))
-	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
-	_refresh_inspect_shield(state, unit)
-	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR])
-	var attack_value := CombatRules.attack_damage(state, unit)
-	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
-	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		stat_parts.append(unit.intent.preview_text)
-	_inspect_stats.text = "\n".join(stat_parts)
-	for slot in unit.slots:
-		_slot_box.add_child(_create_slot_chip(state, unit, slot))
-
-
-func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
-	var shield_value := CombatRules.current_shield(state, unit)
-	_shield_row.visible = shield_value > 0
-	if shield_value <= 0:
-		_shield_bar.value = 0.0
-		_shield_text.text = ""
-		return
-	var shield_max := maxi(unit.max_hp, shield_value)
-	_shield_bar.max_value = float(shield_max)
-	_shield_bar.value = float(shield_value)
-	_shield_text.text = str(shield_value)
-	_shield_row.tooltip_text = "护盾 %d" % shield_value
-
-
-func _clear_inspect_header(title: String) -> void:
-	_portrait.texture = null
-	_portrait.self_modulate = Color.WHITE
-	_inspect_name.text = title
-	_hp_bar.max_value = 1.0
-	_hp_bar.value = 0.0
-	_hp_text.text = ""
-	_shield_row.visible = false
-	_shield_bar.value = 0.0
-	_shield_text.text = ""
-	while _inspect_status_row.get_child_count() > 0:
-		_inspect_status_row.get_child(0).free()
-
-
-func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Control:
-	var chip := PanelContainer.new()
-	var color := UnitLooks.slot_color(slot.slot_type)
-	var gem: GemState = null
-	if not slot.gem_uid.is_empty():
-		gem = state.gems.get(slot.gem_uid, null)
-		if gem != null:
-			color = UnitLooks.gem_color(gem)
-	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	var label := Label.new()
-	var slot_name := _slot_display_name(slot.slot_type)
-	var is_dual := not slot.dual_type.is_empty()
-	var dual_name := _slot_display_name(slot.dual_type) if is_dual else ""
-	var display_name := ("%s/%s" % [slot_name, dual_name]) if is_dual else slot_name
-	if slot.locked:
-		label.text = "%s🔒" % display_name
-		chip.tooltip_text = "%s槽：锁定" % display_name
-	elif slot.gem_uid.is_empty():
-		label.text = "%s○" % display_name
-		var tip := "%s槽：空" % display_name
-		if is_dual:
-			tip += "（双色槽，可嵌入%s或%s宝石）" % [slot_name, dual_name]
-		chip.tooltip_text = tip
-	else:
-		if gem == null:
-			label.text = "%s?" % display_name
-			chip.tooltip_text = "%s槽：无宝石数据" % display_name
-		else:
-			var gem_icon := _make_gem_icon(gem, 14)
-			if gem_icon != null:
-				row.add_child(gem_icon)
-			label.text = display_name
-			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
-
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	row.add_child(label)
-	chip.add_child(row)
-	return chip
-
-
-func _make_gem_icon(gem: GemState, size_px: int) -> TextureRect:
-	var tex := UnitLooks.get_gem_texture(gem)
-	if tex == null:
-		return null
-	var icon := TextureRect.new()
-	icon.texture = tex
-	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	icon.custom_minimum_size = Vector2(size_px, size_px)
-	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.self_modulate = UnitLooks.gem_sprite_modulate(gem)
-	return icon
-
-
 func _setup_held_gem_row() -> void:
 	if _held_label == null or _held_gem_icon != null:
 		return
@@ -1467,45 +973,6 @@ func _setup_held_gem_row() -> void:
 	_held_gem_icon.visible = false
 	row.add_child(_held_gem_icon)
 	row.add_child(_held_label)
-
-
-func _slot_display_name(slot_type: String) -> String:
-	match slot_type:
-		Constants.SLOT_RED: return "红"
-		Constants.SLOT_BLUE: return "蓝"
-		Constants.SLOT_BLACK: return "黑"
-	return "?"
-
-
-func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
-	return RulesIndex.slot_inspect_context(unit, slot)
-
-
-func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState) -> String:
-	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
-	if effect.is_empty():
-		return gem_name
-	return "%s\n%s" % [gem_name, effect]
-
-
-func _refresh_action_buttons() -> void:
-	var current: String = _controller.selected_action
-	var can_act: bool = not _enemy_phase_running
-	_move_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_MOVE)
-	_attack_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_ATTACK)
-	_extract_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_EXTRACT)
-	_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT)
-	_trigger_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_TRIGGER)
-	_end_turn_btn.disabled = not can_act or _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER
-	BattleUiTheme.apply_button(_move_btn, "move", current == Constants.ACTION_MOVE)
-	BattleUiTheme.apply_button(_attack_btn, "combat", current == Constants.ACTION_ATTACK)
-	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
-	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
-	BattleUiTheme.apply_button(_trigger_btn, "gem", current == Constants.ACTION_TRIGGER)
-	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
-	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
-	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
 
 
 func _clamp_preview_panel() -> void:
@@ -1659,136 +1126,9 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 		_enemy_turn_queue.remove_at(idx)
 
 
-func _refresh_turn_queue() -> void:
-	var state := _view_state()
-	if state == null:
-		return
-	var active_uid: String = _get_active_turn_uid()
-	_board.set_active_turn_unit(active_uid)
-	for child in _queue_row.get_children():
-		child.queue_free()
-	var focus_uid := _timeline_hover_uid if not _timeline_hover_uid.is_empty() else active_uid
-	var active_unit: UnitState = state.units.get(active_uid, null)
-	if active_unit != null:
-		var active_name: String = _data_registry().get_unit_display_name(active_unit.unit_def_id)
-		_queue_hint.text = "当前 %s · 速 %d" % [active_name, active_unit.speed]
-	else:
-		_queue_hint.text = "当前 —"
-	for uid in _build_turn_timeline_uids(active_uid, 8):
-		var unit: UnitState = state.units.get(uid, null)
-		if unit != null and unit.alive:
-			_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid, uid == focus_uid))
-
-
-func _get_active_turn_uid() -> String:
-	var state := _view_state()
-	if state == null:
-		return ""
-	if state.phase == Constants.PHASE_PLAYER:
-		var player: UnitState = state.get_player()
-		return player.uid if player != null and player.alive else ""
-	if _enemy_phase_running and not _enemy_turn_queue.is_empty():
-		return _enemy_turn_queue[0]
-	return ""
-
-
-func _build_turn_timeline_uids(active_uid: String, max_items: int) -> Array[String]:
-	var state := _view_state()
-	if state == null:
-		return []
-	var units: Array = []
-	for unit in state.units.values():
-		if unit.alive:
-			units.append(unit)
-	units.sort_custom(func(a: UnitState, b: UnitState) -> bool:
-		if a.speed == b.speed:
-			return a.uid < b.uid
-		return a.speed > b.speed
-	)
-	if units.is_empty():
-		return []
-	var ordered: Array[String] = []
-	for unit in units:
-		ordered.append(unit.uid)
-	var start_idx: int = 0
-	if not active_uid.is_empty():
-		var idx: int = ordered.find(active_uid)
-		if idx >= 0:
-			start_idx = idx
-	var timeline: Array[String] = []
-	for i in range(max_items):
-		timeline.append(ordered[(start_idx + i) % ordered.size()])
-	return timeline
-
-
-func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool) -> Control:
-	var root := Control.new()
-	root.custom_minimum_size = Vector2(58, 76)
-	var stack := VBoxContainer.new()
-	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(stack)
-	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(44, 44)
-	var team_color := BattleUiTheme.PHASE_PLAYER if unit.team == Constants.TEAM_PLAYER else BattleUiTheme.PHASE_ENEMY
-	var accent := BattleUiTheme.BORDER
-	if is_hovered:
-		accent = BattleUiTheme.TEXT_GOLD
-	elif is_active:
-		accent = team_color
-	frame.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
-	stack.add_child(frame)
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(34, 34)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
-	icon.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
-	frame.add_child(icon)
-	if is_active:
-		var arrow := Label.new()
-		arrow.text = "▼"
-		arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		arrow.add_theme_font_size_override("font_size", 12)
-		arrow.add_theme_color_override("font_color", team_color)
-		stack.add_child(arrow)
-	var hp_label := Label.new()
-	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hp_label.text = "%d/%d" % [unit.hp, unit.max_hp]
-	hp_label.add_theme_font_size_override("font_size", 9)
-	hp_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	stack.add_child(hp_label)
-	var speed_label := Label.new()
-	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	speed_label.text = "%d" % unit.speed
-	speed_label.add_theme_font_size_override("font_size", 10)
-	speed_label.add_theme_color_override("font_color", team_color if is_active else (BattleUiTheme.TEXT_GOLD if is_hovered else BattleUiTheme.TEXT_MUTED))
-	stack.add_child(speed_label)
-	var hover_btn := Button.new()
-	hover_btn.flat = true
-	hover_btn.focus_mode = Control.FOCUS_NONE
-	hover_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	hover_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hover_btn.mouse_entered.connect(_set_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
-	hover_btn.mouse_exited.connect(_clear_timeline_hover.bind(unit.uid), CONNECT_DEFERRED)
-	hover_btn.pressed.connect(_select_unit.bind(unit.uid))
-	root.add_child(hover_btn)
-	return root
-
-
 func _wire_hover_interactions() -> void:
 	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _trigger_btn, _end_turn_btn, _toggle_panel_btn]:
 		button.focus_mode = Control.FOCUS_NONE
-
-
-func _style_chip(label: Label, highlight: bool, color: Color) -> void:
-	if not highlight:
-		label.remove_theme_stylebox_override("normal")
-		label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-		return
-	label.add_theme_stylebox_override("normal", BattleUiTheme.chip_style(color))
-	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 
 
 func _setup_relic_bar() -> void:
@@ -1808,58 +1148,6 @@ func _setup_relic_bar() -> void:
 	_status_vbox.move_child(scroll, _header_row.get_index() + 1)
 	_relic_bar_scroll = scroll
 	_relic_bar_vbox = flow
-
-
-func _refresh_relic_bar() -> void:
-	if _relic_bar_vbox == null or _relic_bar_scroll == null:
-		return
-	var owned: Array[String] = RunService.get_owned_relics() if RunService.is_run_active() else []
-	var ids_changed := owned != _relic_bar_ids
-	if ids_changed:
-		_relic_bar_ids = owned.duplicate()
-		for child in _relic_bar_vbox.get_children():
-			child.queue_free()
-		for relic_id in owned:
-			_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
-	_relic_bar_scroll.visible = not owned.is_empty()
-	if owned.is_empty():
-		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
-		return
-	var inner_w := _status_vbox.custom_minimum_size.x
-	if inner_w <= 0.0:
-		inner_w = _STATUS_PANEL_WIDTH - _status_panel_content_margins().x
-	_relic_bar_scroll.custom_minimum_size.x = inner_w
-	var content_h := _relic_bar_vbox.get_minimum_size().y
-	var max_h := 92.0
-	_relic_bar_scroll.custom_minimum_size.y = minf(content_h, max_h)
-
-
-func _create_relic_badge(relic_id: String) -> Control:
-	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
-	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
-	var rarity_col := _rarity_color(rarity)
-	var badge := PanelContainer.new()
-	badge.custom_minimum_size = Vector2(40, 40)
-	var style := StyleBoxFlat.new()
-	style.bg_color = rarity_col.darkened(0.55)
-	style.border_color = rarity_col
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(5)
-	style.set_content_margin_all(3)
-	badge.add_theme_stylebox_override("panel", style)
-	var name_str: String = str(def.get("name", relic_id))
-	var icon_tex := UnitLooks.get_relic_texture(relic_id)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		badge.add_child(icon)
-	var tooltip_text: String = name_str + "\n" + _relic_desc_text(def)
-	badge.tooltip_text = tooltip_text
-	return badge
 
 
 func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:

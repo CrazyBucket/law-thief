@@ -47,14 +47,17 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 	for tag in def.get("tags", []):
 		unit.add_tag(str(tag))
 	for slot_data in def.get("slots", []):
-		unit.slots.append(
-			SlotState.create(
-				slot_data.get("slot_type", Constants.SLOT_RED),
-				slot_data.get("gem_uid", ""),
-				slot_data.get("locked", false),
-				slot_data.get("lock_type", "")
-			)
+		var slot := SlotState.create(
+			slot_data.get("slot_type", Constants.SLOT_RED),
+			slot_data.get("gem_uid", ""),
+			slot_data.get("locked", false),
+			slot_data.get("lock_type", "")
 		)
+		slot.dual_type = str(slot_data.get("dual_type", ""))
+		slot.unlock_until_turn = int(slot_data.get("unlock_until_turn", -1))
+		if slot.locked and slot.unlock_until_turn == -1:
+			slot.unlock_until_turn = -1
+		unit.slots.append(slot)
 	return unit
 
 

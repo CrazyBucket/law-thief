@@ -27,6 +27,8 @@ func _test_spawn_black_gem_and_hp() -> void:
 	assert(black != null and not black.gem_uid.is_empty(), "black slot should have gem")
 	var red := rat.get_slot(Constants.SLOT_RED)
 	assert(red != null and red.gem_uid.is_empty(), "red slot should stay empty")
+	var blue := rat.get_slot(Constants.SLOT_BLUE)
+	assert(blue != null and blue.gem_uid.is_empty(), "blue slot should stay empty")
 	print("  [OK] spawn hp=%d black gem mounted" % rat.max_hp)
 
 
@@ -53,7 +55,7 @@ func _test_suicide_when_adjacent() -> void:
 	var hp_before := player.hp
 	IntentSystem.execute_intent(state, rat)
 	assert(not rat.alive, "rat should die after suicide")
-	var took_effect := player.hp < hp_before or player.has_status(Constants.STATUS_POISON)
+	var took_effect := player.hp < hp_before or player.has_status(Constants.STATUS_POISON) or player.has_status(Constants.STATUS_SLOWED) or player.has_status(Constants.STATUS_PARALYZED) or player.has_status(Constants.STATUS_SLUGGISH)
 	assert(took_effect, "player should suffer black death effect")
 	print("  [OK] black suicide kills rat and hits player")
 
