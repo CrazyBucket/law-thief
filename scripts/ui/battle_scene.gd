@@ -51,7 +51,6 @@ var _dmg_text: Node = null
 @onready var _attack_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn
 @onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn
 @onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn
-@onready var _trigger_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn
 @onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn
 
 var _controller: BattleController = BattleController.new()
@@ -95,6 +94,7 @@ func _ready() -> void:
 	_board_input.setup(_board)
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
+	_board.unit_slot_clicked.connect(_on_board_unit_slot_selected)
 	_apply_ui_theme()
 	_preview_panel.visible = false
 	_preview_panel.modulate.a = 0.0
@@ -146,7 +146,6 @@ func _ready() -> void:
 		"attack_btn": _attack_btn,
 		"extract_btn": _extract_btn,
 		"insert_btn": _insert_btn,
-		"trigger_btn": _trigger_btn,
 		"end_turn_btn": _end_turn_btn,
 		"toggle_panel_btn": _toggle_panel_btn,
 		"relic_bar_scroll": _relic_bar_scroll,
@@ -236,6 +235,7 @@ func _on_action_pressed(action: String) -> void:
 		_controller.select_action(action)
 		_message_label.text = _controller.get_action_hint()
 	_refresh()
+	_sync_unit_slot_panels()
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
@@ -304,12 +304,12 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				_player_animating = false
 			else:
 				_player_animating = false
-		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_TRIGGER:
+		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
 				if unit != null and unit.alive:
 					_inspect_uid = unit.uid
-					_show_slot_popup(unit)
+					_sync_unit_slot_panels()
 				else:
 					var tile: TileState = _controller.state.get_tile(cell)
 					if tile != null and tile.has_slots():
@@ -401,18 +401,27 @@ func _format_preview_body(body: String) -> String:
 	return "\n".join(formatted)
 
 
-func _show_slot_popup(unit: UnitState) -> void:
-	var screen_pos: Vector2 = _board.grid_to_screen(unit.pos)
-	var board_global: Vector2 = _board.global_position
-	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
-	_slot_popup.show_for_unit(unit, _controller.state, _controller.selected_action, popup_pos, _controller.check_slot_action)
-
-
 func _show_tile_slot_popup(tile: TileState, cell: Vector2i) -> void:
 	var screen_pos: Vector2 = _board.grid_to_screen(cell)
 	var board_global: Vector2 = _board.global_position
 	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
 	_slot_popup.show_for_tile(tile, _controller.state, _controller.selected_action, popup_pos, _controller.check_tile_slot_action)
+
+
+func _sync_unit_slot_panels() -> void:
+	if _controller == null or _board == null:
+		return
+	var action := _controller.selected_action
+	if action in [Constants.ACTION_EXTRACT, Constants.ACTION_INSERT]:
+		_board.configure_unit_slot_panels(action, _controller.check_slot_action)
+	else:
+		_board.clear_unit_slot_panels()
+
+
+func _on_board_unit_slot_selected(unit_uid: String, slot_index: int) -> void:
+	if _player_animating or _enemy_phase_running:
+		return
+	_on_popup_slot_selected(unit_uid, slot_index)
 
 
 func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
@@ -423,8 +432,6 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 			result = _controller.try_extract_tile(tile_pos, slot_index)
 		Constants.ACTION_INSERT:
 			result = _controller.try_insert_tile(tile_pos, slot_index)
-		Constants.ACTION_TRIGGER:
-			result = _controller.try_trigger_tile(tile_pos, slot_index)
 		_:
 			return
 	_dismiss_popup()
@@ -434,25 +441,15 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 			Constants.ACTION_EXTRACT:
 				_begin_held_gem_extract(tile_pos, result)
 				_controller.select_action(Constants.ACTION_INSERT)
-				_message_label.text = "已从地块拔出，点击目标嵌入"
+				_message_label.text = "已从地块拔出，选择槽位嵌入"
 			Constants.ACTION_INSERT:
 				_begin_held_gem_insert(tile_pos, result)
-				if str(result.get("swapped_gem_uid", "")).is_empty():
-					_controller.select_action(Constants.ACTION_ATTACK)
-					_message_label.text = "已嵌入地块，可攻击或触发"
+				if bool(result.get("overload_only", false)):
+					_message_label.text = "过载预兆：结束回合后生效"
 				else:
-					_controller.select_action(Constants.ACTION_INSERT)
-					_message_label.text = "已替换，原宝石回到手中"
-			Constants.ACTION_TRIGGER:
-				_player_animating = true
-				var trigger_events: Array = result.get("events", [])
-				await _play_presentation_sequence(
-					result.get("presentation_state", _controller.state.clone()),
-					trigger_events,
-					_controller.state
-				)
-				_player_animating = false
+					_message_label.text = "已嵌入地块" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
 	_refresh()
+	_sync_unit_slot_panels()
 
 
 func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
@@ -463,8 +460,6 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 			result = _controller.try_extract(unit_uid, slot_index)
 		Constants.ACTION_INSERT:
 			result = _controller.try_insert(unit_uid, slot_index)
-		Constants.ACTION_TRIGGER:
-			result = _controller.try_trigger(unit_uid, slot_index)
 		_:
 			return
 	_dismiss_popup()
@@ -476,27 +471,17 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 				if extract_target != null:
 					_begin_held_gem_extract(extract_target.pos, result)
 				_controller.select_action(Constants.ACTION_INSERT)
-				_message_label.text = "已拔出，点击目标嵌入（免费）"
+				_message_label.text = "已拔出，选择槽位嵌入"
 			Constants.ACTION_INSERT:
 				var insert_target: UnitState = _controller.state.units.get(unit_uid, null)
-				if insert_target != null:
+				if insert_target != null and not bool(result.get("overload_only", false)):
 					_begin_held_gem_insert(insert_target.pos, result)
-				if str(result.get("swapped_gem_uid", "")).is_empty():
-					_controller.select_action(Constants.ACTION_ATTACK)
-					_message_label.text = "已嵌入，可攻击或触发"
+				if bool(result.get("overload_only", false)):
+					_message_label.text = "过载预兆：结束回合后生效"
 				else:
-					_controller.select_action(Constants.ACTION_INSERT)
-					_message_label.text = "已替换，原宝石回到手中"
-			Constants.ACTION_TRIGGER:
-				_player_animating = true
-				var trigger_events: Array = result.get("events", [])
-				await _play_presentation_sequence(
-					result.get("presentation_state", _controller.state.clone()),
-					trigger_events,
-					_controller.state
-				)
-				_player_animating = false
+					_message_label.text = "已嵌入" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
 	_refresh()
+	_sync_unit_slot_panels()
 
 
 func _begin_held_gem_extract(source_grid: Vector2i, result: Dictionary) -> void:
@@ -619,7 +604,7 @@ func _on_back_pressed() -> void:
 
 
 func _on_battle_ended(result: String) -> void:
-	if _event_player.is_playing():
+	if _event_player.is_playing() or _player_animating or _enemy_phase_running:
 		_event_player.queue_battle_end(result)
 		return
 	_apply_battle_end(result)
@@ -912,6 +897,7 @@ func _refresh() -> void:
 	var active_turn_uid := str(hud_state.get("active_turn_uid", ""))
 	_board.set_active_turn_unit(active_turn_uid)
 	_board.set_highlights(_controller.get_highlights(_hover_cell))
+	_sync_unit_slot_panels()
 	_board.queue_redraw()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -1127,7 +1113,9 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 
 
 func _wire_hover_interactions() -> void:
-	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _trigger_btn, _end_turn_btn, _toggle_panel_btn]:
+	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _toggle_panel_btn]:
+		if button == null:
+			continue
 		button.focus_mode = Control.FOCUS_NONE
 
 

@@ -34,6 +34,8 @@ unit.bomb_rat.name,炸弹鼠,Bomb Rat
 unit.patrol_guard.name,巡路甲兵,Patrol Guard
 unit.stone_bow_guard.name,石弓卫士,Stone Bow Guard
 unit.fission_slime.name,裂变史莱姆,Fission Slime
+unit.overload_enforcer.name,执律者,Overload Enforcer
+unit.law_beast.name,律兽,Law Beast
 gem.intent.explosion_attack,爆炸攻击 ({damage}),Explosion Strike ({damage})
 gem.intent.charge_explode,冲刺爆炸 ({damage}),Charge Explosion ({damage})
 gem.intent.poison_attack,毒攻击 ({damage}+毒),Poison Strike ({damage}+Poison)

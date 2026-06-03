@@ -1,6 +1,8 @@
 class_name BattleActionService
 extends RefCounted
 
+const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+
 var _ctrl: BattleController
 
 
@@ -54,15 +56,21 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		TileRules.on_unit_moved_through(state, player, step)
 		state.on_unit_move.emit(player.uid, from_pos, step)
 		move_events.append({"type": "move_step", "uid": player.uid, "from": from_pos, "to": step})
-	TileRules.finish_voluntary_move(state, player, previous)
+		if not player.alive:
+			break
+	if player.alive:
+		TileRules.finish_voluntary_move(state, player, previous)
 	# 旧式压力阀临时移动力：移动一次后重置剩余临时点数
 	if state.battle_temp_flags.has("pressure_valve_temp_move"):
 		var temp_move: int = int(state.battle_temp_flags["pressure_valve_temp_move"])
 		state.battle_temp_flags.erase("pressure_valve_temp_move")
 		player.move_points = maxi(0, player.move_points - temp_move)
 	state.player_moved = true
+	OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
 	state.log("玩家移动到 %s" % target_pos)
-	IntentSystem.refresh_all_intents(state)
+	ctrl._check_battle_end()
+	if state.phase != Constants.PHASE_ENDED:
+		IntentSystem.refresh_all_intents(state)
 	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
@@ -120,6 +128,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail(atk_result.get("reason", "无法攻击"))
 	attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
 	state.player_acted = true
+	OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
 	ctrl._check_battle_end()
 	IntentSystem.refresh_all_intents(state)
 	return _ok({
@@ -150,6 +159,8 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.extract(ctrl.state, player, target, slot)
 	if result.get("ok", false):
+		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_EXTRACT)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl.anim_gem_flash.emit(target.pos, Color(1.0, 0.85, 0.3))
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
@@ -172,6 +183,8 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert(ctrl.state, player, target, slot)
 	if result.get("ok", false):
+		OverloadRules.record_insert(ctrl.state)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 	return result
@@ -195,6 +208,8 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	var events: Array[Dictionary] = []
 	var result := GemRules.trigger(ctrl.state, player, target, slot, events)
 	if result.get("ok", false):
+		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_TRIGGER)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		result["events"] = events
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
@@ -221,7 +236,10 @@ func try_extract_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.extract_tile(ctrl.state, player, tile, slot)
 	if result.get("ok", false):
+		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_EXTRACT)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl.anim_gem_flash.emit(tile_pos, Color(1.0, 0.85, 0.3))
+		ctrl._check_battle_end()
 		ctrl._emit_changed()
 	return result
 
@@ -242,6 +260,8 @@ func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert_tile(ctrl.state, player, tile, slot)
 	if result.get("ok", false):
+		OverloadRules.record_insert(ctrl.state)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 	return result
@@ -265,6 +285,8 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	var events: Array[Dictionary] = []
 	var result := GemRules.trigger_tile(ctrl.state, player, tile, slot, events)
 	if result.get("ok", false):
+		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_TRIGGER)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		result["events"] = events
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()

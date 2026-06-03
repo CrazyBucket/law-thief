@@ -43,7 +43,13 @@ func is_empty() -> bool:
 	return gem_uid.is_empty()
 
 
+func is_split_disabled() -> bool:
+	return lock_type == Constants.LOCK_SPLIT_DISABLED
+
+
 func is_operable(turn_index: int) -> bool:
+	if is_split_disabled():
+		return false
 	if locked:
 		if unlock_until_turn < 0:
 			return false

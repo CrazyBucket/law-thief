@@ -39,7 +39,6 @@ var _move_btn: Button = null
 var _attack_btn: Button = null
 var _extract_btn: Button = null
 var _insert_btn: Button = null
-var _trigger_btn: Button = null
 var _end_turn_btn: Button = null
 var _toggle_panel_btn: Button = null
 var _relic_bar_scroll: ScrollContainer = null
@@ -85,7 +84,6 @@ func setup(deps: Dictionary) -> void:
 	_attack_btn = deps.get("attack_btn", null)
 	_extract_btn = deps.get("extract_btn", null)
 	_insert_btn = deps.get("insert_btn", null)
-	_trigger_btn = deps.get("trigger_btn", null)
 	_end_turn_btn = deps.get("end_turn_btn", null)
 	_toggle_panel_btn = deps.get("toggle_panel_btn", null)
 	_relic_bar_scroll = deps.get("relic_bar_scroll", null)
@@ -101,7 +99,7 @@ func refresh(context: Dictionary) -> Dictionary:
 	var tracked_player_uid: String = str(context.get("tracked_player_uid", ""))
 	var timeline_hover_uid: String = str(context.get("timeline_hover_uid", ""))
 	var enemy_phase_running: bool = bool(context.get("enemy_phase_running", false))
-	var enemy_turn_queue: Array[String] = context.get("enemy_turn_queue", [] as Array[String])
+	var enemy_turn_queue: Array[String] = _string_array_from(context.get("enemy_turn_queue", []))
 	if state == null:
 		return {
 			"inspect_uid": inspect_uid,
@@ -333,7 +331,10 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 	var is_dual := not slot.dual_type.is_empty()
 	var dual_name := _slot_display_name(slot.dual_type) if is_dual else ""
 	var display_name := ("%s/%s" % [slot_name, dual_name]) if is_dual else slot_name
-	if slot.locked:
+	if slot.is_split_disabled():
+		label.text = "%s×" % display_name
+		chip.tooltip_text = "%s槽：分裂已失效" % display_name
+	elif slot.locked:
 		label.text = "%s🔒" % display_name
 		chip.tooltip_text = "%s槽：锁定" % display_name
 	elif slot.gem_uid.is_empty():
@@ -403,13 +404,11 @@ func _refresh_action_buttons(enemy_phase_running: bool) -> void:
 	_attack_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_ATTACK)
 	_extract_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_EXTRACT)
 	_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT)
-	_trigger_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_TRIGGER)
 	_end_turn_btn.disabled = not can_act or _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER
 	BattleUiTheme.apply_button(_move_btn, "move", current == Constants.ACTION_MOVE)
 	BattleUiTheme.apply_button(_attack_btn, "combat", current == Constants.ACTION_ATTACK)
 	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
 	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
-	BattleUiTheme.apply_button(_trigger_btn, "gem", current == Constants.ACTION_TRIGGER)
 	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
 	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
 	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
@@ -540,7 +539,7 @@ func _style_chip(label: Label, highlight: bool, color: Color) -> void:
 func _refresh_relic_bar() -> void:
 	if _relic_bar_vbox == null or _relic_bar_scroll == null:
 		return
-	var owned: Array[String] = RunService.get_owned_relics() if RunService.is_run_active() else []
+	var owned: Array[String] = _string_array_from(RunService.get_owned_relics()) if RunService.is_run_active() else []
 	var ids_changed := owned != _relic_bar_ids
 	if ids_changed:
 		_relic_bar_ids = owned.duplicate()
@@ -559,6 +558,14 @@ func _refresh_relic_bar() -> void:
 	var content_h := _relic_bar_vbox.get_minimum_size().y
 	var max_h := 92.0
 	_relic_bar_scroll.custom_minimum_size.y = minf(content_h, max_h)
+
+
+func _string_array_from(values: Variant) -> Array[String]:
+	var result: Array[String] = []
+	if values is Array:
+		for value in values:
+			result.append(str(value))
+	return result
 
 
 func _create_relic_badge(relic_id: String) -> Control:

@@ -120,6 +120,7 @@ func resolve_pending_room() -> Dictionary:
 	var existing := RunService.get_resolved_room(room_id)
 	if not existing.is_empty():
 		return existing
+	var mark_resolved := true
 	var result := {
 		"room_id": room_id,
 		"room_type": pending_room_type,
@@ -153,12 +154,14 @@ func resolve_pending_room() -> Dictionary:
 				_advance_to_next_chapter()
 				result["chapter_advanced"] = true
 				result["summary"] = "完成第 %d 关，进入第 %d 关。" % [completed, get_current_chapter()]
+				mark_resolved = false
 			else:
 				result["run_complete"] = true
 				result["summary"] = "三条线路全部打通，本局胜利。"
 		_:
 			result["summary"] = "房间已结算。"
-	RunService.mark_room_resolved(room_id, result)
+	if mark_resolved:
+		RunService.mark_room_resolved(room_id, result)
 	return result
 
 

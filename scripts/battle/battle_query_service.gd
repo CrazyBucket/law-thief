@@ -47,8 +47,6 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 			result["effect_preview"] = _attack_hit_preview_cells(state, player, hover_cell)
 		else:
 			result["effect_preview"] = _attack_effect_preview(state, player)
-	elif action == Constants.ACTION_TRIGGER and not state.player_acted:
-		result["targets"] = _gem_target_cells(ctrl, state, player)
 	elif action == Constants.ACTION_EXTRACT and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 		result["targets"] = _gem_target_cells(ctrl, state, player)
 	elif action == Constants.ACTION_INSERT and ctrl.can_use_action(Constants.ACTION_INSERT):
@@ -138,15 +136,6 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				var tile_insert_valid := _valid_tile_slot_indices(ctrl, tile)
 				if not tile_insert_valid.is_empty():
 					lines.append("→ 可嵌入地块: %s（免费）" % ", ".join(tile_insert_valid))
-		Constants.ACTION_TRIGGER:
-			if unit != null and not state.player_acted:
-				var trigger_valid := _valid_slot_indices(ctrl, unit)
-				if not trigger_valid.is_empty():
-					lines.append("→ 可触发: %s（消耗行动）" % ", ".join(trigger_valid))
-			elif tile.has_slots() and not state.player_acted:
-				var tile_trigger_valid := _valid_tile_slot_indices(ctrl, tile)
-				if not tile_trigger_valid.is_empty():
-					lines.append("→ 可触发地块: %s（消耗行动）" % ", ".join(tile_trigger_valid))
 	return {"title": lines[0] if not lines.is_empty() else "", "body": "\n".join(lines)}
 
 
@@ -171,9 +160,13 @@ func get_action_hint() -> String:
 		Constants.ACTION_EXTRACT:
 			return "拔出：点击目标 → 选槽位（免费）"
 		Constants.ACTION_INSERT:
+			if ctrl.state != null and ctrl.state.overload_pending:
+				return "过载预兆：结束回合后生效；切换/取消嵌入可避免"
+			if ctrl.state != null \
+				and ctrl.state.overload_last_action == Constants.ACTION_INSERT \
+				and ctrl.state.overload_last_insert_turn == ctrl.state.turn_index:
+				return "嵌入：再次嵌入会触发过载，可强行跨色入槽"
 			return "嵌入：点击目标 → 选槽位（免费，替换时原宝石回到手中）"
-		Constants.ACTION_TRIGGER:
-			return "触发：点击目标 → 选槽位（消耗行动）"
 	return "请选择操作"
 
 
@@ -222,6 +215,25 @@ func _valid_slot_indices(ctrl, unit: UnitState) -> Array[String]:
 	return labels
 
 
+func _unit_has_gem_slot_target(ctrl, state: GameState, player: UnitState, unit: UnitState) -> bool:
+	if not _valid_slot_indices(ctrl, unit).is_empty():
+		return true
+	for slot in unit.slots:
+		if _is_viewable_gem_slot(state, player, unit, slot, ctrl.selected_action):
+			return true
+	return false
+
+
+func _is_viewable_gem_slot(state: GameState, player: UnitState, unit: UnitState, slot: SlotState, action: String) -> bool:
+	if slot.gem_uid.is_empty() or slot.is_split_disabled():
+		return false
+	var max_range := Constants.EXTRACT_RANGE
+	match action:
+		Constants.ACTION_INSERT:
+			max_range = Constants.INSERT_RANGE
+	return BoardUtils.distance_between_units(player, unit) <= max_range
+
+
 func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
 	var labels: Array[String] = []
 	for i in range(tile.slots.size()):
@@ -254,10 +266,11 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		if not _valid_slot_indices(ctrl, unit).is_empty():
-			for cell in unit.occupied_cells():
-				if not cell in cells:
-					cells.append(cell)
+		if not _unit_has_gem_slot_target(ctrl, state, player, unit):
+			continue
+		for cell in unit.occupied_cells():
+			if not cell in cells:
+				cells.append(cell)
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
 		if not tile.has_slots():
@@ -372,6 +385,8 @@ func _slot_short_label(slot: SlotState) -> String:
 
 func _slot_preview_line(state: GameState, unit: UnitState, slot: SlotState) -> String:
 	var label := _slot_short_label(slot)
+	if slot.is_split_disabled():
+		return "%s槽: 分裂已失效" % label
 	if slot.locked:
 		return "%s槽: 锁定" % label
 	if slot.gem_uid.is_empty():

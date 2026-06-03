@@ -379,11 +379,6 @@ custom_minimum_size = Vector2(72, 44)
 layout_mode = 2
 text = "嵌入"
 
-[node name="TriggerBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup" unique_id=452103338]
-custom_minimum_size = Vector2(72, 44)
-layout_mode = 2
-text = "触发"
-
 [node name="Sep3" type="VSeparator" parent="HudLayer/BottomDock/BottomBar" unique_id=1050004594]
 layout_mode = 2
 
@@ -406,6 +401,5 @@ text = "返回"
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/TriggerBtn" to="." method="_on_action_pressed" binds= ["trigger"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn" to="." method="_on_end_turn_pressed"]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/BackBtn" to="." method="_on_back_pressed"]

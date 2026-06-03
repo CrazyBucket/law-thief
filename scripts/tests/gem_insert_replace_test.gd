@@ -6,13 +6,13 @@ func _initialize() -> void:
 
 
 func _run_test() -> void:
-	print("=== Gem Insert Replace Test ===")
-	_test_swap_keeps_replaced_gem_in_hand()
-	print("GEM_INSERT_REPLACE_TEST_PASS")
+	print("=== Gem Insert Overload Test ===")
+	_test_second_insert_overloads_without_replacing()
+	print("GEM_INSERT_OVERLOAD_TEST_PASS")
 	quit()
 
 
-func _test_swap_keeps_replaced_gem_in_hand() -> void:
+func _test_second_insert_overloads_without_replacing() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("tutorial_001", 12345)
 	var state := controller.state
@@ -39,16 +39,24 @@ func _test_swap_keeps_replaced_gem_in_hand() -> void:
 	controller.select_action(Constants.ACTION_INSERT)
 	var insert_result := controller.try_insert(player.uid, player.slots.find(player_red))
 	if not insert_result.get("ok", false):
-		push_error("insert replace failed: %s" % insert_result.get("reason", ""))
+		push_error("first insert failed: %s" % insert_result.get("reason", ""))
+		quit(1)
+		return
+	var second_target_slot := player_red
+	var second_target_original_uid := second_target_slot.gem_uid
+
+	var second_result := controller.try_insert(player.uid, player.slots.find(second_target_slot))
+	if not second_result.get("ok", false):
+		push_error("second insert overload failed: %s" % second_result.get("reason", ""))
 		quit(1)
 		return
 
-	assert(state.held_gem_uid == poison_uid, "replaced gem should return to hand")
-	assert(state.gems.has(poison_uid), "replaced gem should remain in state")
-	assert(state.gems.has(held_explosion_uid), "inserted gem should remain in state")
-	assert(player_red.gem_uid == held_explosion_uid, "slot should hold inserted gem")
-	assert(str(insert_result.get("swapped_gem_uid", "")) == poison_uid, "result should report swapped gem")
-	print("  [OK] insert replace swaps gem into hand")
+	assert(bool(second_result.get("overload_only", false)), "second insert should be overload-only")
+	assert(state.overload_pending, "second insert should set overload pending")
+	assert(state.held_gem_uid == poison_uid, "held gem should not be swapped again")
+	assert(second_target_slot.gem_uid == second_target_original_uid, "occupied slot should not be replaced")
+	assert(player_red.gem_uid == held_explosion_uid, "first target slot should keep inserted gem")
+	print("  [OK] second insert overloads without replacement")
 
 
 func _force_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: String) -> void:

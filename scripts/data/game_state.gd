@@ -35,6 +35,12 @@ var controllable_queue: Array[String] = []
 var combat_log: Array[String] = []
 var encounter_id: String = ""
 var result: String = ""
+var overload_pending: bool = false
+var overload_pending_turn: int = 0
+var overload_last_action: String = ""
+var overload_last_insert_turn: int = 0
+var overload_active_mutations: Array[String] = []
+var overload_echo_gems: Dictionary = {}
 ## 单场战斗临时 flags，战斗结束即丢弃，不参与 clone/序列化
 ## key: String（如 "first_hit_absorbed"）→ Variant
 var battle_temp_flags: Dictionary = {}
@@ -260,6 +266,12 @@ func clone() -> GameState:
 	snapshot.combat_log = combat_log.duplicate(true)
 	snapshot.encounter_id = encounter_id
 	snapshot.result = result
+	snapshot.overload_pending = overload_pending
+	snapshot.overload_pending_turn = overload_pending_turn
+	snapshot.overload_last_action = overload_last_action
+	snapshot.overload_last_insert_turn = overload_last_insert_turn
+	snapshot.overload_active_mutations = overload_active_mutations.duplicate()
+	snapshot.overload_echo_gems = overload_echo_gems.duplicate(true)
 	for uid in units.keys():
 		snapshot.units[uid] = units[uid].clone()
 	for uid in gems.keys():

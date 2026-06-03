@@ -16,7 +16,10 @@ const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
+signal unit_slot_clicked(unit_uid: String, slot_index: int)
 signal animation_finished()
+signal move_animation_finished()
+signal projectile_animation_finished()
 
 class BoardAnimationHostState:
 	var pulse_time: float = 0.0
@@ -49,6 +52,8 @@ var hover_cell: Vector2i = Vector2i(-1, -1)
 var selected_unit_uid: String = ""
 var timeline_hover_unit_uid: String = ""
 var active_turn_unit_uid: String = ""
+var slot_panel_action: String = ""
+var slot_panel_check: Callable = Callable()
 var _nameplate_alpha_by_uid: Dictionary = {}
 var _hover_outline_alpha_by_uid: Dictionary = {}
 var _selection_outline_alpha_by_uid: Dictionary = {}
@@ -433,6 +438,36 @@ func _draw() -> void:
 	_draw_anim_particles()
 	_draw_projectile()
 	_draw_gem_visuals(true)
+	_draw_unit_slot_panels()
+
+
+func configure_unit_slot_panels(action: String, check_fn: Callable = Callable()) -> void:
+	slot_panel_action = action
+	slot_panel_check = check_fn
+	queue_redraw()
+
+
+func clear_unit_slot_panels() -> void:
+	configure_unit_slot_panels("")
+
+
+func pick_unit_slot(screen_pos: Vector2) -> Dictionary:
+	if state == null or slot_panel_action.is_empty():
+		return {}
+	for unit: UnitState in state.units.values():
+		if unit == null or not unit.alive or unit.slots.is_empty():
+			continue
+		var panel := _unit_slot_panel_layout(unit)
+		for item in panel.get("items", []):
+			var item_dict: Dictionary = item
+			if not bool(item_dict.get("visible", true)) or not bool(item_dict.get("enabled", false)):
+				continue
+			if _point_in_slot_sector(screen_pos, item_dict):
+				return {
+					"unit_uid": unit.uid,
+					"slot_index": int(item_dict.get("slot_index", -1)),
+				}
+	return {}
 
 
 func _draw_entity_at_grid(grid: Vector2i, drawn_entities: Dictionary) -> void:
@@ -890,7 +925,173 @@ func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 			Rect2(Vector2(cx - icon_size * 0.5, icon_y - icon_size * 0.5), Vector2(icon_size, icon_size)),
 			false,
 			tint
-		)
+			)
+
+
+func _draw_unit_slot_panels() -> void:
+	if state == null or slot_panel_action.is_empty():
+		return
+	for unit: UnitState in state.units.values():
+		if unit == null or not unit.alive or unit.slots.is_empty():
+			continue
+		var panel := _unit_slot_panel_layout(unit)
+		var items: Array = panel.get("items", [])
+		if items.is_empty():
+			continue
+		var center: Vector2 = panel.get("center", Vector2.ZERO)
+		var radius: float = float(panel.get("radius", IsoCoordinates.visual(34.0)))
+		var has_visible := false
+		for item in items:
+			if bool((item as Dictionary).get("visible", true)):
+				has_visible = true
+				break
+		if not has_visible:
+			continue
+		_draw_soft_backdrop(center, radius * 0.96, radius * 0.62, Color(0.02, 0.03, 0.05, 0.32))
+		for item in items:
+			_draw_unit_slot_sector(item as Dictionary)
+
+
+func _draw_unit_slot_sector(item: Dictionary) -> void:
+	if not bool(item.get("visible", true)):
+		return
+	var center: Vector2 = item.get("center", Vector2.ZERO)
+	var inner_radius: float = float(item.get("inner_radius", 0.0))
+	var outer_radius: float = float(item.get("outer_radius", 0.0))
+	var start_angle: float = float(item.get("start_angle", 0.0))
+	var end_angle: float = float(item.get("end_angle", 0.0))
+	var enabled := bool(item.get("enabled", false))
+	var slot: SlotState = item.get("slot", null)
+	var fill := _slot_panel_color(slot.slot_type if slot != null else "")
+	fill.a = 0.72 if enabled else 0.22
+	var points := PackedVector2Array()
+	var steps := 10
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var a := lerpf(start_angle, end_angle, t)
+		points.append(center + Vector2(cos(a), sin(a)) * outer_radius)
+	for i in range(steps, -1, -1):
+		var t := float(i) / float(steps)
+		var a := lerpf(start_angle, end_angle, t)
+		points.append(center + Vector2(cos(a), sin(a)) * inner_radius)
+	draw_colored_polygon(points, fill)
+	var line := Color(1.0, 1.0, 1.0, 0.72 if enabled else 0.26)
+	draw_polyline(points, line, IsoCoordinates.visual(1.15), true)
+	if slot != null and not slot.dual_type.is_empty():
+		var mid_angle := (start_angle + end_angle) * 0.5
+		var dual_col := _slot_panel_color(slot.dual_type)
+		dual_col.a = 0.46 if enabled else 0.16
+		var dual_center := center + Vector2(cos(mid_angle), sin(mid_angle)) * ((inner_radius + outer_radius) * 0.56)
+		draw_circle(dual_center, (outer_radius - inner_radius) * 0.42, dual_col)
+	var label := _slot_panel_label(slot)
+	if not label.is_empty():
+		var font := ThemeDB.fallback_font
+		var font_size := int(IsoCoordinates.visual(8.0))
+		var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var mid := (start_angle + end_angle) * 0.5
+		var text_pos := center + Vector2(cos(mid), sin(mid)) * ((inner_radius + outer_radius) * 0.5)
+		var text_col := Color(1.0, 1.0, 1.0, 0.95 if enabled else 0.42)
+		_draw_text_with_shadow(font, text_pos + Vector2(-label_size.x * 0.5, label_size.y * 0.35), label, font_size, text_col, Color(0, 0, 0, 0.9))
+
+
+func _unit_slot_panel_layout(unit: UnitState) -> Dictionary:
+	var anchor := _unit_panel_anchor(unit)
+	var count := maxi(1, unit.slots.size())
+	var spread := minf(PI * 1.5, maxf(PI * 0.7, float(count) * PI * 0.34))
+	var center_angle := -PI * 0.5
+	var gap := PI * 0.018
+	var step_angle := spread / float(count)
+	var inner_radius := IsoCoordinates.visual(18.0)
+	var outer_radius := IsoCoordinates.visual(52.0)
+	var items: Array = []
+	for i in range(unit.slots.size()):
+		var slot: SlotState = unit.slots[i]
+		var start_angle := center_angle - spread * 0.5 + step_angle * float(i) + gap
+		var end_angle := center_angle - spread * 0.5 + step_angle * float(i + 1) - gap
+		var visible := _slot_panel_should_show(slot)
+		var enabled := false
+		if visible and slot_panel_check.is_valid():
+			var check: Dictionary = slot_panel_check.call(unit.uid, i)
+			enabled = bool(check.get("ok", false))
+		items.append({
+			"center": anchor,
+			"inner_radius": inner_radius,
+			"outer_radius": outer_radius,
+			"start_angle": start_angle,
+			"end_angle": end_angle,
+			"slot_index": i,
+			"slot": slot,
+			"visible": visible,
+			"enabled": enabled,
+		})
+	return {"center": anchor, "radius": outer_radius, "items": items}
+
+
+func _unit_panel_anchor(unit: UnitState) -> Vector2:
+	var center := _get_unit_screen_center(unit)
+	var offset: Vector2 = _anim.move_offsets.get(unit.uid, Vector2.ZERO)
+	center += offset
+	var pose: Dictionary = _resolve_unit_pose(unit, unit.facing)
+	var sprite_size: Vector2 = pose.get("sprite_size", Vector2.ZERO)
+	if sprite_size == Vector2.ZERO:
+		sprite_size = _unit_sprite_size(unit)
+	var layout := _unit_sprite_layout(unit, center, sprite_size)
+	var top_left: Vector2 = layout.get("top_left", center - Vector2(sprite_size.x * 0.5, sprite_size.y))
+	return top_left + Vector2(sprite_size.x * 0.5, IsoCoordinates.visual(10.0))
+
+
+func _slot_panel_should_show(slot: SlotState) -> bool:
+	if slot == null or slot.is_split_disabled():
+		return false
+	match slot_panel_action:
+		Constants.ACTION_EXTRACT:
+			return not slot.gem_uid.is_empty()
+		Constants.ACTION_INSERT:
+			return true
+	return false
+
+
+func _point_in_slot_sector(pos: Vector2, item: Dictionary) -> bool:
+	var center: Vector2 = item.get("center", Vector2.ZERO)
+	var delta := pos - center
+	var dist := delta.length()
+	if dist < float(item.get("inner_radius", 0.0)) or dist > float(item.get("outer_radius", 0.0)):
+		return false
+	var angle := atan2(delta.y, delta.x)
+	return _angle_between(angle, float(item.get("start_angle", 0.0)), float(item.get("end_angle", 0.0)))
+
+
+func _angle_between(angle: float, start_angle: float, end_angle: float) -> bool:
+	var a := wrapf(angle, -PI, PI)
+	var s := wrapf(start_angle, -PI, PI)
+	var e := wrapf(end_angle, -PI, PI)
+	if s <= e:
+		return a >= s and a <= e
+	return a >= s or a <= e
+
+
+func _slot_panel_color(slot_type: String) -> Color:
+	match slot_type:
+		Constants.SLOT_RED:
+			return Color(1.0, 0.16, 0.16, 1.0)
+		Constants.SLOT_BLUE:
+			return Color(0.22, 0.62, 1.0, 1.0)
+		Constants.SLOT_BLACK:
+			return Color(0.06, 0.06, 0.09, 1.0)
+	return Color(0.58, 0.58, 0.64, 1.0)
+
+
+func _slot_panel_label(slot: SlotState) -> String:
+	if slot == null:
+		return ""
+	match slot.slot_type:
+		Constants.SLOT_RED:
+			return "红"
+		Constants.SLOT_BLUE:
+			return "蓝"
+		Constants.SLOT_BLACK:
+			return "黑"
+	return "?"
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
@@ -1257,6 +1458,11 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset, emit_finished))
 
 
+func animate_move_task(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
+	animate_move(unit_uid, from_pos, to_pos)
+	await move_animation_finished
+
+
 ## 播放一整条路径。逻辑位置已提前写到终点，视觉 offset 沿路径连续归零。
 func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true) -> void:
 	if path.size() < 2:
@@ -1287,15 +1493,30 @@ func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true
 	tween.tween_callback(_on_move_anim_done.bind(unit_uid, Vector2.ZERO, emit_finished))
 
 
+func animate_move_path_task(unit_uid: String, path: Array) -> void:
+	if path.size() < 2:
+		return
+	animate_move_path(unit_uid, path)
+	await move_animation_finished
+
+
 ## 多单位同时位移（爆炸击退等）
 func animate_moves_parallel(moves: Array) -> void:
 	if moves.is_empty():
 		animation_finished.emit()
+		move_animation_finished.emit()
 		return
 	_anim.parallel_move_remaining = moves.size()
 	for mv in moves:
 		var uid := str(mv.get("uid", ""))
 		animate_move(uid, mv.get("from", Vector2i.ZERO), mv.get("to", Vector2i.ZERO), false)
+
+
+func animate_moves_parallel_task(moves: Array) -> void:
+	if moves.is_empty():
+		return
+	animate_moves_parallel(moves)
+	await move_animation_finished
 
 
 func clear_gem_visuals() -> void:
@@ -1389,8 +1610,10 @@ func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool
 		_anim.parallel_move_remaining = maxi(0, _anim.parallel_move_remaining - 1)
 		if _anim.parallel_move_remaining <= 0:
 			animation_finished.emit()
+			move_animation_finished.emit()
 		return
 	animation_finished.emit()
+	move_animation_finished.emit()
 
 
 func _update_gem_visuals(scaled_dt: float) -> bool:
@@ -1871,10 +2094,16 @@ func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color =
 	play_projectiles([ {"from": from_grid, "to": to_grid, "color": proj_color}])
 
 
+func play_projectile_task(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
+	play_projectile(from_grid, to_grid, proj_color)
+	await projectile_animation_finished
+
+
 ## 齐射：多枚投射物同时飞行
 func play_projectiles(shots: Array) -> void:
 	if shots.is_empty():
 		animation_finished.emit()
+		projectile_animation_finished.emit()
 		return
 	_anim.active_projectiles.clear()
 	var max_duration := 0.0
@@ -1903,6 +2132,13 @@ func play_projectiles(shots: Array) -> void:
 	tween.tween_callback(_on_projectiles_done)
 
 
+func play_projectiles_task(shots: Array) -> void:
+	if shots.is_empty():
+		return
+	play_projectiles(shots)
+	await projectile_animation_finished
+
+
 func _set_projectiles_t(t: float) -> void:
 	for projectile in _anim.active_projectiles:
 		projectile["t"] = t
@@ -1913,6 +2149,7 @@ func _on_projectiles_done() -> void:
 	_anim.active_projectiles.clear()
 	queue_redraw()
 	animation_finished.emit()
+	projectile_animation_finished.emit()
 
 
 func _draw_projectile() -> void:

@@ -69,8 +69,7 @@ func play_sequence(
 
 
 func play_prefire_projectile(from_pos: Vector2i, to_pos: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
-	_board.play_projectile(from_pos, to_pos, proj_color)
-	await _board.animation_finished
+	await _board.play_projectile_task(from_pos, to_pos, proj_color)
 	await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 
 
@@ -198,8 +197,7 @@ func _play_area_fx_batch(batch: Array) -> void:
 func _play_parallel_move_batch(batch: Array) -> void:
 	for step_event in batch:
 		_prime_event_state(step_event)
-	_board.animate_moves_parallel(batch)
-	await _board.animation_finished
+	await _board.animate_moves_parallel_task(batch)
 	for step_event in batch:
 		_apply_event_state(step_event)
 
@@ -210,8 +208,11 @@ func _play_move_path_batch(batch: Array) -> void:
 	if batch.size() == 1 or not _board.has_method("animate_move_path"):
 		for step_event in batch:
 			_prime_event_state(step_event)
-			_board.animate_move(step_event.get("uid", ""), step_event.get("from", Vector2i.ZERO), step_event.get("to", Vector2i.ZERO))
-			await _board.animation_finished
+			await _board.animate_move_task(
+				step_event.get("uid", ""),
+				step_event.get("from", Vector2i.ZERO),
+				step_event.get("to", Vector2i.ZERO)
+			)
 			_apply_event_state(step_event)
 		return
 	for step_event in batch:
@@ -219,8 +220,7 @@ func _play_move_path_batch(batch: Array) -> void:
 	var path: Array = [batch[0].get("from", Vector2i.ZERO)]
 	for step_event in batch:
 		path.append(step_event.get("to", Vector2i.ZERO))
-	_board.animate_move_path(str(batch[0].get("uid", "")), path)
-	await _board.animation_finished
+	await _board.animate_move_path_task(str(batch[0].get("uid", "")), path)
 	for step_event in batch:
 		_apply_event_state(step_event)
 
@@ -231,7 +231,7 @@ func _play_projectile_volley(batch: Array) -> void:
 	if batch.size() == 1:
 		var single: Dictionary = batch[0]
 		var projectile_color: Color = single.get("color", Color(0.95, 0.92, 0.45))
-		_board.play_projectile(single.get("from", Vector2i.ZERO), single.get("to", Vector2i.ZERO), projectile_color)
+		await _board.play_projectile_task(single.get("from", Vector2i.ZERO), single.get("to", Vector2i.ZERO), projectile_color)
 	else:
 		var shots: Array = []
 		for projectile_event in batch:
@@ -240,8 +240,7 @@ func _play_projectile_volley(batch: Array) -> void:
 				"to": projectile_event.get("to", Vector2i.ZERO),
 				"color": projectile_event.get("color", Color(0.95, 0.92, 0.45)),
 			})
-		_board.play_projectiles(shots)
-	await _board.animation_finished
+		await _board.play_projectiles_task(shots)
 	await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 
 
@@ -258,14 +257,13 @@ func _move_batch_is_parallel(batch: Array) -> bool:
 func _play_anim_event(ev: Dictionary) -> void:
 	match str(ev.get("type", "")):
 		"move_step":
-			_board.animate_move(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
-			await _board.animation_finished
+			await _board.animate_move_task(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
 		"damage":
 			var attacker_uid: String = str(ev.get("attacker_uid", ""))
 			var damage_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
 			var damage_value: int = int(ev.get("damage", 1))
 			var is_crit: bool = bool(ev.get("is_crit", false))
-			if not attacker_uid.is_empty():
+			if not attacker_uid.is_empty() and not bool(ev.get("keep_facing", false)):
 				_board.start_strike_effect(attacker_uid, damage_pos)
 				await _host.get_tree().create_timer(_scaled_anim_time(0.12)).timeout
 			_board.play_damage_effect(damage_pos, damage_value, is_crit)
@@ -285,8 +283,7 @@ func _play_anim_event(ev: Dictionary) -> void:
 			await _host.get_tree().create_timer(_scaled_anim_time(0.32)).timeout
 		"projectile", "projectile_deflect":
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
-			_board.play_projectile(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
-			await _board.animation_finished
+			await _board.play_projectile_task(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
 			await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
 		"lightning", "arc":
 			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)

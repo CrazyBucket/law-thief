@@ -11,8 +11,8 @@ func _initialize() -> void:
 func _run_test() -> void:
 	print("=== Fission Slime Test ===")
 	_test_spawn()
-	_test_split_black_gem_mounted_and_bound()
-	_test_bound_black_split_cannot_extract()
+	_test_split_black_gem_mounted()
+	_test_black_split_can_extract()
 	_test_blue_only_on_single_target()
 	_test_clone_hp_ratio()
 	_test_slam_pushes_adjacent_target()
@@ -43,7 +43,7 @@ func _test_spawn() -> void:
 	print("  [OK] spawn hp=%d footprint 2x2" % slime.max_hp)
 
 
-func _test_split_black_gem_mounted_and_bound() -> void:
+func _test_split_black_gem_mounted() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("fission_slime_test", 42)
 	var slime := _find_slime(controller.state)
@@ -53,22 +53,34 @@ func _test_split_black_gem_mounted_and_bound() -> void:
 	assert(blue.gem_uid.is_empty(), "blue slot should start empty")
 	var black_gem: GemState = controller.state.gems.get(black.gem_uid, null)
 	assert(black_gem != null and black_gem.gem_id == Constants.GEM_SPLIT)
-	assert(black.locked, "black split slot should be bound")
-	assert(black.lock_type == Constants.LOCK_SPLIT_BOUND, "black split slot should use split bound lock")
-	print("  [OK] only black split gem mounted and bound")
+	assert(not black.locked and black.lock_type.is_empty(), "black split should be a normal slot before death")
+	print("  [OK] only black split gem mounted")
 
 
-func _test_bound_black_split_cannot_extract() -> void:
+func _test_black_split_can_extract() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("fission_slime_test", 42)
 	var state := controller.state
 	var slime := _find_slime(state)
 	var player := state.get_player()
 	var black := slime.get_slot(Constants.SLOT_BLACK)
+	player.pos = Vector2i(2, 3)
+	state.held_gem_uid = ""
 	var check := GemRules.can_extract(state, player, slime, black)
-	assert(not check.get("ok", false), "bound black split should not be extractable")
-	assert(check.get("reason", "") == "该分裂宝石绑定在黑槽上，无法拆下")
-	print("  [OK] bound black split cannot extract")
+	assert(check.get("ok", false), "black split gem should be stealable, got %s" % check.get("reason", ""))
+	controller.selected_action = Constants.ACTION_EXTRACT
+	var targets: Array = controller.get_highlights().get("targets", [])
+	var slime_targeted := false
+	for cell in slime.occupied_cells():
+		if cell in targets:
+			slime_targeted = true
+			break
+	assert(slime_targeted, "slime with black split should be extract target in range")
+	var result := controller.try_extract(slime.uid, slime.slots.find(black))
+	assert(result.get("ok", false), "extract black split should succeed")
+	assert(black.gem_uid.is_empty(), "black slot should be empty after extract")
+	assert(not state.held_gem_uid.is_empty(), "player should hold stolen split gem")
+	print("  [OK] black split gem can extract")
 
 
 func _test_blue_only_on_single_target() -> void:

@@ -375,8 +375,8 @@ BattleScene
 ### P2：清理 renderer 接口
 
 - [ ] 将 `isometric_board.gd` 的职责收敛为 `BoardRenderer`（进行中：动画运行时已集中到 `_anim` / `BoardAnimationHostState`）
-- [ ] 减少泛化 `animation_finished` 的外溢使用范围
-- [ ] 为 move / projectile / parallel move 建立更明确的等待语义
+- [x] 减少泛化 `animation_finished` 的外溢使用范围（`BattleEventPlayer` 已改用明确的 move / projectile task）
+- [x] 为 move / projectile / parallel move 建立更明确的等待语义
 - [ ] 评估 gem visual / damage text / overlay 是否继续留在 renderer，还是拆成独立 visual layer
 
 **验收标准：**

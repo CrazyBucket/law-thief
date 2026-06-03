@@ -91,6 +91,8 @@ static func short_label(status: StatusInstance) -> String:
 			return "暴露"
 		Constants.STATUS_LAWLESS:
 			return "失律"
+		Constants.STATUS_OVERLOAD_AI_CONTROL:
+			return "控"
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "掠"
 		Constants.STATUS_VULNERABLE:
@@ -132,6 +134,8 @@ static func tooltip(status: StatusInstance) -> String:
 			return "暴露：重甲锁槽已被破开"
 		Constants.STATUS_LAWLESS:
 			return "失律：追逐被窃走的宝石"
+		Constants.STATUS_OVERLOAD_AI_CONTROL:
+			return "AI接管：本回合移动与行动已被过载消耗"
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:
@@ -211,6 +215,14 @@ static var _DEFS: Dictionary = {
 		"color": Color(0.95, 0.35, 0.35),
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_OVERLOAD_AI_CONTROL: {
+		"display_name": "AI接管",
+		"type": TYPE_SYSTEM,
+		"color": Color(0.85, 0.25, 0.95),
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_BOMB_RAT_PLUNDER: {

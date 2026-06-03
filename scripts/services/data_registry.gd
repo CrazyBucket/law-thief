@@ -807,7 +807,7 @@ func _register_unit_defs() -> void:
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
 				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT, "locked": true, "lock_type": Constants.LOCK_SPLIT_BOUND},
+				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT},
 			],
 		},
 	}

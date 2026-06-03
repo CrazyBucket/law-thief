@@ -1,6 +1,8 @@
 class_name BattleTurnService
 extends RefCounted
 
+const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+
 var _ctrl: BattleController
 
 
@@ -35,6 +37,8 @@ func begin_enemy_phase() -> void:
 		player.remove_status(Constants.STATUS_PARALYZED)
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
 	ctrl.state.phase = Constants.PHASE_ENEMY
+	ctrl.selected_action = ""
+	OverloadRules.activate_pending(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl._emit_changed()
 
@@ -96,9 +100,11 @@ func finish_enemy_phase() -> void:
 	ctrl.state.bootstrap_split_controllable_turn()
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	ctrl.selected_action = ""
 	if ctrl.state.get_player() != null:
 		ctrl.selected_unit_uid = ctrl.state.player_uid
 	_apply_move_bonus(ctrl.state)
+	OverloadRules.tick_turn_start(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)

@@ -152,6 +152,10 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			candidate.score = _score_approach_out_of_range(current_dist, new_dist, move_pos, enemy.pos)
 		else:
 			candidate.score = _score_kite_reposition(current_dist, new_dist)
+		if not can_shoot_here:
+			candidate.score += _score_reposition_for_line(
+				state, enemy, turn_start, move_pos, player, reachable, cell_blockers
+			)
 		candidate.description = "风筝走位" if current_dist <= max_shoot_range else "逼近射程"
 		candidates.append(candidate)
 
@@ -246,6 +250,74 @@ static func _score_kite_reposition(current_dist: int, new_dist: int) -> float:
 	if new_dist < Constants.STONE_BOW_KITE_MIN_RANGE:
 		score -= 30.0
 	return score
+
+
+static func _score_reposition_for_line(
+	state: GameState,
+	enemy: UnitState,
+	turn_start: Vector2i,
+	move_pos: Vector2i,
+	player: UnitState,
+	reachable: Array[Vector2i],
+	cell_blockers: Dictionary
+) -> float:
+	var best_current := _nearest_open_shot_path_distance(state, enemy, turn_start, player, reachable, cell_blockers)
+	var best_next := _nearest_open_shot_path_distance(state, enemy, move_pos, player, reachable, cell_blockers)
+	if best_next < 0:
+		return -18.0
+	if best_current < 0:
+		return 34.0 - float(BoardUtils.manhattan(turn_start, move_pos)) * 1.2
+	if best_next < best_current:
+		return float(best_current - best_next) * 28.0
+	return -4.0
+
+
+static func _nearest_open_shot_path_distance(
+	state: GameState,
+	enemy: UnitState,
+	from_pos: Vector2i,
+	player: UnitState,
+	reachable: Array[Vector2i],
+	cell_blockers: Dictionary
+) -> int:
+	var best := 999999
+	for anchor in _open_shot_anchors(state, enemy, player, cell_blockers):
+		var dist := 0
+		if anchor != from_pos:
+			var path := BoardUtils.path_toward(state, from_pos, anchor, state.board_size.x * state.board_size.y, enemy.uid, {}, cell_blockers)
+			if path.is_empty() or path[path.size() - 1] != anchor:
+				continue
+			dist = path.size()
+		if dist < best:
+			best = dist
+	if best == 999999:
+		return -1
+	return best
+
+
+static func _open_shot_anchors(
+	state: GameState,
+	enemy: UnitState,
+	player: UnitState,
+	cell_blockers: Dictionary
+) -> Array[Vector2i]:
+	var anchors: Array[Vector2i] = []
+	var max_range := attack_range_for(enemy.pos, [])
+	for x in range(state.board_size.x):
+		for y in range(state.board_size.y):
+			var anchor := Vector2i(x, y)
+			if _anchor_blocked(state, enemy, anchor, cell_blockers):
+				continue
+			var saved := enemy.pos
+			enemy.pos = anchor
+			var dist := BoardUtils.distance_between_units(enemy, player)
+			var from_cell := BoardUtils.projectile_origin_cell(enemy, player.pos)
+			var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
+			enemy.pos = saved
+			if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range or blocked:
+				continue
+			anchors.append(anchor)
+	return anchors
 
 
 static func _anchor_blocked(

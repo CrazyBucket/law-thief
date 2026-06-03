@@ -5,6 +5,7 @@ const _BattleActionService = preload("res://scripts/battle/battle_action_service
 const _BattleTurnService = preload("res://scripts/battle/battle_turn_service.gd")
 const _BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
 const _BattleEditorCli = preload("res://scripts/debug/battle_editor_cli.gd")
+const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 signal state_changed
 signal battle_ended(result: String)
@@ -90,6 +91,8 @@ func _connect_relic_signals(s: GameState) -> void:
 
 
 func select_action(action: String) -> void:
+	if state != null and action.is_empty():
+		OverloadRules.record_non_insert_action(state, action)
 	selected_action = action
 	_emit_changed()
 
@@ -162,8 +165,6 @@ func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 			return GemRules.can_extract(state, player, target, slot)
 		Constants.ACTION_INSERT:
 			return GemRules.can_insert(state, player, target, slot)
-		Constants.ACTION_TRIGGER:
-			return GemRules.can_trigger(state, player, target, slot)
 	return _fail("当前操作不支持槽位")
 
 
@@ -182,8 +183,6 @@ func check_tile_slot_action(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 			return GemRules.can_extract_tile(state, player, tile, slot)
 		Constants.ACTION_INSERT:
 			return GemRules.can_insert_tile(state, player, tile, slot)
-		Constants.ACTION_TRIGGER:
-			return GemRules.can_trigger_tile(state, player, tile, slot)
 	return _fail("当前操作不支持地块槽位")
 
 
@@ -193,7 +192,7 @@ func can_use_action(action: String) -> bool:
 	match action:
 		Constants.ACTION_MOVE:
 			return not state.player_moved
-		Constants.ACTION_ATTACK, Constants.ACTION_TRIGGER:
+		Constants.ACTION_ATTACK:
 			return not state.player_acted
 		Constants.ACTION_EXTRACT:
 			return state.held_gem_uid.is_empty()

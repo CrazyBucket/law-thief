@@ -31,6 +31,11 @@ func _on_board_gui_input(event: InputEvent) -> void:
 		_board.cell_hovered.emit(hover_cell, hover_cell.x >= 0)
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _board.has_method("pick_unit_slot"):
+			var slot_hit: Dictionary = _board.pick_unit_slot(event.position)
+			if not slot_hit.is_empty():
+				_board.unit_slot_clicked.emit(str(slot_hit.get("unit_uid", "")), int(slot_hit.get("slot_index", -1)))
+				return
 		var click_cell: Vector2i = _board.pick_cell(event.position)
 		if click_cell.x >= 0:
 			_board.cell_clicked.emit(click_cell)

@@ -81,7 +81,40 @@
     "slots": [
       {"slot_type": "red"},
       {"slot_type": "blue"},
-      {"slot_type": "black", "gem_id": "gem_split", "locked": true, "lock_type": "split_bound"}
+      {"slot_type": "black", "gem_id": "gem_split"}
+    ]
+  },
+  "unit_overload_enforcer": {
+    "display_name_key": "unit.overload_enforcer.name",
+    "max_hp": 32,
+    "move_points": 3,
+    "speed": 14,
+    "base_attack": 8,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "generic_melee",
+    "tags": ["unit:overload_enforcer", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red", "gem_id": "gem_conductive"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_law_beast": {
+    "display_name_key": "unit.law_beast.name",
+    "max_hp": 120,
+    "move_points": 2,
+    "speed": 6,
+    "base_attack": 14,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "generic_melee",
+    "footprint_size": [2, 2],
+    "tags": ["unit:law_beast"],
+    "slots": [
+      {"slot_type": "red", "gem_id": "gem_gravity"},
+      {"slot_type": "blue", "gem_id": "gem_ice"},
+      {"slot_type": "black", "gem_id": "gem_fire"}
     ]
   }
 }

@@ -36,6 +36,20 @@ static func compute_intent(
 	return _chase_suicide_intent(state, unit, cell_blockers)
 
 
+static func compute_lawless_intent(
+	state: GameState,
+	unit: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
+	StatusRules.set_bomb_rat_plunder_phase(unit, PLUNDER_PHASE_STEAL)
+	var intent := _plunder_steal_intent(state, unit, cell_blockers)
+	if intent.type == "move":
+		intent.preview_text = "失律追猎"
+	elif intent.type == "bomb_rat_plunder_steal":
+		intent.preview_text = "失律掠夺 (%d)" % intent.damage
+	return intent
+
+
 static func execute_black_suicide(state: GameState, unit: UnitState) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
 	if not unit.alive:
@@ -58,6 +72,8 @@ static func execute_plunder_steal(state: GameState, unit: UnitState, intent: Int
 	var events: Array[Dictionary] = []
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target != null and target.alive and BoardUtils.manhattan(unit.pos, target.pos) == 1:
+		if intent.path.is_empty():
+			unit.facing = UnitState.facing_from_unit_to_cell(unit, target.pos)
 		var dealt := CombatRules.apply_damage(state, target, intent.damage, unit.uid, "bomb_rat_plunder")
 		if dealt > 0:
 			events.append({
@@ -66,6 +82,7 @@ static func execute_plunder_steal(state: GameState, unit: UnitState, intent: Int
 				"damage": dealt,
 				"is_crit": false,
 				"attacker_uid": unit.uid,
+				"keep_facing": true,
 			})
 		if target.alive:
 			_force_steal_nearest_gem(state, unit, target, events)
@@ -163,17 +180,40 @@ static func _plunder_steal_intent(
 
 static func _nearest_gem_carrier(state: GameState, rat: UnitState) -> UnitState:
 	var best: UnitState = null
-	var best_dist := 999
+	var best_dist := 999999
+	var best_is_player := false
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == rat.uid:
 			continue
 		if not _has_stealable_gem(unit):
 			continue
-		var dist := BoardUtils.manhattan(rat.pos, unit.pos)
-		if dist < best_dist:
+		var dist := _path_distance_to_carrier(state, rat, unit)
+		if dist < 0:
+			continue
+		var is_player: bool = unit.team == Constants.TEAM_PLAYER
+		if dist < best_dist or (dist == best_dist and best_is_player and not is_player):
 			best_dist = dist
 			best = unit
+			best_is_player = is_player
 	return best
+
+
+static func _path_distance_to_carrier(state: GameState, rat: UnitState, unit: UnitState) -> int:
+	if BoardUtils.manhattan(rat.pos, unit.pos) <= 1:
+		return 0
+	var path := BoardUtils.path_toward(
+		state,
+		rat.pos,
+		unit.pos,
+		state.board_size.x * state.board_size.y,
+		rat.uid
+	)
+	if path.is_empty():
+		return -1
+	var end_pos: Vector2i = path[path.size() - 1]
+	if BoardUtils.manhattan(end_pos, unit.pos) > 1:
+		return -1
+	return path.size()
 
 
 static func _has_stealable_gem(unit: UnitState) -> bool:

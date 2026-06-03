@@ -13,6 +13,7 @@ func _run_test() -> void:
 	_test_chase_when_far()
 	_test_suicide_when_adjacent()
 	_test_plunder_after_black_lost()
+	_test_lawless_targets_nearest_gem_carrier()
 	print("BOMB_RAT_TEST_PASS")
 	quit()
 
@@ -85,6 +86,46 @@ func _test_plunder_after_black_lost() -> void:
 	IntentSystem.execute_intent(state, rat)
 	assert(not rat.get_slot(Constants.SLOT_BLACK).gem_uid.is_empty(), "stolen gem should embed in black")
 	print("  [OK] plunder wait -> steal -> gem embedded")
+
+
+func _test_lawless_targets_nearest_gem_carrier() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("bomb_rat_test", 42)
+	var state := controller.state
+	var rat := _find_rat(state)
+	var player := state.get_player()
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	var guard := UnitState.from_def(
+		"near_guard",
+		"unit_patrol_guard",
+		Constants.TEAM_ENEMY,
+		rat.pos + Vector2i(0, 1),
+		reg.get_unit_def("unit_patrol_guard")
+	)
+	state.register_unit(guard)
+	_force_gem(state, player, Constants.SLOT_RED, Constants.GEM_POISON)
+	_force_gem(state, guard, Constants.SLOT_RED, Constants.GEM_GRAVITY)
+	rat.get_slot(Constants.SLOT_BLACK).gem_uid = ""
+	StatusRules.apply_lawless(state, rat, "stolen_missing")
+	IntentSystem.refresh_unit_intent(state, rat)
+	assert(rat.intent.target_uid == guard.uid, "lawless rat should target nearest gem carrier, got %s" % rat.intent.target_uid)
+	assert(rat.intent.type == "bomb_rat_plunder_steal", "adjacent nearest carrier should be stolen from")
+	print("  [OK] lawless rat targets nearest gem carrier")
+
+
+func _force_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: String) -> void:
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	var slot := unit.get_slot(slot_type)
+	if slot == null:
+		return
+	if not slot.gem_uid.is_empty():
+		state.gems.erase(slot.gem_uid)
+	var gem_uid: String = reg.next_runtime_uid("test_gem")
+	var gem: GemState = reg.create_gem_instance(gem_uid, gem_id, {})
+	state.gems[gem_uid] = gem
+	slot.gem_uid = gem_uid
+	gem.owner_uid = unit.uid
+	gem.slot_index = unit.slots.find(slot)
 
 
 func _find_rat(state: GameState) -> UnitState:

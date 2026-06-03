@@ -122,6 +122,9 @@ static func execute_aimed(
 	if ctx.has_tag(TAG_RANGED) and ctx.target != null:
 		_try_deflect(ctx)
 	if ctx.has_tag(TAG_DEFLECT_DONE):
+		if ctx.has_tag(TAG_SPLIT_SHOT):
+			_apply_split_wings(ctx)
+			_reorder_split_shot_events(ctx)
 		return _finish_execute(state, ctx, _ok(ctx.events))
 
 	_phase_damage_calculate(ctx)

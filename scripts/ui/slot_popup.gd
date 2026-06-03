@@ -10,7 +10,7 @@ var _target_uid: String = ""
 var _target_tile_pos: Vector2i = Vector2i(-1, -1)
 var _is_tile_mode: bool = false
 var _panel: PanelContainer = null
-var _button_row: HBoxContainer = null
+var _content: VBoxContainer = null
 var _title_label: Label = null
 var _current_action: String = ""
 
@@ -28,9 +28,9 @@ func _ready() -> void:
 	_title_label.add_theme_font_size_override("font_size", 12)
 	_title_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	vbox.add_child(_title_label)
-	_button_row = HBoxContainer.new()
-	_button_row.add_theme_constant_override("separation", 6)
-	vbox.add_child(_button_row)
+	_content = VBoxContainer.new()
+	_content.add_theme_constant_override("separation", 7)
+	vbox.add_child(_content)
 
 
 func show_for_unit(unit: UnitState, state: GameState, action: String, screen_pos: Vector2, check_fn: Callable) -> void:
@@ -40,7 +40,8 @@ func show_for_unit(unit: UnitState, state: GameState, action: String, screen_pos
 	_target_uid = unit.uid
 	_current_action = action
 	_title_label.text = _action_title(action)
-	_build_buttons(unit.slots, func(i: int): return check_fn.call(unit.uid, i), state, action, func(i: int): slot_selected.emit(_target_uid, i))
+	_clear_content()
+	_add_unit_row(unit, state, action, func(i: int): return check_fn.call(unit.uid, i), func(i: int): slot_selected.emit(_target_uid, i))
 	_layout_panel(screen_pos)
 
 
@@ -52,48 +53,82 @@ func show_for_tile(tile: TileState, state: GameState, action: String, screen_pos
 	_target_tile_pos = tile.pos
 	_current_action = action
 	_title_label.text = "%s · 地块" % _action_title(action)
-	_build_buttons(tile.slots, func(i: int): return check_fn.call(tile.pos, i), state, action, func(i: int): tile_slot_selected.emit(tile.pos, i))
+	_clear_content()
+	_add_slot_row("地块 %s" % str(tile.pos), tile.slots, func(i: int): return check_fn.call(tile.pos, i), state, action, func(i: int): tile_slot_selected.emit(tile.pos, i))
 	_layout_panel(screen_pos)
 
 
-func _build_buttons(slots: Array, check_fn: Callable, state: GameState, action: String, emit_fn: Callable) -> void:
-	for child in _button_row.get_children():
+func _clear_content() -> void:
+	for child in _content.get_children():
 		child.queue_free()
-	var valid_count := 0
+
+
+func _add_unit_row(unit: UnitState, state: GameState, action: String, check_fn: Callable, emit_fn: Callable) -> bool:
+	var title: String = _data_registry().get_unit_display_name(unit.unit_def_id)
+	return _add_slot_row(title, unit.slots, check_fn, state, action, emit_fn)
+
+
+func _add_slot_row(title: String, slots: Array, check_fn: Callable, state: GameState, action: String, emit_fn: Callable) -> bool:
+	var row_box := VBoxContainer.new()
+	row_box.add_theme_constant_override("separation", 3)
+	var label := Label.new()
+	label.text = title
+	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	row_box.add_child(label)
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 5)
+	row_box.add_child(button_row)
+	var shown := 0
 	for i in range(slots.size()):
 		var slot: SlotState = slots[i]
+		if not _should_show_slot(slot, action):
+			continue
 		var check: Dictionary = check_fn.call(i)
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(76, 40)
+		btn.custom_minimum_size = Vector2(74, 36)
 		btn.add_theme_font_size_override("font_size", 12)
 		var slot_label: String = _slot_label_for(slot)
-		var gem_text := ""
+		var gem_text: String = ""
 		if not slot.gem_uid.is_empty():
 			var gem: GemState = state.gems.get(slot.gem_uid, null)
 			if gem != null:
 				gem_text = _data_registry().get_gem_display_name(gem)
-		match action:
-			"extract":
-				btn.text = "%s %s" % [slot_label, gem_text] if not gem_text.is_empty() else "%s 空" % slot_label
-			"insert":
-				btn.text = "%s 嵌入" % slot_label if slot.gem_uid.is_empty() else "%s %s" % [slot_label, gem_text]
-			"trigger":
-				btn.text = "%s %s" % [slot_label, gem_text] if not gem_text.is_empty() else "%s 空" % slot_label
-		if slot.locked:
+		if slot.is_split_disabled():
+			btn.text = "%s %s·失效" % [slot_label, gem_text] if not gem_text.is_empty() else "%s·失效" % slot_label
+		elif slot.locked:
 			btn.text = "%s 锁" % slot_label
+		else:
+			match action:
+				"extract":
+					btn.text = "%s %s" % [slot_label, gem_text] if not gem_text.is_empty() else "%s 空" % slot_label
+				"insert":
+					btn.text = "%s 嵌入" % slot_label if slot.gem_uid.is_empty() else "%s %s" % [slot_label, gem_text]
 		var is_valid: bool = check.get("ok", false)
 		btn.disabled = not is_valid
-		var kind := "gem" if is_valid else "ghost"
-		BattleUiTheme.apply_button(btn, kind, is_valid)
-		if is_valid:
-			valid_count += 1
+		BattleUiTheme.apply_button(btn, "gem", false)
+		btn.add_theme_color_override("font_color", _slot_color(slot.slot_type).lightened(0.25))
 		var idx := i
 		btn.pressed.connect(func(): emit_fn.call(idx))
-		_button_row.add_child(btn)
-	if valid_count == 0:
-		hide_popup()
-	else:
-		visible = true
+		button_row.add_child(btn)
+		shown += 1
+	if shown == 0:
+		row_box.queue_free()
+		return false
+	_content.add_child(row_box)
+	visible = true
+	return true
+
+
+func _should_show_slot(slot: SlotState, action: String) -> bool:
+	if slot.is_split_disabled():
+		return false
+	match action:
+		Constants.ACTION_INSERT:
+			return true
+		Constants.ACTION_EXTRACT:
+			return not slot.gem_uid.is_empty()
+	return true
 
 
 func _layout_panel(screen_pos: Vector2) -> void:
@@ -107,8 +142,7 @@ func _layout_panel(screen_pos: Vector2) -> void:
 
 func hide_popup() -> void:
 	visible = false
-	for child in _button_row.get_children():
-		child.queue_free()
+	_clear_content()
 	_target_uid = ""
 	_target_tile_pos = Vector2i(-1, -1)
 	_is_tile_mode = false
@@ -130,7 +164,6 @@ func _action_title(action: String) -> String:
 	match action:
 		"extract": return "选择要拔出的槽位"
 		"insert": return "选择要嵌入的槽位"
-		"trigger": return "选择要触发的槽位"
 	return "选择槽位"
 
 
@@ -147,6 +180,17 @@ func _slot_label_for(slot: SlotState) -> String:
 	if not slot.dual_type.is_empty():
 		return "%s/%s" % [base, _slot_label(slot.dual_type)]
 	return base
+
+
+func _slot_color(slot_type: String) -> Color:
+	match slot_type:
+		Constants.SLOT_RED:
+			return Color(1.0, 0.28, 0.22, 0.82)
+		Constants.SLOT_BLUE:
+			return Color(0.25, 0.62, 1.0, 0.82)
+		Constants.SLOT_BLACK:
+			return Color(0.18, 0.18, 0.24, 0.82)
+	return Color(0.55, 0.55, 0.6, 0.82)
 
 
 func _data_registry() -> Node:

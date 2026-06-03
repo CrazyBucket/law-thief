@@ -13,6 +13,7 @@ func _run_test() -> void:
 	_test_deploy_range()
 	_test_deploy_shot_damage()
 	_test_blocked_shot_not_planned()
+	_test_blocked_shot_repositions()
 	_test_faulty_blind_shot()
 	_test_kite_retreat_then_shoot()
 	_test_hold_position_when_in_range()
@@ -72,6 +73,22 @@ func _test_blocked_shot_not_planned() -> void:
 	IntentSystem.refresh_unit_intent(state, bow)
 	assert(bow.intent.type != "ranged_attack", "blocked line should not plan ranged attack")
 	print("  [OK] blocked ranged shot is not planned")
+
+
+func _test_blocked_shot_repositions() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("stone_bow_test", 42)
+	var state := controller.state
+	var bow := _find_bow(state)
+	var player := state.get_player()
+	bow.pos = Vector2i(5, 2)
+	player.pos = Vector2i(1, 2)
+	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(3, 2))
+	state.add_entity(prop)
+	IntentSystem.refresh_unit_intent(state, bow)
+	assert(bow.intent.type != "wait", "blocked bow should reposition instead of waiting")
+	assert(not bow.intent.path.is_empty(), "blocked bow should have a movement path")
+	print("  [OK] blocked ranged line repositions")
 
 
 func _test_faulty_blind_shot() -> void:

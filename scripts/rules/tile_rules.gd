@@ -50,7 +50,8 @@ static func sync_all_units_standing_ground(state: GameState) -> void:
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i, opts: Dictionary = {}) -> void:
 	sync_standing_ground_effects(state, unit)
 
-	EntityRules.on_unit_entered(state, unit, opts)
+	if not opts.get("skip_entity", false):
+		EntityRules.on_unit_entered(state, unit, opts)
 
 	if not opts.get("skip_overlay", false):
 		_apply_enter_effects_for_occupied_cells(state, unit)
@@ -59,6 +60,7 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 ## 单位经过某格时触发（移动路径中间格）
 static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector2i) -> void:
 	sync_standing_ground_effects(state, unit)
+	EntityRules.on_unit_entered(state, unit, {})
 	_apply_enter_effects_for_occupied_cells(state, unit)
 
 	GemEffects.run_unit_hooks(
@@ -79,12 +81,12 @@ static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos:
 
 
 ## 主动移动路径走完后的收尾：清 burning、触发 entity 钩子、避免 overlay 重复触发
-## 路径中间步已由 on_unit_moved_through 处理 overlay，落点只补 entity 钩子（skip_overlay=true）
+## 路径中每一步已由 on_unit_moved_through 处理 overlay/entity，落点只做状态收尾。
 static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: Vector2i) -> void:
 	if unit.pos == start_pos:
 		return
 	on_unit_position_changed(state, unit, start_pos)
-	on_unit_entered(state, unit, start_pos, {"skip_overlay": true})
+	on_unit_entered(state, unit, start_pos, {"skip_overlay": true, "skip_entity": true})
 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────

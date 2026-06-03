@@ -50,7 +50,6 @@ const ROOM_TILE_IDS: Array[String] = [
 ]
 
 const LOCK_ARMOR := "armor_lock"
-const LOCK_SPLIT_BOUND := "split_bound"
 const LOCK_SPLIT_DISABLED := "split_disabled"
 
 const ACTION_MOVE := "move"
@@ -97,6 +96,7 @@ const STATUS_ARMOR := "armor"
 const STATUS_ROOTED := "rooted"
 const STATUS_EXPOSED := "exposed"
 const STATUS_LAWLESS := "lawless"
+const STATUS_OVERLOAD_AI_CONTROL := "overload_ai_control"
 const STATUS_BOMB_RAT_PLUNDER := "bomb_rat_plunder"  # 炸弹鼠无律掠夺阶段
 const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
 const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被强制位移踩入地刺时附加
@@ -146,6 +146,17 @@ const TAG_UNIT_FISSION_SLIME := "unit:fission_slime"
 const TAG_UNIT_MOBILE := "unit:mobile"
 const TAG_UNIT_RANGED := "unit:ranged"
 const TAG_UNIT_SPLIT_CLONE := "unit:split_clone"
+const TAG_UNIT_OVERLOAD_ENFORCER := "unit:overload_enforcer"
+const TAG_UNIT_LAW_BEAST := "unit:law_beast"
+
+const OVERLOAD_LAWLESS_ANY_EXTRACT := "lawless_any_extract"
+const OVERLOAD_GEM_OP_DAMAGE := "gem_op_damage"
+const OVERLOAD_ECHO_EXTRACT := "echo_extract"
+const OVERLOAD_RANDOM_ENEMY_GEMS := "random_enemy_gems"
+const OVERLOAD_SPAWN_ENFORCER := "spawn_enforcer"
+const OVERLOAD_AI_CONTROL := "ai_control"
+const OVERLOAD_SPAWN_LAW_BEAST := "spawn_law_beast"
+const OVERLOAD_GEM_OP_DAMAGE_AMOUNT := 3
 
 const BOMB_RAT_HP_ROLL_MAX := 5
 
