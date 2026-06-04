@@ -24,6 +24,8 @@ func _run_test() -> void:
 	_test_aim_empty_cell_hits_wings()
 	_test_wing_damage_ignores_front_obstacle()
 	_test_main_target_ignores_front_obstacle()
+	_test_red_split_level_two_four_shots()
+	_test_red_split_level_three_five_shots()
 	_test_never_hit_self()
 	if _failed:
 		push_error("SPLIT_SHOT_TEST_FAIL")
@@ -224,6 +226,53 @@ func _test_main_target_ignores_front_obstacle() -> void:
 	print("  [OK] split main target ignores front obstacle")
 
 
+func _test_red_split_level_two_four_shots() -> void:
+	var state := _create_test_state()
+	var player := state.get_player()
+	player.pos = Vector2i(2, 3)
+	player.base_attack = 10
+	_mount_split_red_level(state, player, 2)
+	var targets := [
+		_spawn_guard(state, Vector2i(4, 3)),
+		_spawn_guard(state, Vector2i(3, 4)),
+		_spawn_guard(state, Vector2i(3, 2)),
+		_spawn_guard(state, Vector2i(3, 3)),
+	]
+	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE)
+	if not result.get("ok", false):
+		_fail("level 2 split attack should succeed")
+		return
+	for target in targets:
+		if target.hp != target.max_hp - 5:
+			_fail("level 2 split target %s should take 5, hp=%d" % [target.uid, target.hp])
+			return
+	print("  [OK] red split level 2 fires four 50%% shots")
+
+
+func _test_red_split_level_three_five_shots() -> void:
+	var state := _create_test_state()
+	var player := state.get_player()
+	player.pos = Vector2i(2, 3)
+	player.base_attack = 10
+	_mount_split_red_level(state, player, 3)
+	var targets := [
+		_spawn_guard(state, Vector2i(4, 3)),
+		_spawn_guard(state, Vector2i(3, 4)),
+		_spawn_guard(state, Vector2i(3, 2)),
+		_spawn_guard(state, Vector2i(3, 3)),
+		_spawn_guard(state, Vector2i(5, 3)),
+	]
+	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE)
+	if not result.get("ok", false):
+		_fail("level 3 split attack should succeed")
+		return
+	for target in targets:
+		if target.hp != target.max_hp - 3:
+			_fail("level 3 split target %s should take 3, hp=%d" % [target.uid, target.hp])
+			return
+	print("  [OK] red split level 3 fires five 30%% shots")
+
+
 func _spawn_guard(state: GameState, pos: Vector2i) -> UnitState:
 	var guard := UnitState.new()
 	guard.uid = "test_guard_%d_%d" % [pos.x, pos.y]
@@ -240,10 +289,18 @@ func _spawn_guard(state: GameState, pos: Vector2i) -> UnitState:
 
 
 func _mount_split_red(state: GameState, player: UnitState) -> void:
+	_mount_split_red_level(state, player, 1)
+
+
+func _mount_split_red_level(state: GameState, player: UnitState, level: int) -> void:
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var slot := player.get_slot(Constants.SLOT_RED)
-	var gem_uid: String = str(reg.call("_next_uid", "gem"))
-	var gem := GemState.create(gem_uid, Constants.GEM_SPLIT, {})
-	gem.owner_uid = player.uid
-	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	while player.slots_accepting(Constants.SLOT_RED).size() < level:
+		player.slots.append(SlotState.create(Constants.SLOT_RED))
+	var red_slots := player.slots_accepting(Constants.SLOT_RED)
+	for i in range(level):
+		var slot: SlotState = red_slots[i]
+		var gem_uid: String = str(reg.call("_next_uid", "gem"))
+		var gem := GemState.create(gem_uid, Constants.GEM_SPLIT, {})
+		gem.owner_uid = player.uid
+		state.gems[gem_uid] = gem
+		slot.gem_uid = gem_uid

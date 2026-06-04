@@ -119,16 +119,11 @@ func _test_black_poison_death() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var guard := _find_unit(state, "unit_patrol_guard")
-	var gem := GemState.new()
-	gem.uid = "black_poison"
-	gem.gem_id = Constants.GEM_POISON
-	state.gems[gem.uid] = gem
-	guard.slots.append(SlotState.create(Constants.SLOT_BLACK, gem.uid))
-	gem.owner_uid = guard.uid
+	_force_slot_gems(state, guard, Constants.SLOT_BLACK, [Constants.GEM_POISON, Constants.GEM_POISON])
 	var fog_before := _count_poison_fog_tiles(state)
 	CombatRules.apply_damage(state, guard, guard.hp, "", "test_kill")
 	assert(not guard.alive, "guard should die")
-	assert(_count_poison_fog_tiles(state) > fog_before, "black poison death should create fog")
+	assert(_count_poison_fog_tiles(state) > fog_before, "black poison level 2 death should create fog")
 	print("  [OK] black poison death hook")
 
 
@@ -208,18 +203,26 @@ func _test_editor_console_batch_move_delete_commands() -> void:
 
 
 func _force_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
+	_force_slot_gems(state, unit, Constants.SLOT_RED, [gem_id])
+
+
+func _force_slot_gems(state: GameState, unit: UnitState, slot_type: String, gem_ids: Array[String]) -> void:
 	var reg: Node = _data_registry()
-	var slot := unit.get_slot(Constants.SLOT_RED)
-	if slot == null:
-		return
-	if not slot.gem_uid.is_empty():
-		state.gems.erase(slot.gem_uid)
-	var gem_uid: String = reg.next_runtime_uid("gem")
-	var gem: GemState = reg.create_gem_instance(gem_uid, gem_id, {})
-	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
-	gem.owner_uid = unit.uid
-	gem.slot_index = unit.slots.find(slot)
+	while unit.slots_accepting(slot_type).size() < gem_ids.size():
+		unit.slots.append(SlotState.create(slot_type))
+	var slots := unit.slots_accepting(slot_type)
+	for i in range(slots.size()):
+		if i >= gem_ids.size():
+			break
+		var slot: SlotState = slots[i]
+		if not slot.gem_uid.is_empty():
+			state.gems.erase(slot.gem_uid)
+		var gem_uid: String = reg.next_runtime_uid("gem")
+		var gem: GemState = reg.create_gem_instance(gem_uid, gem_ids[i], {})
+		state.gems[gem_uid] = gem
+		slot.gem_uid = gem_uid
+		gem.owner_uid = unit.uid
+		gem.slot_index = unit.slots.find(slot)
 
 
 func _data_registry() -> Node:

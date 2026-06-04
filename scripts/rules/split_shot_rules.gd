@@ -44,14 +44,18 @@ static func compute_forward_step(origin_pos: Vector2i, aim_pos: Vector2i) -> Vec
 	return DIR8[snapped_idx]
 
 
-static func compute_shot(origin_pos: Vector2i, aim_pos: Vector2i) -> Dictionary:
+static func compute_shot(origin_pos: Vector2i, aim_pos: Vector2i, shot_level: int = 1) -> Dictionary:
 	if origin_pos == aim_pos:
 		return {
 			"main": aim_pos,
 			"wings": [] as Array[Vector2i],
 		}
 	var forward := compute_forward_step(origin_pos, aim_pos)
-	var offsets: Array = WING_OFFSETS_LUT.get(forward, [Vector2i.ZERO, Vector2i.ZERO])
+	var offsets: Array = WING_OFFSETS_LUT.get(forward, [Vector2i.ZERO, Vector2i.ZERO]).duplicate()
+	if shot_level >= 2:
+		offsets.append(-forward)
+	if shot_level >= 3:
+		offsets.append(forward)
 	var valid_wings: Array[Vector2i] = []
 	for offset in offsets:
 		var wing_pos: Vector2i = aim_pos + offset
@@ -64,8 +68,8 @@ static func compute_shot(origin_pos: Vector2i, aim_pos: Vector2i) -> Dictionary:
 	}
 
 
-static func all_hit_cells(origin_pos: Vector2i, aim_pos: Vector2i, forbidden: Array = []) -> Array[Vector2i]:
-	var shot := compute_shot(origin_pos, aim_pos)
+static func all_hit_cells(origin_pos: Vector2i, aim_pos: Vector2i, forbidden: Array = [], shot_level: int = 1) -> Array[Vector2i]:
+	var shot := compute_shot(origin_pos, aim_pos, shot_level)
 	var cells: Array[Vector2i] = []
 	if is_inside_board(shot.main) and not is_blocked_cell(shot.main, origin_pos, forbidden):
 		cells.append(shot.main)
@@ -78,8 +82,8 @@ static func all_hit_cells(origin_pos: Vector2i, aim_pos: Vector2i, forbidden: Ar
 	return cells
 
 
-static func wing_cells(origin_pos: Vector2i, aim_pos: Vector2i, forbidden: Array = []) -> Array[Vector2i]:
-	var shot := compute_shot(origin_pos, aim_pos)
+static func wing_cells(origin_pos: Vector2i, aim_pos: Vector2i, forbidden: Array = [], shot_level: int = 1) -> Array[Vector2i]:
+	var shot := compute_shot(origin_pos, aim_pos, shot_level)
 	var result: Array[Vector2i] = []
 	for wing in shot.wings:
 		if is_blocked_cell(wing, origin_pos, forbidden):
@@ -97,13 +101,13 @@ static func is_blocked_cell(cell: Vector2i, origin_pos: Vector2i, forbidden: Arr
 	return false
 
 
-static func resolve_shot(attacker: UnitState, aim_cell: Vector2i) -> Dictionary:
+static func resolve_shot(attacker: UnitState, aim_cell: Vector2i, shot_level: int = 1) -> Dictionary:
 	var origin := attacker_origin(attacker, aim_cell)
 	var forbidden := attacker.occupied_cells()
 	return {
 		"origin": origin,
 		"aim": aim_cell,
-		"cells": all_hit_cells(origin, aim_cell, forbidden),
+		"cells": all_hit_cells(origin, aim_cell, forbidden, shot_level),
 	}
 
 

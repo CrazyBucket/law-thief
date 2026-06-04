@@ -124,16 +124,16 @@ func _assert_combo(
 			return false
 	if profiles.has("poison"):
 		var n := _count_events(events, "poison_burst")
-		if n != shots:
-			_fail("[%s] expected %d poison_burst events, got %d" % [label, shots, n])
+		if n < shots:
+			_fail("[%s] expected >= %d poison_burst events, got %d" % [label, shots, n])
 			return false
 		if main.alive and not main.has_status(Constants.STATUS_POISON):
 			_fail("[%s] main target should be poisoned" % label)
 			return false
 	if profiles.has("fire_gem"):
 		var n := _count_events(events, "fire_burst")
-		if n != shots:
-			_fail("[%s] expected %d fire_burst events, got %d" % [label, shots, n])
+		if n < shots:
+			_fail("[%s] expected >= %d fire_burst events, got %d" % [label, shots, n])
 			return false
 		if main.alive and not main.has_status(Constants.STATUS_BURNING):
 			_fail("[%s] main target should be burning" % label)

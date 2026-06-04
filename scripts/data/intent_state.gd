@@ -23,6 +23,7 @@ static func intent_icon(intent_type: String) -> String:
 		"arc_attack":    return "⚡"
 		"fire_attack":   return "🔥"
 		"ice_attack":    return "❄"
+		"light_beam":    return "☼"
 		"extract":       return "💎"
 		"move":          return "➡"
 		"lawless_extract": return "💢"

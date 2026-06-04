@@ -108,6 +108,18 @@ func play_events(events: Array) -> void:
 			await _host.get_tree().create_timer(_scaled_anim_time(0.34)).timeout
 			_board.queue_redraw()
 			continue
+		if ev_type == "light_beam":
+			_prime_event_state(ev)
+			await _board.play_light_beam_task(
+				ev.get("from", Vector2i.ZERO),
+				ev.get("to", Vector2i.ZERO),
+				ev.get("color", Color(1.0, 0.96, 0.58)),
+				int(ev.get("width", 1))
+			)
+			_apply_event_state(ev)
+			i += 1
+			_board.queue_redraw()
+			continue
 		if ev_type == "move_step":
 			var move_events := _collect_consecutive_events(events, i, ["move_step"])
 			i += move_events.size()
@@ -285,6 +297,13 @@ func _play_anim_event(ev: Dictionary) -> void:
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
 			await _board.play_projectile_task(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
 			await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+		"light_beam":
+			await _board.play_light_beam_task(
+				ev.get("from", Vector2i.ZERO),
+				ev.get("to", Vector2i.ZERO),
+				ev.get("color", Color(1.0, 0.96, 0.58)),
+				int(ev.get("width", 1))
+			)
 		"lightning", "arc":
 			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)
 			await _host.get_tree().create_timer(_scaled_anim_time(0.22)).timeout
@@ -334,7 +353,7 @@ func _apply_event_state(ev: Dictionary) -> void:
 				TileRules.create_poison_fog(_display_state, cell)
 		"fire_burst":
 			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
-		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc":
+		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam":
 			pass
 		"split_spawn":
 			var clone_uid := str(ev.get("uid", ""))

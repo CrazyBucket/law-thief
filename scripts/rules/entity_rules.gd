@@ -81,7 +81,7 @@ static func tick_barrels_in_fire(state: GameState) -> void:
 		if not entity.alive or entity.entity_id != Constants.ENTITY_BARREL:
 			continue
 		var tile := state.get_tile(entity.pos)
-		if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		if tile.has_modifier(Constants.TILE_MOD_FIRE) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 			var events: Array[Dictionary] = []
 			_explode_barrel(state, entity, "", events)
 

@@ -2,6 +2,8 @@ class_name BattleQueryService
 extends RefCounted
 
 const _StatusUi = preload("res://scripts/ui/status_ui.gd")
+const GemEffects = preload("res://scripts/rules/gem_effects.gd")
+const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 
 var _ctrl: BattleController
@@ -91,6 +93,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			lines.append("机关柱：嵌入宝石产生持续光环")
 	if tile.has_modifier("poison_fog"):
 		lines.append("毒雾：进入叠 1 层毒；回合结束仍在其内再叠 1 层（每层 %d 伤害）" % Constants.POISON_FOG_DAMAGE)
+	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+		lines.append("毒烟：同时视为火焰与毒雾，持续 1 回合")
 	if tile.has_slots():
 		for i in range(tile.slots.size()):
 			var tslot: SlotState = tile.slots[i]
@@ -250,12 +254,13 @@ func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
 
 func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
+	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else Constants.ATTACK_RANGE
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
 			if pos == player.pos:
 				continue
-			if not BoardUtils.can_unit_attack_cell(player, state, pos, Constants.ATTACK_RANGE):
+			if not BoardUtils.can_unit_attack_cell(player, state, pos, max_range):
 				continue
 			cells.append(pos)
 	return cells
@@ -288,12 +293,19 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
 	if target_pos == player.pos:
 		return []
-	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
+	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else Constants.ATTACK_RANGE
+	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return []
+	if GemEffects.unit_has_red_light(state, player):
+		var beam_cells := _light_preview_cells(state, player, target_pos)
+		if not beam_cells.is_empty():
+			return beam_cells
 	var has_split: bool = GemEffects.unit_has_red_split(state, player)
 	var cells: Array = []
 	if has_split:
-		var shot := _SplitShotRules.resolve_shot(player, target_pos)
+		var gem_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+		var shot_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
+		var shot := _SplitShotRules.resolve_shot(player, target_pos, shot_level)
 		for cell in shot.cells:
 			if BoardUtils.in_bounds(state, cell) and not cell in cells:
 				cells.append(cell)
@@ -318,6 +330,25 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 			for cell in _death_gem_preview_cells(state, victim.pos, gem):
 				if not cell in cells:
 					cells.append(cell)
+	return cells
+
+
+func _light_preview_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
+	var cells: Array = []
+	var from_cell := BoardUtils.projectile_origin_cell(player, target_pos)
+	var dx := signi(target_pos.x - from_cell.x)
+	var dy := signi(target_pos.y - from_cell.y)
+	if dx == 0 and dy == 0:
+		return cells
+	var gem_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+	var pierce_blockers := GemTagResolver.tag_level(gem_ctx, "light") >= 3
+	var current := from_cell + Vector2i(dx, dy)
+	while BoardUtils.in_bounds(state, current):
+		cells.append(current)
+		var entity := state.get_entity_at(current)
+		if not pierce_blockers and entity != null and entity.alive and entity.blocks_projectile():
+			break
+		current += Vector2i(dx, dy)
 	return cells
 
 

@@ -32,6 +32,7 @@ const _SOURCE_RARITY_WEIGHTS := {
 
 var _gem_effect_profiles: Dictionary = {}
 var _gem_defs: Dictionary = {}
+var _gem_pools: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
 var _relic_defs: Dictionary = {}
@@ -45,6 +46,7 @@ func _ready() -> void:
 	_register_encounters()
 	# JSON 覆盖：若外部文件存在则合并/替换硬编码数据
 	_load_gem_defs_from_json()
+	_load_gem_pools_from_json()
 	_load_unit_defs_from_json()
 	_load_encounters_from_json()
 	_load_relic_defs_from_json()
@@ -215,6 +217,39 @@ func get_gem_rarity(gem_ref: Variant) -> String:
 	return str(_resolve_gem_def(gem_ref).get("rarity", "common"))
 
 
+func get_gem_tag(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	var tag := str(def.get("tag", ""))
+	if not tag.is_empty():
+		return tag
+	var profile := get_gem_ability_profile(gem_ref, ABILITY_UNIT_RED_ACTIVE)
+	if not profile.is_empty():
+		return _tag_from_legacy_profile(profile)
+	return _gem_id_from_ref(gem_ref)
+
+
+func get_gem_element(gem_ref: Variant) -> String:
+	var element := str(_resolve_gem_def(gem_ref).get("element", ""))
+	return element if not element.is_empty() else get_gem_tag(gem_ref)
+
+
+func get_gem_pool_tier(gem_ref: Variant) -> int:
+	return maxi(1, int(_resolve_gem_def(gem_ref).get("pool_tier", 1)))
+
+
+func get_gem_max_stack_level(gem_ref: Variant) -> int:
+	return maxi(1, int(_resolve_gem_def(gem_ref).get("max_stack_level", 3)))
+
+
+func get_gem_combo_tags(gem_ref: Variant) -> Array[String]:
+	var results: Array[String] = []
+	for raw in _resolve_gem_def(gem_ref).get("combos", []):
+		var tag := str(raw)
+		if not tag.is_empty() and not tag in results:
+			results.append(tag)
+	return results
+
+
 func get_gem_rarity_label(gem_ref: Variant) -> String:
 	var rarity: String = get_gem_rarity(gem_ref)
 	return _translate_key("gem.rarity.%s" % rarity, {}, rarity.capitalize())
@@ -228,10 +263,29 @@ func get_gem_spawn_weight(gem_ref: Variant) -> float:
 
 
 func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
+	return get_spawnable_gem_ids_for_source("global", 99, allowed_rarities)
+
+
+func get_gem_pool_def(source: String) -> Dictionary:
+	if _gem_pools.has(source):
+		return _gem_pools[source].duplicate(true)
+	return _gem_pools.get("global", {}).duplicate(true)
+
+
+func get_gem_pool_source_tier(source: String) -> int:
+	return maxi(1, int(get_gem_pool_def(source).get("source_tier", 1)))
+
+
+func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, allowed_rarities: Array = []) -> Array[String]:
 	var results: Array[String] = []
+	var pool_def := get_gem_pool_def(source)
+	var source_tier := maxi(1, int(pool_def.get("source_tier", 1)))
+	var max_tier := mini(source_tier, maxi(1, chapter_tier))
 	for gem_id in _gem_defs.keys():
 		var def: Dictionary = _gem_defs[gem_id]
 		if not def.get("allow_random_pool", true):
+			continue
+		if get_gem_pool_tier(gem_id) > max_tier:
 			continue
 		var rarity := str(def.get("rarity", "common"))
 		if not allowed_rarities.is_empty() and not rarity in allowed_rarities:
@@ -241,14 +295,22 @@ func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
 	return results
 
 
-func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = []) -> String:
-	var candidates := get_spawnable_gem_ids(allowed_rarities)
+func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = [], source: String = "global", chapter_tier: int = 99) -> String:
+	var pool_def := get_gem_pool_def(source)
+	var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
+	var allowed: Array = allowed_rarities.duplicate()
+	if allowed.is_empty() and not rarity_weights.is_empty():
+		for rarity in rarity_weights.keys():
+			if float(rarity_weights[rarity]) > 0.0:
+				allowed.append(str(rarity))
+	var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
 	if candidates.is_empty():
 		return ""
 	var total_weight := 0.0
 	var weighted: Array[Dictionary] = []
+	var tag_weights: Dictionary = pool_def.get("tag_weights", {})
 	for gem_id in candidates:
-		var weight := get_gem_spawn_weight(gem_id)
+		var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
 		if weight <= 0.0:
 			continue
 		total_weight += weight
@@ -504,6 +566,27 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 	}
 
 
+func _gem_pool_weight(gem_id: String, rarity_weights: Dictionary, tag_weights: Dictionary) -> float:
+	var rarity := get_gem_rarity(gem_id)
+	var weight := get_gem_spawn_weight(gem_id)
+	if not rarity_weights.is_empty():
+		weight = float(rarity_weights.get(rarity, 0.0))
+	if weight <= 0.0:
+		return 0.0
+	var tag := get_gem_tag(gem_id)
+	if tag_weights.has(tag):
+		weight *= maxf(0.0, float(tag_weights.get(tag, 1.0)))
+	return weight
+
+
+func _tag_from_legacy_profile(profile: String) -> String:
+	match profile:
+		"fire_gem":
+			return "fire"
+		_:
+			return profile
+
+
 func _next_uid(prefix: String) -> String:
 	_uid_counter += 1
 	return "%s_%d" % [prefix, _uid_counter]
@@ -622,6 +705,48 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.split.black_death"},
 			},
 		},
+		"light": {
+			"enemy_intent": {
+				"type": "light_beam",
+				"preview_key": "gem.intent.light_beam",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.light.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.light.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.light.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.light.black_death"},
+			},
+		},
+		"counter": {
+			"enemy_intent": {
+				"type": "counter_attack",
+				"preview_key": "gem.intent.counter_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.counter.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.counter.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.counter.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.counter.black_death"},
+			},
+		},
+		"echo": {
+			"enemy_intent": {
+				"type": "echo_attack",
+				"preview_key": "gem.intent.echo_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.echo.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.echo.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.echo.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.echo.black_death"},
+			},
+		},
 	}
 
 
@@ -724,6 +849,45 @@ func _register_gem_defs() -> void:
 				ABILITY_ENEMY_RED_ACTION: "split",
 				ABILITY_BLUE_DAMAGED: "split",
 				ABILITY_BLACK_DEATH: "split",
+			},
+		},
+		Constants.GEM_LIGHT: {
+			"display_name_key": "gem.light.name",
+			"symbol_key": "gem.light.symbol",
+			"symbol": "光",
+			"color": Color(1.0, 0.94, 0.55),
+			"rarity": "rare",
+			"ability_profiles": {
+				ABILITY_UNIT_RED_ACTIVE: "light",
+				ABILITY_ENEMY_RED_ACTION: "light",
+				ABILITY_BLUE_DAMAGED: "light",
+				ABILITY_BLACK_DEATH: "light",
+			},
+		},
+		Constants.GEM_COUNTER: {
+			"display_name_key": "gem.counter.name",
+			"symbol_key": "gem.counter.symbol",
+			"symbol": "反",
+			"color": Color(0.95, 0.72, 0.35),
+			"rarity": "rare",
+			"ability_profiles": {
+				ABILITY_UNIT_RED_ACTIVE: "counter",
+				ABILITY_ENEMY_RED_ACTION: "counter",
+				ABILITY_BLUE_DAMAGED: "counter",
+				ABILITY_BLACK_DEATH: "counter",
+			},
+		},
+		Constants.GEM_ECHO: {
+			"display_name_key": "gem.echo.name",
+			"symbol_key": "gem.echo.symbol",
+			"symbol": "响",
+			"color": Color(0.7, 0.55, 1.0),
+			"rarity": "epic",
+			"ability_profiles": {
+				ABILITY_UNIT_RED_ACTIVE: "echo",
+				ABILITY_ENEMY_RED_ACTION: "echo",
+				ABILITY_BLUE_DAMAGED: "echo",
+				ABILITY_BLACK_DEATH: "echo",
 			},
 		},
 	}
@@ -1051,6 +1215,25 @@ func _load_gem_defs_from_json() -> void:
 			_gem_defs[gem_id] = _deep_merge_dict(_gem_defs[gem_id], entry)
 		else:
 			_gem_defs[gem_id] = entry
+
+
+func _load_gem_pools_from_json() -> void:
+	var path := "res://resources/gems/gem_pools.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		_gem_pools = {
+			"global": {
+				"source_tier": 99,
+				"rarity_weights": _RARITY_WEIGHTS.duplicate(true),
+			},
+		}
+		return
+	_gem_pools = raw
+	if not _gem_pools.has("global"):
+		_gem_pools["global"] = {
+			"source_tier": 99,
+			"rarity_weights": _RARITY_WEIGHTS.duplicate(true),
+		}
 
 
 func _load_unit_defs_from_json() -> void:

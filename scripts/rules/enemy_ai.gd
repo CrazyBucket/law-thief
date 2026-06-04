@@ -249,6 +249,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_ice_skill(state, enemy, from_pos, player, profile))
 		"split_attack":
 			results.append_array(_score_split_skill(state, enemy, from_pos, player, profile))
+		"light_beam":
+			results.append_array(_score_light_skill(state, enemy, from_pos, player, profile))
 	return results
 
 
@@ -423,6 +425,23 @@ static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	var score: float = base * _w(profile, "w_damage", 10.0)
 	candidate.score = score
 	candidate.description = "分裂攻击"
+	results.append(candidate)
+	return results
+
+
+static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+	if not BoardUtils.can_unit_attack_cell(enemy, state, player.pos, max_range):
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * 0.5 * _w(profile, "w_damage", 10.0)
+	score += _w(profile, "w_status", 6.0)
+	candidate.score = score
+	candidate.description = "光束"
 	results.append(candidate)
 	return results
 

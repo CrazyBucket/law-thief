@@ -4,6 +4,11 @@
     "symbol_key": "gem.explosion.symbol",
     "symbol": "爆",
     "color": [1.0, 0.45, 0.2, 1.0],
+    "tag": "explosion",
+    "element": "explosion",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": ["fire", "poison"],
     "rarity": "common",
     "ability_profiles": {
       "player_skill": "explosion",
@@ -21,6 +26,11 @@
     "symbol_key": "gem.poison.symbol",
     "symbol": "毒",
     "color": [0.55, 0.9, 0.35, 1.0],
+    "tag": "poison",
+    "element": "poison",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": ["explosion", "fire"],
     "rarity": "common",
     "ability_profiles": {
       "player_skill": "poison",
@@ -37,6 +47,11 @@
     "symbol_key": "gem.gravity.symbol",
     "symbol": "引",
     "color": [0.35, 0.65, 1.0, 1.0],
+    "tag": "gravity",
+    "element": "gravity",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
     "rarity": "rare",
     "ability_profiles": {
       "player_skill": "gravity",
@@ -53,6 +68,11 @@
     "symbol_key": "gem.conductive.symbol",
     "symbol": "电",
     "color": [0.95, 0.9, 0.3, 1.0],
+    "tag": "arc",
+    "element": "electric",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
     "rarity": "uncommon",
     "ability_profiles": {
       "player_skill": "arc",
@@ -67,6 +87,11 @@
     "symbol_key": "gem.fire.symbol",
     "symbol": "炎",
     "color": [1.0, 0.35, 0.1, 1.0],
+    "tag": "fire",
+    "element": "fire",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": ["explosion", "poison"],
     "rarity": "uncommon",
     "ability_profiles": {
       "player_skill": "fire_gem",
@@ -81,6 +106,11 @@
     "symbol_key": "gem.ice.symbol",
     "symbol": "冰",
     "color": [0.6, 0.9, 1.0, 1.0],
+    "tag": "ice",
+    "element": "ice",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
     "rarity": "uncommon",
     "ability_profiles": {
       "player_skill": "ice",
@@ -88,6 +118,83 @@
       "enemy_red_action": "ice",
       "blue_damaged": "ice",
       "black_death": "ice"
+    }
+  },
+  "gem_split": {
+    "display_name_key": "gem.split.name",
+    "symbol_key": "gem.split.symbol",
+    "symbol": "裂",
+    "color": [0.85, 0.5, 1.0, 1.0],
+    "tag": "split",
+    "element": "split",
+    "pool_tier": 2,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "epic",
+    "allow_random_pool": true,
+    "ability_profiles": {
+      "player_skill": "split",
+      "unit_red_active": "split",
+      "enemy_red_action": "split",
+      "blue_damaged": "split",
+      "black_death": "split"
+    }
+  },
+  "gem_light": {
+    "display_name_key": "gem.light.name",
+    "symbol_key": "gem.light.symbol",
+    "symbol": "光",
+    "color": [1.0, 0.94, 0.55, 1.0],
+    "tag": "light",
+    "element": "light",
+    "pool_tier": 2,
+    "max_stack_level": 3,
+    "combos": ["explosion", "poison", "fire", "arc", "ice"],
+    "rarity": "rare",
+    "ability_profiles": {
+      "player_skill": "light",
+      "unit_red_active": "light",
+      "enemy_red_action": "light",
+      "blue_damaged": "light",
+      "black_death": "light"
+    }
+  },
+  "gem_counter": {
+    "display_name_key": "gem.counter.name",
+    "symbol_key": "gem.counter.symbol",
+    "symbol": "反",
+    "color": [0.95, 0.72, 0.35, 1.0],
+    "tag": "counter",
+    "element": "counter",
+    "pool_tier": 2,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "rare",
+    "ability_profiles": {
+      "player_skill": "counter",
+      "unit_red_active": "counter",
+      "enemy_red_action": "counter",
+      "blue_damaged": "counter",
+      "black_death": "counter"
+    }
+  },
+  "gem_echo": {
+    "display_name_key": "gem.echo.name",
+    "symbol_key": "gem.echo.symbol",
+    "symbol": "响",
+    "color": [0.7, 0.55, 1.0, 1.0],
+    "tag": "echo",
+    "element": "echo",
+    "pool_tier": 3,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "epic",
+    "ability_profiles": {
+      "player_skill": "echo",
+      "unit_red_active": "echo",
+      "enemy_red_action": "echo",
+      "blue_damaged": "echo",
+      "black_death": "echo"
     }
   }
 }

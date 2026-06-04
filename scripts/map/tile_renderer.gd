@@ -16,9 +16,9 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 		top_color = top_color.lerp(highlight_color, highlight_color.a)
 	_draw_block(canvas, center, top_color, palette["left"], palette["right"])
 	_draw_tile_detail(canvas, center, tile)
-	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle"):
+	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		_draw_poison_fog(canvas, center)
-	if tile.has_modifier("fire"):
+	if tile.has_modifier("fire") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		_draw_fire(canvas, center)
 
 
@@ -33,9 +33,9 @@ static func draw_tile_overlays(canvas: Control, center: Vector2, tile: TileState
 		_draw_water(canvas, center, tile.edge_mask)
 	elif tile.tile_id == Constants.TILE_PILLAR:
 		_draw_pillar(canvas, center)
-	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle"):
+	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		_draw_poison_fog(canvas, center)
-	if tile.has_modifier("fire"):
+	if tile.has_modifier("fire") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		_draw_fire(canvas, center)
 
 

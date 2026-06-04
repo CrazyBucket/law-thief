@@ -13,6 +13,9 @@ static var _ENTER_EFFECTS: Dictionary = {
 		StatusRules.apply_poison(state, unit, 1, 0),
 	Constants.TILE_MOD_FIRE: func(state: GameState, unit: UnitState) -> void:
 		StatusRules.apply_burning(state, unit, 1),
+	Constants.TILE_MOD_TOXIC_SMOKE: func(state: GameState, unit: UnitState) -> void:
+		StatusRules.apply_poison(state, unit, 1, 0)
+		StatusRules.apply_burning(state, unit, 1),
 	Constants.TILE_MOD_POISON_PUDDLE: func(state: GameState, unit: UnitState) -> void:
 		StatusRules.apply_poison(state, unit, 1, 0),
 }
@@ -76,7 +79,7 @@ static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector
 static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos: Vector2i) -> void:
 	if unit.pos == old_pos:
 		return
-	if not _unit_occupies_modifier(state, unit, Constants.TILE_MOD_FIRE):
+	if not _unit_occupies_any_modifier(state, unit, [Constants.TILE_MOD_FIRE, Constants.TILE_MOD_TOXIC_SMOKE]):
 		StatusRules.clear_burning(unit)
 
 
@@ -91,7 +94,7 @@ static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────
 
-static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
+static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = Constants.POISON_FOG_DURATION) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
 	var tile := state.get_tile(pos)
@@ -99,7 +102,7 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
 		_convert_water_to_poison_puddle(state, tile)
 		return
-	var add_turns := Constants.POISON_FOG_DURATION
+	var add_turns := duration
 	for i in range(tile.modifiers.size()):
 		var existing: Variant = tile.modifiers[i]
 		if str(existing.get("type", "")) != Constants.TILE_MOD_POISON_FOG:
@@ -113,7 +116,7 @@ static func create_poison_fog(state: GameState, pos: Vector2i) -> void:
 	_apply_enter_effects_to_occupant(state, pos, tile)
 
 
-static func create_fire(state: GameState, pos: Vector2i) -> void:
+static func create_fire(state: GameState, pos: Vector2i, duration: int = Constants.FIRE_DURATION) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
 	var tile := state.get_tile(pos)
@@ -132,10 +135,10 @@ static func create_fire(state: GameState, pos: Vector2i) -> void:
 		if str(existing.get("type", "")) != Constants.TILE_MOD_FIRE:
 			continue
 		var merged: Dictionary = existing.duplicate(true)
-		merged["duration"] = maxi(int(merged.get("duration", 0)), Constants.FIRE_DURATION)
+		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
 		tile.modifiers[i] = merged
 		return
-	tile.add_modifier(Constants.TILE_MOD_FIRE, Constants.FIRE_DURATION)
+	tile.add_modifier(Constants.TILE_MOD_FIRE, duration)
 
 	# 点燃可燃地面（草地/草丛）：将 tile_id 更换为普通地板，火焰附在上面
 	if tile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
@@ -153,6 +156,28 @@ static func create_fire(state: GameState, pos: Vector2i) -> void:
 	if barrel != null and barrel.alive and barrel.entity_id == Constants.ENTITY_BARREL:
 		var ev: Array[Dictionary] = []
 		EntityRules.damage_barrel(state, barrel, barrel.hp, "", ev)
+
+
+static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 1) -> void:
+	if not BoardUtils.in_bounds(state, pos):
+		return
+	var tile := state.get_tile(pos)
+	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+		_convert_water_to_poison_puddle(state, tile)
+		return
+	tile.remove_modifier(Constants.TILE_MOD_POISON_FOG)
+	tile.remove_modifier(Constants.TILE_MOD_FIRE)
+	for i in range(tile.modifiers.size()):
+		var existing: Variant = tile.modifiers[i]
+		if str(existing.get("type", "")) != Constants.TILE_MOD_TOXIC_SMOKE:
+			continue
+		var merged: Dictionary = existing.duplicate(true)
+		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
+		tile.modifiers[i] = merged
+		_apply_enter_effects_to_occupant(state, pos, tile)
+		return
+	tile.add_modifier(Constants.TILE_MOD_TOXIC_SMOKE, duration)
+	_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 ## 火焰蔓延：[着火] 的地块引燃相邻可燃格（每回合 50% 概率）
@@ -246,5 +271,12 @@ static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileStat
 static func _unit_occupies_modifier(state: GameState, unit: UnitState, modifier_type: String) -> bool:
 	for tile in _occupied_tiles(state, unit):
 		if tile.has_modifier(modifier_type):
+			return true
+	return false
+
+
+static func _unit_occupies_any_modifier(state: GameState, unit: UnitState, modifier_types: Array[String]) -> bool:
+	for modifier_type in modifier_types:
+		if _unit_occupies_modifier(state, unit, modifier_type):
 			return true
 	return false

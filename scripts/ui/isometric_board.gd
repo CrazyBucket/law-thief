@@ -14,6 +14,7 @@ const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
+const LightBeamShader := preload("res://scenes/battle/light_beam.gdshader")
 
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
@@ -96,6 +97,7 @@ var _gem_sprites: RefCounted = null ## DoodleGemSprites
 var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
+var _light_beam_nodes: Array[Polygon2D] = []
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
@@ -2164,6 +2166,62 @@ func _on_projectiles_done() -> void:
 	queue_redraw()
 	animation_finished.emit()
 	projectile_animation_finished.emit()
+
+
+func play_light_beam_task(
+	from_grid: Vector2i,
+	to_grid: Vector2i,
+	beam_color: Color = Color(1.0, 0.96, 0.58),
+	beam_width: int = 1
+) -> void:
+	var beam := _create_light_beam_node(from_grid, to_grid, beam_color, beam_width)
+	if beam == null:
+		return
+	var mat := beam.material as ShaderMaterial
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(beam, "modulate:a", 0.0, _scaled_duration(0.34)).set_delay(_scaled_duration(0.12))
+	if mat != null:
+		tween.tween_method(func(v: float) -> void:
+			mat.set_shader_parameter("pulse", v)
+		, 0.0, 1.0, _scaled_duration(0.46))
+	await tween.finished
+	if is_instance_valid(beam):
+		beam.queue_free()
+	_light_beam_nodes.erase(beam)
+
+
+func _create_light_beam_node(
+	from_grid: Vector2i,
+	to_grid: Vector2i,
+	beam_color: Color,
+	beam_width: int
+) -> Polygon2D:
+	var from_scr := grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -24))
+	var to_scr := grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -24))
+	var delta := to_scr - from_scr
+	if delta.length() < 1.0:
+		return null
+	var dir := delta.normalized()
+	var perp := Vector2(-dir.y, dir.x)
+	var width := IsoCoordinates.visual(10.0 + float(maxi(1, beam_width) - 1) * 8.0)
+	var beam := Polygon2D.new()
+	beam.polygon = PackedVector2Array([
+		from_scr + perp * width,
+		to_scr + perp * width,
+		to_scr - perp * width,
+		from_scr - perp * width,
+	])
+	beam.color = Color.WHITE
+	beam.modulate.a = 1.0
+	var shader_mat := ShaderMaterial.new()
+	shader_mat.shader = LightBeamShader
+	shader_mat.set_shader_parameter("beam_color", beam_color)
+	shader_mat.set_shader_parameter("core_width", 0.24 if beam_width <= 1 else 0.38)
+	beam.material = shader_mat
+	add_child(beam)
+	_light_beam_nodes.append(beam)
+	return beam
 
 
 func _draw_projectile() -> void:

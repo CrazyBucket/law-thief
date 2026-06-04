@@ -24,6 +24,9 @@ const GEM_CONDUCTIVE := "gem_conductive"
 const GEM_FIRE := "gem_fire"
 const GEM_ICE := "gem_ice"
 const GEM_SPLIT := "gem_split"
+const GEM_LIGHT := "gem_light"
+const GEM_COUNTER := "gem_counter"
+const GEM_ECHO := "gem_echo"
 
 const SPLIT_ATTACK_RANGE := 1              # 红槽分裂：仅相邻格可瞄准
 const SPLIT_ATTACK_DAMAGE_RATIO := 0.7     # 红槽：三发伤害倍率
@@ -100,9 +103,12 @@ const STATUS_OVERLOAD_AI_CONTROL := "overload_ai_control"
 const STATUS_BOMB_RAT_PLUNDER := "bomb_rat_plunder"  # 炸弹鼠无律掠夺阶段
 const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
 const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被强制位移踩入地刺时附加
+const STATUS_LIGHT_EXPOSED := "light_exposed"
+const STATUS_BLINDED := "blinded"
 
 const TILE_MOD_POISON_FOG := "poison_fog"
 const TILE_MOD_FIRE := "fire"
+const TILE_MOD_TOXIC_SMOKE := "toxic_smoke"
 const FIRE_DURATION := 2
 const FIRE_SPREAD_CHANCE := 0.5
 

@@ -11,6 +11,8 @@ static func _relic_effect_registry() -> Node:
 static var _defer_death_hooks_depth: int = 0
 static var _pending_deaths: Array[Dictionary] = []
 static var _death_event_sink: Array[Dictionary] = []
+static var _death_chain_serial: int = 0
+static var _active_death_chain_id: int = 0
 
 
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
@@ -36,6 +38,7 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 	final_amount = GemEffects.intercept_damage_for_split(state, unit, source_uid, reason, final_amount)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
+	_record_damage_pair(state, unit.uid, source_uid, final_amount)
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])
 	state.on_damage_taken.emit(unit.uid, final_amount, reason)
 	if unit.hp <= 0:
@@ -50,6 +53,7 @@ static func apply_true_damage(state: GameState, unit: UnitState, amount: int, so
 	if reason == "burning" or reason == "tile_fire":
 		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount)
 	unit.hp -= amount
+	_record_damage_pair(state, unit.uid, source_uid, amount)
 	state.log("%s 受到 %d 点真实伤害 (%s)" % [unit.uid, amount, reason])
 	state.on_damage_taken.emit(unit.uid, amount, reason)
 	if unit.hp <= 0:
@@ -71,7 +75,16 @@ static func end_deferred_death_hooks(state: GameState) -> void:
 		var unit: UnitState = entry.get("unit", null)
 		if unit == null:
 			continue
-		_GemEffects.on_unit_death(state, unit, _death_event_sink)
+		var chain_id := int(entry.get("death_chain_id", 0))
+		var prev_chain_id := _active_death_chain_id
+		_active_death_chain_id = chain_id
+		_GemEffects.on_unit_death(state, unit, _death_event_sink, {
+			"death_chain_id": chain_id,
+			"source_uid": entry.get("source_uid", ""),
+			"damage": int(entry.get("damage", 0)),
+			"reason": entry.get("reason", ""),
+		})
+		_active_death_chain_id = prev_chain_id
 	_pending_deaths.clear()
 	_death_event_sink = []
 
@@ -81,10 +94,36 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 	state.kill_unit(unit)  # 撤销占格索引并标记 alive = false
 	state.log("%s 被击败" % unit.uid)
 	state.on_unit_die.emit(unit.uid, source_uid, reason)
+	var death_chain_id := _active_death_chain_id
+	if death_chain_id <= 0:
+		_death_chain_serial += 1
+		death_chain_id = _death_chain_serial
 	if _defer_death_hooks_depth > 0:
-		_pending_deaths.append({"unit": unit})
+		var last_damage := int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0))
+		_pending_deaths.append({
+			"unit": unit,
+			"death_chain_id": death_chain_id,
+			"source_uid": source_uid,
+			"damage": last_damage,
+			"reason": reason,
+		})
 	else:
-		_GemEffects.on_unit_death(state, unit)
+		var prev_chain_id := _active_death_chain_id
+		_active_death_chain_id = death_chain_id
+		_GemEffects.on_unit_death(state, unit, [], {
+			"death_chain_id": death_chain_id,
+			"source_uid": source_uid,
+			"damage": int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0)),
+			"reason": reason,
+		})
+		_active_death_chain_id = prev_chain_id
+
+
+static func _record_damage_pair(state: GameState, victim_uid: String, source_uid: String, amount: int) -> void:
+	if source_uid.is_empty() or amount <= 0:
+		return
+	state.battle_temp_flags["damaged_by:%s:%s:%d" % [victim_uid, source_uid, state.turn_index]] = true
+	state.battle_temp_flags["last_damage_taken:%s" % victim_uid] = amount
 
 
 ## 近战攻击（pipeline 版本）：返回 {ok, reason, events}

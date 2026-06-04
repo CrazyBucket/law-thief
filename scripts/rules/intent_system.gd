@@ -2,6 +2,7 @@ class_name IntentSystem
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
@@ -208,9 +209,22 @@ static func _build_skill_intent(
 			var origin := _SplitShotRules.attacker_origin(unit, aim_pos)
 			unit.pos = saved_pos
 			intent.affected_cells = []
-			for cell in _SplitShotRules.all_hit_cells(origin, aim_pos):
+			var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+			var split_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
+			for cell in _SplitShotRules.all_hit_cells(origin, aim_pos, [], split_level):
 				if not cell in intent.affected_cells:
 					intent.affected_cells.append(cell)
+	if intent.type == "light_beam":
+		var light_target: UnitState = state.units.get(action.action_target_uid, null)
+		if light_target != null:
+			intent.affected_cells = []
+			var from_cell := BoardUtils.projectile_origin_cell(unit, light_target.pos)
+			var dx := signi(light_target.pos.x - from_cell.x)
+			var dy := signi(light_target.pos.y - from_cell.y)
+			var current := from_cell + Vector2i(dx, dy)
+			while BoardUtils.in_bounds(state, current):
+				intent.affected_cells.append(current)
+				current += Vector2i(dx, dy)
 
 	return intent
 
@@ -244,7 +258,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append_array(_execute_melee(state, unit, intent, move_start_pos))
 		"ranged_attack":
 			anim_events.append_array(_execute_ranged(state, unit, intent, move_start_pos))
-		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack":
+		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack", "light_beam":
 			anim_events.append_array(_behavior_for(unit).execute_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)

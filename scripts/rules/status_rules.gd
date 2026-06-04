@@ -246,6 +246,31 @@ static func is_vulnerable(unit: UnitState) -> bool:
 	return unit.has_status(Constants.STATUS_VULNERABLE)
 
 
+static func apply_light_exposed(
+	state: GameState,
+	unit: UnitState,
+	stacks: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_LIGHT_EXPOSED, {
+		"stacks": stacks,
+		"duration": 0,
+		"source_uid": source_uid,
+	})
+
+
+static func apply_blinded(
+	state: GameState,
+	unit: UnitState,
+	duration: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_BLINDED, {
+		"duration": duration,
+		"source_uid": source_uid,
+	})
+
+
 ## 返回缓速扣减后的实际移动力（最低1）
 static func effective_move_points(unit: UnitState, base: int) -> int:
 	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
@@ -340,6 +365,10 @@ static var _OVERLAY_STATUS_PRETICK: Array = [
 		func(status: StatusInstance, state: GameState, unit: UnitState) -> void:
 			status.stacks = status.stacks * 2
 			state.log("%s 处于火焰中，burning 层数翻倍为 %d" % [unit.uid, status.stacks])],
+	[Constants.STATUS_BURNING, Constants.TILE_MOD_TOXIC_SMOKE,
+		func(status: StatusInstance, state: GameState, unit: UnitState) -> void:
+			status.stacks = status.stacks * 2
+			state.log("%s 处于毒烟中，burning 层数翻倍为 %d" % [unit.uid, status.stacks])],
 ]
 
 

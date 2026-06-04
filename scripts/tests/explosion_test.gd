@@ -11,6 +11,9 @@ func _run() -> void:
 	_test_multicell_target_no_splash_self()
 	_test_radius_explosion_dedupes_multicell()
 	_test_aim_cell_shifts_cross_center()
+	_test_red_explosion_level_2_uses_square()
+	_test_red_explosion_level_3_doubles_square_damage()
+	_test_active_trigger_level_2_uses_square()
 	print("EXPLOSION_TEST_PASS")
 	quit()
 
@@ -94,12 +97,93 @@ func _test_aim_cell_shifts_cross_center() -> void:
 	print("  [OK] cross centers on aim cell")
 
 
+func _test_red_explosion_level_2_uses_square() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 2024)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosions(state, player, 2)
+	var guards := _guards(state)
+	assert(guards.size() >= 1)
+	var primary := guards[0]
+	var diagonal := _spawn_guard(state, primary.pos + Vector2i(1, 1))
+	state.rebuild_occupancy()
+	var diagonal_hp := diagonal.hp
+	var result := ctrl.try_attack_cell(primary.pos)
+	assert(result.get("ok", false))
+	var explode_ev := _first_explode_event(result.get("attack_events", []))
+	assert(explode_ev.get("pattern", "") == "square", "level 2 explosion should use square pattern")
+	assert(diagonal.hp < diagonal_hp, "level 2 square explosion should hit diagonal unit")
+	print("  [OK] red explosion level 2 square")
+
+
+func _test_red_explosion_level_3_doubles_square_damage() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 2025)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosions(state, player, 3)
+	var guards := _guards(state)
+	assert(guards.size() >= 1)
+	var primary := guards[0]
+	var hp_before := primary.hp
+	var result := ctrl.try_attack_cell(primary.pos)
+	assert(result.get("ok", false))
+	var dealt := hp_before - primary.hp
+	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE * 2, "level 3 explosion should deal double damage, got %d" % dealt)
+	var explode_ev := _first_explode_event(result.get("attack_events", []))
+	assert(explode_ev.get("pattern", "") == "square", "level 3 explosion should use square pattern")
+	print("  [OK] red explosion level 3 double damage")
+
+
+func _test_active_trigger_level_2_uses_square() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 2026)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosions(state, player, 2)
+	var guards := _guards(state)
+	assert(guards.size() >= 1)
+	var primary := guards[0]
+	var diagonal := _spawn_guard(state, primary.pos + Vector2i(1, 1))
+	state.rebuild_occupancy()
+	var diagonal_hp := diagonal.hp
+	var events: Array[Dictionary] = []
+	var red_slot: SlotState = player.slots_accepting(Constants.SLOT_RED)[0]
+	var ok := GemEffects.trigger_gem(state, player.uid, red_slot, events, "", primary.pos)
+	assert(ok, "active trigger should succeed")
+	var explode_ev := _first_explode_event(events)
+	assert(explode_ev.get("pattern", "") == "square", "active level 2 explosion should use square pattern")
+	assert(diagonal.hp < diagonal_hp, "active level 2 square explosion should hit diagonal unit")
+	print("  [OK] active red explosion level 2 square")
+
+
 func _equip_red_explosion(state: GameState, unit: UnitState) -> void:
-	var gem := GemState.new()
-	gem.uid = "test_explosion_%s" % unit.uid
-	gem.gem_id = Constants.GEM_EXPLOSION
-	state.gems[gem.uid] = gem
-	unit.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	_equip_red_explosions(state, unit, 1)
+
+
+func _equip_red_explosions(state: GameState, unit: UnitState, count: int) -> void:
+	while unit.slots_accepting(Constants.SLOT_RED).size() < count:
+		unit.slots.append(SlotState.create(Constants.SLOT_RED))
+	var red_slots := unit.slots_accepting(Constants.SLOT_RED)
+	for i in range(count):
+		var slot: SlotState = red_slots[i]
+		if not slot.gem_uid.is_empty():
+			state.gems.erase(slot.gem_uid)
+		var gem := GemState.new()
+		gem.uid = "test_explosion_%s_%d" % [unit.uid, i]
+		gem.gem_id = Constants.GEM_EXPLOSION
+		gem.owner_uid = unit.uid
+		gem.slot_index = unit.slots.find(slot)
+		state.gems[gem.uid] = gem
+		slot.gem_uid = gem.uid
+
+
+func _first_explode_event(events: Array) -> Dictionary:
+	for ev in events:
+		if str(ev.get("type", "")) == "explode":
+			return ev
+	return {}
 
 
 func _guards(state: GameState) -> Array[UnitState]:

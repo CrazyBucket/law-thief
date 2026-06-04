@@ -26,7 +26,7 @@ static func operation_range_for_action(state: GameState, action: String) -> int:
 		Constants.ACTION_EXTRACT:
 			return _effective_extract_range(state)
 		Constants.ACTION_INSERT:
-			return _effective_insert_range(state
+			return _effective_insert_range(state)
 	return -1
 
 

@@ -212,6 +212,19 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			if ice_target.alive:
 				GemEffects.apply_ice_hit_effect(state, ice_target, unit.uid)
 			return ice_events
+		"light_beam":
+			var light_target: UnitState = state.units.get(intent.target_uid, null)
+			if light_target == null or not light_target.alive:
+				return [] as Array[Dictionary]
+			var result := CombatRules.ranged_attack(
+				state,
+				unit,
+				light_target.pos,
+				Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+			)
+			if not result.get("ok", false):
+				return [] as Array[Dictionary]
+			return result.get("events", [] as Array[Dictionary])
 		_:
 			return [] as Array[Dictionary]
 
@@ -353,4 +366,3 @@ static func _enemy_red_damage_events(
 		"is_crit": is_crit,
 		"attacker_uid": unit.uid,
 	}]
-

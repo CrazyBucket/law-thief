@@ -1,6 +1,7 @@
 class_name BattleTurnService
 extends RefCounted
 
+const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 var _ctrl: BattleController
@@ -96,6 +97,7 @@ func finish_enemy_phase() -> void:
 		return
 	ctrl.state.turn_index += 1
 	StatusRules.tick_turn_start(ctrl.state)
+	GemEffects.tick_turn_start(ctrl.state)
 	ctrl.state.phase = Constants.PHASE_PLAYER
 	ctrl.state.bootstrap_split_controllable_turn()
 	ctrl.state.player_moved = false

@@ -79,6 +79,10 @@ static func short_label(status: StatusInstance) -> String:
 			return "麻%d" % maxi(status.duration, 1)
 		Constants.STATUS_SLOWED:
 			return "缓%d" % status.stacks
+		Constants.STATUS_LIGHT_EXPOSED:
+			return "曝%d" % status.stacks
+		Constants.STATUS_BLINDED:
+			return "盲%d" % maxi(status.duration, 1)
 		Constants.STATUS_WET:
 			return "湿"
 		Constants.STATUS_SLUGGISH:
@@ -103,9 +107,9 @@ static func short_label(status: StatusInstance) -> String:
 ## 图标角标数字（层数/持续/护甲值）；无数字时返回空串
 static func icon_badge(status: StatusInstance) -> String:
 	match status.status_id:
-		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED:
+		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED, Constants.STATUS_LIGHT_EXPOSED:
 			return str(status.stacks)
-		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED:
+		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED, Constants.STATUS_BLINDED:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
@@ -122,6 +126,10 @@ static func tooltip(status: StatusInstance) -> String:
 			return "麻痹：本回合无法行动，剩余 %d 回合" % status.duration
 		Constants.STATUS_SLOWED:
 			return "缓速：移动力减少 %d 格（最低1）" % status.stacks
+		Constants.STATUS_LIGHT_EXPOSED:
+			return "曝光：被光束标记，层数可被黑槽光清算"
+		Constants.STATUS_BLINDED:
+			return "致盲：攻击容易落空，剩余 %d 回合" % status.duration
 		Constants.STATUS_WET:
 			return "潮湿：与冰/电互动效果增强"
 		Constants.STATUS_SLUGGISH:
@@ -191,6 +199,22 @@ static var _DEFS: Dictionary = {
 		"color": Color(0.72, 0.78, 0.88),
 		"stack_rule": STACK_MAX_VALUE,
 		"tick_phase": TICK_TURN_END,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_LIGHT_EXPOSED: {
+		"display_name": "曝光",
+		"type": TYPE_DEBUFF,
+		"color": Color(1.0, 0.95, 0.55),
+		"stack_rule": STACK_VALUE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_BLINDED: {
+		"display_name": "致盲",
+		"type": TYPE_DEBUFF,
+		"color": Color(0.95, 0.9, 0.68),
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_TURN_START,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_ROOTED: {

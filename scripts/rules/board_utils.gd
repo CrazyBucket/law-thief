@@ -143,7 +143,7 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "water"}))
 			water_cost = maxf(0.0, water_cost - float(reduce))
 		cost += water_cost
-	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		var fog_cost := float(Constants.POISON_FOG_DAMAGE) * float(profile.get("poison_damage_weight", 2.0))
 		if tile_immune:
 			fog_cost = 0.0
@@ -151,7 +151,7 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "poison_fog"}))
 			fog_cost = maxf(0.0, fog_cost - float(reduce))
 		cost += fog_cost
-	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+	if tile.has_modifier(Constants.TILE_MOD_FIRE) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		if registry != null:
 			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "fire"}))
 			cost = maxf(base_step, cost - float(reduce))

@@ -13,6 +13,7 @@ const _REQUIRED_FIELDS: Dictionary = {
 	"explode":   ["pos"],
 	"projectile": ["from", "to"],
 	"projectile_deflect": ["from", "to"],
+	"light_beam": ["from", "to"],
 	"die":       ["uid"],
 	"spawn":     ["uid", "pos"],
 	"status":    ["uid", "status_id"],

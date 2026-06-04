@@ -1,5 +1,6 @@
 extends SceneTree
 
+const CombatRules = preload("res://scripts/rules/combat_rules.gd")
 const GemEffectsScript = preload("res://scripts/rules/gem_effects.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 
@@ -15,9 +16,12 @@ func _run_test() -> void:
 	_test_black_split_can_extract()
 	_test_blue_only_on_single_target()
 	_test_clone_hp_ratio()
+	_test_black_split_level_ratios()
 	_test_slam_pushes_adjacent_target()
 	_test_split_redirect_skips_without_neighbor()
 	_test_split_surround_uses_footprint_ring()
+	_test_split_blue_level_two_splits_to_all_neighbors()
+	_test_split_blue_level_three_temp_clone_once_per_turn()
 	_test_clone_footprint_1x1()
 	_test_clone_death_no_resplit()
 	_test_clone_uses_melee_ai()
@@ -120,8 +124,34 @@ func _test_clone_hp_ratio() -> void:
 			clone_hp = unit.max_hp
 			assert(unit.footprint_size == Vector2i(1, 1))
 			break
-	assert(clone_hp == 10, "clone hp should be 50%% of 20 = 10, got %d" % clone_hp)
-	print("  [OK] death clones inherit 50%% hp")
+	assert(clone_hp == 6, "clone hp should be 30%% of 20 = 6, got %d" % clone_hp)
+	print("  [OK] death clones inherit level 1 30%% hp")
+
+
+func _test_black_split_level_ratios() -> void:
+	assert(_clone_hp_for_black_split_level(2) == 10, "level 2 split clone hp should be 50%% of 20")
+	assert(_clone_hp_for_black_split_level(3) == 16, "level 3 split clone hp should be 80%% of 20")
+	print("  [OK] black split level 2/3 hp ratios")
+
+
+func _clone_hp_for_black_split_level(level: int) -> int:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	slime.max_hp = 20
+	slime.hp = 20
+	while slime.slots_accepting(Constants.SLOT_BLACK).size() < level:
+		slime.slots.append(SlotState.create(Constants.SLOT_BLACK))
+	var black_slots := slime.slots_accepting(Constants.SLOT_BLACK)
+	for i in range(level):
+		_mount_gem_on_slot(state, slime, black_slots[i], Constants.GEM_SPLIT)
+	var events: Array[Dictionary] = []
+	GemEffectsScript.on_unit_death(state, slime, events)
+	for unit in state.units.values():
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			return unit.max_hp
+	return -1
 
 
 func _test_slam_pushes_adjacent_target() -> void:
@@ -173,6 +203,60 @@ func _test_split_surround_uses_footprint_ring() -> void:
 	)
 	assert(remaining == 5, "footprint surround should allow redirect, got %d" % remaining)
 	print("  [OK] split surround uses footprint ring")
+
+
+func _test_split_blue_level_two_splits_to_all_neighbors() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	slime.pos = Vector2i(2, 2)
+	var dummy_a := _spawn_dummy(state, Vector2i(1, 1))
+	var dummy_b := _spawn_dummy(state, Vector2i(4, 4))
+	_mount_gem(state, slime, Constants.SLOT_BLUE, Constants.GEM_SPLIT)
+	slime.slots.append(SlotState.create(Constants.SLOT_BLUE))
+	_mount_gem_on_slot(state, slime, slime.slots[slime.slots.size() - 1], Constants.GEM_SPLIT)
+	var hp_a := dummy_a.hp
+	var hp_b := dummy_b.hp
+	var remaining := GemEffectsScript.intercept_damage_for_split(
+		state, slime, "player_1", "melee_attack", 12
+	)
+	assert(remaining == 4, "level 2 split should leave owner one share, got %d" % remaining)
+	assert(dummy_a.hp == hp_a - 4 and dummy_b.hp == hp_b - 4, "level 2 split should damage both neighbors")
+	print("  [OK] split blue level 2 shares damage with all neighbors")
+
+
+func _test_split_blue_level_three_temp_clone_once_per_turn() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	slime.pos = Vector2i(2, 2)
+	_spawn_dummy(state, Vector2i(1, 1))
+	_spawn_dummy(state, Vector2i(4, 4))
+	while slime.slots_accepting(Constants.SLOT_BLUE).size() < 3:
+		slime.slots.append(SlotState.create(Constants.SLOT_BLUE))
+	var blue_slots := slime.slots_accepting(Constants.SLOT_BLUE)
+	for i in range(3):
+		_mount_gem_on_slot(state, slime, blue_slots[i], Constants.GEM_SPLIT)
+	CombatRules.apply_damage(state, slime, 12, "player_1", "melee_attack")
+	var count_after_first := _count_split_blue_temp_clones(state, slime.uid)
+	CombatRules.apply_damage(state, slime, 12, "player_1", "melee_attack")
+	var count_after_second := _count_split_blue_temp_clones(state, slime.uid)
+	assert(count_after_first == 1, "level 3 split blue should spawn one temp clone")
+	assert(count_after_second == 1, "level 3 split blue should trigger once per turn")
+	state.turn_index += 1
+	GemEffectsScript.tick_turn_start(state)
+	assert(_count_split_blue_temp_clones(state, slime.uid) == 0, "temp split clone should expire next turn")
+	print("  [OK] split blue level 3 temp clone once per turn")
+
+
+func _count_split_blue_temp_clones(state: GameState, origin_uid: String) -> int:
+	var count := 0
+	for unit in state.units.values():
+		if unit.split_origin_uid == origin_uid and unit.has_tag("unit:split_blue_temp_clone"):
+			count += 1
+	return count
 
 
 func _test_clone_footprint_1x1() -> void:
@@ -429,6 +513,11 @@ func _mount_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: St
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	var slot := unit.get_slot(slot_type)
 	assert(slot != null, "slot should exist")
+	_mount_gem_on_slot(state, unit, slot, gem_id)
+
+
+func _mount_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, gem_id: String) -> void:
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	if not slot.gem_uid.is_empty():
 		state.gems.erase(slot.gem_uid)
 	var gem_uid: String = reg.next_runtime_uid("gem")
