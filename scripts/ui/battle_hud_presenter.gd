@@ -28,6 +28,7 @@ var _hp_text: Label = null
 var _turn_label: Label = null
 var _move_chip: Label = null
 var _act_chip: Label = null
+var _overload_chip: Label = null
 var _held_label: Label = null
 var _held_gem_icon: TextureRect = null
 var _hint_label: Label = null
@@ -42,7 +43,8 @@ var _insert_btn: Button = null
 var _end_turn_btn: Button = null
 var _toggle_panel_btn: Button = null
 var _relic_bar_scroll: ScrollContainer = null
-var _relic_bar_vbox: HFlowContainer = null
+var _relic_bar_vbox: VBoxContainer = null
+var _show_relic_detail_cb: Callable = Callable()
 
 var _select_unit_cb: Callable = Callable()
 var _set_timeline_hover_cb: Callable = Callable()
@@ -73,6 +75,7 @@ func setup(deps: Dictionary) -> void:
 	_turn_label = deps.get("turn_label", null)
 	_move_chip = deps.get("move_chip", null)
 	_act_chip = deps.get("act_chip", null)
+	_overload_chip = deps.get("overload_chip", null)
 	_held_label = deps.get("held_label", null)
 	_held_gem_icon = deps.get("held_gem_icon", null)
 	_hint_label = deps.get("hint_label", null)
@@ -88,6 +91,7 @@ func setup(deps: Dictionary) -> void:
 	_toggle_panel_btn = deps.get("toggle_panel_btn", null)
 	_relic_bar_scroll = deps.get("relic_bar_scroll", null)
 	_relic_bar_vbox = deps.get("relic_bar_vbox", null)
+	_show_relic_detail_cb = deps.get("show_relic_detail_cb", Callable())
 	_select_unit_cb = deps.get("select_unit_cb", Callable())
 	_set_timeline_hover_cb = deps.get("set_timeline_hover_cb", Callable())
 	_clear_timeline_hover_cb = deps.get("clear_timeline_hover_cb", Callable())
@@ -115,6 +119,8 @@ func refresh(context: Dictionary) -> Dictionary:
 	refresh_economy_chips(state)
 
 	var turn_suffix := " · 第%d回合" % state.turn_index
+	var phase_text := ""
+	var phase_color := BattleUiTheme.PHASE_ENEMY
 	match state.phase:
 		Constants.PHASE_PLAYER:
 			var queue_suffix := ""
@@ -122,14 +128,19 @@ func refresh(context: Dictionary) -> Dictionary:
 				var total := 1 + state.controllable_queue.size()
 				var current := total - state.controllable_queue.size()
 				queue_suffix = " · %d/%d" % [current, total]
-			_phase_badge.text = "你的回合" + turn_suffix + queue_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_PLAYER)
+			phase_text = "你的回合" + turn_suffix + queue_suffix
+			phase_color = BattleUiTheme.PHASE_PLAYER
 		Constants.PHASE_ENDED:
-			_phase_badge.text = "战斗结束" + turn_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
+			phase_text = "战斗结束" + turn_suffix
+			phase_color = BattleUiTheme.PHASE_END
 		_:
-			_phase_badge.text = "敌方回合" + turn_suffix
-			_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_ENEMY)
+			phase_text = "敌方回合" + turn_suffix
+			phase_color = BattleUiTheme.PHASE_ENEMY
+	if state.overload_pending and state.phase == Constants.PHASE_PLAYER:
+		phase_text += " · 过载预兆"
+		phase_color = BattleUiTheme.TEXT_GOLD
+	_phase_badge.text = phase_text
+	_phase_badge.add_theme_color_override("font_color", phase_color)
 
 	var held := _controller.get_held_gem()
 	if held != null:
@@ -147,11 +158,15 @@ func refresh(context: Dictionary) -> Dictionary:
 		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 
 	var tutorial_hint: String = _controller.get_tutorial_hint()
-	_hint_label.text = tutorial_hint
+	var action_hint: String = _controller.get_action_hint()
+	var overload_summary := _overload_summary_text(state)
+	_hint_label.text = tutorial_hint if not tutorial_hint.is_empty() else action_hint
+	if not overload_summary.is_empty():
+		_hint_label.text += "\n" + overload_summary
 	if not tutorial_hint.is_empty():
 		_message_label.text = tutorial_hint.split("\n")[0]
 	elif _message_label.text.is_empty():
-		_message_label.text = _controller.get_action_hint()
+		_message_label.text = action_hint
 
 	var active_turn_uid := _get_active_turn_uid(state, enemy_phase_running, enemy_turn_queue)
 	_refresh_turn_queue(state, active_turn_uid, timeline_hover_uid, enemy_phase_running)
@@ -171,6 +186,15 @@ func refresh_economy_chips(state: GameState) -> void:
 		return
 	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
 	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
+	var active_count: int = state.overload_active_mutations.size()
+	var pending_count: int = 1 if state.overload_pending else 0
+	if _overload_chip != null:
+		_overload_chip.text = "过载 %d+%d" % [active_count, pending_count] if pending_count > 0 else "过载 %d" % active_count
+		_style_chip(_overload_chip, state.overload_pending, BattleUiTheme.TEXT_GOLD)
+	_move_chip.tooltip_text = "本回合还能否移动"
+	_act_chip.tooltip_text = "本回合还能否行动"
+	if _overload_chip != null:
+		_overload_chip.tooltip_text = "当前异变 %d 层%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
 	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
 
@@ -239,7 +263,7 @@ func _apply_status_inner_width(inner_w: float) -> void:
 	_slot_clip.custom_minimum_size.x = inner_w
 	_slot_box.size.x = inner_w
 	if _relic_bar_scroll != null:
-		_relic_bar_scroll.custom_minimum_size.x = inner_w
+		_relic_bar_scroll.custom_minimum_size.x = maxf(inner_w - 32.0, 40.0)
 
 
 func _status_panel_content_margins() -> Vector2:
@@ -280,6 +304,9 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR])
 	var attack_value := CombatRules.attack_damage(state, unit)
 	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
+	var stack_lines := _status_stack_lines(unit)
+	if not stack_lines.is_empty():
+		stat_parts.append("层数：%s" % " · ".join(stack_lines))
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		stat_parts.append(unit.intent.preview_text)
 	_inspect_stats.text = "\n".join(stat_parts)
@@ -551,12 +578,9 @@ func _refresh_relic_bar() -> void:
 	if owned.is_empty():
 		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
 		return
-	var inner_w := _status_vbox.custom_minimum_size.x
-	if inner_w <= 0.0:
-		inner_w = _STATUS_PANEL_WIDTH - _status_panel_content_margins().x
-	_relic_bar_scroll.custom_minimum_size.x = inner_w
+	_relic_bar_scroll.custom_minimum_size.x = 52.0
 	var content_h := _relic_bar_vbox.get_minimum_size().y
-	var max_h := 92.0
+	var max_h := 168.0
 	_relic_bar_scroll.custom_minimum_size.y = minf(content_h, max_h)
 
 
@@ -572,16 +596,8 @@ func _create_relic_badge(relic_id: String) -> Control:
 	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
 	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
 	var rarity_col := rarity_color(rarity)
-	var badge := PanelContainer.new()
-	badge.custom_minimum_size = Vector2(40, 40)
-	var style := StyleBoxFlat.new()
-	style.bg_color = rarity_col.darkened(0.55)
-	style.border_color = rarity_col
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(5)
-	style.set_content_margin_all(3)
-	badge.add_theme_stylebox_override("panel", style)
-	var name_str: String = str(def.get("name", relic_id))
+	var root := Control.new()
+	root.custom_minimum_size = Vector2(40, 40)
 	var icon_tex := UnitLooks.get_relic_texture(relic_id)
 	if icon_tex != null:
 		var icon := TextureRect.new()
@@ -590,10 +606,19 @@ func _create_relic_badge(relic_id: String) -> Control:
 		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		badge.add_child(icon)
-	var badge_tooltip: String = name_str + "\n" + relic_desc_text(def)
-	badge.tooltip_text = badge_tooltip
-	return badge
+		icon.self_modulate = rarity_col
+		root.add_child(icon)
+	var click_btn := Button.new()
+	click_btn.flat = true
+	click_btn.focus_mode = Control.FOCUS_NONE
+	click_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	click_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	if _show_relic_detail_cb.is_valid():
+		click_btn.pressed.connect(_show_relic_detail_cb.bind(relic_id))
+	root.add_child(click_btn)
+	var badge_tooltip: String = str(def.get("name", relic_id)) + "\n" + relic_desc_text(def)
+	root.tooltip_text = badge_tooltip
+	return root
 
 
 func relic_desc_text(def: Dictionary) -> String:
@@ -601,6 +626,26 @@ func relic_desc_text(def: Dictionary) -> String:
 	if not desc.is_empty():
 		return desc
 	return "（暂无描述）"
+
+
+func _overload_summary_text(state: GameState) -> String:
+	if state == null:
+		return ""
+	var active_count: int = state.overload_active_mutations.size()
+	if not state.overload_pending and active_count <= 0:
+		return ""
+	if state.overload_pending:
+		return "过载层数 %d + 待生效 1" % active_count
+	return "过载层数 %d" % active_count
+
+
+func _status_stack_lines(unit: UnitState) -> Array[String]:
+	var lines: Array[String] = []
+	for status in unit.statuses:
+		if status == null or status.stacks <= 1:
+			continue
+		lines.append("%s×%d" % [StatusUi._StatusRegistry.display_name(status.status_id), status.stacks])
+	return lines
 
 
 func rarity_color(rarity: String) -> Color:

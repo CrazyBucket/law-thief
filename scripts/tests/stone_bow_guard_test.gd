@@ -114,6 +114,8 @@ func _test_faulty_blind_shot() -> void:
 	player.pos = Vector2i(1, 2)
 	player.hp = player.max_hp
 	IntentSystem.refresh_unit_intent(state, bow)
+	assert(bow.intent.type == "ranged_attack", "faulty bow should still use ranged attack, got %s" % bow.intent.type)
+	assert(bow.intent.path.is_empty(), "faulty deployed shot should not move")
 	assert(bow.intent.preview_text.begins_with("盲射"), "faulty preview")
 	rng.set_seed(7)
 	IntentSystem.execute_intent(state, bow)

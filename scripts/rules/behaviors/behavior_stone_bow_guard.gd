@@ -15,7 +15,7 @@ static func build_normal_intent(state: GameState, unit: UnitState, cell_blockers
 
 
 static func build_lawless_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
-	var intent := EnemyBehavior.build_normal_intent(state, unit, cell_blockers)
+	var intent := build_normal_intent(state, unit, cell_blockers)
 	if intent.type != "wait":
 		intent.preview_text = "盲射·%s" % intent.preview_text
 	return intent

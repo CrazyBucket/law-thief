@@ -74,9 +74,11 @@ var _preview_panel_tween: Tween = null
 var _preview_visible_target: bool = false
 var _preview_fade_serial: int = 0
 var _relic_reward_overlay: Node = null
+var _relic_detail_overlay: Node = null
 var _held_gem_icon: TextureRect = null
+var _overload_chip: Label = null
 var _relic_bar_scroll: ScrollContainer = null
-var _relic_bar_vbox: HFlowContainer = null
+var _relic_bar_vbox: VBoxContainer = null
 var _tracked_player_uid: String = ""
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
@@ -101,6 +103,7 @@ func _ready() -> void:
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
 	call_deferred("_setup_held_gem_row")
+	_setup_overload_chip()
 	_wire_hover_interactions()
 	_create_slot_popup()
 	_create_damage_text_manager()
@@ -135,6 +138,7 @@ func _ready() -> void:
 		"turn_label": _turn_label,
 		"move_chip": _move_chip,
 		"act_chip": _act_chip,
+		"overload_chip": _overload_chip,
 		"held_label": _held_label,
 		"held_gem_icon": _held_gem_icon,
 		"hint_label": _hint_label,
@@ -150,6 +154,7 @@ func _ready() -> void:
 		"toggle_panel_btn": _toggle_panel_btn,
 		"relic_bar_scroll": _relic_bar_scroll,
 		"relic_bar_vbox": _relic_bar_vbox,
+		"show_relic_detail_cb": Callable(self, "_show_relic_detail_popup"),
 		"select_unit_cb": Callable(self, "_select_unit"),
 		"set_timeline_hover_cb": Callable(self, "_set_timeline_hover"),
 		"clear_timeline_hover_cb": Callable(self, "_clear_timeline_hover"),
@@ -444,8 +449,8 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 				_message_label.text = "已从地块拔出，选择槽位嵌入"
 			Constants.ACTION_INSERT:
 				_begin_held_gem_insert(tile_pos, result)
-				if bool(result.get("overload_only", false)):
-					_message_label.text = "过载预兆：结束回合后生效"
+				if bool(result.get("overload_forced", false)):
+					_message_label.text = "过载嵌入：已压入地块，结束回合后异变生效"
 				else:
 					_message_label.text = "已嵌入地块" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
 	_refresh()
@@ -474,10 +479,10 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 				_message_label.text = "已拔出，选择槽位嵌入"
 			Constants.ACTION_INSERT:
 				var insert_target: UnitState = _controller.state.units.get(unit_uid, null)
-				if insert_target != null and not bool(result.get("overload_only", false)):
+				if insert_target != null:
 					_begin_held_gem_insert(insert_target.pos, result)
-				if bool(result.get("overload_only", false)):
-					_message_label.text = "过载预兆：结束回合后生效"
+				if bool(result.get("overload_forced", false)):
+					_message_label.text = "过载嵌入：已压入槽位，结束回合后异变生效"
 				else:
 					_message_label.text = "已嵌入" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
 	_refresh()
@@ -961,6 +966,16 @@ func _setup_held_gem_row() -> void:
 	row.add_child(_held_label)
 
 
+func _setup_overload_chip() -> void:
+	if _turn_chips == null or _overload_chip != null:
+		return
+	_overload_chip = Label.new()
+	_overload_chip.name = "OverloadChip"
+	_overload_chip.add_theme_font_size_override("font_size", 12)
+	_overload_chip.text = "过载 0"
+	_turn_chips.add_child(_overload_chip)
+
+
 func _clamp_preview_panel() -> void:
 	var max_panel_h: float = size.y * 0.42
 	if _preview_panel.size.y > max_panel_h:
@@ -981,7 +996,15 @@ func _input(event: InputEvent) -> void:
 			_console.close()
 			get_viewport().set_input_as_handled()
 			return
+		if event.keycode == KEY_ESCAPE and _relic_detail_overlay != null:
+			_dismiss_relic_detail_popup()
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		if _relic_detail_overlay != null:
+			_dismiss_relic_detail_popup()
+			get_viewport().set_input_as_handled()
+			return
 		if _slot_popup != null and _slot_popup.is_showing():
 			_dismiss_popup()
 			get_viewport().set_input_as_handled()
@@ -1120,22 +1143,99 @@ func _wire_hover_interactions() -> void:
 
 
 func _setup_relic_bar() -> void:
+	if _info_col == null or _relic_bar_scroll != null:
+		return
 	var scroll := ScrollContainer.new()
 	scroll.name = "RelicBarScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
 	scroll.visible = false
-	var flow := HFlowContainer.new()
-	flow.name = "RelicBarFlow"
-	flow.add_theme_constant_override("h_separation", 4)
-	flow.add_theme_constant_override("v_separation", 4)
-	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(flow)
-	_status_vbox.add_child(scroll)
-	_status_vbox.move_child(scroll, _header_row.get_index() + 1)
+	var column := VBoxContainer.new()
+	column.name = "RelicBarColumn"
+	column.add_theme_constant_override("separation", 6)
+	scroll.add_child(column)
+	_info_col.add_child(scroll)
+	_info_col.move_child(scroll, _hp_text.get_index() + 1)
 	_relic_bar_scroll = scroll
-	_relic_bar_vbox = flow
+	_relic_bar_vbox = column
+
+
+func _show_relic_detail_popup(relic_id: String) -> void:
+	if relic_id.is_empty():
+		return
+	_dismiss_relic_detail_popup()
+	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
+	var rarity_color := _hud_presenter.rarity_color(rarity)
+	var canvas := CanvasLayer.new()
+	canvas.layer = 72
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = Color(0.03, 0.03, 0.06, 0.72)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.custom_minimum_size = Vector2(420, 0)
+	panel.offset_left = -210
+	panel.offset_right = 210
+	panel.offset_top = -180
+	panel.offset_bottom = 180
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
+	root.add_child(panel)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	var icon_tex := UnitLooks.get_relic_texture(relic_id)
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(54, 54)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vbox.add_child(icon)
+	var title := Label.new()
+	title.text = str(def.get("name", relic_id))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", rarity_color)
+	vbox.add_child(title)
+	var rarity_label := Label.new()
+	rarity_label.text = _rarity_display_name(rarity)
+	rarity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rarity_label.add_theme_font_size_override("font_size", 13)
+	rarity_label.add_theme_color_override("font_color", rarity_color.lightened(0.08))
+	vbox.add_child(rarity_label)
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = false
+	body.fit_content = true
+	body.scroll_active = false
+	body.custom_minimum_size = Vector2(0, 120)
+	body.text = _hud_presenter.relic_desc_text(def)
+	body.add_theme_font_size_override("normal_font_size", 14)
+	body.add_theme_color_override("default_color", BattleUiTheme.TEXT)
+	vbox.add_child(body)
+	var close_btn := Button.new()
+	close_btn.text = "关闭"
+	close_btn.custom_minimum_size = Vector2(140, 40)
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	BattleUiTheme.apply_button(close_btn, "ghost")
+	close_btn.pressed.connect(_dismiss_relic_detail_popup)
+	vbox.add_child(close_btn)
+	_relic_detail_overlay = canvas
+	add_child(canvas)
+
+
+func _dismiss_relic_detail_popup() -> void:
+	if _relic_detail_overlay == null:
+		return
+	_relic_detail_overlay.queue_free()
+	_relic_detail_overlay = null
 
 
 func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:

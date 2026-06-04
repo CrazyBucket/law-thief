@@ -1,5 +1,7 @@
 extends SceneTree
 
+const GemRules = preload("res://scripts/rules/gem_rules.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_test")
@@ -8,6 +10,8 @@ func _initialize() -> void:
 func _run_test() -> void:
 	print("=== Gem Insert Overload Test ===")
 	_test_second_insert_overloads_without_replacing()
+	_test_forced_insert_keeps_held_visual_state_consistent()
+	_test_slot_panels_only_show_in_operation_range()
 	print("GEM_INSERT_OVERLOAD_TEST_PASS")
 	quit()
 
@@ -51,12 +55,70 @@ func _test_second_insert_overloads_without_replacing() -> void:
 		quit(1)
 		return
 
-	assert(bool(second_result.get("overload_only", false)), "second insert should be overload-only")
+	assert(bool(second_result.get("overload_forced", false)), "second insert should be a forced overload insert")
 	assert(state.overload_pending, "second insert should set overload pending")
-	assert(state.held_gem_uid == poison_uid, "held gem should not be swapped again")
-	assert(second_target_slot.gem_uid == second_target_original_uid, "occupied slot should not be replaced")
+	assert(controller.get_action_hint().contains("过载预兆"), "UI hint should enter overload pending state")
+	assert(state.held_gem_uid.is_empty(), "forced overload insert should consume the held gem")
+	assert(second_target_slot.gem_uid == second_target_original_uid, "original occupied slot should stay unchanged")
 	assert(player_red.gem_uid == held_explosion_uid, "first target slot should keep inserted gem")
-	print("  [OK] second insert overloads without replacement")
+	assert(player.slots.size() >= 2, "forced overload insert should create an extra slot")
+	assert(player.slots[player.slots.size() - 1].gem_uid == poison_uid, "forced overload insert should place the held gem into the new slot")
+	print("  [OK] second insert creates real overload slot")
+
+
+func _test_forced_insert_keeps_held_visual_state_consistent() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 13579)
+	var state := controller.state
+	var player := state.get_player()
+	var rat := _find_unit_by_def(state, "unit_bomb_rat")
+	if player == null or rat == null:
+		push_error("missing units for forced insert visual test")
+		quit(1)
+		return
+	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
+	_force_gem(state, player, Constants.SLOT_RED, Constants.GEM_POISON)
+	controller.select_action(Constants.ACTION_EXTRACT)
+	var extract_result := controller.try_extract(rat.uid, 0)
+	assert(extract_result.get("ok", false), "extract should succeed before forced insert")
+	controller.select_action(Constants.ACTION_INSERT)
+	var first_result := controller.try_insert(player.uid, 0)
+	assert(first_result.get("ok", false), "first insert should succeed before forced insert")
+	var held_before_forced := state.held_gem_uid
+	var slot_before_forced := player.get_slot(Constants.SLOT_RED).gem_uid
+	var slot_count_before := player.slots.size()
+	var forced_result := controller.try_insert(player.uid, 0)
+	assert(forced_result.get("ok", false), "forced insert should still succeed")
+	assert(bool(forced_result.get("overload_forced", false)), "forced insert should report overload_forced")
+	assert(state.held_gem_uid.is_empty(), "held gem should be consumed after forced insert")
+	assert(player.get_slot(Constants.SLOT_RED).gem_uid == slot_before_forced, "forced insert should not replace occupied slot gem")
+	assert(player.slots.size() == slot_count_before + 1, "forced insert should append an overload slot")
+	assert(player.slots[player.slots.size() - 1].gem_uid == held_before_forced, "new overload slot should hold the inserted gem")
+	print("  [OK] forced insert creates a real overload slot")
+
+
+func _test_slot_panels_only_show_in_operation_range() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 67890)
+	var state := controller.state
+	var player := state.get_player()
+	var rat := _find_unit_by_def(state, "unit_bomb_rat")
+	var guard := _find_unit_by_def(state, "unit_patrol_guard")
+	if player == null or rat == null or guard == null:
+		push_error("missing units for range test")
+		quit(1)
+		return
+	player.pos = Vector2i(1, 2)
+	rat.pos = Vector2i(2, 2)
+	guard.pos = Vector2i(6, 6)
+	state.rebuild_occupancy()
+	assert(GemRules.is_unit_in_operation_range(state, player, rat, Constants.ACTION_EXTRACT), "extract fan should show for nearby target")
+	assert(not GemRules.is_unit_in_operation_range(state, player, guard, Constants.ACTION_EXTRACT), "extract fan should hide for far target")
+	_force_gem(state, player, Constants.SLOT_RED, Constants.GEM_POISON)
+	state.held_gem_uid = player.get_slot(Constants.SLOT_RED).gem_uid
+	assert(GemRules.is_unit_in_operation_range(state, player, rat, Constants.ACTION_INSERT), "insert fan should show for nearby target")
+	assert(not GemRules.is_unit_in_operation_range(state, player, guard, Constants.ACTION_INSERT), "insert fan should hide for far target")
+	print("  [OK] slot panel range filter")
 
 
 func _force_gem(state: GameState, unit: UnitState, slot_type: String, gem_id: String) -> void:

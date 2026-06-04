@@ -10,6 +10,7 @@ const GEM_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_gem_sprites.gd")
 const PROP_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_prop_sprites.gd")
 const BoardFxTexturesClass := preload("res://scripts/ui/board_fx_textures.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
+const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
@@ -456,6 +457,8 @@ func pick_unit_slot(screen_pos: Vector2) -> Dictionary:
 		return {}
 	for unit: UnitState in state.units.values():
 		if unit == null or not unit.alive or unit.slots.is_empty():
+			continue
+		if not _unit_slot_panel_in_range(unit):
 			continue
 		var panel := _unit_slot_panel_layout(unit)
 		for item in panel.get("items", []):
@@ -934,6 +937,8 @@ func _draw_unit_slot_panels() -> void:
 	for unit: UnitState in state.units.values():
 		if unit == null or not unit.alive or unit.slots.is_empty():
 			continue
+		if not _unit_slot_panel_in_range(unit):
+			continue
 		var panel := _unit_slot_panel_layout(unit)
 		var items: Array = panel.get("items", [])
 		if items.is_empty():
@@ -1038,6 +1043,15 @@ func _unit_panel_anchor(unit: UnitState) -> Vector2:
 	var layout := _unit_sprite_layout(unit, center, sprite_size)
 	var top_left: Vector2 = layout.get("top_left", center - Vector2(sprite_size.x * 0.5, sprite_size.y))
 	return top_left + Vector2(sprite_size.x * 0.5, IsoCoordinates.visual(10.0))
+
+
+func _unit_slot_panel_in_range(unit: UnitState) -> bool:
+	if state == null or unit == null or slot_panel_action.is_empty():
+		return false
+	var player: UnitState = state.get_player()
+	if player == null:
+		return false
+	return GemRules.is_unit_in_operation_range(state, player, unit, slot_panel_action)
 
 
 func _slot_panel_should_show(slot: SlotState) -> bool:

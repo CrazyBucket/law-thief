@@ -18,6 +18,7 @@ func _run_tests() -> void:
 	state.rebuild_occupancy()
 
 	_test_pending_cancel(controller, state, player, guard)
+	_test_forced_insert_appends_slot(controller, state, player, guard)
 	_test_pending_activation(controller, state, player, guard)
 	_test_lawless_any_extract(controller, state, player, guard)
 	_test_operation_damage(controller, state, player, guard)
@@ -46,6 +47,38 @@ func _test_pending_cancel(controller: BattleController, state: GameState, player
 		_fail("selecting no action should cancel pending overload")
 		return
 	print("  [OK] overload pending can be cancelled")
+
+
+func _test_forced_insert_appends_slot(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
+	_reset_slots(state, player, guard)
+	controller.select_action(Constants.ACTION_INSERT)
+	var first := controller.try_insert(guard.uid, 0)
+	if not first.get("ok", false):
+		_fail("first insert for forced overload failed: %s" % first.get("reason", ""))
+		return
+	var held_before := state.held_gem_uid
+	var slot_count_before := guard.slots.size()
+	var original_red_uid := guard.get_slot_by_index(0).gem_uid
+	var forced := controller.try_insert(guard.uid, 0)
+	if not forced.get("ok", false):
+		_fail("forced overload insert failed: %s" % forced.get("reason", ""))
+		return
+	if not bool(forced.get("overload_forced", false)):
+		_fail("forced overload insert should report overload_forced")
+		return
+	if state.held_gem_uid != "":
+		_fail("forced overload insert should consume held gem")
+		return
+	if guard.slots.size() != slot_count_before + 1:
+		_fail("forced overload insert should add one extra slot")
+		return
+	if guard.get_slot_by_index(0).gem_uid != original_red_uid:
+		_fail("forced overload insert should keep original slot occupant")
+		return
+	if guard.get_slot_by_index(guard.slots.size() - 1).gem_uid != held_before:
+		_fail("forced overload insert should place held gem in new slot")
+		return
+	print("  [OK] forced overload insert appends slot")
 
 
 func _test_pending_activation(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:

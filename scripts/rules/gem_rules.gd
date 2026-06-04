@@ -21,6 +21,24 @@ static func _effective_insert_range(state: GameState) -> int:
 	return Constants.INSERT_RANGE + bonus
 
 
+static func operation_range_for_action(state: GameState, action: String) -> int:
+	match action:
+		Constants.ACTION_EXTRACT:
+			return _effective_extract_range(state)
+		Constants.ACTION_INSERT:
+			return _effective_insert_range(state
+	return -1
+
+
+static func is_unit_in_operation_range(state: GameState, actor: UnitState, target_unit: UnitState, action: String) -> bool:
+	if state == null or actor == null or target_unit == null:
+		return false
+	var max_range := operation_range_for_action(state, action)
+	if max_range < 0:
+		return false
+	return BoardUtils.distance_between_units(actor, target_unit) <= max_range
+
+
 static func _effective_trigger_range(state: GameState, slot: SlotState) -> int:
 	if slot == null or slot.gem_uid.is_empty():
 		return Constants.TRIGGER_RANGE
@@ -97,16 +115,18 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	if gem == null:
 		return _fail("宝石不存在")
 	var swapped_uid := ""
+	var overload_forced := false
 	if not slot.gem_uid.is_empty() and OverloadRules.can_force_insert(state):
+		overload_forced = true
+		slot = _make_overload_slot(slot)
+		target_unit.slots.append(slot)
 		state.log("%s 强行将 %s 压入 %s 的 %s 槽，过载涌动" % [
 			actor.uid,
 			_data_registry().get_gem_display_name(gem),
 			target_unit.uid,
 			slot.slot_type,
 		])
-		IntentSystem.refresh_all_intents(state)
-		return _ok({"gem_uid": gem.uid, "overload_only": true})
-	if not slot.gem_uid.is_empty():
+	elif not slot.gem_uid.is_empty():
 		var replaced: GemState = state.gems.get(slot.gem_uid, null)
 		if replaced != null:
 			_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot.slot_type, replaced.uid)
@@ -130,7 +150,7 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 			"from_uid": actor.uid,
 		})
 	IntentSystem.refresh_all_intents(state)
-	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid})
+	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid, "overload_forced": overload_forced})
 
 
 static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -227,14 +247,17 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	if gem == null:
 		return _fail("宝石不存在")
 	var swapped_uid := ""
+	var overload_forced := false
 	if not slot.gem_uid.is_empty() and OverloadRules.can_force_insert(state):
+		overload_forced = true
+		slot = _make_overload_slot(slot)
+		tile.slots.append(slot)
 		state.log("%s 强行将 %s 压入 %s 地块，过载涌动" % [
 			actor.uid,
 			_data_registry().get_gem_display_name(gem),
 			tile.tile_id,
 		])
-		return _ok({"gem_uid": gem.uid, "overload_only": true})
-	if not slot.gem_uid.is_empty():
+	elif not slot.gem_uid.is_empty():
 		var replaced: GemState = state.gems.get(slot.gem_uid, null)
 		if replaced != null:
 			replaced.owner_uid = actor.uid
@@ -247,7 +270,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	state.held_gem_uid = swapped_uid
 	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, _data_registry().get_gem_display_name(gem), tile.tile_id])
 	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
-	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid})
+	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": swapped_uid, "overload_forced": overload_forced})
 
 
 static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
@@ -281,6 +304,15 @@ static func trigger_tile(
 		return _fail("该槽位不支持主动触发")
 	state.player_acted = true
 	return _ok()
+
+
+static func _make_overload_slot(slot: SlotState) -> SlotState:
+	var overflow_slot := slot.clone()
+	overflow_slot.gem_uid = ""
+	overflow_slot.locked = false
+	overflow_slot.lock_type = ""
+	overflow_slot.unlock_until_turn = -1
+	return overflow_slot
 
 
 static func _behavior_for(unit: UnitState) -> GDScript:
