@@ -379,7 +379,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 			if gem_icon != null:
 				row.add_child(gem_icon)
 			label.text = display_name
-			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit)
+			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit, state)
 	label.add_theme_font_size_override("font_size", 11)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	row.add_child(label)
@@ -416,12 +416,44 @@ func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
 	return RulesIndex.slot_inspect_context(unit, slot)
 
 
-func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState) -> String:
+func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> String:
 	var gem_name: String = DataRegistry.get_gem_display_name(gem)
+	var lines: Array[String] = [gem_name]
 	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
-	if effect.is_empty():
-		return gem_name
-	return "%s\n%s" % [gem_name, effect]
+	if not effect.is_empty():
+		lines.append(effect)
+	if state != null:
+		var ctx := GemTagResolver.build_context(state, unit, slot.slot_type, GemEffects.TIMING_ACTIVE)
+		var tag_levels: Dictionary = ctx.get("tag_levels", {})
+		var combo_levels: Dictionary = ctx.get("combo_levels", {})
+		if not tag_levels.is_empty():
+			for tag in tag_levels.keys():
+				var lvl := int(tag_levels[tag])
+				if lvl <= 0:
+					continue
+				var level_key := "gem.level.%s.%d" % [str(tag), lvl]
+				var level_desc: String = TranslationServer.translate(level_key)
+				if level_desc != level_key:
+					lines.append(level_desc)
+				else:
+					var tag_sym_key := "gem.%s.symbol" % str(tag)
+					var sym: String = TranslationServer.translate(tag_sym_key)
+					if sym == tag_sym_key:
+						sym = str(tag)
+					lines.append("%s Lv%d" % [sym, lvl])
+		if not combo_levels.is_empty():
+			var combo_parts: Array[String] = []
+			for combo_id in combo_levels.keys():
+				var lvl := int(combo_levels[combo_id])
+				if lvl > 0:
+					var combo_key := "gem.combo.%s" % str(combo_id)
+					var combo_label: String = TranslationServer.translate(combo_key)
+					if combo_label == combo_key:
+						combo_label = str(combo_id).replace("_", "+")
+					combo_parts.append("%s Lv%d" % [combo_label, lvl])
+			if not combo_parts.is_empty():
+				lines.append("组合：%s" % " · ".join(combo_parts))
+	return "\n".join(lines)
 
 
 func _refresh_action_buttons(enemy_phase_running: bool) -> void:

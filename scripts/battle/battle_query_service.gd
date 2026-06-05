@@ -113,7 +113,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			if not state.player_moved and StatusRules.can_move(player) and cell in BoardUtils.reachable_cells(state, player.pos, player.move_points):
 				lines.append("→ 点击移动")
 		Constants.ACTION_ATTACK:
-			if cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
+			var attack_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+			if cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, attack_range):
 				if blocking != null and blocking.is_indestructible() and unit == null:
 					lines.append("→ 点击射击（静物不受伤害）")
 				elif tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
@@ -160,6 +161,11 @@ func get_action_hint() -> String:
 			return "移动：点击白色边框格（悬浮为浅绿，每回合 1 次）"
 
 		Constants.ACTION_ATTACK:
+			if ctrl.state != null:
+				var current_player: UnitState = ctrl.state.get_player()
+				if current_player != null:
+					var attack_range: int = GemEffects.red_attack_range(ctrl.state, current_player, Constants.ATTACK_RANGE)
+					return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % attack_range
 			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE
 		Constants.ACTION_EXTRACT:
 			return "拔出：点击目标 → 选槽位（免费）"
@@ -254,7 +260,7 @@ func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
 
 func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
-	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else Constants.ATTACK_RANGE
+	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
@@ -293,7 +299,7 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
 	if target_pos == player.pos:
 		return []
-	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else Constants.ATTACK_RANGE
+	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return []
 	if GemEffects.unit_has_red_light(state, player):
@@ -315,8 +321,15 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 		var blast_anchors: Array = cells.duplicate()
 		if not has_split:
 			blast_anchors = [target_pos]
+		var exp_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+		var explosion_level := maxi(1, GemTagResolver.tag_level(exp_ctx, "explosion"))
 		for anchor in blast_anchors:
-			for cell in GemEffects.cross_explosion_cells(anchor):
+			var blast_cells: Array
+			if explosion_level >= 2:
+				blast_cells = BoardUtils.cells_in_radius(anchor, Constants.EXPLOSION_RADIUS)
+			else:
+				blast_cells = GemEffects.cross_explosion_cells(anchor)
+			for cell in blast_cells:
 				if BoardUtils.in_bounds(state, cell) and not cell in cells:
 					cells.append(cell)
 	var victim: UnitState = state.get_unit_at(target_pos)

@@ -15,6 +15,7 @@ func _run_tests() -> void:
 	_test_explosion_attack_does_not_suicide()
 	_test_enemy_red_damage_includes_attacker_uid()
 	_test_pull_execute_respects_range()
+	_test_pull_range_scales_with_gravity_level()
 	_test_custom_intent_keeps_move_events()
 	print("ENEMY_RED_GEM_TEST_PASS")
 	quit()
@@ -160,6 +161,25 @@ func _test_pull_execute_respects_range() -> void:
 	print("  [OK] pull execute respects range")
 
 
+func _test_pull_range_scales_with_gravity_level() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("template_c", 42)
+	var state := ctrl.state
+	var guard := _find_guard(state)
+	var player := state.get_player()
+	_embed_red_gem(state, guard, Constants.GEM_GRAVITY)
+	var extra_slot := SlotState.create(Constants.SLOT_RED)
+	guard.slots.append(extra_slot)
+	_embed_gem_on_slot(state, guard, extra_slot, Constants.GEM_GRAVITY)
+	player.pos = guard.pos + Vector2i(Constants.ENEMY_GRAVITY_PULL_RANGE + 1, 0)
+	state.rebuild_occupancy()
+	IntentSystem.refresh_unit_intent(state, guard)
+	assert(guard.intent.type == "pull", "gravity level 2 should extend pull AI range")
+	var events := IntentSystem.execute_intent(state, guard)
+	assert(not events.is_empty(), "gravity level 2 pull should execute within extended range")
+	print("  [OK] pull range scales with gravity level")
+
+
 func _test_custom_intent_keeps_move_events() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("bomb_rat_test", 42)
@@ -207,13 +227,17 @@ func _find_unit_by_def(state: GameState, def_id: String) -> UnitState:
 
 
 func _embed_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
-	var gem := GemState.new()
-	gem.uid = "test_%s_%s" % [gem_id, unit.uid]
-	gem.gem_id = gem_id
-	state.gems[gem.uid] = gem
 	var red := unit.get_slot(Constants.SLOT_RED)
 	assert(red != null, "unit should have red slot")
-	red.gem_uid = gem.uid
-	gem.owner_uid = unit.uid
-	gem.slot_index = unit.slots.find(red)
+	_embed_gem_on_slot(state, unit, red, gem_id)
 	IntentSystem.refresh_unit_intent(state, unit)
+
+
+func _embed_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, gem_id: String) -> void:
+	var gem := GemState.new()
+	gem.uid = "test_%s_%s_%d" % [gem_id, unit.uid, unit.slots.find(slot)]
+	gem.gem_id = gem_id
+	state.gems[gem.uid] = gem
+	slot.gem_uid = gem.uid
+	gem.owner_uid = unit.uid
+	gem.slot_index = unit.slots.find(slot)

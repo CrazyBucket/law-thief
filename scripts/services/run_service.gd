@@ -67,6 +67,15 @@ func acquire_relic(relic_id: String) -> void:
 	DebugService.log_info("RunService: acquired %s" % relic_id)
 
 
+func acquire_gem(gem_id: String) -> void:
+	if _run == null:
+		push_warning("RunService.acquire_gem: no active run")
+		return
+	_run.carried_gem = {"gem_id": gem_id}
+	save_run()
+	DebugService.log_info("RunService: acquired gem %s" % gem_id)
+
+
 func remove_relic(relic_id: String) -> void:
 	if _run == null:
 		return
@@ -186,6 +195,28 @@ func get_or_roll_relic_offer(room_id: String, source: String, count: int = 3) ->
 	_run.snapshot_offer(room_id, offer)
 	for relic_id in offer:
 		ProfileService.mark_seen_relic(relic_id)
+	save_run()
+	return offer
+
+
+## 按房间来源抽宝石奖励，结果锁定快照保证 SL 安全（key 前缀 "gem_offer_"）
+## source:  pool key（"normal_chest" / "elite_combat" / "boss_reward"）
+## count:   奖励数量
+func get_or_roll_gem_offer(room_id: String, source: String, count: int = 3) -> Array[String]:
+	if _run == null:
+		return []
+	var snapshot_key := "gem_offer_%s" % room_id
+	var snapshot := _run.get_offer_snapshot(snapshot_key)
+	if not snapshot.is_empty():
+		return snapshot
+	var chapter := get_current_chapter()
+	var offer: Array[String] = DataRegistry.roll_gem_offer(
+		"gem_offer_%s" % room_id,
+		source,
+		count,
+		chapter
+	)
+	_run.snapshot_offer(snapshot_key, offer)
 	save_run()
 	return offer
 

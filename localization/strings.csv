@@ -21,6 +21,8 @@ gem.heavy_armor.name,重甲,Heavy Armor
 gem.heavy_armor.symbol,甲,Armor
 gem.conductive.name,导电,Conductive
 gem.conductive.symbol,电,Volt
+gem.arc.name,导电,Conductive
+gem.arc.symbol,电,Volt
 gem.fragile.name,易碎,Fragile
 gem.fragile.symbol,碎,Shard
 gem.chaos.name,混沌,Chaos
@@ -52,11 +54,11 @@ gem.effect.explosion.tile_turn_start,光环：1 格内敌人每回合 1 伤害,A
 gem.effect.poison.player_skill,剧毒：目标周围 3x3 铺设毒雾并叠加中毒,Venom: create poison fog in a 3x3 area and add poison stacks
 gem.effect.poison.unit_red_active,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
 gem.effect.poison.enemy_red_action,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
-gem.effect.poison.blue_damaged,被动：接触施加 1 层毒,Passive: inflict 1 poison stack on contact
+gem.effect.poison.blue_damaged,被动：接触施加 1 层毒；2 级回合结束向最近未中毒友方传 1 层毒,Passive: inflict 1 poison stack on contact; at level 2, spread 1 poison stack to the nearest clean ally at turn end
 gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
 gem.effect.poison.tile_turn_start,光环：2 格内敌人每回合中毒,Aura: poison enemies within 2 tiles each turn
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害,Gravity: pull the target toward you and deal {damage} collision damage
-gem.effect.gravity.unit_red_active,触发：周围 2 格拉扯 1 步,Trigger: pull units within 2 tiles by 1 step
+gem.effect.gravity.unit_red_active,触发：普通攻击范围随等级 +0/+1/+2；命中后将周围 2 格单位拉扯 1/2/3 步,Trigger: basic attack range gains +0/+1/+2; on hit pull units within 2 tiles by 1/2/3 steps
 gem.effect.gravity.enemy_red_action,引力拉近+碰撞({damage}),Pull and collide for {damage}
 gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
 gem.effect.gravity.tile_turn_start,光环：2 格内单位每回合被拉拽,Aura: pull units within 2 tiles each turn
@@ -93,6 +95,27 @@ gem.effect.ice.unit_red_active,触发：自身获得缓速,Trigger: apply slowed
 gem.effect.ice.enemy_red_action,寒冰攻击 ({damage}),Ice attack ({damage})
 gem.effect.ice.blue_damaged,被动：接触敌人叠加缓速,Passive: inflict slowed on contact
 gem.effect.ice.black_death,死亡：周围单位获得迟滞,Death: apply sluggish to nearby units
+gem.light.name,光,Light
+gem.light.symbol,光,Light
+gem.intent.light_beam,光束 ({damage}),Light Beam ({damage})
+gem.effect.light.unit_red_active,触发：穿透光束，2/3级变宽，按元素追加状态与曝光,Trigger: fire a piercing beam; levels 2/3 widen it and add colored statuses plus exposure
+gem.effect.light.enemy_red_action,光束 ({damage}),Light Beam ({damage})
+gem.effect.light.blue_damaged,被动：受远程攻击时反射 1/2/3 道光束,Passive: reflect 1/2/3 beams when hit by ranged attacks
+gem.effect.light.black_death,死亡：清算所有曝光目标，3级额外致盲,Death: judge all exposed targets; level 3 also blinds them
+gem.counter.name,反击,Counter
+gem.counter.symbol,反,Counter
+gem.intent.counter_attack,反击 ({damage}),Counter ({damage})
+gem.effect.counter.unit_red_active,触发：若本回合曾被目标伤害，则追加一次 100% 反击,Trigger: if target damaged you this turn, add one 100% counter hit
+gem.effect.counter.enemy_red_action,反击 ({damage}),Counter ({damage})
+gem.effect.counter.blue_damaged,被动：受击后对来源反击一次,Passive: strike the source back once after taking damage
+gem.effect.counter.black_death,死亡：对击杀来源反弹等额伤害,Death: deal equal reflected damage back to the killer
+gem.echo.name,回响,Echo
+gem.echo.symbol,响,Echo
+gem.intent.echo_attack,回响 ({damage}),Echo ({damage})
+gem.effect.echo.unit_red_active,触发：1级回响1个tag，2级回响2个tag，3级首个tag强化并追加一次50%回响,Trigger: level 1 echoes 1 tag, level 2 echoes 2 tags, level 3 empowers the first tag and adds one 50% follow-up
+gem.effect.echo.enemy_red_action,回响 ({damage}),Echo ({damage})
+gem.effect.echo.blue_damaged,被动：受击时回响已嵌入tag，每回合一次，3级首个tag强化,Passive: echo embedded tags when damaged once per turn; level 3 empowers the first tag
+gem.effect.echo.black_death,死亡：回响其他黑槽tag，沿用递归与 death_chain 防护,Death: echo other black-slot tags while respecting recursion and death-chain guards
 gem.split.name,分裂,Split
 gem.split.symbol,裂,Split
 gem.intent.split_attack,分裂射击 ({damage}x3),Split Shot ({damage}x3)
@@ -100,3 +123,39 @@ gem.effect.split.unit_red_active,触发：V字三发，每发 70% 伤害,Trigger
 gem.effect.split.enemy_red_action,分裂射击 ({damage}x3),Split Shot ({damage}x3)
 gem.effect.split.blue_damaged,被动：受击时 50% 伤害转移至周围 1 格内随机单位（无目标不减伤）,Passive: redirect 50% of incoming damage to a random unit within 1 tile (no redirect if none)
 gem.effect.split.black_death,死亡：在空地生成两个全属性 30% 的分身,Death: spawn two clones with 30% stats on empty cells
+gem.level.explosion.1,爆炸 Lv1：十字 5 格溅射,Explosion Lv1: cross blast 5 cells
+gem.level.explosion.2,爆炸 Lv2：3×3 方形爆炸，伤害翻倍,Explosion Lv2: 3×3 square blast, damage doubled
+gem.level.explosion.3,爆炸 Lv3：3×3 方形爆炸，伤害加倍,Explosion Lv3: 3×3 square blast, damage tripled
+gem.level.poison.1,剧毒 Lv1：单格毒雾，施加中毒,Poison Lv1: single-cell fog, inflict poison
+gem.level.poison.2,剧毒 Lv2：3×3 毒雾，回合末向最近未中毒友方传播,Poison Lv2: 3×3 fog, spread to nearest clean ally at turn end
+gem.level.poison.3,剧毒 Lv3：3×3 毒雾，持续时间延长,Poison Lv3: 3×3 fog, extended duration
+gem.level.conductive.1,导电 Lv1：弹射 1 次，6.6% 麻痹,Conductive Lv1: arc 1 bounce, 6.6% paralyze
+gem.level.conductive.2,导电 Lv2：弹射 2 次，13.2% 麻痹,Conductive Lv2: arc 2 bounces, 13.2% paralyze
+gem.level.conductive.3,导电 Lv3：弹射 3 次，死亡落雷,Conductive Lv3: arc 3 bounces, death lightning
+gem.level.arc.1,导电 Lv1：弹射 1 次，6.6% 麻痹,Conductive Lv1: arc 1 bounce, 6.6% paralyze
+gem.level.arc.2,导电 Lv2：弹射 2 次，13.2% 麻痹,Conductive Lv2: arc 2 bounces, 13.2% paralyze
+gem.level.arc.3,导电 Lv3：弹射 3 次，死亡落雷,Conductive Lv3: arc 3 bounces, death lightning
+gem.level.gravity.1,引力 Lv1：攻击范围不变，命中后拉扯 1 步,Gravity Lv1: base range, pull 1 step on hit
+gem.level.gravity.2,引力 Lv2：攻击范围 +1，命中后拉扯 2 步并施加减速,Gravity Lv2: range +1, pull 2 steps and slow on hit
+gem.level.gravity.3,引力 Lv3：攻击范围 +2，命中后拉扯 3 步并施加定身,Gravity Lv3: range +2, pull 3 steps and root on hit
+gem.level.fire.1,烈焰 Lv1：目标格点火，周围单位施加着火,Fire Lv1: ignite target cell, set nearby units ablaze
+gem.level.fire.2,烈焰 Lv2：目标格点火并扩散 1 格,Fire Lv2: ignite and spread 1 cell
+gem.level.fire.3,烈焰 Lv3：目标格点火并扩散 2 格,Fire Lv3: ignite and spread 2 cells
+gem.level.ice.1,寒冰 Lv1：目标施加缓速,Ice Lv1: inflict slowed
+gem.level.ice.2,寒冰 Lv2：目标施加冻结（潮湿则直接冻结）,Ice Lv2: inflict chilled (freeze if wet)
+gem.level.ice.3,寒冰 Lv3：目标施加寒冻，周围 1 格迟滞,Ice Lv3: inflict frozen, sluggish nearby
+gem.level.split.1,分裂 Lv1：V 字三发，每发 70% 伤害,Split Lv1: V-shot ×3, each 70% damage
+gem.level.split.2,分裂 Lv2：四发弹道，每发 70% 伤害,Split Lv2: 4-shot, each 70% damage
+gem.level.split.3,分裂 Lv3：五发弹道，每发 70% 伤害,Split Lv3: 5-shot, each 70% damage
+gem.level.light.1,光 Lv1：穿透直线光束,Light Lv1: piercing beam
+gem.level.light.2,光 Lv2：宽度 +1 光束，施加曝光与元素状态,Light Lv2: beam width +1, expose and apply status
+gem.level.light.3,光 Lv3：宽度 +2 光束，穿透阻挡物，清算曝光时致盲,Light Lv3: beam width +2, pierce blockers, blind on judgment
+gem.level.counter.1,反击 Lv1：本回合受攻击后追加反击,Counter Lv1: strike back if hit this turn
+gem.level.counter.2,反击 Lv2：受任何伤害均反击来源,Counter Lv2: counter any damage source
+gem.level.counter.3,反击 Lv3：受伤害后反击并施加减速,Counter Lv3: counter and slow on any damage
+gem.level.echo.1,回响 Lv1：回响 1 个 tag 的效果,Echo Lv1: echo 1 tag
+gem.level.echo.2,回响 Lv2：回响 2 个 tag 的效果,Echo Lv2: echo 2 tags
+gem.level.echo.3,回响 Lv3：首个 tag 强化，额外追加 50% 回响,Echo Lv3: empower first tag and add 50% follow-up echo
+gem.combo.explosion_fire,爆炸+烈焰：爆炸后散布火焰,Explosion+Fire: scatter fire after explosion
+gem.combo.explosion_poison,爆炸+剧毒：爆炸后散布毒雾,Explosion+Poison: scatter poison fog after explosion
+gem.combo.poison_fire,剧毒+烈焰：毒烟地块，兼具中毒与燃烧,Poison+Fire: toxic smoke tile with poison and burning

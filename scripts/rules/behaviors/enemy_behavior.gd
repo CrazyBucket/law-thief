@@ -2,6 +2,8 @@ class_name EnemyBehavior
 extends RefCounted
 
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
+const GemEffects = preload("res://scripts/rules/gem_effects.gd")
+const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 
 
 static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
@@ -212,6 +214,29 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			if ice_target.alive:
 				GemEffects.apply_ice_hit_effect(state, ice_target, unit.uid)
 			return ice_events
+		"counter_attack":
+			var counter_target: UnitState = state.units.get(intent.target_uid, null)
+			if counter_target == null or not counter_target.alive:
+				return [] as Array[Dictionary]
+			if not BoardUtils.are_units_adjacent(unit, counter_target):
+				return [] as Array[Dictionary]
+			var counter_result := CombatRules.melee_attack(state, unit, counter_target)
+			if not counter_result.get("ok", false):
+				return [] as Array[Dictionary]
+			return counter_result.get("events", [] as Array[Dictionary])
+		"echo_attack":
+			var echo_target: UnitState = state.units.get(intent.target_uid, null)
+			if echo_target == null or not echo_target.alive:
+				return [] as Array[Dictionary]
+			var echo_result := CombatRules.ranged_attack(
+				state,
+				unit,
+				echo_target.pos,
+				GemEffects.red_attack_range(state, unit, Constants.ATTACK_RANGE)
+			)
+			if not echo_result.get("ok", false):
+				return [] as Array[Dictionary]
+			return echo_result.get("events", [] as Array[Dictionary])
 		"light_beam":
 			var light_target: UnitState = state.units.get(intent.target_uid, null)
 			if light_target == null or not light_target.alive:
@@ -327,9 +352,14 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
-	if BoardUtils.manhattan(unit.pos, target.pos) > Constants.ENEMY_GRAVITY_PULL_RANGE:
+	var max_range := GemEffects.gravity_pull_range(state, unit, Constants.ENEMY_GRAVITY_PULL_RANGE)
+	if BoardUtils.manhattan(unit.pos, target.pos) > max_range:
 		return [] as Array[Dictionary]
-	return GemEffects.pull_unit_toward_with_events(state, target, unit.pos, 2, unit.uid)
+	var pull_steps := maxi(1, GemTagResolver.tag_level(
+		GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE),
+		"gravity"
+	))
+	return GemEffects.pull_unit_toward_with_events(state, target, unit.pos, pull_steps, unit.uid)
 
 
 static func _execute_charge_explosion(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:

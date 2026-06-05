@@ -187,7 +187,7 @@ static func _evaluate_ranged_attacks_from(
 	var player: UnitState = state.get_player()
 	if player == null or not player.alive:
 		return results
-	var max_range: int = Constants.ATTACK_RANGE
+	var max_range: int = GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
 	var saved := enemy.pos
 	enemy.pos = from_pos
 	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
@@ -251,6 +251,10 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(_score_split_skill(state, enemy, from_pos, player, profile))
 		"light_beam":
 			results.append_array(_score_light_skill(state, enemy, from_pos, player, profile))
+		"counter_attack":
+			results.append_array(_score_counter_skill(state, enemy, from_pos, player, profile))
+		"echo_attack":
+			results.append_array(_score_echo_skill(state, enemy, from_pos, player, profile))
 	return results
 
 
@@ -310,8 +314,9 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 # ─── 引力技能评分 ─────────────────────────────────────────────────────────
 static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
+	var max_range := GemEffects.gravity_pull_range(state, enemy, Constants.ENEMY_GRAVITY_PULL_RANGE)
 	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
-	if dist > Constants.ENEMY_GRAVITY_PULL_RANGE:
+	if dist > max_range:
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -331,7 +336,7 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	score += float(dist) * 1.2
 
 	candidate.score = score
-	candidate.description = "引力拉近"
+	candidate.description = "引力拉近(%d格)" % max_range
 	results.append(candidate)
 	return results
 
@@ -442,6 +447,45 @@ static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	score += _w(profile, "w_status", 6.0)
 	candidate.score = score
 	candidate.description = "光束"
+	results.append(candidate)
+	return results
+
+
+static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	var counter_key := "damaged_by:%s:%s:%d" % [enemy.uid, player.uid, state.turn_index]
+	if bool(state.battle_temp_flags.get(counter_key, false)):
+		score += float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	candidate.score = score
+	candidate.description = "反击"
+	results.append(candidate)
+	return results
+
+
+static func _score_echo_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
+	var results: Array = []
+	var max_range := GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
+	var saved := enemy.pos
+	enemy.pos = from_pos
+	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
+	enemy.pos = saved
+	if not in_range:
+		return results
+	var candidate := ActionCandidate.new()
+	candidate.type = ActionType.SKILL_RED
+	candidate.move_target = from_pos
+	candidate.action_target_uid = player.uid
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	score += _w(profile, "w_status", 6.0)
+	candidate.score = score
+	candidate.description = "回响"
 	results.append(candidate)
 	return results
 

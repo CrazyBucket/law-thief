@@ -75,5 +75,78 @@
       "rare": 50.0,
       "epic": 20.0
     }
+  },
+  "enemy_normal": {
+    "source_tier": 1,
+    "rarity_weights": {
+      "common": 80.0,
+      "uncommon": 18.0,
+      "rare": 2.0
+    },
+    "tag_weights": {
+      "explosion": 1.0,
+      "poison": 1.0,
+      "fire": 0.9,
+      "arc": 0.7,
+      "gravity": 0.5,
+      "ice": 0.6,
+      "counter": 0.3,
+      "light": 0.2,
+      "split": 0.15,
+      "echo": 0.1
+    }
+  },
+  "enemy_elite": {
+    "source_tier": 2,
+    "rarity_weights": {
+      "common": 40.0,
+      "uncommon": 45.0,
+      "rare": 13.0,
+      "epic": 2.0
+    },
+    "tag_weights": {
+      "gravity": 0.9,
+      "ice": 0.9,
+      "counter": 0.75,
+      "light": 0.6,
+      "split": 0.5,
+      "echo": 0.3
+    }
+  },
+  "enemy_boss": {
+    "source_tier": 3,
+    "rarity_weights": {
+      "common": 10.0,
+      "uncommon": 40.0,
+      "rare": 40.0,
+      "epic": 10.0
+    },
+    "tag_weights": {
+      "counter": 1.0,
+      "light": 0.9,
+      "split": 0.8,
+      "echo": 0.6,
+      "gravity": 0.9
+    }
+  },
+  "teaching_boosts": {
+    "chapter_1": {
+      "explosion": 1.5,
+      "poison": 1.5,
+      "fire": 1.3,
+      "arc": 1.2
+    },
+    "chapter_2": {
+      "gravity": 1.4,
+      "ice": 1.4,
+      "counter": 1.3,
+      "light": 1.2
+    },
+    "chapter_3": {
+      "split": 1.4,
+      "echo": 1.3,
+      "counter": 1.2,
+      "light": 1.1
+    }
   }
 }

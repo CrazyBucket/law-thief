@@ -693,13 +693,17 @@ func _apply_battle_end(result: String) -> void:
 			AdventureService.pending_room_type.to_upper(), "normal_chest"
 		))
 		var room_id := GameService.pending_room_id
-		var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
-		if not offer.is_empty():
-			var all_placeholder := offer.all(func(rid: String) -> bool:
-				return rid == "relic_placeholder"
-			)
-			var display_offer: Array[String] = offer if not all_placeholder else _placeholder_relic_offer()
-			_show_relic_reward(display_offer, result)
+		var gem_offer: Array[String] = RunService.get_or_roll_gem_offer(room_id, source, 3)
+		var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
+		var has_gems := gem_offer.any(func(gid: String) -> bool: return not gid.is_empty())
+		var has_relics := not relic_offer.is_empty() and not relic_offer.all(
+			func(rid: String) -> bool: return rid == "relic_placeholder"
+		)
+		if has_gems:
+			_show_gem_reward(gem_offer, relic_offer, result)
+			return
+		if has_relics:
+			_show_relic_reward(relic_offer, result)
 			return
 	_finish_battle_and_navigate(result)
 
@@ -708,6 +712,136 @@ func _placeholder_relic_offer() -> Array[String]:
 	var offer: Array[String] = []
 	offer.append("relic_placeholder")
 	return offer
+
+
+func _show_gem_reward(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> void:
+	var overlay := _build_gem_overlay(gem_offer, relic_offer, battle_result)
+	_relic_reward_overlay = overlay
+	add_child(overlay)
+
+
+func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> Node:
+	var canvas := CanvasLayer.new()
+	canvas.layer = 80
+
+	var root_ctrl := Control.new()
+	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas.add_child(root_ctrl)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.05, 0.08, 0.82)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(bg)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 16)
+	center.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "选择宝石"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var cards_row := HBoxContainer.new()
+	cards_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(cards_row)
+
+	for gem_id in gem_offer:
+		if gem_id.is_empty():
+			continue
+		var card := _build_gem_card(gem_id, battle_result, relic_offer, canvas)
+		cards_row.add_child(card)
+
+	var skip_btn := Button.new()
+	skip_btn.text = "跳过"
+	skip_btn.custom_minimum_size = Vector2(140, 40)
+	BattleUiTheme.apply_button(skip_btn, "ghost")
+	skip_btn.pressed.connect(func() -> void:
+		_on_gem_chosen("", battle_result, relic_offer, canvas)
+	)
+	vbox.add_child(skip_btn)
+
+	return canvas
+
+
+func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
+	var panel := PanelContainer.new()
+	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
+	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
+	panel.custom_minimum_size = Vector2(160, 200)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+	panel.add_child(vb)
+
+	var dummy_gem := GemState.new()
+	dummy_gem.gem_id = gem_id
+	dummy_gem.uid = "_preview_%s" % gem_id
+	var icon_tex := UnitLooks.get_gem_texture(dummy_gem)
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.self_modulate = UnitLooks.gem_sprite_modulate(dummy_gem)
+		icon.custom_minimum_size = Vector2(48, 48)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		vb.add_child(icon)
+
+	var name_lbl := Label.new()
+	name_lbl.text = DataRegistry.get_gem_display_name(dummy_gem)
+	name_lbl.add_theme_font_size_override("font_size", 15)
+	name_lbl.add_theme_color_override("font_color", rarity_color)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(name_lbl)
+
+	var tag_str := str(DataRegistry.get_gem_tag(gem_id))
+	var pool_tier := int(DataRegistry.get_gem_pool_tier(gem_id))
+	var tag_key := "gem.%s.symbol" % tag_str
+	var tag_sym: String = TranslationServer.translate(tag_key)
+	if tag_sym == tag_key:
+		tag_sym = tag_str
+	var rarity_name: String = _rarity_display_name(rarity)
+	var meta_lbl := Label.new()
+	meta_lbl.text = "[%s] %s  T%d" % [rarity_name, tag_sym, pool_tier]
+	meta_lbl.add_theme_font_size_override("font_size", 11)
+	meta_lbl.add_theme_color_override("font_color", rarity_color.darkened(0.15))
+	meta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(meta_lbl)
+
+	var pick_btn := Button.new()
+	pick_btn.text = "选择"
+	pick_btn.custom_minimum_size = Vector2(0, 40)
+	BattleUiTheme.apply_button(pick_btn, "end")
+	pick_btn.pressed.connect(func() -> void:
+		_on_gem_chosen(gem_id, battle_result, relic_offer, canvas)
+	)
+	vb.add_child(pick_btn)
+
+	return panel
+
+
+func _on_gem_chosen(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
+	if not gem_id.is_empty():
+		RunService.acquire_gem(gem_id)
+	if canvas != null and is_instance_valid(canvas):
+		canvas.queue_free()
+	_relic_reward_overlay = null
+	var has_relics := not relic_offer.is_empty() and not relic_offer.all(
+		func(rid: String) -> bool: return rid == "relic_placeholder"
+	)
+	if has_relics:
+		_show_relic_reward(relic_offer, battle_result)
+	else:
+		_finish_battle_and_navigate(battle_result)
 
 
 func _show_relic_reward(offer: Array[String], battle_result: String) -> void:

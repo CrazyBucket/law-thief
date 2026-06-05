@@ -200,6 +200,7 @@ func _play_area_fx_batch(batch: Array) -> void:
 				_board.play_poison_burst(fx_event.get("pos", Vector2i.ZERO), int(fx_event.get("radius", 0)))
 			"fire_burst":
 				_board.play_explosion(fx_event.get("pos", Vector2i.ZERO))
+				_board.play_gem_flash(fx_event.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
 			"frost_pulse":
 				_board.play_heal_effect(fx_event.get("pos", Vector2i.ZERO))
 	for fx_event in batch:
@@ -291,7 +292,10 @@ func _play_anim_event(ev: Dictionary) -> void:
 			await _host.get_tree().create_timer(_scaled_anim_time(0.6)).timeout
 			_board.queue_redraw()
 		"gem_flash":
-			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), ev.get("color", Color.WHITE))
+			var flash_color: Color = ev.get("color", Color.WHITE)
+			if bool(ev.get("echo_followup", false)) and flash_color == Color.WHITE:
+				flash_color = Color(0.62, 0.42, 1.0)
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), flash_color)
 			await _host.get_tree().create_timer(_scaled_anim_time(0.32)).timeout
 		"projectile", "projectile_deflect":
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
@@ -312,7 +316,11 @@ func _play_anim_event(ev: Dictionary) -> void:
 			await _host.get_tree().create_timer(_scaled_anim_time(0.28)).timeout
 		"fire_burst":
 			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
 			await _host.get_tree().create_timer(_scaled_anim_time(0.4)).timeout
+		"miss":
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.7, 0.7, 0.7, 0.6))
+			await _host.get_tree().create_timer(_scaled_anim_time(0.22)).timeout
 
 
 func _prime_event_state(ev: Dictionary) -> void:

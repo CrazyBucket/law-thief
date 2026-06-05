@@ -33,6 +33,7 @@ const _SOURCE_RARITY_WEIGHTS := {
 var _gem_effect_profiles: Dictionary = {}
 var _gem_defs: Dictionary = {}
 var _gem_pools: Dictionary = {}
+var _gem_teaching_boosts: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
 var _relic_defs: Dictionary = {}
@@ -102,7 +103,8 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 				should_roll_gem = slot_type in spawn_gem_slots
 			if should_roll_gem and enemy_slot_budget > 0:
 				enemy_slot_budget -= 1
-				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_%s_%s_%s" % [encounter_id, enemy_uid, slot_type])
+				var enemy_pool_source := _resolve_enemy_pool_source(current_chapter, pending_room_type)
+				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_%s_%s_%s" % [encounter_id, enemy_uid, slot_type], [], enemy_pool_source, current_chapter)
 				if not roll_gem_id.is_empty():
 					slot_entry["gem_id"] = roll_gem_id
 			if slot_entry.has("gem_id"):
@@ -308,7 +310,8 @@ func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array 
 		return ""
 	var total_weight := 0.0
 	var weighted: Array[Dictionary] = []
-	var tag_weights: Dictionary = pool_def.get("tag_weights", {})
+	var tag_weights: Dictionary = pool_def.get("tag_weights", {}).duplicate(true)
+	_apply_teaching_boosts(tag_weights, chapter_tier)
 	for gem_id in candidates:
 		var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
 		if weight <= 0.0:
@@ -513,6 +516,61 @@ func roll_relic_offer(
 		else:
 			result.append(picked)
 			excluded.append(picked)
+	return result
+
+
+## 从指定来源 pool 抽出 count 个不重复的宝石 id（三选一奖励 UI 使用）
+## source:        pool key，例如 "normal_chest" / "elite_combat" / "boss_reward"
+## chapter_tier:  当前章节，用于过滤 pool_tier 上限
+## exclude_ids:   本次排除的 gem_id（不重复约束）
+## 返回 gem_id 数组；不足时以 "" 填充
+func roll_gem_offer(
+	domain: String,
+	source: String,
+	count: int,
+	chapter_tier: int = 99,
+	exclude_ids: Array = []
+) -> Array[String]:
+	var result: Array[String] = []
+	var used_ids: Array = exclude_ids.duplicate()
+	for i in range(count):
+		var pool_def := get_gem_pool_def(source)
+		var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
+		var tag_weights: Dictionary = pool_def.get("tag_weights", {}).duplicate(true)
+		_apply_teaching_boosts(tag_weights, chapter_tier)
+		var allowed: Array = []
+		if not rarity_weights.is_empty():
+			for rarity in rarity_weights.keys():
+				if float(rarity_weights[rarity]) > 0.0:
+					allowed.append(str(rarity))
+		var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
+		var filtered: Array[String] = []
+		for gem_id in candidates:
+			if not gem_id in used_ids:
+				filtered.append(gem_id)
+		if filtered.is_empty():
+			result.append("")
+			continue
+		var total_weight := 0.0
+		var weighted: Array[Dictionary] = []
+		for gem_id in filtered:
+			var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
+			if weight <= 0.0:
+				continue
+			total_weight += weight
+			weighted.append({"gem_id": gem_id, "limit": total_weight})
+		if weighted.is_empty():
+			result.append("")
+			continue
+		var roll := (float(RngService.roll_int("%s_%d" % [domain, i], 0, 1000000)) / 1000000.0) * total_weight
+		var picked := str(weighted.back().get("gem_id", ""))
+		for entry in weighted:
+			if roll < float(entry.get("limit", 0.0)):
+				picked = str(entry.get("gem_id", ""))
+				break
+		result.append(picked)
+		if not picked.is_empty():
+			used_ids.append(picked)
 	return result
 
 
@@ -1228,6 +1286,9 @@ func _load_gem_pools_from_json() -> void:
 			},
 		}
 		return
+	if raw.has("teaching_boosts"):
+		_gem_teaching_boosts = (raw["teaching_boosts"] as Dictionary).duplicate(true)
+		raw.erase("teaching_boosts")
 	_gem_pools = raw
 	if not _gem_pools.has("global"):
 		_gem_pools["global"] = {
@@ -1479,6 +1540,65 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 			carried.slot_index = -1
 			state.gems[carried.uid] = carried
 			state.held_gem_uid = carried.uid
+
+
+## 根据章节和房间类型映射到对应的敌人宝石 pool key
+func _resolve_enemy_pool_source(chapter: int, room_type: String) -> String:
+	var normalized := room_type.to_upper()
+	match normalized:
+		"BOSS", "BOSS_COMBAT", "END":
+			return "enemy_boss"
+		"ELITE_COMBAT":
+			if chapter >= 3:
+				return "enemy_boss"
+			return "enemy_elite"
+		_:
+			if chapter >= 2:
+				return "enemy_elite"
+			return "enemy_normal"
+
+
+## 将教学加权叠加到已有 tag_weights（就地修改）
+func _apply_teaching_boosts(tag_weights: Dictionary, chapter_tier: int) -> void:
+	if _gem_teaching_boosts.is_empty():
+		return
+	var chapter := clampi(chapter_tier, 1, 3)
+	var boost_key := "chapter_%d" % chapter
+	var boosts: Dictionary = _gem_teaching_boosts.get(boost_key, {})
+	for tag in boosts.keys():
+		var multiplier := maxf(0.0, float(boosts[tag]))
+		if tag_weights.has(tag):
+			tag_weights[tag] = float(tag_weights[tag]) * multiplier
+		else:
+			tag_weights[tag] = multiplier
+
+
+## 返回当前 source pool 的候选列表，附带每项权重，供 debug 工具查看
+func get_gem_pool_candidates(source: String, chapter_tier: int = 99) -> Array[Dictionary]:
+	var pool_def := get_gem_pool_def(source)
+	var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
+	var tag_weights: Dictionary = pool_def.get("tag_weights", {}).duplicate(true)
+	_apply_teaching_boosts(tag_weights, chapter_tier)
+	var allowed: Array = []
+	if not rarity_weights.is_empty():
+		for rarity in rarity_weights.keys():
+			if float(rarity_weights[rarity]) > 0.0:
+				allowed.append(str(rarity))
+	var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
+	var result: Array[Dictionary] = []
+	for gem_id in candidates:
+		var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
+		result.append({
+			"gem_id": gem_id,
+			"tag": get_gem_tag(gem_id),
+			"rarity": get_gem_rarity(gem_id),
+			"pool_tier": get_gem_pool_tier(gem_id),
+			"weight": weight,
+		})
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(b.get("weight", 0.0)) > float(a.get("weight", 0.0))
+	)
+	return result
 
 
 func _read_json_file(path: String) -> Dictionary:

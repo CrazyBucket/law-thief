@@ -13,6 +13,7 @@ func _run_tests() -> void:
 	print("=== Gem Combo Test ===")
 	_test_explosion_fire_combo()
 	_test_explosion_poison_combo()
+	_test_fire_poison_combo()
 	if _failed:
 		push_error("GEM_COMBO_TEST_FAIL")
 		quit(1)
@@ -47,6 +48,20 @@ func _test_explosion_poison_combo() -> void:
 	_expect(tile != null and tile.has_modifier(Constants.TILE_MOD_POISON_FOG), "explosion + poison should leave poison fog")
 	_expect(_count_combo_events(result.get("events", []), "poison_burst", "explosion_poison") > 0, "explosion + poison should emit combo poison")
 	print("  [OK] explosion + poison")
+
+
+func _test_fire_poison_combo() -> void:
+	var state := _create_state()
+	var player := state.get_player()
+	player.pos = Vector2i(2, 3)
+	_mount_red_gems(state, player, [Constants.GEM_FIRE, Constants.GEM_POISON])
+	var target := _spawn_guard(state, Vector2i(5, 3))
+	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
+	_expect(result.get("ok", false), "fire + poison attack should succeed")
+	var tile := state.get_tile(target.pos)
+	_expect(tile != null and tile.has_modifier("toxic_smoke"), "fire + poison should leave toxic smoke")
+	_expect(_count_combo_events(result.get("events", []), "toxic_smoke", "fire_poison") > 0, "fire + poison should emit toxic smoke combo")
+	print("  [OK] fire + poison")
 
 
 func _create_state() -> GameState:

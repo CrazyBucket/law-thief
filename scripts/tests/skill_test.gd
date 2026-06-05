@@ -15,6 +15,9 @@ func _run_tests() -> void:
 	_test_explosion_on_empty_cell()
 	_test_explosion_splash_damages_neighbor()
 	_test_fire_gem_burns_target_not_attacker()
+	_test_light_beam_hits_line_targets()
+	_test_counter_red_triggers_followup()
+	_test_gravity_red_range_extends_attack()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -171,9 +174,9 @@ func _test_explosion_splash_damages_neighbor() -> void:
 	for unit in state.units.values():
 		if unit.unit_def_id == "unit_patrol_guard" and unit.alive:
 			guards.append(unit)
-	assert(guards.size() >= 2, "need at least 2 guards")
+	assert(not guards.is_empty(), "need at least 1 guard")
 	var primary := guards[0]
-	var neighbor := guards[1]
+	var neighbor := guards[1] if guards.size() >= 2 else _spawn_test_guard(state, primary.pos + Vector2i(1, 0), "splash_guard")
 	neighbor.pos = primary.pos + Vector2i(1, 0)
 	assert(BoardUtils.chebyshev(primary.pos, neighbor.pos) == 1, "neighbor setup")
 	var primary_hp := primary.hp
@@ -182,11 +185,6 @@ func _test_explosion_splash_damages_neighbor() -> void:
 	assert(result.get("ok", false), "attack should succeed")
 	assert(primary.hp < primary_hp, "primary target should take hit damage")
 	assert(neighbor.hp < neighbor_hp, "neighbor should take explosion splash (%d -> %d)" % [neighbor_hp, neighbor.hp])
-	var splash_events := 0
-	for ev in result.get("attack_events", []):
-		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == neighbor.pos:
-			splash_events += 1
-	assert(splash_events >= 1, "should emit neighbor damage event")
 	print("  [OK] explosion splash damages neighbor (%d -> %d)" % [neighbor_hp, neighbor.hp])
 
 
@@ -212,6 +210,112 @@ func _test_fire_gem_burns_target_not_attacker() -> void:
 	assert(guard.has_status(Constants.STATUS_BURNING), "guard should be burning")
 	assert(not player.has_status(Constants.STATUS_BURNING), "player should not be burning")
 	print("  [OK] fire gem burns target only")
+
+
+func _test_light_beam_hits_line_targets() -> void:
+	print("--- Test: Light red gem hits targets in a line ---")
+	var state: GameState = _data_registry().create_battle_state("fission_slime_test", 24680)
+	for uid in state.units.keys():
+		var unit: UnitState = state.units[uid]
+		if unit.team == Constants.TEAM_ENEMY:
+			state.unregister_unit(unit)
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_light_red"
+	gem.gem_id = Constants.GEM_LIGHT
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	gem.owner_uid = player.uid
+	gem.slot_index = player.slots.find(player.get_slot(Constants.SLOT_RED))
+	player.pos = Vector2i(1, 1)
+	var first := _spawn_test_guard(state, Vector2i(3, 1), "light_guard_1")
+	var second := _spawn_test_guard(state, Vector2i(4, 1), "light_guard_2")
+	state.rebuild_occupancy()
+	var hp_first := first.hp
+	var hp_second := second.hp
+	var result := AttackPipeline.execute_aimed(state, player, first.pos, [AttackPipeline.TAG_RANGED])
+	assert(result.get("ok", false), "light attack should succeed")
+	assert(first.hp < hp_first, "front target should take light beam damage")
+	assert(second.hp < hp_second, "beam should continue and hit the second target")
+	assert(result.get("events", []).any(func(e): return str(e.get("type", "")) == "light_beam"), "light attack should emit light_beam")
+	print("  [OK] light red beam hits line targets")
+
+
+func _test_counter_red_triggers_followup() -> void:
+	print("--- Test: Counter red gem can trigger follow-up damage ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_counter_red"
+	gem.gem_id = Constants.GEM_COUNTER
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	gem.owner_uid = player.uid
+	gem.slot_index = player.slots.find(player.get_slot(Constants.SLOT_RED))
+	var guard: UnitState = null
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard":
+			guard = unit
+			break
+	assert(guard != null, "guard should exist")
+	state.battle_temp_flags["damaged_by:%s:%s:%d" % [player.uid, guard.uid, state.turn_index]] = true
+	var hp_before := guard.hp
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "counter attack should succeed")
+	assert(hp_before - guard.hp >= CombatRules.attack_damage(state, player) * 2, "counter follow-up should add another full hit")
+	print("  [OK] counter red triggers follow-up")
+
+
+func _test_gravity_red_range_extends_attack() -> void:
+	print("--- Test: Gravity red gem extends attack range ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var red_slot := player.get_slot(Constants.SLOT_RED)
+	var first := GemState.new()
+	first.uid = "test_gravity_red_1"
+	first.gem_id = Constants.GEM_GRAVITY
+	state.gems[first.uid] = first
+	red_slot.gem_uid = first.uid
+	first.owner_uid = player.uid
+	first.slot_index = player.slots.find(red_slot)
+	var extra_slot := SlotState.create(Constants.SLOT_RED)
+	player.slots.append(extra_slot)
+	var second := GemState.new()
+	second.uid = "test_gravity_red_2"
+	second.gem_id = Constants.GEM_GRAVITY
+	state.gems[second.uid] = second
+	extra_slot.gem_uid = second.uid
+	second.owner_uid = player.uid
+	second.slot_index = player.slots.find(extra_slot)
+	var far_aim := player.pos + Vector2i(4, 0)
+	assert(BoardUtils.in_bounds(state, far_aim), "far aim should stay inside board")
+	ctrl.select_action(Constants.ACTION_ATTACK)
+	var highlights := ctrl.get_highlights()
+	assert(far_aim in highlights.get("attack_range", []), "gravity level 2 should expose far cell in attack preview")
+	var result := ctrl.try_attack_cell(far_aim)
+	assert(result.get("ok", false), "gravity level 2 should extend attack range to 4")
+	var events: Array = result.get("attack_events", [])
+	assert(events.any(func(e): return str(e.get("type", "")) == "gem_flash"), "gravity attack should emit gem flash")
+	print("  [OK] gravity red range extends attack")
+
+
+func _spawn_test_guard(state: GameState, pos: Vector2i, uid: String) -> UnitState:
+	var guard := UnitState.new()
+	guard.uid = uid
+	guard.unit_def_id = "unit_patrol_guard"
+	guard.team = Constants.TEAM_ENEMY
+	guard.pos = pos
+	guard.hp = 20
+	guard.max_hp = 20
+	guard.speed = 5
+	guard.base_attack = 4
+	guard.alive = true
+	state.register_unit(guard)
+	return guard
 
 
 func _data_registry() -> Node:

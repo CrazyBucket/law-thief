@@ -22,6 +22,9 @@ const PROFILE_GEM: Dictionary = {
 	"fire_gem": Constants.GEM_FIRE,
 	"ice": Constants.GEM_ICE,
 	"split": Constants.GEM_SPLIT,
+	"light": Constants.GEM_LIGHT,
+	"counter": Constants.GEM_COUNTER,
+	"echo": Constants.GEM_ECHO,
 }
 
 const VICTIM_POS := Vector2i(4, 3)
@@ -49,6 +52,13 @@ func _run_tests() -> void:
 		_run_black_death_case(_profiles_from_list(PROFILES, mask))
 	_test_dual_blue_slot_contact()
 	_test_blue_explosion_events()
+	_test_blue_poison_turn_end_spread_uses_level_context()
+	_test_blue_light_reflects_ranged_attack()
+	_test_blue_counter_reflects_damage()
+	_test_black_poison_level_two_emits_fog()
+	_test_black_poison_level_three_spreads_to_two_targets()
+	_test_black_light_judges_exposed_targets()
+	_test_black_counter_hits_killer()
 	_test_black_death_priority_over_slot_order()
 	if _failed:
 		push_error("BLUE_BLACK_COMBO_TEST_FAIL")
@@ -134,6 +144,9 @@ func _run_black_death_case(profiles: Array) -> void:
 	var victim := _spawn_unit(state, "death_victim", VICTIM_POS, Constants.TEAM_ENEMY, 20)
 	_ensure_black_slots(victim, profiles.size())
 	_mount_on_slots(state, victim, Constants.SLOT_BLACK, profiles)
+	var poison_level := _profile_stack_level(profiles, "poison")
+	if poison_level > 0:
+		StatusRules.apply_slowed(state, victim, 2, "test_poison_payload")
 	var fog_before := _count_poison_fog(state)
 	var unit_count_before := state.units.size()
 	var events := _kill_and_collect_events(state, victim)
@@ -142,11 +155,19 @@ func _run_black_death_case(profiles: Array) -> void:
 			_fail("[%s] expected explode on death" % label)
 			return
 	if profiles.has("poison"):
-		if _count_events(events, "poison_burst") < 1:
-			_fail("[%s] expected poison_burst on death" % label)
+		if not neighbor.has_status(Constants.STATUS_SLOWED):
+			_fail("[%s] poison death should transfer an existing debuff" % label)
 			return
-		if _count_poison_fog(state) <= fog_before:
-			_fail("[%s] expected poison fog on death" % label)
+		var expect_poison_burst := poison_level >= 2 or profiles.has("explosion")
+		if expect_poison_burst:
+			if _count_events(events, "poison_burst") < 1:
+				_fail("[%s] expected poison_burst on death" % label)
+				return
+			if _count_poison_fog(state) <= fog_before:
+				_fail("[%s] expected poison fog on death" % label)
+				return
+		elif _count_events(events, "poison_burst") > 0:
+			_fail("[%s] level 1 poison death should not emit poison_burst without combo" % label)
 			return
 	if profiles.has("gravity"):
 		if neighbor.pos == NEIGHBOR_POS:
@@ -195,6 +216,137 @@ func _test_blue_explosion_events() -> void:
 		_fail("[blue_explosion_events] burning hit should emit explode event")
 		return
 	print("  [OK] blue_explosion_events")
+
+
+func _test_blue_poison_turn_end_spread_uses_level_context() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var owner := _spawn_unit(state, "poison_owner", Vector2i(3, 3), Constants.TEAM_ENEMY)
+	var source := _spawn_unit(state, "poison_source", Vector2i(4, 3), Constants.TEAM_ENEMY)
+	var nearest_clean := _spawn_unit(state, "poison_clean", Vector2i(5, 3), Constants.TEAM_ENEMY)
+	var farther_clean := _spawn_unit(state, "poison_far", Vector2i(7, 3), Constants.TEAM_ENEMY)
+	_ensure_blue_slots(owner, 2)
+	_mount_on_slots(state, owner, Constants.SLOT_BLUE, ["poison", "poison"])
+	StatusRules.apply_poison(state, source, 1, 2, owner.uid)
+	StatusRules.tick_turn_end(state)
+	var nearest_poison := nearest_clean.get_status(Constants.STATUS_POISON)
+	if nearest_poison == null:
+		_fail("[blue_poison_turn_end] nearest clean ally should receive poison")
+		return
+	if str(nearest_poison.source_uid) != owner.uid:
+		_fail("[blue_poison_turn_end] spread poison source should be owner")
+		return
+	if farther_clean.has_status(Constants.STATUS_POISON):
+		_fail("[blue_poison_turn_end] farther ally should stay clean when nearer target exists")
+		return
+	print("  [OK] blue_poison_turn_end_spread_uses_level_context")
+
+
+func _test_blue_light_reflects_ranged_attack() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var attacker := _spawn_unit(state, "light_blue_attacker", ATTACKER_POS, Constants.TEAM_PLAYER, 40)
+	var victim := _spawn_unit(state, "light_blue_victim", VICTIM_POS, Constants.TEAM_ENEMY, 40)
+	_ensure_blue_slots(victim, 2)
+	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["light", "light"])
+	var attacker_hp := attacker.hp
+	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	if attacker.hp >= attacker_hp:
+		_fail("[blue_light_reflect] attacker should take reflected light damage")
+		return
+	if not attacker.has_status(Constants.STATUS_LIGHT_EXPOSED):
+		_fail("[blue_light_reflect] attacker should gain light exposed")
+		return
+	print("  [OK] blue_light_reflects_ranged_attack")
+
+
+func _test_blue_counter_reflects_damage() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var attacker := _spawn_unit(state, "counter_blue_attacker", ATTACKER_POS, Constants.TEAM_PLAYER, 40)
+	var victim := _spawn_unit(state, "counter_blue_victim", VICTIM_POS, Constants.TEAM_ENEMY, 40)
+	_ensure_blue_slots(victim, 1)
+	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["counter"])
+	var attacker_hp := attacker.hp
+	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	if attacker.hp >= attacker_hp:
+		_fail("[blue_counter] attacker should take reflected damage")
+		return
+	print("  [OK] blue_counter_reflects_damage")
+
+
+func _test_black_poison_level_two_emits_fog() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var victim := _spawn_unit(state, "poison_l2_victim", VICTIM_POS, Constants.TEAM_ENEMY, 20)
+	_ensure_black_slots(victim, 2)
+	_mount_on_slots(state, victim, Constants.SLOT_BLACK, ["poison", "poison"])
+	StatusRules.apply_slowed(state, victim, 2, "test_poison_payload")
+	var fog_before := _count_poison_fog(state)
+	var events := _kill_and_collect_events(state, victim)
+	if _count_events(events, "poison_burst") < 1:
+		_fail("[black_poison_level_two] expected poison_burst")
+		return
+	if _count_poison_fog(state) <= fog_before:
+		_fail("[black_poison_level_two] expected poison fog")
+		return
+	print("  [OK] black_poison_level_two_emits_fog")
+
+
+func _test_black_poison_level_three_spreads_to_two_targets() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var victim := _spawn_unit(state, "poison_l3_victim", VICTIM_POS, Constants.TEAM_ENEMY, 20)
+	var near_a := _spawn_unit(state, "poison_l3_a", NEIGHBOR_POS, Constants.TEAM_ENEMY, 80)
+	var near_b := _spawn_unit(state, "poison_l3_b", Vector2i(4, 4), Constants.TEAM_ENEMY, 80)
+	_ensure_black_slots(victim, 3)
+	_mount_on_slots(state, victim, Constants.SLOT_BLACK, ["poison", "poison", "poison"])
+	StatusRules.apply_slowed(state, victim, 2, "test_poison_payload")
+	_kill_and_collect_events(state, victim)
+	if not near_a.has_status(Constants.STATUS_SLOWED):
+		_fail("[black_poison_level_three] first nearby target should receive debuff")
+		return
+	if not near_b.has_status(Constants.STATUS_SLOWED):
+		_fail("[black_poison_level_three] second nearby target should receive debuff")
+		return
+	print("  [OK] black_poison_level_three_spreads_to_two_targets")
+
+
+func _test_black_light_judges_exposed_targets() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var victim := _spawn_unit(state, "light_black_victim", VICTIM_POS, Constants.TEAM_ENEMY, 20)
+	var exposed_target := _spawn_unit(state, "light_black_target", NEIGHBOR_POS, Constants.TEAM_ENEMY, 80)
+	_ensure_black_slots(victim, 3)
+	_mount_on_slots(state, victim, Constants.SLOT_BLACK, ["light", "light", "light"])
+	StatusRules.apply_light_exposed(state, exposed_target, 2, victim.uid)
+	var target_hp := exposed_target.hp
+	var events := _kill_and_collect_events(state, victim)
+	if exposed_target.hp >= target_hp:
+		_fail("[black_light] exposed target should take judgement damage")
+		return
+	if not exposed_target.has_status(Constants.STATUS_BLINDED):
+		_fail("[black_light] level 3 light should blind surviving targets")
+		return
+	if _count_events(events, "light_beam") < 1:
+		_fail("[black_light] should emit light_beam event")
+		return
+	print("  [OK] black_light_judges_exposed_targets")
+
+
+func _test_black_counter_hits_killer() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var victim := _spawn_unit(state, "counter_black_victim", VICTIM_POS, Constants.TEAM_ENEMY, 20)
+	var killer := _spawn_unit(state, "counter_black_killer", ATTACKER_POS, Constants.TEAM_PLAYER, 40)
+	_ensure_black_slots(victim, 1)
+	_mount_on_slots(state, victim, Constants.SLOT_BLACK, ["counter"])
+	var killer_hp := killer.hp
+	CombatRules.apply_damage(state, victim, victim.hp, killer.uid, "ranged_attack")
+	if killer.hp >= killer_hp:
+		_fail("[black_counter] killer should take reflected death damage")
+		return
+	print("  [OK] black_counter_hits_killer")
 
 
 func _test_black_death_priority_over_slot_order() -> void:
@@ -276,6 +428,14 @@ func _mount_on_slots(state: GameState, unit: UnitState, slot_type: String, profi
 	for i in range(profiles.size()):
 		var profile: String = str(profiles[i])
 		_mount_gem_on_slot(state, unit, slots[i], str(PROFILE_GEM.get(profile, "")))
+
+
+func _profile_stack_level(profiles: Array, profile: String) -> int:
+	var count := 0
+	for raw in profiles:
+		if str(raw) == profile:
+			count += 1
+	return count
 
 
 func _mount_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, gem_id: String) -> void:

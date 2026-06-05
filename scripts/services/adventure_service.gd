@@ -134,6 +134,7 @@ func resolve_pending_room() -> Dictionary:
 				int(heal_result.get("max_hp", 0)),
 			]
 		"EVENT":
+			RunService.get_or_roll_gem_offer(room_id, "normal_chest", 3)
 			var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, "normal_chest", 1)
 			var relic_id := str(offer[0]) if not offer.is_empty() else ""
 			if relic_id == "relic_placeholder":
@@ -146,6 +147,7 @@ func resolve_pending_room() -> Dictionary:
 			else:
 				result["summary"] = "神秘房间没有可发放的遗物。"
 		"SHOP":
+			RunService.get_or_roll_gem_offer(room_id, "shop", 3)
 			result["summary"] = "商店节点先保留，占位等待后续接入商品与购买流程。"
 		"END":
 			var chapter := get_current_chapter()

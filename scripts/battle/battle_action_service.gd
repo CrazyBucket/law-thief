@@ -115,14 +115,15 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail("玩家不存在")
 	if target_pos == player.pos:
 		return _fail("不能攻击自己")
-	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
+	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return _fail("目标超出射程")
 	var presentation_state: GameState = state.clone()
 	var from_pos := player.pos
 	var to_pos := target_pos
 	var attack_events: Array[Dictionary] = []
 	var atk_result := CombatRules.ranged_attack(
-		state, player, target_pos, Constants.ATTACK_RANGE, {"aim_cell": target_pos}
+		state, player, target_pos, max_range, {"aim_cell": target_pos}
 	)
 	if not atk_result.get("ok", false):
 		return _fail(atk_result.get("reason", "无法攻击"))

@@ -416,8 +416,8 @@ static func apply_explosion_red(state: GameState, owner: UnitState, target_cell:
   - [x] 蓝槽 3 级：受伤后生成 1 血临时分身，每回合限一次。
   - [x] 黑槽 2 / 3 级：分身属性保留 50% / 80%。
 - [x] 引力、剧毒、燃烧、冰冻接入同一等级 context。
-  - [ ] 引力红槽“普通攻击范围 +n”尚未接到射程 / AI / 预览。
-  - [ ] 剧毒蓝槽 2 级“回合结束向最近未中毒单位传 1 层毒”尚未接。
+  - [x] 引力红槽：普通攻击范围按等级 +0 / +1 / +2，并已接到射程 / AI / 预览。
+  - [x] 剧毒蓝槽 2 级：回合结束向最近未中毒友方传播 1 层毒。
 - [x] 黑槽死亡结算增加 `death_chain_id`，防止连锁递归失控。
 
 ### P2 组合与特殊 tag
@@ -426,32 +426,38 @@ static func apply_explosion_red(state: GameState, owner: UnitState, target_cell:
 - [x] 实现爆炸 + 燃烧：爆炸后生成火焰。
 - [x] 实现爆炸 + 剧毒：爆炸后生成毒雾。
 - [x] 实现剧毒 + 燃烧：新增毒烟地块 modifier。
-- [ ] 新增光、反击、回响三个宝石定义和最低可玩效果。
-- [ ] 新增 `GemEchoRules`，实现防抽自身、防递归、强化版抽取。
+- [x] 新增光、反击、回响三个宝石定义和最低可玩效果。
+- [x] 新增 `GemEchoRules`，实现防抽自身、防递归、强化版抽取。
 
 ### P3 池子、遭遇与奖励
 
 - [x] `roll_spawnable_gem_id()` 改为使用 `gem_pools.json`。
-- [ ] 敌人生成根据章节、房间类型、敌人模板选择 source pool。
-- [ ] 战斗奖励、事件奖励、商店商品分别接入不同 pool。
-- [ ] 增加“教学加权”配置，允许指定章节更容易出现某些组合材料。
-- [ ] 给 debug console 增加查看当前 pool 候选的命令。
+- [x] 敌人生成根据章节、房间类型、敌人模板选择 source pool。
+- [x] 战斗奖励、事件奖励、商店商品分别接入不同 pool。
+- [x] 增加"教学加权"配置，允许指定章节更容易出现某些组合材料。
+- [x] 给 debug console 增加查看当前 pool 候选的命令。
 
 ### P4 UI 与表现
 
-- [ ] 槽位 tooltip 显示当前 tag 等级和组合。
-- [ ] 宝石奖励界面显示 pool tier / 稀有度 / tag。
-- [ ] 攻击预览显示组合后的范围，例如爆炸 2 级 3x3。
-- [ ] 事件流补齐爆炸、毒雾、火焰、光束、回响的 visual event。
-- [ ] 本地化补齐所有新增宝石和等级描述。
+- [x] 槽位 tooltip 显示当前 tag 等级和组合。
+- [x] 宝石奖励界面显示 pool tier / 稀有度 / tag。
+- [x] 攻击预览显示组合后的范围，例如爆炸 2 级 3x3。
+- [x] 事件流补齐爆炸、毒雾、火焰、光束、回响的 visual event。
+- [x] 本地化补齐所有新增宝石和等级描述。
 
 ### P5 回归测试
 
-- [ ] 新增 `gem_tag_resolver_test.gd`。
-- [ ] 新增 `gem_pool_roll_test.gd`，验证来源、章节、权重过滤。
-- [ ] 新增 `gem_combo_test.gd`，覆盖爆炸 + 燃烧、爆炸 + 剧毒、剧毒 + 燃烧。
-- [ ] 新增 `gem_echo_test.gd`，覆盖不抽自身和最大递归深度。
-- [ ] 扩展现有 `blue_black_combo_test.gd`、`attack_tag_combo_test.gd`，改为验证等级 context。
+- [x] 新增 `gem_tag_resolver_test.gd`。
+- [x] 新增 `gem_pool_roll_test.gd`，验证来源、章节、权重过滤。
+- [x] 新增 `gem_combo_test.gd`，覆盖爆炸 + 燃烧、爆炸 + 剧毒、剧毒 + 燃烧。
+- [x] 新增 `gem_echo_test.gd`，覆盖不抽自身和最大递归深度。
+- [x] 扩展现有 `blue_black_combo_test.gd`、`attack_tag_combo_test.gd`，改为验证等级 context。
+
+## 当前已知问题
+
+- `scripts/tests/blue_black_combo_test.gd` 的黑槽剧毒旧断言已对齐等级 context：`poison` 1 级只校验 debuff 转移，2 / 3 级再校验毒雾与 `poison_burst`。当前该矩阵测试已可作为有效回归。
+- 当前与 P1 / P2 相关的回归测试已覆盖：`skill_test.gd`、`gem_tag_resolver_test.gd`、`gem_pool_roll_test.gd`、`gem_combo_test.gd`、`gem_echo_test.gd`、`blue_black_combo_test.gd`、`attack_tag_combo_test.gd`、`gem_level_context_test.gd`、`status_test.gd`。
+- 当前剩余主要是静态检查 warning（例如 shadowed identifier / unused parameter），不影响本轮 P1 / P2 机制落地与测试通过。
 
 ## 推荐落地顺序
 

@@ -23,4 +23,12 @@ static func resolve_echo_tags(state: GameState, gem_ctx: Dictionary, rng_key: St
 	var rng: Node = Engine.get_main_loop().root.get_node_or_null("RngService")
 	if rng != null:
 		rng.shuffle_in_place(rng_key, candidates)
-	return candidates.slice(0, mini(count, candidates.size()))
+	var picked: Array[String] = candidates.slice(0, mini(count, candidates.size()))
+	if echo_level >= 3 and not picked.is_empty():
+		var bonus_index := 0
+		if picked.size() > 1 and rng != null:
+			bonus_index = int(rng.roll_int("%s_bonus" % rng_key, 0, picked.size() - 1))
+		var bonus_tag := picked[bonus_index]
+		picked.remove_at(bonus_index)
+		picked.insert(0, bonus_tag)
+	return picked

@@ -18,6 +18,7 @@ static func _relic_effect_registry() -> Node:
 
 const TIMING_ACTIVE := "active"
 const TIMING_TURN_START := "turn_start"
+const TIMING_TURN_END := "turn_end"
 const TIMING_OWNER_DAMAGED := "owner_damaged"
 const TIMING_ON_DEATH := "on_death"
 const TIMING_MOVED_THROUGH := "moved_through"
@@ -83,6 +84,26 @@ static func tick_turn_start(state: GameState) -> void:
 		state.unregister_unit(unit)
 		state.battle_temp_flags.erase("split_blue_temp_expire:%s" % unit.uid)
 	state.purge_dead_controllable()
+
+
+static func capture_blue_poison_turn_end_sources(state: GameState) -> Dictionary:
+	var snapshot: Dictionary = {}
+	if state == null:
+		return snapshot
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		var poison: StatusInstance = unit.get_status(Constants.STATUS_POISON)
+		if poison == null:
+			continue
+		var source_uid := str(poison.source_uid)
+		if source_uid.is_empty():
+			continue
+		var source_uids: Array = snapshot.get(source_uid, [])
+		if not unit.uid in source_uids:
+			source_uids.append(unit.uid)
+		snapshot[source_uid] = source_uids
+	return snapshot
 
 
 static func run_tile_hooks(state: GameState, tile: TileState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
@@ -233,6 +254,26 @@ static func unit_has_red_arc(state: GameState, unit: UnitState) -> bool:
 
 static func unit_has_red_light(state: GameState, unit: UnitState) -> bool:
 	return _unit_has_red_active_profile(state, unit, "light")
+
+
+static func red_attack_range_bonus(state: GameState, unit: UnitState) -> int:
+	if state == null or unit == null:
+		return 0
+	if not _unit_has_red_active_profile(state, unit, "gravity"):
+		return 0
+	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, TIMING_ACTIVE)
+	var gravity_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
+	return maxi(0, gravity_level - 1)
+
+
+static func red_attack_range(state: GameState, unit: UnitState, base_range: int = Constants.ATTACK_RANGE) -> int:
+	if unit_has_red_light(state, unit):
+		return Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+	return base_range + red_attack_range_bonus(state, unit)
+
+
+static func gravity_pull_range(state: GameState, unit: UnitState, base_range: int = Constants.ENEMY_GRAVITY_PULL_RANGE) -> int:
+	return base_range + red_attack_range_bonus(state, unit)
 
 
 static func on_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
@@ -506,6 +547,15 @@ static func _run_unit_slot_hook(state: GameState, owner: UnitState, slot: SlotSt
 				if _rr != null:
 					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
 			return triggered
+		TIMING_TURN_END:
+			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
+				return false
+			var triggered := _run_unit_turn_end_effect(state, owner, slot, gem, ctx)
+			if triggered:
+				var _rr := _relic_effect_registry()
+				if _rr != null:
+					_rr.fire_event("blue_gem_triggered", state, {"actor_uid": owner.uid})
+			return triggered
 		TIMING_OWNER_DAMAGED:
 			if not slot.accepts_slot_type(Constants.SLOT_BLUE):
 				return false
@@ -657,6 +707,20 @@ static func _run_unit_turn_start_effect(state: GameState, owner: UnitState, gem:
 					CombatRules.apply_damage(state, target, 1, owner.uid, "blue_explosion_aura")
 					break
 			return true
+	return false
+
+
+static func _run_unit_turn_end_effect(state: GameState, owner: UnitState, _slot: SlotState, gem: GemState, ctx: Dictionary) -> bool:
+	match _ability_profile(gem, ABILITY_BLUE_DAMAGED):
+		"poison":
+			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
+			if gem_ctx.is_empty():
+				gem_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_TURN_END, _slot)
+			if GemTagResolver.tag_level(gem_ctx, "poison") < 2:
+				return false
+			var snapshot_variant: Variant = ctx.get("poison_turn_end_sources", {})
+			var snapshot: Dictionary = snapshot_variant if snapshot_variant is Dictionary else {}
+			return _spread_blue_poison_turn_end(state, owner, snapshot)
 	return false
 
 
@@ -1021,23 +1085,28 @@ static func _apply_blue_echo(
 		return
 	state.battle_temp_flags[once_key] = true
 	var out_events := _events_from_ctx(ctx)
-	for tag in GemEchoRules.resolve_echo_tags(state, gem_ctx, "echo_blue_%s_%d" % [owner.uid, state.turn_index]):
+	var tags := GemEchoRules.resolve_echo_tags(state, gem_ctx, "echo_blue_%s_%d" % [owner.uid, state.turn_index])
+	for i in range(tags.size()):
+		var tag := tags[i]
+		var strength := 2 if GemTagResolver.tag_level(gem_ctx, "echo") >= 3 and i == 0 else 1
 		match tag:
 			"arc":
 				if source != null and source.alive:
-					_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), out_events)
+					for _repeat in range(strength):
+						_arc_to(state, source, owner.uid, CombatRules.attack_damage(state, owner), out_events)
 			"fire":
 				if source != null and source.alive:
-					StatusRules.apply_burning(state, source, 1, owner.uid)
+					StatusRules.apply_burning(state, source, strength, owner.uid)
 			"poison":
 				if source != null and source.alive:
-					StatusRules.apply_poison(state, source, 1, 0, owner.uid)
+					StatusRules.apply_poison(state, source, strength, 0, owner.uid)
 			"ice":
 				if source != null and source.alive:
-					apply_ice_hit_effect(state, source, owner.uid, GemTagResolver.tag_level(gem_ctx, "ice"))
+					apply_ice_hit_effect(state, source, owner.uid, GemTagResolver.tag_level(gem_ctx, "ice") + strength - 1)
 			"light":
 				if source != null and source.alive:
-					_reflect_light_on_damage(state, owner, source, gem_ctx, out_events)
+					for _repeat in range(strength):
+						_reflect_light_on_damage(state, owner, source, gem_ctx, out_events)
 
 
 static func _apply_black_echo(
@@ -1050,9 +1119,14 @@ static func _apply_black_echo(
 		return
 	var echo_ctx := gem_ctx.duplicate(true)
 	echo_ctx["echo_depth"] = int(gem_ctx.get("echo_depth", 0)) + 1
-	for tag in GemEchoRules.resolve_echo_tags(state, gem_ctx, "echo_black_%s" % owner.uid):
+	var tags := GemEchoRules.resolve_echo_tags(state, gem_ctx, "echo_black_%s" % owner.uid)
+	for i in range(tags.size()):
+		var tag := tags[i]
 		var gem := _find_gem_by_tag(state, owner, Constants.SLOT_BLACK, tag)
-		if gem != null:
+		if gem == null:
+			continue
+		var repeat_count := 2 if GemTagResolver.tag_level(gem_ctx, "echo") >= 3 and i == 0 else 1
+		for _repeat in range(repeat_count):
 			_run_unit_death_effect_with_events(state, owner, gem, out_events, echo_ctx)
 
 
@@ -1224,6 +1298,45 @@ static func _copy_one_debuff_to_nearest_unit(state: GameState, source: UnitState
 	var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, source_uid, debuff.payload.duplicate(true))
 	copy.value = debuff.value
 	StatusRegistry.apply_to_unit(nearest, copy)
+
+
+static func _spread_blue_poison_turn_end(state: GameState, owner: UnitState, snapshot: Dictionary) -> bool:
+	var source_uids := _poison_turn_end_source_uids(snapshot, owner.uid)
+	if source_uids.is_empty():
+		source_uids = _poison_turn_end_source_uids(capture_blue_poison_turn_end_sources(state), owner.uid)
+	var best_target: UnitState = null
+	var best_source: UnitState = null
+	var best_dist := 999999
+	for source_uid in source_uids:
+		var source: UnitState = state.units.get(source_uid, null)
+		if source == null or not source.alive:
+			continue
+		for unit in state.units.values():
+			if not unit.alive or unit.uid == owner.uid or unit.uid == source.uid:
+				continue
+			if unit.team != source.team:
+				continue
+			if unit.has_status(Constants.STATUS_POISON):
+				continue
+			var dist := BoardUtils.chebyshev(source.pos, unit.pos)
+			if dist < best_dist:
+				best_dist = dist
+				best_source = source
+				best_target = unit
+	if best_target == null or best_source == null:
+		return false
+	StatusRules.apply_poison(state, best_target, 1, 2, owner.uid)
+	state.log("%s 的剧毒在回合结束从 %s 传给 %s" % [owner.uid, best_source.uid, best_target.uid])
+	return true
+
+
+static func _poison_turn_end_source_uids(snapshot: Dictionary, owner_uid: String) -> Array[String]:
+	var result: Array[String] = []
+	for raw in snapshot.get(owner_uid, []):
+		var uid := str(raw)
+		if not uid.is_empty() and not uid in result:
+			result.append(uid)
+	return result
 
 
 static func _should_skip_black_death_tag(state: GameState, owner: UnitState, tag: String, gem_ctx: Dictionary) -> bool:

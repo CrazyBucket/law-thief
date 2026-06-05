@@ -97,8 +97,7 @@ static func execute_aimed(
 ) -> Dictionary:
 	if not attacker.alive:
 		return _fail("攻击者无效")
-	if GemEffects.unit_has_red_light(state, attacker):
-		max_range = Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+	max_range = GemEffects.red_attack_range(state, attacker, max_range)
 	if not BoardUtils.can_unit_attack_cell(attacker, state, aim_cell, max_range):
 		return _fail("目标超出射程")
 
@@ -233,6 +232,9 @@ static func _phase_post_attack(ctx: AttackContext) -> void:
 
 	if ctx.has_tag(TAG_COUNTER):
 		_apply_red_counter(ctx)
+
+	if ctx.has_tag(TAG_ECHO):
+		_apply_red_echo_followup(ctx)
 
 	if killed and not ctx.has_tag(TAG_NO_KILL_PROC):
 		_gem_hooks_on_kill(ctx)
@@ -499,6 +501,23 @@ static func _apply_red_counter(ctx: AttackContext) -> void:
 	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, ctx.base_damage, ctx.attacker.uid, "counter_red")
 	if dealt > 0:
 		ctx.push_damage_event(ctx.target.pos, dealt)
+
+
+static func _apply_red_echo_followup(ctx: AttackContext) -> void:
+	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
+	if gem_ctx.is_empty() or not GemTagResolver.has_tag(gem_ctx, "echo"):
+		return
+	var echo_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "echo"))
+	if echo_level < 3 or ctx.target == null or not ctx.target.alive:
+		return
+	var once_key := "echo_red_followup:%s:%s:%d" % [ctx.attacker.uid, ctx.target.uid, ctx.state.turn_index]
+	if bool(ctx.state.battle_temp_flags.get(once_key, false)):
+		return
+	ctx.state.battle_temp_flags[once_key] = true
+	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, maxi(1, int(ceil(float(ctx.base_damage) * 0.5))), ctx.attacker.uid, "echo_red")
+	if dealt > 0:
+		ctx.push_damage_event(ctx.target.pos, dealt)
+		ctx.push_event({"type": "gem_flash", "pos": ctx.attacker.pos, "echo_followup": true})
 
 
 static func _add_attack_tags_from_red_profile(ctx: AttackContext, profile: String) -> void:

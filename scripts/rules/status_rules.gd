@@ -322,31 +322,40 @@ static func tick_turn_end(state: GameState) -> void:
 	# 阶段 2：接触结算（相邻）
 	_ContactResolver.resolve_adjacent(state)
 
-	# 阶段 3：状态预处理（由 overlay 修正 status 参数）
+	# 阶段 3：蓝槽回合末传播
+	var poison_turn_end_sources := GemEffects.capture_blue_poison_turn_end_sources(state)
+	for unit in state.units.values():
+		if not unit.alive:
+			continue
+		GemEffects.run_unit_hooks(state, unit, Constants.SLOT_BLUE, GemEffects.TIMING_TURN_END, {
+			"poison_turn_end_sources": poison_turn_end_sources,
+		})
+
+	# 阶段 4：状态预处理（由 overlay 修正 status 参数）
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
 		_pretick_overlay_status_modifiers(state, unit)
 
-	# 阶段 4：状态 Tick（poison/burning/armor 等）
+	# 阶段 5：状态 Tick（poison/burning/armor 等）
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
 		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END)
 
-	# 阶段 5：油桶着火检测
+	# 阶段 6：油桶着火检测
 	EntityRules.tick_barrels_in_fire(state)
 
-	# 阶段 6：地块 modifier 倒计时
+	# 阶段 7：地块 modifier 倒计时
 	for key in state.tiles.keys():
 		var tile: TileState = state.tiles[key]
 		tile.tick_modifiers()
 
-	# 阶段 7：火焰蔓延 + 草地随机生长
+	# 阶段 8：火焰蔓延 + 草地随机生长
 	TileRules.spread_fire(state)
 	_tick_grass_growth(state)
 
-	# 阶段 8：Pillar 光环
+	# 阶段 9：Pillar 光环
 	_apply_tile_pillar_auras(state)
 
 
