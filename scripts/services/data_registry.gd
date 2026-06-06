@@ -139,6 +139,68 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	return state
 
 
+func create_battle_state_from_editor_payload(encounter_id: String, encounter: Dictionary, seed_value: int = 0) -> GameState:
+	if encounter.is_empty():
+		push_error("Encounter payload is empty: %s" % encounter_id)
+		return null
+	_uid_counter = 0
+	if seed_value != 0:
+		RngService.start_run(seed_value)
+	var combat_seed := int(encounter.get("floor_seed", RngService.derive_combat_seed(encounter_id, "")))
+	RngService.reset_state(combat_seed, "combat:%s" % encounter_id)
+	var state := GameState.new()
+	state.run_seed = combat_seed
+	state.encounter_id = encounter_id
+	state.player_uid = _next_uid("player")
+	var player_spawn: Vector2i = encounter.get("player_spawn", Vector2i(3, 2))
+	var player := UnitState.from_def(
+		state.player_uid,
+		"unit_player",
+		Constants.TEAM_PLAYER,
+		player_spawn,
+		_unit_defs["unit_player"]
+	)
+	state.units[state.player_uid] = player
+	for enemy_data in encounter.get("enemies", []):
+		var enemy_uid := _next_uid(str(enemy_data.get("def_id", "enemy")))
+		var def_id := str(enemy_data.get("def_id", "unit_bomb_rat"))
+		var enemy_def: Dictionary = get_unit_def(def_id)
+		var slot_defs: Array = enemy_data.get("slots", enemy_def.get("slots", [])).duplicate(true)
+		enemy_def["slots"] = slot_defs
+		for slot_entry_variant in enemy_def["slots"]:
+			if not slot_entry_variant is Dictionary:
+				continue
+			var slot_entry := slot_entry_variant as Dictionary
+			if not slot_entry.has("gem_id"):
+				continue
+			var gem_uid := _next_uid("gem")
+			var gem := create_gem_instance(gem_uid, slot_entry.get("gem_id", ""), slot_entry.get("gem_overrides", {}))
+			state.gems[gem_uid] = gem
+			slot_entry["gem_uid"] = gem_uid
+			slot_entry.erase("gem_id")
+			slot_entry.erase("gem_overrides")
+		var enemy := UnitState.from_def(
+			enemy_uid,
+			def_id,
+			Constants.TEAM_ENEMY,
+			enemy_data.get("pos", Vector2i.ZERO),
+			enemy_def
+		)
+		for i in range(enemy.slots.size()):
+			var slot: SlotState = enemy.slots[i]
+			if not slot.gem_uid.is_empty():
+				var gem_state: GemState = state.gems[slot.gem_uid]
+				gem_state.owner_uid = enemy.uid
+				gem_state.slot_index = i
+		state.units[enemy_uid] = enemy
+	BoardMapGenerator.build(state, encounter)
+	TileRules.sync_all_units_standing_ground(state)
+	IntentSystem.refresh_all_intents(state)
+	state.rebuild_occupancy()
+	state.log("遭遇战开始: %s" % encounter_id)
+	return state
+
+
 func get_encounter_ids() -> Array:
 	return _encounters.keys()
 
@@ -180,6 +242,9 @@ func get_tile_ids() -> Array[String]:
 		Constants.TILE_FLOOR,
 		Constants.TILE_WATER,
 		Constants.TILE_PILLAR,
+		Constants.TILE_ICE,
+		Constants.TILE_GRASS,
+		Constants.TILE_BUSH,
 	]
 
 
@@ -194,6 +259,71 @@ func get_unit_display_name(unit_def_id: String) -> String:
 
 func get_tile_display_name(tile_id: String) -> String:
 	return _translate_key(_tile_display_name_key(tile_id), {}, tile_id)
+
+
+func get_entity_ids() -> Array[String]:
+	return [
+		Constants.ENTITY_ROCK,
+		Constants.ENTITY_PROP,
+		Constants.ENTITY_SPIKE,
+		Constants.ENTITY_BARREL,
+	]
+
+
+func has_entity_id(entity_id: String) -> bool:
+	return entity_id in get_entity_ids()
+
+
+func get_entity_display_name(entity_id: String) -> String:
+	match entity_id:
+		Constants.ENTITY_ROCK:
+			return "Rock"
+		Constants.ENTITY_PROP:
+			return "Prop"
+		Constants.ENTITY_SPIKE:
+			return "Spike"
+		Constants.ENTITY_BARREL:
+			return "Barrel"
+	return entity_id
+
+
+func get_overlay_ids() -> Array[String]:
+	return [
+		Constants.TILE_MOD_POISON_FOG,
+		Constants.TILE_MOD_FIRE,
+		Constants.TILE_MOD_TOXIC_SMOKE,
+		Constants.TILE_MOD_POISON_PUDDLE,
+	]
+
+
+func has_overlay_id(overlay_id: String) -> bool:
+	return overlay_id in get_overlay_ids()
+
+
+func get_overlay_display_name(overlay_id: String) -> String:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			return "Poison Fog"
+		Constants.TILE_MOD_FIRE:
+			return "Fire"
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			return "Toxic Smoke"
+		Constants.TILE_MOD_POISON_PUDDLE:
+			return "Poison Puddle"
+	return overlay_id
+
+
+func get_overlay_default_duration(overlay_id: String) -> int:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			return Constants.POISON_FOG_DURATION
+		Constants.TILE_MOD_FIRE:
+			return Constants.FIRE_DURATION
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			return 1
+		Constants.TILE_MOD_POISON_PUDDLE:
+			return 2
+	return 1
 
 
 func get_gem_def(gem_ref: Variant) -> Dictionary:
@@ -337,6 +467,10 @@ func get_relic_def(relic_id: String) -> Dictionary:
 
 func get_relic_rarity(relic_id: String) -> String:
 	return str(_relic_defs.get(relic_id, {}).get("rarity", "common"))
+
+
+func has_relic_def(relic_id: String) -> bool:
+	return _relic_defs.has(relic_id)
 
 
 func get_relic_ids() -> Array[String]:
@@ -1222,6 +1356,12 @@ func _tile_display_name_key(tile_id: String) -> String:
 			return "tile.water.name"
 		Constants.TILE_PILLAR:
 			return "tile.pillar.name"
+		Constants.TILE_ICE:
+			return "tile.ice.name"
+		Constants.TILE_GRASS:
+			return "tile.grass.name"
+		Constants.TILE_BUSH:
+			return "tile.bush.name"
 		_:
 			return "tile.floor.name"
 

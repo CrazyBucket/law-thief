@@ -9,6 +9,13 @@ const _PROP_BASES: Array[String] = [
 	"LargeRock1", "LargeRock2",
 	"Statue1", "Pedestal", "Log1", "Log2",
 ]
+const _ROCK_BASES: Array[String] = [
+	"DecorRock1", "DecorRock2", "DecorRock3", "DecorRock4", "DecorRock5", "DecorRock6",
+	"LargeRock1", "LargeRock2",
+]
+const _DECOR_BASES: Array[String] = [
+	"Post1", "Post2", "Statue1", "Pedestal", "Log1", "Log2",
+]
 
 var _texture_cache: Dictionary = {}
 var _foot_ratio_cache: Dictionary = {}
@@ -24,11 +31,19 @@ func _init() -> void:
 
 
 static func pick_sprite_id(seed: int, pos: Vector2i, uid: String = "") -> String:
-	var inst := DoodlePropSprites.new()
+	return pick_sprite_id_for_entity(Constants.ENTITY_PROP, seed, pos, uid)
+
+
+static func pick_sprite_id_for_entity(entity_id: String, seed: int, pos: Vector2i, uid: String = "") -> String:
+	var bases := _ROCK_BASES if entity_id == Constants.ENTITY_ROCK else _DECOR_BASES
+	var sprite_ids: Array[String] = []
+	for base_name in bases:
+		for frame in range(2):
+			sprite_ids.append("%s_%d" % [base_name, frame])
 	var hash_val := absi(hash(str(seed, pos.x, pos.y, uid)))
-	if inst._sprite_ids.is_empty():
+	if sprite_ids.is_empty():
 		return "DecorRock1_0"
-	return inst._sprite_ids[hash_val % inst._sprite_ids.size()]
+	return sprite_ids[hash_val % sprite_ids.size()]
 
 
 func texture_for_sprite_id(sprite_id: String) -> Texture2D:
@@ -67,8 +82,11 @@ func _ensure_texture(abs_path: String) -> Texture2D:
 
 
 func _measure_foot_ratio(abs_path: String) -> float:
-	var decoded := Image.new()
-	if decoded.load(abs_path) != OK:
+	var texture := _ensure_texture(abs_path)
+	if texture == null:
+		return 1.0
+	var decoded := texture.get_image()
+	if decoded == null:
 		return 1.0
 	var w := decoded.get_width()
 	var h := decoded.get_height()

@@ -40,6 +40,35 @@ func get_run() -> RunState:
 	return _run
 
 
+func snapshot_active_run() -> Dictionary:
+	if _run == null:
+		return {"active": false}
+	return {
+		"active": true,
+		"run": _run.export_dict(),
+		"progress_payload": _progress_payload.duplicate(true),
+	}
+
+
+func restore_run_snapshot(snapshot: Dictionary) -> void:
+	if not bool(snapshot.get("active", false)):
+		_clear_run_save()
+		_run = null
+		_progress_payload = {}
+		SaveService.touch_active_slot({
+			"has_run": false,
+			"run_invalid_reason": "",
+		})
+		return
+	var raw_run: Variant = snapshot.get("run", {})
+	if not raw_run is Dictionary:
+		return
+	_run = RunState.from_dict(raw_run as Dictionary)
+	var raw_progress: Variant = snapshot.get("progress_payload", {})
+	_progress_payload = (raw_progress as Dictionary).duplicate(true) if raw_progress is Dictionary else {}
+	save_run()
+
+
 func get_current_chapter() -> int:
 	if _run == null:
 		return 1

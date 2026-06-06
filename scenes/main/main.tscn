@@ -101,6 +101,11 @@ custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 text = "开始新游戏"
 
+[node name="EditorBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "测试编辑场景"
+
 [node name="SaveBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2

@@ -10,7 +10,7 @@ const DEFAULTS := {
 	"battle_animation_speed": 1.0,
 }
 
-var _settings: Dictionary = DEFAULTS.duplicate(true)
+var _settings: Dictionary = {}
 
 
 func _ready() -> void:
@@ -18,10 +18,16 @@ func _ready() -> void:
 	apply_runtime_settings()
 
 
+func _default_settings() -> Dictionary:
+	var defaults := DEFAULTS.duplicate(true)
+	defaults["battle_editor_enabled"] = OS.is_debug_build()
+	return defaults
+
+
 func get_value(key: String):
 	if _settings.has(key):
 		return _settings[key]
-	return DEFAULTS.get(key)
+	return _default_settings().get(key)
 
 
 func get_all() -> Dictionary:
@@ -61,6 +67,7 @@ func cycle_animation_speed(step: int) -> float:
 
 func load_settings() -> void:
 	_settings = DEFAULTS.duplicate(true)
+	_settings = _default_settings()
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		save_settings()
 		return

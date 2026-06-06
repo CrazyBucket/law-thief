@@ -2,6 +2,8 @@ extends Control
 
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
+const WaterLayerClass = preload("res://scripts/map/water_layer.gd")
+const WaterAutotileClass = preload("res://scripts/map/water_autotile.gd")
 
 const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd")
 const PLAYER_SPRITES_SCRIPT := preload("res://scripts/ui/female_adventurer_sprites.gd")
@@ -15,10 +17,21 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 const LightBeamShader := preload("res://scenes/battle/light_beam.gdshader")
+const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
+const WATER_EDGE_TOP := preload("res://assets/tiles/waterEdgeTop.generated.png")
+const WATER_EDGE_RIGHT := preload("res://assets/tiles/waterEdgeRight.generated.png")
+const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
+const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
+const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
+const ENTITY_BARREL_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Barrel_0.png")
+const ENTITY_ROCK_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Rock1_0.png")
 
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
+signal cell_released(cell: Vector2i, has_cell: bool)
 signal unit_slot_clicked(unit_uid: String, slot_index: int)
+signal editor_tool_drag_hovered(tool: Dictionary, cell: Vector2i, has_cell: bool)
+signal editor_tool_dropped(tool: Dictionary, cell: Vector2i, has_cell: bool)
 signal animation_finished()
 signal move_animation_finished()
 signal projectile_animation_finished()
@@ -51,6 +64,9 @@ class BoardAnimationHostState:
 
 var highlights: Dictionary = {}
 var hover_cell: Vector2i = Vector2i(-1, -1)
+var editor_preview_cells: Array[Vector2i] = []
+var editor_preview_active: bool = false
+var editor_preview_valid: bool = false
 var selected_unit_uid: String = ""
 var timeline_hover_unit_uid: String = ""
 var active_turn_unit_uid: String = ""
@@ -85,6 +101,9 @@ var _animation_speed_scale: float = 1.0
 var _board_texture: Sprite2D = null
 ## 贴图去掉白边后的实际内容区域（缓存，仅扫描一次）
 var _board_texture_region: Rect2 = Rect2()
+var _water_fill_layer: Node2D = null
+var _water_edge_layer: Node2D = null
+var _water_visual_signature: int = -1
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
 var _anim := BoardAnimationHostState.new()
@@ -142,6 +161,7 @@ func _ready() -> void:
 	texture_filter = TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_board_texture = get_node_or_null("Grids")
+	_ensure_water_layers()
 	resized.connect(_update_origin)
 	_update_origin()
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
@@ -159,6 +179,7 @@ func _update_origin() -> void:
 	IsoCoordinates.tile_scale = IsoCoordinates.compute_tile_scale(size, board_sz)
 	_board_origin = IsoCoordinates.board_origin(size, board_sz)
 	_update_board_texture_transform()
+	_sync_water_visuals()
 
 
 ## 把正方棋盘贴图映射到等距菱形上：四个角分别对到菱形上/右/下/左顶点
@@ -231,6 +252,8 @@ func _process(delta: float) -> void:
 		_anim.walk_phase[mv_uid] = _anim.walk_phase.get(mv_uid, 0.0) + scaled_dt
 		visuals_dirty = true
 	if state != null:
+		if _has_animated_tile_overlays():
+			visuals_dirty = true
 		for unit: UnitState in state.units.values():
 			if not unit.alive or not _uses_animated_idle(unit):
 				continue
@@ -270,6 +293,13 @@ func _process(delta: float) -> void:
 	var gem_dirty := _update_gem_visuals(scaled_dt)
 	if needs_redraw or visuals_dirty or gem_dirty:
 		queue_redraw()
+
+
+func _has_animated_tile_overlays() -> bool:
+	for tile: TileState in state.tiles.values():
+		if tile != null and not tile.modifiers.is_empty():
+			return true
+	return false
 
 
 func _update_overlay_fades(delta: float) -> bool:
@@ -392,6 +422,17 @@ func set_hover(cell: Vector2i) -> void:
 	queue_redraw()
 
 
+func set_editor_preview(cells: Array[Vector2i], valid: bool, active: bool = true) -> void:
+	editor_preview_cells = cells.duplicate()
+	editor_preview_valid = valid
+	editor_preview_active = active
+	queue_redraw()
+
+
+func clear_editor_preview() -> void:
+	set_editor_preview([], false, false)
+
+
 func set_timeline_hover_unit(uid: String) -> void:
 	timeline_hover_unit_uid = uid
 	queue_redraw()
@@ -418,12 +459,14 @@ func _sorted_cells() -> Array[Vector2i]:
 
 func _draw() -> void:
 	if state == null:
+		_clear_water_visuals()
 		return
 	var drawn_units: Dictionary = {}
 	var drawn_entities: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
 	_draw_move_highlight_outlines()
+	_draw_editor_preview()
 	for grid in _sorted_cells():
 		_draw_entity_at_grid(grid, drawn_entities)
 		if hover_cell == grid:
@@ -442,6 +485,89 @@ func _draw() -> void:
 	_draw_projectile()
 	_draw_gem_visuals(true)
 	_draw_unit_slot_panels()
+
+
+func _ensure_water_layers() -> void:
+	if _water_fill_layer != null:
+		return
+	_water_fill_layer = WaterLayerClass.new()
+	_water_fill_layer.name = "WaterFillLayer"
+	_water_fill_layer.layer_kind = WaterLayerClass.LayerKind.FILL
+	_water_fill_layer.show_behind_parent = true
+	_water_fill_layer.z_index = 0
+	var fill_material := ShaderMaterial.new()
+	fill_material.shader = WaterTileShader
+	fill_material.set_shader_parameter("base_color", Color("95e9fa"))
+	fill_material.set_shader_parameter("water_bottom", WATER_BOTTOM)
+	fill_material.set_shader_parameter("water_top", WATER_TOP)
+	_water_fill_layer.material = fill_material
+	add_child(_water_fill_layer)
+
+	_water_edge_layer = WaterLayerClass.new()
+	_water_edge_layer.name = "WaterEdgeLayer"
+	_water_edge_layer.layer_kind = WaterLayerClass.LayerKind.EDGE
+	_water_edge_layer.edge_texture_top = WATER_EDGE_TOP
+	_water_edge_layer.edge_texture_right = WATER_EDGE_RIGHT
+	_water_edge_layer.show_behind_parent = true
+	_water_edge_layer.z_index = 0
+	add_child(_water_edge_layer)
+
+
+func _clear_water_visuals() -> void:
+	_water_visual_signature = -1
+	if _water_fill_layer != null:
+		_water_fill_layer.set_cells([])
+	if _water_edge_layer != null:
+		_water_edge_layer.set_cells([])
+
+
+func _sync_water_visuals() -> void:
+	_ensure_water_layers()
+	if state == null:
+		_clear_water_visuals()
+		return
+	var water := _water_cell_set()
+	var signature := hash([
+		state.get_instance_id(),
+		IsoCoordinates.tile_scale,
+		_board_origin,
+		invert_origin,
+		state.tiles.size(),
+	])
+	for tile in state.tiles.values():
+		if tile == null or tile.tile_id != Constants.TILE_WATER:
+			continue
+		var edge_states := WaterAutotileClass.states(tile.pos, water)
+		signature = hash(Vector4i(signature, hash(tile.pos), hash(edge_states), 0))
+	if signature == _water_visual_signature:
+		return
+
+	var cells: Array = []
+	for tile in state.tiles.values():
+		if tile == null or tile.tile_id != Constants.TILE_WATER:
+			continue
+		var edge_states := WaterAutotileClass.states(tile.pos, water)
+		var cell := {
+			"center": grid_to_screen(tile.pos),
+			"half_w": IsoCoordinates._half_w(),
+			"half_h": IsoCoordinates._half_h(),
+			"top": edge_states.x,
+			"right": edge_states.y,
+			"bottom": edge_states.z,
+			"left": edge_states.w,
+		}
+		cells.append(cell)
+	_water_visual_signature = signature
+	_water_fill_layer.set_cells(cells)
+	_water_edge_layer.set_cells(cells)
+
+
+func _water_cell_set() -> Dictionary:
+	var water := {}
+	for tile in state.tiles.values():
+		if tile != null and tile.tile_id == Constants.TILE_WATER:
+			water[tile.pos] = true
+	return water
 
 
 func configure_unit_slot_panels(action: String, check_fn: Callable = Callable()) -> void:
@@ -483,11 +609,31 @@ func _draw_entity_at_grid(grid: Vector2i, drawn_entities: Dictionary) -> void:
 	var center := grid_to_screen(entity.pos)
 	match entity.entity_id:
 		Constants.ENTITY_SPIKE:
-			TileRenderer.draw_spikes(self, center)
-		Constants.ENTITY_PROP, Constants.ENTITY_ROCK:
+			TileRenderer.draw_entity_texture(self, center, ENTITY_SPIKE_TEXTURE, 0.86)
+		Constants.ENTITY_PROP:
 			_draw_prop_entity(entity, center)
+		Constants.ENTITY_ROCK:
+			TileRenderer.draw_entity_texture(self, center, ENTITY_ROCK_TEXTURE, 0.72)
+		Constants.ENTITY_BARREL:
+			TileRenderer.draw_entity_texture(self, center, ENTITY_BARREL_TEXTURE, 0.78)
 		_:
-			pass
+			TileRenderer.draw_prop_fallback(self, center)
+
+
+func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
+	if not data is Dictionary or not data.has("battle_editor_tool"):
+		return false
+	var cell := pick_cell(at_position)
+	var has_cell := cell.x >= 0
+	editor_tool_drag_hovered.emit(data.get("battle_editor_tool", {}), cell, has_cell)
+	return has_cell
+
+
+func _drop_data(at_position: Vector2, data: Variant) -> void:
+	if not data is Dictionary or not data.has("battle_editor_tool"):
+		return
+	var cell := pick_cell(at_position)
+	editor_tool_dropped.emit(data.get("battle_editor_tool", {}), cell, cell.x >= 0)
 
 
 func _draw_prop_entity(entity: EntityState, center: Vector2) -> void:
@@ -514,6 +660,19 @@ func _draw_move_highlight_outlines() -> void:
 		var color: Color = hover_outline if is_hovered else outline
 		var width: float = IsoCoordinates.visual(2.0 if is_hovered else 1.5)
 		_draw_cell_outline(cell, color, width)
+
+
+func _draw_editor_preview() -> void:
+	if not editor_preview_active or editor_preview_cells.is_empty():
+		return
+	var outline := Color(0.42, 0.92, 0.58, 0.96) if editor_preview_valid else Color(1.0, 0.38, 0.38, 0.96)
+	var fill := Color(0.18, 0.82, 0.38, 0.22) if editor_preview_valid else Color(0.92, 0.18, 0.18, 0.2)
+	for cell in editor_preview_cells:
+		var corners := IsoCoordinates.diamond_corners(grid_to_screen(cell))
+		draw_colored_polygon(corners, fill)
+		var closed := corners.duplicate()
+		closed.append(corners[0])
+		draw_polyline(closed, outline, IsoCoordinates.visual(2.0), false)
 
 
 func _draw_highlight_outlines() -> void:

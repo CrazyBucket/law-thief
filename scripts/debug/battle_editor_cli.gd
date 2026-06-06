@@ -34,8 +34,12 @@ func run(raw_command: String) -> Dictionary:
 			return _run_editor_move_command(ctrl, tokens, 1)
 		"set":
 			return _run_editor_set_command(ctrl, tokens, 1)
+		"relic":
+			return _run_editor_relic_command(ctrl, tokens, 1)
 		"export":
 			return _run_editor_export_command(ctrl, tokens, 1)
+		"import":
+			return _run_editor_import_command(ctrl, tokens, 1)
 		_:
 			return _fail("unknown command: %s (use /help for usage)" % tokens[0])
 
@@ -68,7 +72,11 @@ func _run_editor_spawn_command(ctrl, tokens: Array, start_index: int) -> Diction
 			var unit_tokens: Array = [object_id, str(positionals[0])]
 			if options.has("team"):
 				unit_tokens.append(str(options["team"]))
-			return _run_editor_spawn_unit(ctrl, unit_tokens, 0)
+			return ctrl.run_editor_action("spawn_unit", {
+				"unit_def_id": object_id,
+				"pos": _editor_parse_single_pos_token(str(positionals[0])).get("pos", Vector2i.ZERO),
+				"team": str(options.get("team", Constants.TEAM_ENEMY)),
+			})
 		"gem":
 			var gem_option_check := _editor_validate_option_keys(options, ["slot", "target"])
 			if not gem_option_check.get("ok", false):
@@ -78,12 +86,43 @@ func _run_editor_spawn_command(ctrl, tokens: Array, start_index: int) -> Diction
 				gem_tokens.append(str(options["slot"]))
 			if options.has("target"):
 				gem_tokens.append(str(options["target"]))
-			return _run_editor_spawn_gem(ctrl, gem_tokens, 0)
+			return ctrl.run_editor_action("spawn_gem", {
+				"gem_id": object_id,
+				"pos": _editor_parse_single_pos_token(str(positionals[0])).get("pos", Vector2i.ZERO),
+				"slot_type": str(options.get("slot", "")),
+				"target_kind": str(options.get("target", "")),
+			})
 		"tile":
 			var tile_option_check := _editor_validate_option_keys(options, [])
 			if not tile_option_check.get("ok", false):
 				return tile_option_check
-			return _run_editor_set_tile(ctrl, [str(positionals[0]), object_id], 0)
+			return ctrl.run_editor_action("set_tile", {
+				"pos": _editor_parse_single_pos_token(str(positionals[0])).get("pos", Vector2i.ZERO),
+				"tile_id": object_id,
+			})
+		"entity":
+			var entity_option_check := _editor_validate_option_keys(options, [])
+			if not entity_option_check.get("ok", false):
+				return entity_option_check
+			return ctrl.run_editor_action("spawn_entity", {
+				"entity_id": object_id,
+				"pos": _editor_parse_single_pos_token(str(positionals[0])).get("pos", Vector2i.ZERO),
+			})
+		"overlay":
+			var overlay_option_check := _editor_validate_option_keys(options, ["duration"])
+			if not overlay_option_check.get("ok", false):
+				return overlay_option_check
+			var duration := 0
+			if options.has("duration"):
+				var raw_duration := str(options.get("duration", ""))
+				if not raw_duration.is_valid_int():
+					return _fail("duration must be an integer")
+				duration = int(raw_duration)
+			return ctrl.run_editor_action("spawn_overlay", {
+				"overlay_id": object_id,
+				"pos": _editor_parse_single_pos_token(str(positionals[0])).get("pos", Vector2i.ZERO),
+				"duration": duration,
+			})
 	return _fail("unsupported object id: %s" % object_id)
 
 
@@ -108,7 +147,17 @@ func _run_editor_spawn_many_command(ctrl, tokens: Array, start_index: int) -> Di
 		batch_tokens.append(str(options["team"]))
 	for pos_token in positionals:
 		batch_tokens.append(str(pos_token))
-	return _run_editor_batch_spawn_unit(ctrl, batch_tokens, 0)
+	var positions: Array[Vector2i] = []
+	for pos_token in positionals:
+		var parsed := _editor_parse_single_pos_token(str(pos_token))
+		if not parsed.get("ok", false):
+			return parsed
+		positions.append(parsed.get("pos", Vector2i.ZERO))
+	return ctrl.run_editor_action("spawn_many_units", {
+		"unit_def_id": unit_def_id,
+		"team": str(options.get("team", Constants.TEAM_ENEMY)),
+		"positions": positions,
+	})
 
 
 func _run_editor_remove_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
@@ -117,7 +166,12 @@ func _run_editor_remove_command(ctrl, tokens: Array, start_index: int) -> Dictio
 	var noun := _normalize_editor_noun(tokens[start_index])
 	match noun:
 		"unit":
-			return _run_editor_delete_unit(ctrl, tokens, start_index + 1)
+			var unit_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not unit_parse.get("ok", false):
+				return unit_parse
+			return ctrl.run_editor_action("remove_unit", {
+				"pos": unit_parse.get("pos", Vector2i.ZERO),
+			})
 		"gem":
 			var arg_parse := _editor_parse_cli_args(tokens, start_index + 1)
 			if not arg_parse.get("ok", false):
@@ -136,9 +190,34 @@ func _run_editor_remove_command(ctrl, tokens: Array, start_index: int) -> Dictio
 				gem_tokens.append(str(options["slot"]))
 			if options.has("target"):
 				gem_tokens.append(str(options["target"]))
-			return _run_editor_delete_gem(ctrl, gem_tokens, 0)
+			var gem_parse := _editor_parse_single_pos_token(str(positionals[0]))
+			if not gem_parse.get("ok", false):
+				return gem_parse
+			return ctrl.run_editor_action("remove_gem", {
+				"pos": gem_parse.get("pos", Vector2i.ZERO),
+				"slot_type": str(options.get("slot", "")),
+				"target_kind": str(options.get("target", "")),
+			})
+		"entity":
+			var entity_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not entity_parse.get("ok", false):
+				return entity_parse
+			return ctrl.run_editor_action("remove_entity", {
+				"pos": entity_parse.get("pos", Vector2i.ZERO),
+			})
+		"overlay":
+			var overlay_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not overlay_parse.get("ok", false):
+				return overlay_parse
+			var next_index: int = int(overlay_parse.get("next", start_index + 1))
+			if tokens.size() <= next_index:
+				return _fail("missing overlay id")
+			return ctrl.run_editor_action("remove_overlay", {
+				"pos": overlay_parse.get("pos", Vector2i.ZERO),
+				"overlay_id": str(tokens[next_index]),
+			})
 		_:
-			return _fail("remove only supports unit or gem")
+			return _fail("remove only supports unit, gem, entity, or overlay")
 
 
 func _run_editor_move_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
@@ -149,7 +228,16 @@ func _run_editor_move_command(ctrl, tokens: Array, start_index: int) -> Dictiona
 			move_start += 1
 		elif not noun.is_empty():
 			return _fail("move only supports units")
-	return _run_editor_move_unit(ctrl, tokens, move_start)
+	var from_parse := _editor_parse_pos(tokens, move_start)
+	if not from_parse.get("ok", false):
+		return from_parse
+	var to_parse := _editor_parse_pos(tokens, int(from_parse.get("next", move_start)))
+	if not to_parse.get("ok", false):
+		return to_parse
+	return ctrl.run_editor_action("move_unit", {
+		"from_pos": from_parse.get("pos", Vector2i.ZERO),
+		"to_pos": to_parse.get("pos", Vector2i.ZERO),
+	})
 
 
 func _run_editor_set_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
@@ -158,27 +246,78 @@ func _run_editor_set_command(ctrl, tokens: Array, start_index: int) -> Dictionar
 	var noun := _normalize_editor_noun(tokens[start_index])
 	match noun:
 		"tile":
-			return _run_editor_set_tile(ctrl, tokens, start_index + 1)
+			var tile_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not tile_parse.get("ok", false):
+				return tile_parse
+			var next_index: int = int(tile_parse.get("next", start_index + 1))
+			if tokens.size() <= next_index:
+				return _fail("missing tile id")
+			return ctrl.run_editor_action("set_tile", {
+				"pos": tile_parse.get("pos", Vector2i.ZERO),
+				"tile_id": str(tokens[next_index]),
+			})
 		"stat":
-			return _run_editor_set_unit_stat(ctrl, tokens, start_index + 1)
+			var stat_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not stat_parse.get("ok", false):
+				return stat_parse
+			var stat_index: int = int(stat_parse.get("next", start_index + 1))
+			if tokens.size() <= stat_index + 1:
+				return _fail("missing stat field or value")
+			var field := _normalize_editor_stat_field(tokens[stat_index])
+			if field.is_empty():
+				return _fail("unsupported stat field: %s" % tokens[stat_index])
+			return ctrl.run_editor_action("set_unit_stat", {
+				"pos": stat_parse.get("pos", Vector2i.ZERO),
+				"field": field,
+				"value": str(tokens[stat_index + 1]),
+			})
 		"player_spawn":
-			return _run_editor_set_player_spawn(ctrl, tokens, start_index + 1)
+			var spawn_parse := _editor_parse_pos(tokens, start_index + 1)
+			if not spawn_parse.get("ok", false):
+				return spawn_parse
+			return ctrl.run_editor_action("set_player_spawn", {
+				"pos": spawn_parse.get("pos", Vector2i.ZERO),
+			})
 		_:
 			return _fail("set only supports tile, stat, or spawn")
+
+
+func _run_editor_relic_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
+	if tokens.size() <= start_index:
+		return _fail("missing relic action")
+	var action := str(tokens[start_index]).to_lower()
+	if tokens.size() <= start_index + 1:
+		return _fail("missing relic id")
+	var relic_id := str(tokens[start_index + 1])
+	match action:
+		"add", "grant":
+			return ctrl.run_editor_action("add_relic", {"relic_id": relic_id})
+		"remove", "delete":
+			return ctrl.run_editor_action("remove_relic", {"relic_id": relic_id})
+	return _fail("relic only supports add or remove")
 
 
 func _run_editor_export_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
 	var export_start := start_index
 	if tokens.size() > start_index and _normalize_editor_noun(tokens[start_index]) == "encounter":
 		export_start += 1
-	return _run_editor_export_encounter(ctrl, tokens, export_start)
+	var encounter_id := ""
+	if tokens.size() > export_start:
+		encounter_id = str(tokens[export_start])
+	return ctrl.run_editor_action("export_encounter", {"encounter_id": encounter_id})
+
+
+func _run_editor_import_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
+	if tokens.size() <= start_index:
+		return _fail("missing import file path")
+	return ctrl.run_editor_action("import_encounter_file", {"path": str(tokens[start_index])})
 
 
 func _run_editor_list_command(ctrl, tokens: Array, start_index: int = 1) -> Dictionary:
 	if tokens.size() <= start_index:
 		return _ok({
-			"message": "Available catalogs: units, gems, tiles",
-			"lines": ["list units", "list gems", "list tiles"],
+			"message": "Available catalogs: units, gems, tiles, entities, overlays, relics",
+			"lines": ["list units", "list gems", "list tiles", "list entities", "list overlays", "list relics"],
 		})
 	var category := _normalize_editor_noun(tokens[start_index])
 	var lines: Array[String] = []
@@ -198,7 +337,22 @@ func _run_editor_list_command(ctrl, tokens: Array, start_index: int = 1) -> Dict
 			for tile_id in _data_registry(ctrl).get_tile_ids():
 				lines.append("  %s  %s" % [tile_id, _data_registry(ctrl).get_tile_display_name(tile_id)])
 			return _ok({"message": "Tile definition ids (strings)", "lines": lines})
-	return _fail("list only supports units, gems, or tiles")
+		"entity":
+			lines.append("(string def_id)")
+			for entity_id in _data_registry(ctrl).get_entity_ids():
+				lines.append("  %s  %s" % [entity_id, _data_registry(ctrl).get_entity_display_name(entity_id)])
+			return _ok({"message": "Entity definition ids (strings)", "lines": lines})
+		"overlay":
+			lines.append("(string overlay_id)")
+			for overlay_id in _data_registry(ctrl).get_overlay_ids():
+				lines.append("  %s  %s" % [overlay_id, _data_registry(ctrl).get_overlay_display_name(overlay_id)])
+			return _ok({"message": "Overlay ids (strings)", "lines": lines})
+		"relic":
+			lines.append("(string relic_id)")
+			for relic_id in _data_registry(ctrl).get_relic_ids():
+				lines.append("  %s  %s" % [relic_id, str(_data_registry(ctrl).get_relic_def(relic_id).get("name", relic_id))])
+			return _ok({"message": "Relic ids (strings)", "lines": lines})
+	return _fail("list only supports units, gems, tiles, entities, overlays, or relics")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -823,6 +977,10 @@ func _editor_object_kind_from_id(ctrl, object_id: String) -> String:
 		return "gem"
 	if _data_registry(ctrl).has_tile_id(object_id):
 		return "tile"
+	if _data_registry(ctrl).has_entity_id(object_id):
+		return "entity"
+	if _data_registry(ctrl).has_overlay_id(object_id):
+		return "overlay"
 	return ""
 
 
@@ -873,15 +1031,17 @@ func _editor_tokens(raw_command: String) -> Array[String]:
 	while normalized.contains("  "):
 		normalized = normalized.replace("  ", " ")
 	var tokens: Array[String] = []
+	var token_index := 0
 	for token in normalized.split(" ", false):
 		var value := String(token).strip_edges()
-		if value.begins_with("/"):
+		if token_index == 0 and value.begins_with("/"):
 			value = value.substr(1)
 		if value.is_empty():
 			continue
 		if _is_editor_filler_token(value):
 			continue
 		tokens.append(value)
+		token_index += 1
 	return tokens
 
 
@@ -910,8 +1070,12 @@ func _normalize_editor_command(token: String) -> String:
 			return "remove"
 		"move":
 			return "move"
+		"relic":
+			return "relic"
 		"export", "save":
 			return "export"
+		"import", "load":
+			return "import"
 	return lowered
 
 
@@ -924,6 +1088,12 @@ func _normalize_editor_noun(token: String) -> String:
 			return "gem"
 		"tile", "tiles", "cell", "cells":
 			return "tile"
+		"entity", "entities", "prop", "props":
+			return "entity"
+		"overlay", "overlays":
+			return "overlay"
+		"relic", "relics":
+			return "relic"
 		"stat", "stats", "attr", "attribute":
 			return "stat"
 		"player_spawn", "spawn", "spawn_point":
@@ -996,14 +1166,19 @@ func _editor_help_lines() -> Array[String]:
 		"  /list units                Show spawnable unit ids",
 		"  /list gems                 Show spawnable gem ids",
 		"  /list tiles                Show placeable tile ids",
+		"  /list entities             Show placeable entity ids",
+		"  /list overlays             Show overlay ids",
+		"  /list relics               Show relic ids",
 		"",
 		"Commands:",
 		"  /spawn <object_id> <pos> [--team enemy|player]",
-		"    - object_id can be a unit id, gem id, or tile id",
+		"    - object_id can be a unit id, gem id, tile id, entity id, or overlay id",
 		"    - units spawn on the board; gems auto-detect unit/tile unless overridden",
 		"    - example: /spawn unit_bomb_rat 2,4 --team enemy",
 		"    - example: /spawn gem_poison 2,4 --slot red --target tile",
 		"    - example: /spawn tile_pillar 4,4",
+		"    - example: /spawn entity_barrel 4,3",
+		"    - example: /spawn fire 2,2 --duration 3",
 		"  /spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",
 		"    - example: /spawn-many unit_patrol_guard 0,0 1,0 2,0 --team enemy",
 		"  /move [unit] <from_pos> <to_pos>",
@@ -1012,6 +1187,10 @@ func _editor_help_lines() -> Array[String]:
 		"    - example: /remove unit 3,4",
 		"  /remove gem <pos> [--slot red|blue|black] [--target unit|tile]",
 		"    - example: /remove gem 2,4 --slot red --target unit",
+		"  /remove entity <pos>",
+		"    - example: /remove entity 4,3",
+		"  /remove overlay <pos> <overlay_id>",
+		"    - example: /remove overlay 2,2 fire",
 		"  /set tile <pos> <tile_id>",
 		"    - example: /set tile 4,4 tile_water",
 		"  /set stat <pos> <field> <value>",
@@ -1019,8 +1198,15 @@ func _editor_help_lines() -> Array[String]:
 		"    - example: /set stat 2,4 hp 12",
 		"  /set spawn <pos>",
 		"    - example: /set spawn 1,6",
+		"  /relic add <relic_id>",
+		"    - example: /relic add relic_prism",
+		"  /relic remove <relic_id>",
+		"    - example: /relic remove relic_prism",
 		"  /export [encounter] [encounter_id]",
 		"    - example: /export encounter custom_level_001",
+		"    - exports strict JSON with entities and overlays",
+		"  /import <file_path>",
+		"    - example: /import /tmp/editor_case.json",
 	]
 
 

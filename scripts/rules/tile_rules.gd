@@ -116,6 +116,36 @@ static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = C
 	_apply_enter_effects_to_occupant(state, pos, tile)
 
 
+static func create_overlay(
+	state: GameState,
+	overlay_id: String,
+	pos: Vector2i,
+	duration: int = -1,
+	payload: Dictionary = {}
+) -> Dictionary:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			create_poison_fog(state, pos, duration if duration > 0 else Constants.POISON_FOG_DURATION)
+			return {"ok": true}
+		Constants.TILE_MOD_FIRE:
+			create_fire(state, pos, duration if duration > 0 else Constants.FIRE_DURATION)
+			return {"ok": true}
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			create_toxic_smoke(state, pos, duration if duration > 0 else 1)
+			return {"ok": true}
+		Constants.TILE_MOD_POISON_PUDDLE:
+			if not BoardUtils.in_bounds(state, pos):
+				return {"ok": false, "message": "position out of bounds: %s" % pos}
+			var tile := state.get_tile(pos)
+			if not tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+				return {"ok": false, "message": "poison_puddle requires a water tile at %s" % pos}
+			tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
+			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, duration if duration > 0 else 2, payload)
+			_apply_enter_effects_to_occupant(state, pos, tile)
+			return {"ok": true}
+	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
+
+
 static func create_fire(state: GameState, pos: Vector2i, duration: int = Constants.FIRE_DURATION) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return

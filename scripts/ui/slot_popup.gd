@@ -4,6 +4,10 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 signal slot_selected(unit_uid: String, slot_index: int)
 signal tile_slot_selected(tile_pos: Vector2i, slot_index: int)
+signal editor_unit_slot_selected(unit_uid: String, slot_index: int)
+signal editor_tile_slot_selected(tile_pos: Vector2i, slot_index: int)
+signal editor_unit_slot_added(unit_uid: String, slot_type: String)
+signal editor_tile_slot_added(tile_pos: Vector2i, slot_type: String)
 signal cancelled
 
 var _target_uid: String = ""
@@ -55,6 +59,41 @@ func show_for_tile(tile: TileState, state: GameState, action: String, screen_pos
 	_title_label.text = "%s · 地块" % _action_title(action)
 	_clear_content()
 	_add_slot_row("地块 %s" % str(tile.pos), tile.slots, func(i: int): return check_fn.call(tile.pos, i), state, action, func(i: int): tile_slot_selected.emit(tile.pos, i))
+	_layout_panel(screen_pos)
+
+
+func show_for_editor_unit(unit: UnitState, state: GameState, gem_id: String, screen_pos: Vector2) -> void:
+	_is_tile_mode = false
+	_target_uid = unit.uid
+	_current_action = "editor_gem"
+	_title_label.text = "选择宝石嵌入槽位"
+	_clear_content()
+	_add_editor_slot_picker(
+		_data_registry().get_unit_display_name(unit.unit_def_id),
+		unit.slots,
+		state,
+		gem_id,
+		func(index: int) -> void: editor_unit_slot_selected.emit(unit.uid, index),
+		func(slot_type: String) -> void: editor_unit_slot_added.emit(unit.uid, slot_type)
+	)
+	_layout_panel(screen_pos)
+
+
+func show_for_editor_tile(tile: TileState, state: GameState, gem_id: String, screen_pos: Vector2) -> void:
+	_is_tile_mode = true
+	_target_uid = ""
+	_target_tile_pos = tile.pos
+	_current_action = "editor_gem"
+	_title_label.text = "选择宝石嵌入槽位"
+	_clear_content()
+	_add_editor_slot_picker(
+		"地块 %s" % str(tile.pos),
+		tile.slots,
+		state,
+		gem_id,
+		func(index: int) -> void: editor_tile_slot_selected.emit(tile.pos, index),
+		func(slot_type: String) -> void: editor_tile_slot_added.emit(tile.pos, slot_type)
+	)
 	_layout_panel(screen_pos)
 
 
@@ -118,6 +157,63 @@ func _add_slot_row(title: String, slots: Array, check_fn: Callable, state: GameS
 	_content.add_child(row_box)
 	visible = true
 	return true
+
+
+func _add_editor_slot_picker(
+	title: String,
+	slots: Array,
+	state: GameState,
+	gem_id: String,
+	select_fn: Callable,
+	add_fn: Callable
+) -> void:
+	var title_label := Label.new()
+	title_label.text = "%s · %s" % [title, _data_registry().get_gem_display_name(gem_id)]
+	title_label.add_theme_font_size_override("font_size", 10)
+	title_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_content.add_child(title_label)
+
+	var slots_grid := GridContainer.new()
+	slots_grid.columns = 3
+	slots_grid.add_theme_constant_override("h_separation", 5)
+	slots_grid.add_theme_constant_override("v_separation", 5)
+	_content.add_child(slots_grid)
+	for i in range(slots.size()):
+		var slot: SlotState = slots[i]
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(92, 40)
+		btn.add_theme_font_size_override("font_size", 11)
+		var gem_text := "空"
+		if not slot.gem_uid.is_empty():
+			var gem: GemState = state.gems.get(slot.gem_uid, null)
+			if gem != null:
+				gem_text = _data_registry().get_gem_display_name(gem)
+		btn.text = "%d. %s %s" % [i + 1, _slot_label_for(slot), gem_text]
+		btn.disabled = slot.locked or slot.is_split_disabled()
+		BattleUiTheme.apply_button(btn, "gem", false)
+		btn.add_theme_color_override("font_color", _slot_color(slot.slot_type).lightened(0.25))
+		var slot_index := i
+		btn.pressed.connect(func() -> void: select_fn.call(slot_index))
+		slots_grid.add_child(btn)
+
+	var add_label := Label.new()
+	add_label.text = "新增槽位并嵌入"
+	add_label.add_theme_font_size_override("font_size", 10)
+	add_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	_content.add_child(add_label)
+	var add_row := HBoxContainer.new()
+	add_row.add_theme_constant_override("separation", 5)
+	_content.add_child(add_row)
+	for slot_type in [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]:
+		var add_btn := Button.new()
+		add_btn.custom_minimum_size = Vector2(88, 36)
+		add_btn.text = "+%s槽" % _slot_label(slot_type)
+		BattleUiTheme.apply_button(add_btn, "ghost")
+		add_btn.add_theme_color_override("font_color", _slot_color(slot_type).lightened(0.25))
+		var bound_slot_type: String = slot_type
+		add_btn.pressed.connect(func() -> void: add_fn.call(bound_slot_type))
+		add_row.add_child(add_btn)
+	visible = true
 
 
 func _should_show_slot(slot: SlotState, action: String) -> bool:

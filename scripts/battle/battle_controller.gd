@@ -5,6 +5,7 @@ const _BattleActionService = preload("res://scripts/battle/battle_action_service
 const _BattleTurnService = preload("res://scripts/battle/battle_turn_service.gd")
 const _BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
 const _BattleEditorCli = preload("res://scripts/debug/battle_editor_cli.gd")
+const _BattleEditorService = preload("res://scripts/debug/battle_editor_service.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 signal state_changed
@@ -21,6 +22,7 @@ var _action_svc: BattleActionService = null
 var _turn_svc: BattleTurnService = null
 var _query_svc: BattleQueryService = null
 var _editor_cli: BattleEditorCli = null
+var _editor_svc = null
 
 
 func _init() -> void:
@@ -37,6 +39,9 @@ func _ensure_services() -> void:
 	if _query_svc == null:
 		_query_svc = _BattleQueryService.new()
 		_query_svc.setup(self)
+	if _editor_svc == null:
+		_editor_svc = _BattleEditorService.new()
+		_editor_svc.setup(self)
 	if _editor_cli == null:
 		_editor_cli = _BattleEditorCli.new()
 		_editor_cli.setup(self)
@@ -262,8 +267,24 @@ func get_tutorial_hint() -> String:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func run_editor_command(raw_command: String) -> Dictionary:
+	if not _editor_available():
+		return {"ok": false, "message": "battle editor is only available in debug mode"}
 	_ensure_services()
 	return _editor_cli.run(raw_command)
+
+
+func run_editor_action(command_id: String, payload: Dictionary = {}) -> Dictionary:
+	if not _editor_available():
+		return {"ok": false, "message": "battle editor is only available in debug mode"}
+	_ensure_services()
+	return _editor_svc.execute(command_id, payload)
+
+
+func _editor_available() -> bool:
+	var settings: Node = Engine.get_main_loop().root.get_node_or_null("SettingsService")
+	if settings != null:
+		return OS.is_debug_build() and bool(settings.get_value("battle_editor_enabled"))
+	return OS.is_debug_build()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

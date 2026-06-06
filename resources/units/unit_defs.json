@@ -116,5 +116,21 @@
       {"slot_type": "blue", "gem_id": "gem_ice"},
       {"slot_type": "black", "gem_id": "gem_fire"}
     ]
+  },
+  "unit_training_dummy": {
+    "display_name_key": "unit.training_dummy.name",
+    "max_hp": 999,
+    "move_points": 0,
+    "speed": 0,
+    "base_attack": 0,
+    "armor": 0,
+    "ai_profile_id": "training_dummy",
+    "behavior_id": "training_dummy",
+    "tags": ["unit:training_dummy", "unit:test_fixture"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
   }
 }

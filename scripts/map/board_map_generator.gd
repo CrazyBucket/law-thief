@@ -33,8 +33,27 @@ static func build(state: GameState, encounter: Dictionary) -> void:
 			var placed: TileState = state.tiles[state.tile_key(pos)]
 			placed.tile_id = tile_id
 			placed._init_ground_tags()
+		var tile: TileState = state.tiles[state.tile_key(pos)]
+		for overlay_data in tile_data.get("overlays", []):
+			if not overlay_data is Dictionary:
+				continue
+			var overlay: Dictionary = overlay_data
+			tile.add_modifier(
+				str(overlay.get("type", "")),
+				int(overlay.get("duration", 0)),
+				overlay.get("payload", {})
+			)
 	_spawn_entities(state, encounter)
 	_apply_floor_variation(state, encounter)
+	_compute_edge_masks(state)
+
+
+static func refresh_runtime_visual_data(state: GameState) -> void:
+	for tile in state.tiles.values():
+		if tile.tile_id == Constants.TILE_FLOOR:
+			tile.floor_variant = absi(hash(str(state.run_seed, ":", tile.pos.x, ":", tile.pos.y))) % 3
+		else:
+			tile.floor_variant = 0
 	_compute_edge_masks(state)
 
 
@@ -61,7 +80,7 @@ static func _assign_prop_sprite(entity: EntityState, entity_data: Dictionary, ru
 	if raw_sprite is String and not raw_sprite.is_empty():
 		entity.prop_sprite = raw_sprite
 		return
-	entity.prop_sprite = DoodlePropSprites.pick_sprite_id(run_seed, entity.pos, entity.uid)
+	entity.prop_sprite = DoodlePropSprites.pick_sprite_id_for_entity(entity.entity_id, run_seed, entity.pos, entity.uid)
 
 
 static func _apply_floor_variation(state: GameState, encounter: Dictionary) -> void:

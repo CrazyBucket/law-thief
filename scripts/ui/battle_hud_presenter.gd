@@ -43,7 +43,7 @@ var _insert_btn: Button = null
 var _end_turn_btn: Button = null
 var _toggle_panel_btn: Button = null
 var _relic_bar_scroll: ScrollContainer = null
-var _relic_bar_vbox: VBoxContainer = null
+var _relic_bar_vbox: Container = null
 var _show_relic_detail_cb: Callable = Callable()
 
 var _select_unit_cb: Callable = Callable()
@@ -262,8 +262,6 @@ func _apply_status_inner_width(inner_w: float) -> void:
 	_held_label.custom_minimum_size.x = inner_w
 	_slot_clip.custom_minimum_size.x = inner_w
 	_slot_box.size.x = inner_w
-	if _relic_bar_scroll != null:
-		_relic_bar_scroll.custom_minimum_size.x = maxf(inner_w - 32.0, 40.0)
 
 
 func _status_panel_content_margins() -> Vector2:
@@ -598,7 +596,9 @@ func _style_chip(label: Label, highlight: bool, color: Color) -> void:
 func _refresh_relic_bar() -> void:
 	if _relic_bar_vbox == null or _relic_bar_scroll == null:
 		return
-	var owned: Array[String] = _string_array_from(RunService.get_owned_relics()) if RunService.is_run_active() else []
+	var owned: Array[String] = []
+	if RunService.is_run_active():
+		owned = _string_array_from(RunService.get_owned_relics())
 	var ids_changed := owned != _relic_bar_ids
 	if ids_changed:
 		_relic_bar_ids = owned.duplicate()
@@ -610,10 +610,7 @@ func _refresh_relic_bar() -> void:
 	if owned.is_empty():
 		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
 		return
-	_relic_bar_scroll.custom_minimum_size.x = 52.0
-	var content_h := _relic_bar_vbox.get_minimum_size().y
-	var max_h := 168.0
-	_relic_bar_scroll.custom_minimum_size.y = minf(content_h, max_h)
+	_relic_bar_scroll.custom_minimum_size = Vector2(220.0, 42.0)
 
 
 func _string_array_from(values: Variant) -> Array[String]:

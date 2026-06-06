@@ -1,0 +1,209 @@
+extends SceneTree
+
+const WaterAutotileClass := preload("res://scripts/map/water_autotile.gd")
+
+const FRAME_SIZE := Vector2i(128, 64)
+const CANVAS_SIZE := Vector2i(640, 384)
+const ORIGIN := Vector2i(320, 96)
+const OUTPUT_DIR := "/tmp/law_thief_water_frames"
+const EDGE_POINTS := [
+	[Vector2(64, 0), Vector2(128, 32)],
+	[Vector2(128, 32), Vector2(64, 64)],
+	[Vector2(64, 64), Vector2(0, 32)],
+	[Vector2(0, 32), Vector2(64, 0)],
+]
+
+var sheet_top: Image
+var sheet_right: Image
+var source_top: Image
+var source_right: Image
+var failures: Array[String] = []
+
+
+func _initialize() -> void:
+	DirAccess.make_dir_recursive_absolute(OUTPUT_DIR)
+	sheet_top = Image.load_from_file("res://assets/tiles/waterEdgeTop.generated.png")
+	sheet_right = Image.load_from_file("res://assets/tiles/waterEdgeRight.generated.png")
+	source_top = Image.load_from_file("res://assets/tiles/waterEdge1.png")
+	source_right = Image.load_from_file("res://assets/tiles/waterEdge2.png")
+	_require(
+		sheet_top != null and sheet_right != null and source_top != null and source_right != null,
+		"failed to load water edge sheets"
+	)
+
+	_verify_source_preservation(sheet_top, source_top, range(8), "top/Sprite468")
+	_verify_source_preservation(sheet_right, source_right, [0, 2, 4, 5, 6, 7], "right/Sprite469")
+	_verify_frame_semantics(sheet_top, 0, 3, "top/Sprite468")
+	_verify_frame_semantics(sheet_right, 0, 1, "right/Sprite469")
+	_verify_shape("single", [Vector2i(0, 0)])
+	_verify_shape("pair_x", [Vector2i(0, 0), Vector2i(1, 0)])
+	_verify_shape("pair_y", [Vector2i(0, 0), Vector2i(0, 1)])
+	_verify_shape("square", [
+		Vector2i(0, 0), Vector2i(1, 0),
+		Vector2i(0, 1), Vector2i(1, 1),
+	])
+	_verify_shape("L", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)])
+	if not failures.is_empty():
+		for failure in failures:
+			push_error(failure)
+		quit(1)
+		return
+	print("WATER_FRAME_COMPOSITE_TEST_PASS")
+	quit()
+
+
+func _verify_source_preservation(generated: Image, source: Image, frames: Array, label: String) -> void:
+	for frame: int in frames:
+		var output := _frame(generated, frame)
+		var original := _frame(source, frame)
+		var mismatch_count := 0
+		for y in range(FRAME_SIZE.y):
+			for x in range(FRAME_SIZE.x):
+				var expected_shore: bool = _is_source_shore(original.get_pixel(x, y))
+				var actual_shore: bool = output.get_pixel(x, y).a > 0.01
+				if expected_shore != actual_shore:
+					mismatch_count += 1
+		_require(mismatch_count == 0, "%s frame %d differs from source by %d shore pixels" % [
+			label, frame, mismatch_count,
+		])
+	print("  [OK] %s valid source states are preserved" % label)
+
+
+func _verify_frame_semantics(sheet: Image, side_a_edge: int, side_b_edge: int, label: String) -> void:
+	for frame in range(8):
+		var counts := _edge_counts(_frame(sheet, frame))
+		var has_side_a: bool = counts[side_a_edge] > 100
+		var has_side_b: bool = counts[side_b_edge] > 100
+		_require(has_side_a == bool(frame & WaterAutotileClass.SIDE_A), "%s frame %d side A mismatch: %s" % [
+			label, frame, counts,
+		])
+		_require(has_side_b == bool(frame & WaterAutotileClass.SIDE_B), "%s frame %d side B mismatch: %s" % [
+			label, frame, counts,
+		])
+	_require(not _has_gray(_frame(sheet, 0)), "%s state 0 must be empty" % label)
+	print("  [OK] %s states 0..7 body edges match bits 1/4" % label)
+
+
+func _verify_shape(label: String, cells: Array[Vector2i]) -> void:
+	var water := {}
+	for cell in cells:
+		water[cell] = true
+	var canvas := Image.create(CANVAS_SIZE.x, CANVAS_SIZE.y, false, Image.FORMAT_RGBA8)
+	canvas.fill(Color.TRANSPARENT)
+	for pos: Vector2i in cells:
+		_compose_tile(canvas, _screen_center(pos), WaterAutotileClass.states(pos, water))
+	var path := "%s/%s.png" % [OUTPUT_DIR, label]
+	canvas.save_png(path)
+
+	var shared_gray := 0
+	for pos: Vector2i in cells:
+		for direction in [
+			WaterAutotileClass.FRONT_RIGHT,
+			WaterAutotileClass.FRONT_LEFT,
+		]:
+			if not water.has(pos + direction):
+				continue
+			shared_gray += _count_gray_on_shared_edge(canvas, pos, direction)
+	_require(shared_gray == 0, "%s has %d gray pixels on shared edges; see %s" % [label, shared_gray, path])
+	if shared_gray == 0:
+		print("  [OK] %s shared_gray=0 -> %s" % [label, path])
+
+
+func _compose_tile(canvas: Image, center: Vector2i, states: Vector4i) -> void:
+	_blend_frame(canvas, sheet_top, states.x, center, false, false)
+	_blend_frame(canvas, sheet_right, states.y, center, false, false)
+	_blend_frame(canvas, sheet_top, states.z, center, false, true)
+	_blend_frame(canvas, sheet_right, states.w, center, true, false)
+
+
+func _blend_frame(canvas: Image, sheet: Image, frame_index: int, center: Vector2i, flip_x: bool, flip_y: bool) -> void:
+	var image := _frame(sheet, frame_index)
+	if flip_x:
+		image.flip_x()
+	if flip_y:
+		image.flip_y()
+	for y in range(FRAME_SIZE.y):
+		for x in range(FRAME_SIZE.x):
+			var c := image.get_pixel(x, y)
+			if c.a <= 0.01:
+				continue
+			var dst := center + Vector2i(x - FRAME_SIZE.x / 2, y - FRAME_SIZE.y / 2)
+			if Rect2i(Vector2i.ZERO, CANVAS_SIZE).has_point(dst):
+				canvas.set_pixelv(dst, c)
+
+
+func _frame(sheet: Image, frame_index: int) -> Image:
+	return sheet.get_region(Rect2i(frame_index * FRAME_SIZE.x, 0, FRAME_SIZE.x, FRAME_SIZE.y))
+
+
+func _screen_center(pos: Vector2i) -> Vector2i:
+	return ORIGIN + Vector2i((pos.x - pos.y) * 64, (pos.x + pos.y) * 32)
+
+
+func _count_gray_on_shared_edge(canvas: Image, pos: Vector2i, direction: Vector2i) -> int:
+	var a := _screen_center(pos)
+	var b := _screen_center(pos + direction)
+	var start: Vector2
+	var end: Vector2
+	if direction == WaterAutotileClass.FRONT_RIGHT:
+		start = Vector2(a + Vector2i(64, 0))
+		end = Vector2(a + Vector2i(0, 32))
+	else:
+		start = Vector2(a + Vector2i(0, 32))
+		end = Vector2(a + Vector2i(-64, 0))
+	var count := 0
+	# Ignore endpoint caps; this test verifies the shared edge body is empty.
+	for step in range(16, 49):
+		var t := float(step) / 64.0
+		var p := start.lerp(end, t)
+		for offset in range(-2, 3):
+			var sample := Vector2i(roundi(p.x), roundi(p.y + offset))
+			if Rect2i(Vector2i.ZERO, CANVAS_SIZE).has_point(sample) and _is_gray(canvas.get_pixelv(sample)):
+				count += 1
+	return count
+
+
+func _has_gray(image: Image) -> bool:
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if _is_gray(image.get_pixel(x, y)):
+				return true
+	return false
+
+
+func _edge_counts(image: Image) -> Array[int]:
+	var counts: Array[int] = [0, 0, 0, 0]
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if not _is_gray(image.get_pixel(x, y)):
+				continue
+			var point := Vector2(x, y)
+			var nearest := 0
+			var nearest_distance := INF
+			for edge in range(EDGE_POINTS.size()):
+				var distance := _distance_to_segment(point, EDGE_POINTS[edge][0], EDGE_POINTS[edge][1])
+				if distance < nearest_distance:
+					nearest_distance = distance
+					nearest = edge
+			counts[nearest] += 1
+	return counts
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float:
+	var segment := end - start
+	var t := clampf((point - start).dot(segment) / segment.length_squared(), 0.0, 1.0)
+	return point.distance_to(start + segment * t)
+
+
+func _is_gray(c: Color) -> bool:
+	return c.a > 0.1 and c.r > 0.35 and c.g > 0.35 and c.b > 0.35 and c.g < 0.82
+
+
+func _is_source_shore(c: Color) -> bool:
+	return c.a > 0.01 and not (c.g > 0.8 and c.r < 0.25 and c.b < 0.25)
+
+
+func _require(condition: bool, message: String) -> void:
+	if condition:
+		return
+	failures.append(message)

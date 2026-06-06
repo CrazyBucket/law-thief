@@ -3,13 +3,22 @@ extends Node
 var pending_encounter_id: String = "tutorial_001"
 var pending_room_id: String = ""
 var adventure_return: bool = false
+var pending_battle_mode: String = "normal"
 
 
 func start_battle(encounter_id: String) -> void:
 	pending_encounter_id = encounter_id
+	pending_battle_mode = "normal"
 	SaveService.touch_active_slot({
 		"pending_encounter_id": encounter_id,
 	})
+
+
+func start_editor_battle(encounter_id: String = "tutorial_001") -> void:
+	pending_encounter_id = encounter_id
+	pending_room_id = ""
+	adventure_return = false
+	pending_battle_mode = "editor"
 
 
 func finish_battle(result: String, encounter_id: String, turn_count: int) -> void:
@@ -33,3 +42,4 @@ func reset_session_state() -> void:
 	pending_encounter_id = "tutorial_001"
 	pending_room_id = ""
 	adventure_return = false
+	pending_battle_mode = "normal"

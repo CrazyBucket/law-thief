@@ -15,6 +15,7 @@ const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 @onready var _summary: Label = $CenterWrap/MenuPanel/VBox/SummaryPanel/Summary
 @onready var _continue_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/ContinueBtn
 @onready var _new_run_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/NewRunBtn
+@onready var _editor_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/EditorBtn
 @onready var _save_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/SaveBtn
 @onready var _achievement_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/AchievementBtn
 @onready var _codex_btn: Button = $CenterWrap/MenuPanel/VBox/Buttons/CodexBtn
@@ -82,6 +83,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _wire_actions() -> void:
 	_continue_btn.pressed.connect(_on_continue_pressed)
 	_new_run_btn.pressed.connect(_on_new_run_pressed)
+	_editor_btn.pressed.connect(_on_editor_pressed)
 	_save_btn.pressed.connect(_show_save_popup)
 	_achievement_btn.pressed.connect(_show_achievements_popup)
 	_codex_btn.pressed.connect(_show_codex_popup)
@@ -113,6 +115,8 @@ func _style_menu_buttons() -> void:
 	_continue_btn.disabled = not has_run
 	BattleUiTheme.apply_button(_continue_btn, "end")
 	BattleUiTheme.apply_button(_new_run_btn, "end")
+	_editor_btn.visible = OS.is_debug_build() and bool(SettingsService.get_value("battle_editor_enabled"))
+	BattleUiTheme.apply_button(_editor_btn, "ghost")
 	BattleUiTheme.apply_button(_save_btn, "ghost")
 	BattleUiTheme.apply_button(_achievement_btn, "ghost")
 	BattleUiTheme.apply_button(_codex_btn, "ghost")
@@ -493,6 +497,14 @@ func _on_new_run_pressed() -> void:
 	_close_modal()
 	AdventureService.start_new_run()
 	_fade_to_scene(MAP_SCENE)
+
+
+func _on_editor_pressed() -> void:
+	if _navigating:
+		return
+	_close_modal()
+	GameService.start_editor_battle("tutorial_001")
+	_fade_to_scene("res://scenes/battle/battle_scene.tscn")
 
 
 func _on_slot_activate(slot_id: int) -> void:

@@ -3,6 +3,10 @@ extends RefCounted
 
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
+const OVERLAY_FIRE_TEXTURE := preload("res://assets/overlays/overlay_fire.svg")
+const OVERLAY_POISON_FOG_TEXTURE := preload("res://assets/overlays/overlay_poison_fog.svg")
+const OVERLAY_TOXIC_SMOKE_TEXTURE := preload("res://assets/overlays/overlay_toxic_smoke.svg")
+const OVERLAY_POISON_PUDDLE_TEXTURE := preload("res://assets/overlays/overlay_poison_puddle.svg")
 const SIDE_DEPTH := 10.0
 
 
@@ -16,9 +20,16 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 		top_color = top_color.lerp(highlight_color, highlight_color.a)
 	_draw_block(canvas, center, top_color, palette["left"], palette["right"])
 	_draw_tile_detail(canvas, center, tile)
-	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+	if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
+		_draw_overlay_texture(canvas, center, OVERLAY_POISON_PUDDLE_TEXTURE)
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+		_draw_overlay_texture(canvas, center, OVERLAY_POISON_FOG_TEXTURE)
 		_draw_poison_fog(canvas, center)
-	if tile.has_modifier("fire") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+		_draw_overlay_texture(canvas, center, OVERLAY_TOXIC_SMOKE_TEXTURE)
+		_draw_poison_fog(canvas, center)
+	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		_draw_overlay_texture(canvas, center, OVERLAY_FIRE_TEXTURE)
 		_draw_fire(canvas, center)
 
 
@@ -28,14 +39,18 @@ static func draw_tile_overlays(canvas: Control, center: Vector2, tile: TileState
 		draw_highlight_fill(canvas, center, highlight_color)
 	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
 		_draw_room_label(canvas, center, tile.tile_id)
-	elif tile.tile_id == Constants.TILE_WATER:
-		_draw_overlay(canvas, center, Color(0.16, 0.32, 0.56, 0.62))
-		_draw_water(canvas, center, tile.edge_mask)
 	elif tile.tile_id == Constants.TILE_PILLAR:
 		_draw_pillar(canvas, center)
-	if tile.has_modifier("poison_fog") or tile.has_modifier("poison_puddle") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+	if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
+		_draw_overlay_texture(canvas, center, OVERLAY_POISON_PUDDLE_TEXTURE)
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+		_draw_overlay_texture(canvas, center, OVERLAY_POISON_FOG_TEXTURE)
 		_draw_poison_fog(canvas, center)
-	if tile.has_modifier("fire") or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+		_draw_overlay_texture(canvas, center, OVERLAY_TOXIC_SMOKE_TEXTURE)
+		_draw_poison_fog(canvas, center)
+	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		_draw_overlay_texture(canvas, center, OVERLAY_FIRE_TEXTURE)
 		_draw_fire(canvas, center)
 
 
@@ -87,13 +102,20 @@ static func _draw_overlay(canvas: Control, center: Vector2, color: Color) -> voi
 	canvas.draw_colored_polygon(points, color)
 
 
+static func _draw_overlay_texture(canvas: Control, center: Vector2, texture: Texture2D) -> void:
+	if texture == null:
+		return
+	var width := IsoCoordinates._half_w() * 2.0
+	var height := width * float(texture.get_height()) / maxf(float(texture.get_width()), 1.0)
+	var rect := Rect2(center.x - width * 0.5, center.y - height * 0.68, width, height)
+	canvas.draw_texture_rect(texture, rect, false, Color.WHITE)
+
+
 static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState) -> void:
 	if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
 		_draw_room_label(canvas, center, tile.tile_id)
 		return
 	match tile.tile_id:
-		Constants.TILE_WATER:
-			_draw_water(canvas, center, tile.edge_mask)
 		Constants.TILE_FLOOR:
 			_draw_floor_noise(canvas, center, tile.floor_variant)
 		Constants.TILE_PILLAR:
@@ -106,6 +128,16 @@ static func draw_spikes(canvas: Control, center: Vector2) -> void:
 		var base: Vector2 = center + offset
 		canvas.draw_line(base + Vector2(-4, 4), base + Vector2(0, -10), Color(0.95, 0.55, 0.45), 2.0)
 		canvas.draw_line(base + Vector2(4, 4), base + Vector2(0, -10), Color(0.95, 0.55, 0.45), 2.0)
+
+
+static func draw_entity_texture(canvas: Control, center: Vector2, texture: Texture2D, scale_factor: float = 1.0) -> void:
+	if texture == null:
+		return
+	var target_h := IsoCoordinates.visual(76.0) * scale_factor
+	var target_w := target_h * float(texture.get_width()) / maxf(float(texture.get_height()), 1.0)
+	var foot := center + IsoCoordinates.entity_foot_offset()
+	var rect := Rect2(foot.x - target_w * 0.5, foot.y - target_h, target_w, target_h)
+	canvas.draw_texture_rect(texture, rect, false, Color.WHITE)
 
 
 static func draw_prop_sprite(canvas: Control, center: Vector2, texture: Texture2D, foot_ratio: float = 1.0) -> void:
@@ -129,16 +161,6 @@ static func draw_prop_fallback(canvas: Control, center: Vector2) -> void:
 	])
 	canvas.draw_colored_polygon(rock, Color(0.42, 0.44, 0.48, 0.95))
 	canvas.draw_polyline(rock, Color(0.28, 0.3, 0.34, 0.9), IsoCoordinates.visual(1.2), true)
-
-
-static func _draw_water(canvas: Control, center: Vector2, edge_mask: int) -> void:
-	var ripple := Color(0.45, 0.78, 1.0, 0.55)
-	canvas.draw_arc(center + Vector2(-6, 0), 5.0, 0.0, TAU, 12, ripple, 1.5)
-	canvas.draw_arc(center + Vector2(8, 2), 4.0, 0.0, TAU, 12, ripple, 1.5)
-	if edge_mask & (1 << 0) == 0:
-		canvas.draw_line(center + Vector2(0, -IsoCoordinates._half_h()), center + Vector2(-IsoCoordinates._half_w() * 0.5, -IsoCoordinates._half_h() * 0.5), ripple, 1.0)
-	if edge_mask & (1 << 2) == 0:
-		canvas.draw_line(center + Vector2(0, IsoCoordinates._half_h()), center + Vector2(IsoCoordinates._half_w() * 0.5, IsoCoordinates._half_h() * 0.5), ripple, 1.0)
 
 
 static func _draw_floor_noise(canvas: Control, center: Vector2, variant: int) -> void:
