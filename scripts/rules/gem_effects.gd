@@ -86,6 +86,18 @@ static func tick_turn_start(state: GameState) -> void:
 	state.purge_dead_controllable()
 
 
+static func run_blue_poison_turn_end_spreads(state: GameState, acting_unit_uid: String) -> void:
+	if state == null or acting_unit_uid.is_empty():
+		return
+	var acting: UnitState = state.units.get(acting_unit_uid, null)
+	if acting == null or not acting.alive:
+		return
+	var gem_ctx := GemTagResolver.build_context(state, acting, Constants.SLOT_BLUE, TIMING_TURN_END)
+	if GemTagResolver.tag_level(gem_ctx, "poison") < 2:
+		return
+	_spread_blue_poison_from_unit(state, acting)
+
+
 static func capture_blue_poison_turn_end_sources(state: GameState) -> Dictionary:
 	var snapshot: Dictionary = {}
 	if state == null:
@@ -263,7 +275,7 @@ static func red_attack_range_bonus(state: GameState, unit: UnitState) -> int:
 		return 0
 	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, TIMING_ACTIVE)
 	var gravity_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-	return maxi(0, gravity_level - 1)
+	return gravity_level
 
 
 static func red_attack_range(state: GameState, unit: UnitState, base_range: int = Constants.ATTACK_RANGE) -> int:
@@ -288,6 +300,31 @@ static func cross_explosion_cells(center: Vector2i) -> Array[Vector2i]:
 	for neighbor in BoardUtils.neighbors4(center):
 		cells.append(neighbor)
 	return cells
+
+
+static func explosion_tag_count(gem_ctx: Dictionary) -> int:
+	return int((gem_ctx.get("tag_counts", {}) as Dictionary).get("explosion", 0))
+
+
+static func explosion_uses_square_blast(gem_ctx: Dictionary) -> bool:
+	return GemTagResolver.tag_level(gem_ctx, "explosion") >= 2
+
+
+static func explosion_stack_multiplier(gem_ctx: Dictionary) -> int:
+	var count := explosion_tag_count(gem_ctx)
+	if count >= 3:
+		return count - 1
+	return 1
+
+
+static func explosion_scaled_damage(base_damage: int, gem_ctx: Dictionary) -> int:
+	return base_damage * explosion_stack_multiplier(gem_ctx)
+
+
+static func red_explosion_blast_cells(center: Vector2i, gem_ctx: Dictionary) -> Array[Vector2i]:
+	if explosion_uses_square_blast(gem_ctx):
+		return BoardUtils.cells_in_radius(center, Constants.EXPLOSION_RADIUS)
+	return cross_explosion_cells(center)
 
 
 static func resolve_blast_center(fallback: Vector2i, aim_cell: Variant = null) -> Vector2i:
@@ -514,9 +551,9 @@ static func pull_unit_toward_with_events(
 	var events: Array[Dictionary] = []
 	_Displacement.pull_toward(
 		state, unit, anchor, steps, source_uid, events,
-		-1,   # 按实际位移格数自动算碰撞伤
+		-1,
 		false,
-		true
+		false
 	)
 	return events
 
@@ -593,15 +630,13 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			if target_unit != null and target_unit.alive:
 				blast_center = resolve_blast_center(target_unit.pos, ctx.get("target_pos", null))
 				exclude_uid = target_unit.uid
-			var explosion_level := GemTagResolver.tag_level(gem_ctx, "explosion")
-			if explosion_level >= 2:
-				var damage := Constants.EXPLOSION_CROSS_DAMAGE
-				if explosion_level >= 3:
-					damage *= 2
+			if explosion_uses_square_blast(gem_ctx):
+				var damage := explosion_scaled_damage(Constants.EXPLOSION_CROSS_DAMAGE, gem_ctx)
 				out_events.append_array(explode_square_at(state, blast_center, owner.uid, damage, gem_ctx))
 			else:
 				out_events.append_array(
 					explode_cross_at(state, blast_center, owner.uid, {
+						"center_damage": Constants.EXPLOSION_CROSS_DAMAGE,
 						"exclude_unit_uid": exclude_uid,
 						"gem_tag_context": gem_ctx,
 					})
@@ -623,7 +658,15 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			var poison_target: UnitState = state.units.get(ctx.get("target_uid", ""), null)
 			if poison_target != null and poison_target.alive:
 				poison_center = resolve_blast_center(poison_target.pos, ctx.get("target_pos", null))
-			out_events.append({"type": "poison_burst", "pos": poison_center, "radius": poison_radius})
+			var burst := {
+				"type": "poison_burst",
+				"pos": poison_center,
+				"radius": 0 if poison_level >= 2 else poison_radius,
+				"duration": poison_duration,
+			}
+			if poison_level >= 2:
+				burst["pattern"] = "cross"
+			out_events.append(burst)
 			if BoardUtils.in_bounds(state, poison_center):
 				TileRules.create_poison_fog(state, poison_center, poison_duration)
 				if poison_level >= 2:
@@ -639,12 +682,11 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 				gravity_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_RED, TIMING_ACTIVE, _slot)
 			var pull_steps := maxi(1, GemTagResolver.tag_level(gravity_ctx, "gravity"))
 			out_events.append({"type": "gem_flash", "pos": owner.pos, "color": _data_registry().get_gem_color(gem)})
-			for unit in state.units.values():
-				if not unit.alive or unit.uid == owner.uid:
-					continue
-				if BoardUtils.chebyshev(owner.pos, unit.pos) > 2:
-					continue
-				out_events.append_array(pull_unit_toward_with_events(state, unit, owner.pos, pull_steps, owner.uid))
+			var pull_target: UnitState = state.units.get(str(ctx.get("target_uid", "")), null)
+			if pull_target != null and pull_target.alive and pull_target.uid != owner.uid:
+				out_events.append_array(
+					pull_unit_toward_with_events(state, pull_target, owner.pos, pull_steps, owner.uid)
+				)
 			return true
 		"arc":
 			var arc_target_uid: String = ctx.get("target_uid", "")
@@ -720,7 +762,7 @@ static func _run_unit_turn_end_effect(state: GameState, owner: UnitState, _slot:
 				return false
 			var snapshot_variant: Variant = ctx.get("poison_turn_end_sources", {})
 			var snapshot: Dictionary = snapshot_variant if snapshot_variant is Dictionary else {}
-			return _spread_blue_poison_turn_end(state, owner, snapshot)
+			return _spread_blue_poison_turn_end(state, owner, snapshot, str(ctx.get("acting_unit_uid", "")))
 	return false
 
 
@@ -730,6 +772,14 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 	var damage: int = ctx.get("damage", 0)
 	var source: UnitState = state.units.get(source_uid, null) if not source_uid.is_empty() else null
 	match _ability_profile(gem, ABILITY_BLUE_DAMAGED):
+		"poison":
+			var poison_ctx: Dictionary = ctx.get("gem_tag_context", {})
+			if poison_ctx.is_empty():
+				poison_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_OWNER_DAMAGED, _slot)
+			if GemTagResolver.tag_level(poison_ctx, "poison") >= 3 and source != null and source.alive:
+				if BoardUtils.chebyshev(owner.pos, source.pos) <= 1:
+					_copy_one_debuff_to_nearest_unit(state, source, owner.uid)
+			return false
 		"explosion":
 			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
 			if gem_ctx.is_empty():
@@ -868,9 +918,7 @@ static func _run_unit_death_effect_with_events(
 			if gem_ctx.is_empty():
 				gem_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLACK, TIMING_ON_DEATH)
 			var level := GemTagResolver.tag_level(gem_ctx, "explosion")
-			var damage := Constants.EXPLOSION_DAMAGE
-			if level >= 3:
-				damage *= 2
+			var damage := explosion_scaled_damage(Constants.EXPLOSION_DAMAGE, gem_ctx)
 			var evs := explode_at(state, owner.pos, damage, owner.uid)
 			out_events.append({"type": "explode", "pos": owner.pos, "radius": Constants.EXPLOSION_RADIUS})
 			out_events.append_array(evs)
@@ -1040,15 +1088,21 @@ static func _reflect_light_on_damage(
 		if unit.team != owner.team:
 			candidates.append(unit)
 	var damage := maxi(1, int(float(CombatRules.attack_damage(state, owner)) * 0.2))
-	var color := _light_color_for_context(gem_ctx)
 	var count := mini(beams, candidates.size())
 	for i in range(count):
 		var target := candidates[i]
-		out_events.append({"type": "light_beam", "from": owner.pos, "to": target.pos, "color": color, "width": 1})
+		out_events.append(build_light_beam_event(
+			owner.pos,
+			target.pos,
+			gem_ctx,
+			0.72,
+			{"power": 0.72, "impact_size": 0.72, "source_uid": owner.uid}
+		))
 		var dealt := CombatRules.apply_damage(state, target, damage, owner.uid, "light_reflect")
 		if dealt > 0:
 			out_events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
 			StatusRules.apply_light_exposed(state, target, 1, owner.uid)
+			apply_light_colored_status(state, target, owner, gem_ctx, out_events, damage)
 
 
 static func _resolve_black_light(
@@ -1065,7 +1119,13 @@ static func _resolve_black_light(
 			continue
 		var damage := maxi(1, exposed.stacks * CombatRules.attack_damage(state, owner))
 		var dealt := CombatRules.apply_damage(state, unit, damage, owner.uid, "light_judgement")
-		out_events.append({"type": "light_beam", "from": owner.pos, "to": unit.pos, "color": Color(1.0, 0.96, 0.58), "width": 2})
+		out_events.append(build_light_beam_event(
+			owner.pos,
+			unit.pos,
+			{},
+			1.35 + float(level) * 0.18,
+			{"power": 1.25, "impact_size": 1.3, "source_uid": owner.uid}
+		))
 		if dealt > 0:
 			out_events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
 		unit.remove_status(Constants.STATUS_LIGHT_EXPOSED)
@@ -1140,16 +1200,149 @@ static func _find_gem_by_tag(state: GameState, owner: UnitState, slot_type: Stri
 	return null
 
 
-static func _light_color_for_context(gem_ctx: Dictionary) -> Color:
+static func light_color_for_context(gem_ctx: Dictionary) -> Color:
+	var dye := str(gem_ctx.get("light_dye_element", ""))
+	if dye == "fire":
+		return Color(1.0, 0.24, 0.12)
+	if dye == "poison":
+		return Color(0.05, 0.95, 0.18)
 	if GemTagResolver.has_tag(gem_ctx, "fire"):
 		return Color(1.0, 0.24, 0.12)
 	if GemTagResolver.has_tag(gem_ctx, "poison"):
-		return Color(0.32, 1.0, 0.34)
+		return Color(0.05, 0.95, 0.18)
 	if GemTagResolver.has_tag(gem_ctx, "arc"):
 		return Color(1.0, 0.92, 0.22)
 	if GemTagResolver.has_tag(gem_ctx, "ice"):
 		return Color(0.55, 0.9, 1.0)
+	if GemTagResolver.has_tag(gem_ctx, "explosion"):
+		return Color(1.0, 0.58, 0.18)
 	return Color(1.0, 0.96, 0.58)
+
+
+static func light_element_for_context(gem_ctx: Dictionary) -> String:
+	var dye := str(gem_ctx.get("light_dye_element", ""))
+	if not dye.is_empty():
+		return dye
+	for element in ["fire", "poison", "arc", "ice", "explosion"]:
+		if GemTagResolver.has_tag(gem_ctx, element):
+			return element
+	return "light"
+
+
+static func light_beam_width_for_level(level: int) -> float:
+	if level >= 3:
+		return 2.35
+	if level >= 2:
+		return 1.65
+	return 1.0
+
+
+static func is_valid_light_aim(attacker: UnitState, target_pos: Vector2i) -> bool:
+	if attacker == null:
+		return false
+	var origin := BoardUtils.projectile_origin_cell(attacker, target_pos)
+	var delta := target_pos - origin
+	return delta != Vector2i.ZERO and (delta.x == 0 or delta.y == 0 or absi(delta.x) == absi(delta.y))
+
+
+static func light_context_with_path_dye(state: GameState, cells: Array[Vector2i], gem_ctx: Dictionary) -> Dictionary:
+	var result := gem_ctx.duplicate(true)
+	for cell in cells:
+		var dye := light_dye_element_at(state, cell)
+		if not dye.is_empty():
+			result = light_context_with_dye(result, dye)
+	return result
+
+
+static func light_dye_element_at(state: GameState, cell: Vector2i) -> String:
+	if state == null:
+		return ""
+	var tile := state.get_tile(cell)
+	if tile == null:
+		return ""
+	if tile.has_modifier(Constants.TILE_MOD_FIRE):
+		return "fire"
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
+		return "poison"
+	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+		return "poison"
+	return ""
+
+
+static func light_context_with_dye(gem_ctx: Dictionary, dye: String) -> Dictionary:
+	var result := gem_ctx.duplicate(true)
+	if dye.is_empty():
+		return result
+	result["light_dye_element"] = dye
+	var levels: Dictionary = result.get("tag_levels", {}).duplicate()
+	levels[dye] = maxi(1, int(levels.get(dye, 0)))
+	result["tag_levels"] = levels
+	return result
+
+
+static func light_dye_transitions(state: GameState, cells: Array[Vector2i]) -> Array[Dictionary]:
+	var transitions: Array[Dictionary] = []
+	var current := ""
+	for cell in cells:
+		var dye := light_dye_element_at(state, cell)
+		if dye.is_empty() or dye == current:
+			continue
+		current = dye
+		var dye_ctx := light_context_with_dye({}, dye)
+		transitions.append({
+			"cell": cell,
+			"element": dye,
+			"color": light_color_for_context(dye_ctx),
+		})
+	return transitions
+
+
+static func apply_light_colored_status(
+	state: GameState,
+	target: UnitState,
+	source: UnitState,
+	gem_ctx: Dictionary,
+	out_events: Array[Dictionary],
+	base_damage: int
+) -> void:
+	if state == null or target == null or source == null or not target.alive:
+		return
+	if GemTagResolver.has_tag(gem_ctx, "poison"):
+		StatusRules.apply_poison(state, target, 1, 0, source.uid)
+	if GemTagResolver.has_tag(gem_ctx, "fire"):
+		StatusRules.apply_burning(state, target, 1, source.uid)
+	if GemTagResolver.has_tag(gem_ctx, "ice"):
+		apply_ice_hit_effect(state, target, source.uid, GemTagResolver.tag_level(gem_ctx, "ice"))
+	if GemTagResolver.has_tag(gem_ctx, "arc"):
+		apply_arc_bounce_from_victim(state, target, source, base_damage, out_events, gem_ctx)
+
+
+static func build_light_beam_event(
+	from_cell: Vector2i,
+	to_cell: Vector2i,
+	gem_ctx: Dictionary = {},
+	width: float = 1.0,
+	overrides: Dictionary = {}
+) -> Dictionary:
+	var element := light_element_for_context(gem_ctx)
+	var event := {
+		"type": "light_beam",
+		"from": from_cell,
+		"to": to_cell,
+		"color": light_color_for_context(gem_ctx),
+		"element": element,
+		"width": width,
+		"power": 1.0,
+		"core": 0.16,
+		"halo": 0.68,
+		"noise": 0.2 if element == "light" else 0.42,
+		"speed": 1.0,
+		"impact_size": width,
+		"show_impact": false,
+	}
+	for key in overrides:
+		event[key] = overrides[key]
+	return event
 
 
 static func _run_unit_moved_through_effect(_state: GameState, _owner: UnitState, _gem: GemState, _ctx: Dictionary) -> bool:
@@ -1300,34 +1493,37 @@ static func _copy_one_debuff_to_nearest_unit(state: GameState, source: UnitState
 	StatusRegistry.apply_to_unit(nearest, copy)
 
 
-static func _spread_blue_poison_turn_end(state: GameState, owner: UnitState, snapshot: Dictionary) -> bool:
-	var source_uids := _poison_turn_end_source_uids(snapshot, owner.uid)
-	if source_uids.is_empty():
-		source_uids = _poison_turn_end_source_uids(capture_blue_poison_turn_end_sources(state), owner.uid)
+static func _spread_blue_poison_from_unit(state: GameState, carrier: UnitState) -> bool:
 	var best_target: UnitState = null
-	var best_source: UnitState = null
 	var best_dist := 999999
-	for source_uid in source_uids:
-		var source: UnitState = state.units.get(source_uid, null)
-		if source == null or not source.alive:
+	for unit in state.units.values():
+		if not unit.alive or unit.uid == carrier.uid:
 			continue
-		for unit in state.units.values():
-			if not unit.alive or unit.uid == owner.uid or unit.uid == source.uid:
-				continue
-			if unit.team != source.team:
-				continue
-			if unit.has_status(Constants.STATUS_POISON):
-				continue
-			var dist := BoardUtils.chebyshev(source.pos, unit.pos)
-			if dist < best_dist:
-				best_dist = dist
-				best_source = source
-				best_target = unit
-	if best_target == null or best_source == null:
+		if unit.has_status(Constants.STATUS_POISON):
+			continue
+		var dist := BoardUtils.chebyshev(carrier.pos, unit.pos)
+		if dist < best_dist:
+			best_dist = dist
+			best_target = unit
+	if best_target == null:
 		return false
-	StatusRules.apply_poison(state, best_target, 1, 2, owner.uid)
-	state.log("%s 的剧毒在回合结束从 %s 传给 %s" % [owner.uid, best_source.uid, best_target.uid])
+	StatusRules.apply_poison(state, best_target, 1, 2, carrier.uid)
+	state.log("%s 的剧毒在回合结束传给 %s" % [carrier.uid, best_target.uid])
 	return true
+
+
+static func _spread_blue_poison_turn_end(
+	state: GameState,
+	owner: UnitState,
+	_snapshot: Dictionary,
+	acting_unit_uid: String = ""
+) -> bool:
+	if not acting_unit_uid.is_empty() and acting_unit_uid != owner.uid:
+		return false
+	var gem_ctx := GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_TURN_END)
+	if GemTagResolver.tag_level(gem_ctx, "poison") < 2:
+		return false
+	return _spread_blue_poison_from_unit(state, owner)
 
 
 static func _poison_turn_end_source_uids(snapshot: Dictionary, owner_uid: String) -> Array[String]:

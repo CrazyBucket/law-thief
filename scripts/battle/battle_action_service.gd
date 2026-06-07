@@ -30,18 +30,20 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		push_warning("BattleActionService: try_move rejected — phase is '%s'" % ctrl.state.phase)
 		return _fail("不是玩家回合")
 	var state: GameState = ctrl.state
-	if state.player_moved:
+	var unlimited := ctrl.editor_unlimited_actions_enabled()
+	if not unlimited and state.player_moved:
 		return _fail("本回合已移动")
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
-	if not StatusRules.can_move(player):
+	if not unlimited and not StatusRules.can_move(player):
 		var block_reason := StatusRules.move_block_reason(player)
 		return _fail(block_reason if not block_reason.is_empty() else "无法移动")
-	var reachable := BoardUtils.reachable_cells(state, player.pos, player.move_points)
+	var move_budget := ctrl.player_move_budget(player)
+	var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
 	if not target_pos in reachable:
 		return _fail("无法移动到该格")
-	var path := BoardUtils.astar_path(state, player.pos, target_pos, player.move_points, player.uid, {
+	var path := BoardUtils.astar_path(state, player.pos, target_pos, move_budget, player.uid, {
 		"allow_partial_path": false
 	})
 	if path.is_empty():
@@ -65,8 +67,9 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		var temp_move: int = int(state.battle_temp_flags["pressure_valve_temp_move"])
 		state.battle_temp_flags.erase("pressure_valve_temp_move")
 		player.move_points = maxi(0, player.move_points - temp_move)
-	state.player_moved = true
-	OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
+	if not unlimited:
+		state.player_moved = true
+		OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
 	state.log("玩家移动到 %s" % target_pos)
 	ctrl._check_battle_end()
 	if state.phase != Constants.PHASE_ENDED:
@@ -92,7 +95,7 @@ func try_attack(target_uid: String) -> Dictionary:
 		return _fail("战斗未开始")
 	if ctrl.state.phase != Constants.PHASE_PLAYER:
 		return _fail("不是玩家回合")
-	if ctrl.state.player_acted:
+	if not ctrl.editor_unlimited_actions_enabled() and ctrl.state.player_acted:
 		return _fail("本回合已行动")
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null or not target.alive:
@@ -108,13 +111,15 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	if ctrl.state == null or ctrl.state.phase != Constants.PHASE_PLAYER:
 		return _fail("不是玩家回合")
 	var state: GameState = ctrl.state
-	if state.player_acted:
+	if not ctrl.editor_unlimited_actions_enabled() and state.player_acted:
 		return _fail("本回合已行动")
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
 	if target_pos == player.pos:
 		return _fail("不能攻击自己")
+	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
+		return _fail("光束只能朝八个方向发射")
 	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return _fail("目标超出射程")
@@ -128,8 +133,9 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	if not atk_result.get("ok", false):
 		return _fail(atk_result.get("reason", "无法攻击"))
 	attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
-	state.player_acted = true
-	OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
+	if not ctrl.editor_unlimited_actions_enabled():
+		state.player_acted = true
+		OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
 	ctrl._check_battle_end()
 	IntentSystem.refresh_all_intents(state)
 	return _ok({

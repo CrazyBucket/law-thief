@@ -30,6 +30,9 @@ func _run() -> void:
 	var units_at := source.find("\t\t\t_draw_unit(unit)\n")
 	_require(entities_at >= 0 and units_at >= 0, "failed to locate entity/unit draw commands")
 	_require(source.find("_draw_water_edges") < 0, "board redraw must not redraw cached water shores")
+	var water_layer_source := FileAccess.get_file_as_string("res://scripts/map/water_layer.gd")
+	_require(water_layer_source.find("func compose_edge_image") >= 0, "water shore frames must be composed before rendering")
+	_require(water_layer_source.find("_draw_frame(canvas") < 0, "water shore must not alpha-blend overlapping corner frames")
 	_require(board.find_children("*", "WaterLayer", true, false).size() == 2, "water must use exactly two cached nodes")
 	if not failures.is_empty():
 		for failure in failures:

@@ -246,18 +246,18 @@ autowrap_mode = 3
 text_overrun_behavior = 3
 
 [node name="SlotClip" type="Control" parent="HudLayer/StatusPanel/VBox" unique_id=1336967128]
-clip_contents = true
-custom_minimum_size = Vector2(296, 22)
+clip_contents = false
+custom_minimum_size = Vector2(296, 24)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
 
-[node name="SlotBox" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/SlotClip" unique_id=569565318]
+[node name="SlotBox" type="FlowContainer" parent="HudLayer/StatusPanel/VBox/SlotClip" unique_id=569565318]
 layout_mode = 0
 offset_right = 296.0
-offset_bottom = 22.0
-theme_override_constants/separation = 4
-alignment = 2
+offset_bottom = 24.0
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
 
 [node name="TurnQueuePanel" type="PanelContainer" parent="HudLayer" unique_id=1587383211]
 layout_mode = 1
@@ -267,7 +267,7 @@ anchor_right = 1.0
 offset_left = -268.0
 offset_top = 8.0
 offset_right = -8.0
-offset_bottom = 128.0
+offset_bottom = 118.0
 grow_horizontal = 0
 mouse_filter = 2
 
@@ -281,7 +281,7 @@ theme_override_font_sizes/font_size = 13
 text = "行动顺序"
 
 [node name="QueueRow" type="HBoxContainer" parent="HudLayer/TurnQueuePanel/VBox" unique_id=1308497301]
-custom_minimum_size = Vector2(0, 52)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 theme_override_constants/separation = 6
 

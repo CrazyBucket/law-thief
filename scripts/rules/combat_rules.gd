@@ -63,8 +63,7 @@ static func apply_true_damage(state: GameState, unit: UnitState, amount: int, so
 
 static func begin_deferred_death_hooks(event_sink: Array[Dictionary] = []) -> void:
 	_defer_death_hooks_depth += 1
-	if not event_sink.is_empty():
-		_death_event_sink = event_sink
+	_death_event_sink = event_sink
 
 
 static func end_deferred_death_hooks(state: GameState) -> void:
@@ -110,7 +109,10 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 	else:
 		var prev_chain_id := _active_death_chain_id
 		_active_death_chain_id = death_chain_id
-		_GemEffects.on_unit_death(state, unit, [], {
+		var death_events: Array[Dictionary] = []
+		if state.has_combat_event_sink():
+			death_events = state.get_combat_event_sink()
+		_GemEffects.on_unit_death(state, unit, death_events, {
 			"death_chain_id": death_chain_id,
 			"source_uid": source_uid,
 			"damage": int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0)),

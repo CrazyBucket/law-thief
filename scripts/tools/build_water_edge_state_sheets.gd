@@ -12,10 +12,6 @@ func _initialize() -> void:
 	for state in range(8):
 		top_frames.append(_frame(top_source, state))
 		right_frames.append(_frame(right_source, state))
-	# waterEdge2 frames 1 and 3 contain an unwanted lower-right body. Rebuild
-	# those two states from the valid upper-right stroke and right-tip cap.
-	right_frames[1] = _frame(top_source, 1)
-	right_frames[3] = _merge_frames([_frame(top_source, 1), _frame(right_source, 2)])
 	_build_sheet("res://assets/tiles/waterEdgeTop.generated.png", top_frames)
 	_build_sheet("res://assets/tiles/waterEdgeRight.generated.png", right_frames)
 	print("WATER_EDGE_STATE_SHEETS_BUILT")
@@ -24,14 +20,6 @@ func _initialize() -> void:
 
 func _frame(source: Image, state: int) -> Image:
 	return source.get_region(Rect2i(state * FRAME_SIZE.x, 0, FRAME_SIZE.x, FRAME_SIZE.y))
-
-
-func _merge_frames(frames: Array) -> Image:
-	var merged := Image.create(FRAME_SIZE.x, FRAME_SIZE.y, false, Image.FORMAT_RGBA8)
-	merged.fill(Color.TRANSPARENT)
-	for frame: Image in frames:
-		_copy_shore(merged, frame, Vector2i.ZERO)
-	return merged
 
 
 func _build_sheet(path: String, frames: Array[Image]) -> void:

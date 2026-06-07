@@ -154,7 +154,7 @@ static func _push_directional(
 
 	# ─── 位移结束后统一结算 ──────────────────────────────────────────────────
 	if unit.pos != start_pos:
-		TileRules.on_unit_position_changed(state, unit, start_pos)
+		TileRules.on_unit_position_changed(state, unit, start_pos, {"forced": true})
 		TileRules.on_unit_entered(state, unit, start_pos, {"forced": true, "source_uid": source_uid, "skip_overlay": true})
 		state.on_forced_displacement.emit(unit.uid, start_pos, unit.pos, source_uid)
 		if not skip_gem_hooks:
@@ -185,7 +185,7 @@ static func star_relocate(
 		state.move_unit(unit, landing)
 		state.on_unit_move.emit(unit.uid, from_pos, landing)
 		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": landing})
-		TileRules.on_unit_position_changed(state, unit, from_pos)
+		TileRules.on_unit_position_changed(state, unit, from_pos, {"forced": true})
 		# 落地后结算目标格地形（地刺、火焰、毒雾等）
 		TileRules.on_unit_entered(state, unit, from_pos, {"forced": true, "source_uid": source_uid})
 		state.on_forced_displacement.emit(unit.uid, from_pos, landing, source_uid)

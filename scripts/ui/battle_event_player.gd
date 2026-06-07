@@ -68,9 +68,19 @@ func play_sequence(
 	return finish_presentation(final_state, inspect_uid)
 
 
+func _host_ready() -> bool:
+	return _host != null and is_instance_valid(_host) and _host.is_inside_tree()
+
+
+func _await_anim_delay(seconds: float) -> void:
+	if not _host_ready():
+		return
+	await _host.get_tree().create_timer(_scaled_anim_time(seconds)).timeout
+
+
 func play_prefire_projectile(from_pos: Vector2i, to_pos: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
 	await _board.play_projectile_task(from_pos, to_pos, proj_color)
-	await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+	await _await_anim_delay(0.08)
 
 
 func play_events(events: Array) -> void:
@@ -78,6 +88,8 @@ func play_events(events: Array) -> void:
 		EventValidator.assert_valid(events, "BattleEventPlayer.play_events")
 	var i := 0
 	while i < events.size():
+		if not _host_ready():
+			break
 		var ev: Dictionary = events[i]
 		var ev_type := str(ev.get("type", ""))
 		if ev_type in ["projectile", "projectile_deflect"]:
@@ -98,14 +110,14 @@ func play_events(events: Array) -> void:
 			_play_damage_batch(damage_batch)
 			if not move_batch.is_empty():
 				await _play_parallel_move_batch(move_batch)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.75)).timeout
+			await _await_anim_delay(0.75)
 			_board.queue_redraw()
 			continue
 		if ev_type == "damage":
 			var damage_events := _collect_consecutive_events(events, i, ["damage"])
 			i += damage_events.size()
 			_play_damage_batch(damage_events)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.34)).timeout
+			await _await_anim_delay(0.34)
 			_board.queue_redraw()
 			continue
 		if ev_type == "light_beam":
@@ -114,7 +126,8 @@ func play_events(events: Array) -> void:
 				ev.get("from", Vector2i.ZERO),
 				ev.get("to", Vector2i.ZERO),
 				ev.get("color", Color(1.0, 0.96, 0.58)),
-				int(ev.get("width", 1))
+				float(ev.get("width", 1.0)),
+				ev
 			)
 			_apply_event_state(ev)
 			i += 1
@@ -133,7 +146,7 @@ func play_events(events: Array) -> void:
 			var fx_batch := _collect_consecutive_events(events, i, [ev_type])
 			i += fx_batch.size()
 			_play_area_fx_batch(fx_batch)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.42)).timeout
+			await _await_anim_delay(0.42)
 			_board.queue_redraw()
 			continue
 		if ev_type == "split_spawn":
@@ -197,7 +210,11 @@ func _play_area_fx_batch(batch: Array) -> void:
 	for fx_event in batch:
 		match str(fx_event.get("type", "")):
 			"poison_burst":
-				_board.play_poison_burst(fx_event.get("pos", Vector2i.ZERO), int(fx_event.get("radius", 0)))
+				_board.play_poison_burst(
+					fx_event.get("pos", Vector2i.ZERO),
+					int(fx_event.get("radius", 0)),
+					str(fx_event.get("pattern", ""))
+				)
 			"fire_burst":
 				_board.play_explosion(fx_event.get("pos", Vector2i.ZERO))
 				_board.play_gem_flash(fx_event.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
@@ -254,7 +271,7 @@ func _play_projectile_volley(batch: Array) -> void:
 				"color": projectile_event.get("color", Color(0.95, 0.92, 0.45)),
 			})
 		await _board.play_projectiles_task(shots)
-	await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+	await _await_anim_delay(0.08)
 
 
 func _move_batch_is_parallel(batch: Array) -> bool:
@@ -278,49 +295,54 @@ func _play_anim_event(ev: Dictionary) -> void:
 			var is_crit: bool = bool(ev.get("is_crit", false))
 			if not attacker_uid.is_empty() and not bool(ev.get("keep_facing", false)):
 				_board.start_strike_effect(attacker_uid, damage_pos)
-				await _host.get_tree().create_timer(_scaled_anim_time(0.12)).timeout
+				await _await_anim_delay(0.12)
 			_board.play_damage_effect(damage_pos, damage_value, is_crit)
 			if _spawn_damage_text.is_valid():
 				_spawn_damage_text.call(damage_pos, damage_value, is_crit, ev.get("reason", ""))
-			await _host.get_tree().create_timer(_scaled_anim_time(0.38)).timeout
+			await _await_anim_delay(0.38)
 		"explode":
 			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
 			_board.queue_redraw()
-			await _host.get_tree().create_timer(_scaled_anim_time(0.75)).timeout
+			await _await_anim_delay(0.75)
 		"poison_burst":
-			_board.play_poison_burst(ev.get("pos", Vector2i.ZERO), int(ev.get("radius", 0)))
-			await _host.get_tree().create_timer(_scaled_anim_time(0.6)).timeout
+			_board.play_poison_burst(
+				ev.get("pos", Vector2i.ZERO),
+				int(ev.get("radius", 0)),
+				str(ev.get("pattern", ""))
+			)
+			await _await_anim_delay(0.6)
 			_board.queue_redraw()
 		"gem_flash":
 			var flash_color: Color = ev.get("color", Color.WHITE)
 			if bool(ev.get("echo_followup", false)) and flash_color == Color.WHITE:
 				flash_color = Color(0.62, 0.42, 1.0)
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), flash_color)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.32)).timeout
+			await _await_anim_delay(0.32)
 		"projectile", "projectile_deflect":
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
 			await _board.play_projectile_task(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.08)).timeout
+			await _await_anim_delay(0.08)
 		"light_beam":
 			await _board.play_light_beam_task(
 				ev.get("from", Vector2i.ZERO),
 				ev.get("to", Vector2i.ZERO),
 				ev.get("color", Color(1.0, 0.96, 0.58)),
-				int(ev.get("width", 1))
+				float(ev.get("width", 1.0)),
+				ev
 			)
 		"lightning", "arc":
 			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)
-			await _host.get_tree().create_timer(_scaled_anim_time(0.22)).timeout
+			await _await_anim_delay(0.22)
 		"frost_pulse":
 			_board.play_heal_effect(ev.get("pos", Vector2i.ZERO))
-			await _host.get_tree().create_timer(_scaled_anim_time(0.28)).timeout
+			await _await_anim_delay(0.28)
 		"fire_burst":
 			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
-			await _host.get_tree().create_timer(_scaled_anim_time(0.4)).timeout
+			await _await_anim_delay(0.4)
 		"miss":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.7, 0.7, 0.7, 0.6))
-			await _host.get_tree().create_timer(_scaled_anim_time(0.22)).timeout
+			await _await_anim_delay(0.22)
 
 
 func _prime_event_state(ev: Dictionary) -> void:
@@ -354,11 +376,25 @@ func _apply_event_state(ev: Dictionary) -> void:
 				victim.alive = false
 		"poison_burst":
 			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
+			var pattern := str(ev.get("pattern", ""))
 			var poison_radius: int = int(ev.get("radius", 0))
-			for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
-				if not BoardUtils.in_bounds(_display_state, cell):
-					continue
-				TileRules.create_poison_fog(_display_state, cell)
+			var cells: Array[Vector2i] = []
+			if pattern == "cross":
+				cells.append(poison_center)
+				for neighbor in BoardUtils.neighbors4(poison_center):
+					if BoardUtils.in_bounds(_display_state, neighbor):
+						cells.append(neighbor)
+			elif poison_radius <= 0:
+				cells.append(poison_center)
+			else:
+				for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
+					if BoardUtils.in_bounds(_display_state, cell):
+						cells.append(cell)
+			var duration := Constants.POISON_FOG_DURATION
+			if int(ev.get("duration", 0)) > 0:
+				duration = int(ev.get("duration", duration))
+			for cell in cells:
+				TileRules.create_poison_fog(_display_state, cell, duration)
 		"fire_burst":
 			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
 		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam":

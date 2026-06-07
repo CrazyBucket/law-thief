@@ -16,10 +16,7 @@ const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
-const LightBeamShader := preload("res://scenes/battle/light_beam.gdshader")
 const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
-const WATER_EDGE_TOP := preload("res://assets/tiles/waterEdgeTop.generated.png")
-const WATER_EDGE_RIGHT := preload("res://assets/tiles/waterEdgeRight.generated.png")
 const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
 const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
 const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
@@ -116,7 +113,17 @@ var _gem_sprites: RefCounted = null ## DoodleGemSprites
 var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
-var _light_beam_nodes: Array[Polygon2D] = []
+var _light_beam_soft_texture: Texture2D = null
+var _light_beam_nodes: Array[Node2D] = []
+var _beam_layer: Control = null
+
+@export_group("Light Beam FX")
+@export_range(2.0, 30.0, 0.5) var light_beam_base_half_width: float = 13.5
+@export_range(0.1, 3.0, 0.05) var light_beam_global_scale: float = 1.0
+@export_range(0.1, 3.0, 0.05) var light_beam_global_power: float = 1.0
+@export_range(0.1, 2.0, 0.05) var light_beam_duration: float = 0.46
+@export_range(-60.0, 0.0, 1.0) var light_beam_plane_height: float = -28.0
+@export_range(0.0, 20.0, 1.0) var light_beam_source_drop: float = 7.0
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
@@ -162,6 +169,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_board_texture = get_node_or_null("Grids")
 	_ensure_water_layers()
+	_ensure_combat_visual_layers()
 	resized.connect(_update_origin)
 	_update_origin()
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
@@ -487,12 +495,24 @@ func _draw() -> void:
 	_draw_unit_slot_panels()
 
 
+func _ensure_combat_visual_layers() -> void:
+	if _beam_layer != null:
+		return
+	_beam_layer = Control.new()
+	_beam_layer.name = "BeamLayer"
+	_beam_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_beam_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_beam_layer)
+
+
 func _ensure_water_layers() -> void:
 	if _water_fill_layer != null:
 		return
 	_water_fill_layer = WaterLayerClass.new()
 	_water_fill_layer.name = "WaterFillLayer"
 	_water_fill_layer.layer_kind = WaterLayerClass.LayerKind.FILL
+	_water_fill_layer.fill_image_top = _load_generated_image("res://assets/tiles/waterMaskTop.generated.png")
+	_water_fill_layer.fill_image_right = _load_generated_image("res://assets/tiles/waterMaskRight.generated.png")
 	_water_fill_layer.show_behind_parent = true
 	_water_fill_layer.z_index = 0
 	var fill_material := ShaderMaterial.new()
@@ -506,11 +526,25 @@ func _ensure_water_layers() -> void:
 	_water_edge_layer = WaterLayerClass.new()
 	_water_edge_layer.name = "WaterEdgeLayer"
 	_water_edge_layer.layer_kind = WaterLayerClass.LayerKind.EDGE
-	_water_edge_layer.edge_texture_top = WATER_EDGE_TOP
-	_water_edge_layer.edge_texture_right = WATER_EDGE_RIGHT
+	_water_edge_layer.edge_image_top = _load_generated_image("res://assets/tiles/waterEdgeTop.generated.png")
+	_water_edge_layer.edge_image_right = _load_generated_image("res://assets/tiles/waterEdgeRight.generated.png")
 	_water_edge_layer.show_behind_parent = true
 	_water_edge_layer.z_index = 0
 	add_child(_water_edge_layer)
+
+
+func _load_generated_texture(path: String) -> Texture2D:
+	var image := _load_generated_image(path)
+	if image == null:
+		return null
+	return ImageTexture.create_from_image(image)
+
+
+func _load_generated_image(path: String) -> Image:
+	var image := Image.load_from_file(path)
+	if image == null:
+		return null
+	return image
 
 
 func _clear_water_visuals() -> void:
@@ -704,6 +738,7 @@ func _draw_tile(grid: Vector2i) -> void:
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
+	var reachable: Array = highlights.get("reachable", [])
 	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
 	var paths: Array = highlights.get("paths", [])
@@ -713,6 +748,9 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	if grid in effect_list:
 		var a: float = 0.5 + pulse * 0.22
 		return Color(1.0, 0.22, 0.22, a)
+	if grid in reachable:
+		var move_a: float = 0.28 + pulse * 0.12
+		return Color(0.42, 0.9, 0.5, move_a)
 	if grid in attack_range:
 		var a: float = 0.28 + pulse * 0.12
 		return Color(0.42, 0.9, 0.5, a)
@@ -2105,13 +2143,23 @@ func play_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 
 
 ## 剧毒：优先 VFX 包 puff；缺失时用 Doodle Particles/Puff。
-func play_poison_burst(anchor_grid: Vector2i, radius: int) -> void:
+func play_poison_burst(anchor_grid: Vector2i, radius: int, pattern: String = "") -> void:
 	if state == null:
 		return
+	var cells: Array[Vector2i] = []
+	if pattern == "cross":
+		cells.append(anchor_grid)
+		for neighbor in BoardUtilsClass.neighbors4(anchor_grid):
+			if BoardUtilsClass.in_bounds(state, neighbor):
+				cells.append(neighbor)
+	elif radius <= 0:
+		cells.append(anchor_grid)
+	else:
+		for cell in BoardUtilsClass.cells_in_radius(anchor_grid, radius):
+			if BoardUtilsClass.in_bounds(state, cell):
+				cells.append(cell)
 	var puff_vfx: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_PUFF)
-	for cell in BoardUtilsClass.cells_in_radius(anchor_grid, radius):
-		if not BoardUtilsClass.in_bounds(state, cell):
-			continue
+	for cell in cells:
 		var base: Vector2 = grid_to_screen(cell) + IsoCoordinates.visual_vec(Vector2(0, -10))
 		var placed_pack := false
 		if _Vpf.is_pack_available() and not puff_vfx.is_empty():
@@ -2331,19 +2379,21 @@ func play_light_beam_task(
 	from_grid: Vector2i,
 	to_grid: Vector2i,
 	beam_color: Color = Color(1.0, 0.96, 0.58),
-	beam_width: int = 1
+	beam_width: float = 1.0,
+	fx: Dictionary = {}
 ) -> void:
-	var beam := _create_light_beam_node(from_grid, to_grid, beam_color, beam_width)
+	var beam := _create_light_beam_node(from_grid, to_grid, beam_color, beam_width, fx)
 	if beam == null:
 		return
 	var mat := beam.material as ShaderMaterial
 	var tween := create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(beam, "modulate:a", 0.0, _scaled_duration(0.34)).set_delay(_scaled_duration(0.12))
+	var duration := _scaled_duration(light_beam_duration)
+	tween.tween_property(beam, "modulate:a", 0.0, duration * 0.72).set_delay(duration * 0.28)
 	if mat != null:
 		tween.tween_method(func(v: float) -> void:
 			mat.set_shader_parameter("pulse", v)
-		, 0.0, 1.0, _scaled_duration(0.46))
+		, 0.0, 1.0, duration)
 	await tween.finished
 	if is_instance_valid(beam):
 		beam.queue_free()
@@ -2354,33 +2404,153 @@ func _create_light_beam_node(
 	from_grid: Vector2i,
 	to_grid: Vector2i,
 	beam_color: Color,
-	beam_width: int
-) -> Polygon2D:
-	var from_scr := grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -24))
-	var to_scr := grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -24))
+	beam_width: float,
+	fx: Dictionary = {}
+) -> Node2D:
+	var from_scr := _light_beam_anchor(from_grid) + IsoCoordinates.visual_vec(Vector2(0, light_beam_source_drop))
+	var to_scr := _light_beam_anchor(to_grid)
 	var delta := to_scr - from_scr
 	if delta.length() < 1.0:
 		return null
 	var dir := delta.normalized()
-	var perp := Vector2(-dir.y, dir.x)
-	var width := IsoCoordinates.visual(10.0 + float(maxi(1, beam_width) - 1) * 8.0)
-	var beam := Polygon2D.new()
-	beam.polygon = PackedVector2Array([
-		from_scr + perp * width,
-		to_scr + perp * width,
-		to_scr - perp * width,
-		from_scr - perp * width,
-	])
-	beam.color = Color.WHITE
-	beam.modulate.a = 1.0
-	var shader_mat := ShaderMaterial.new()
-	shader_mat.shader = LightBeamShader
-	shader_mat.set_shader_parameter("beam_color", beam_color)
-	shader_mat.set_shader_parameter("core_width", 0.24 if beam_width <= 1 else 0.38)
-	beam.material = shader_mat
-	add_child(beam)
+	var width := IsoCoordinates.visual(light_beam_base_half_width * maxf(0.1, beam_width) * light_beam_global_scale)
+	var transitions: Array = fx.get("dye_transitions", [])
+	var beam := Node2D.new()
+	var cursor := from_scr
+	var active_color := beam_color
+	var blend_half_length := IsoCoordinates.visual(22.0)
+	for transition_variant in transitions:
+		var transition: Dictionary = transition_variant
+		var transition_center := _light_beam_axis_point(from_scr, to_scr, transition.get("cell", to_grid))
+		var blend_from := transition_center - dir * blend_half_length
+		var blend_to := transition_center + dir * blend_half_length
+		if (blend_from - cursor).dot(dir) > 1.0:
+			_add_light_beam_line_stack(beam, cursor, blend_from, active_color, active_color, width, fx)
+		var next_color: Color = transition.get("color", active_color)
+		_add_light_beam_line_stack(beam, blend_from, blend_to, active_color, next_color, width, fx)
+		cursor = blend_to
+		active_color = next_color
+	if (to_scr - cursor).dot(dir) > 1.0:
+		_add_light_beam_line_stack(beam, cursor, to_scr, active_color, active_color, width, fx)
+	_add_light_beam_endpoint_fx(beam, from_scr, to_scr, beam_color, active_color, width, fx)
+	for hit_variant in fx.get("hit_effects", []):
+		var hit: Dictionary = hit_variant
+		var hit_center := _light_beam_axis_point(from_scr, to_scr, hit.get("cell", to_grid))
+		_add_light_beam_hit_fx(beam, hit_center, hit.get("color", active_color), width)
+	_ensure_combat_visual_layers()
+	_beam_layer.add_child(beam)
 	_light_beam_nodes.append(beam)
 	return beam
+
+
+func _add_light_beam_line_stack(
+	parent: Node2D,
+	from_scr: Vector2,
+	to_scr: Vector2,
+	from_color: Color,
+	to_color: Color,
+	width: float,
+	fx: Dictionary
+) -> void:
+	var power := float(fx.get("power", 1.0)) * light_beam_global_power
+	_add_light_beam_line(parent, from_scr, to_scr, width * 2.0, from_color, to_color, 0.42 * power)
+	_add_light_beam_line(parent, from_scr, to_scr, width * 1.06, from_color, to_color, 0.58 * power)
+	var core_from := from_color.lerp(Color.WHITE, 0.22)
+	var core_to := to_color.lerp(Color.WHITE, 0.22)
+	_add_light_beam_line(parent, from_scr, to_scr, width * 0.2, core_from, core_to, 0.78 * power)
+
+
+func _add_light_beam_line(
+	parent: Node2D,
+	from_scr: Vector2,
+	to_scr: Vector2,
+	line_width: float,
+	from_color: Color,
+	to_color: Color,
+	alpha: float
+) -> void:
+	var line := Line2D.new()
+	line.points = PackedVector2Array([from_scr, to_scr])
+	line.width = line_width
+	line.antialiased = true
+	line.texture = _get_light_beam_soft_texture()
+	line.texture_mode = Line2D.LINE_TEXTURE_STRETCH
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(from_color.r, from_color.g, from_color.b, alpha))
+	gradient.set_color(1, Color(to_color.r, to_color.g, to_color.b, alpha))
+	line.gradient = gradient
+	var material := CanvasItemMaterial.new()
+	material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	line.material = material
+	parent.add_child(line)
+
+
+func _get_light_beam_soft_texture() -> Texture2D:
+	if _light_beam_soft_texture != null:
+		return _light_beam_soft_texture
+	var image := Image.create(8, 64, false, Image.FORMAT_RGBA8)
+	for y in range(image.get_height()):
+		var normalized := absf((float(y) + 0.5) / float(image.get_height()) - 0.5) * 2.0
+		var alpha := pow(maxf(0.0, 1.0 - normalized), 1.65)
+		for x in range(image.get_width()):
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	_light_beam_soft_texture = ImageTexture.create_from_image(image)
+	return _light_beam_soft_texture
+
+
+func _light_beam_anchor(grid: Vector2i) -> Vector2:
+	return grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0, light_beam_plane_height))
+
+
+func _light_beam_axis_point(from_scr: Vector2, to_scr: Vector2, grid: Vector2i) -> Vector2:
+	var axis := to_scr - from_scr
+	var length_squared := axis.length_squared()
+	if length_squared < 1.0:
+		return from_scr
+	var raw := _light_beam_anchor(grid)
+	var t := clampf((raw - from_scr).dot(axis) / length_squared, 0.0, 1.0)
+	return from_scr + axis * t
+
+
+func _add_light_beam_endpoint_fx(
+	parent: Node2D,
+	from_scr: Vector2,
+	to_scr: Vector2,
+	from_color: Color,
+	to_color: Color,
+	width: float,
+	fx: Dictionary
+) -> void:
+	var power := float(fx.get("power", 1.0)) * light_beam_global_power
+	_add_light_beam_ring(parent, from_scr, width * 0.28, from_color, 0.42 * power)
+	_add_light_beam_ring(parent, to_scr, width * 0.38, to_color, 0.28 * power)
+	var dir := (to_scr - from_scr).normalized()
+	_add_light_beam_line(parent, from_scr - dir * width * 0.5, from_scr + dir * width * 0.72, width * 0.34, from_color, from_color, 0.7 * power)
+	_add_light_beam_line(parent, to_scr - dir * width * 0.5, to_scr + dir * width * 0.28, width * 0.28, to_color, to_color, 0.42 * power)
+
+
+func _add_light_beam_hit_fx(parent: Node2D, center: Vector2, color: Color, width: float) -> void:
+	_add_light_beam_ring(parent, center, width * 0.48, color, 0.48)
+	_add_light_beam_ring(parent, center, width * 0.27, color.lerp(Color.WHITE, 0.25), 0.68)
+	var flare_length := width * 0.58
+	_add_light_beam_line(parent, center - Vector2(flare_length, 0), center + Vector2(flare_length, 0), width * 0.08, color, color, 0.48)
+	_add_light_beam_line(parent, center - Vector2(0, flare_length), center + Vector2(0, flare_length), width * 0.08, color, color, 0.48)
+
+
+func _add_light_beam_ring(parent: Node2D, center: Vector2, radius: float, color: Color, alpha: float) -> void:
+	var ring := Line2D.new()
+	var points := PackedVector2Array()
+	for i in range(17):
+		var angle := TAU * float(i) / 16.0
+		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	ring.points = points
+	ring.width = maxf(IsoCoordinates.visual(1.5), radius * 0.12)
+	ring.antialiased = true
+	ring.default_color = Color(color.r, color.g, color.b, alpha)
+	var material := CanvasItemMaterial.new()
+	material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	ring.material = material
+	parent.add_child(ring)
 
 
 func _draw_projectile() -> void:

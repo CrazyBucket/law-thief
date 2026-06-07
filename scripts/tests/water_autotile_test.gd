@@ -6,24 +6,24 @@ var failures: Array[String] = []
 
 
 func _initialize() -> void:
-	_test_shape("single", [Vector2i(0, 0)], 4, 0, {Vector2i(0, 0): Vector4i(7, 7, 7, 7)})
+	_test_shape("single", [Vector2i(0, 0)], 4, 0, {Vector2i(0, 0): Vector4i(5, 5, 5, 5)})
 	_test_shape("domino", [Vector2i(0, 0), Vector2i(1, 0)], 6, 0, {
-		Vector2i(0, 0): Vector4i(7, 3, 6, 7),
-		Vector2i(1, 0): Vector4i(3, 7, 7, 6),
+		Vector2i(0, 0): Vector4i(5, 1, 4, 5),
+		Vector2i(1, 0): Vector4i(1, 5, 5, 4),
 	})
 	_test_shape("square", [
 		Vector2i(0, 0), Vector2i(1, 0),
 		Vector2i(0, 1), Vector2i(1, 1),
 	], 8, 0, {
-		Vector2i(0, 0): Vector4i(7, 3, 0, 3),
-		Vector2i(1, 0): Vector4i(3, 7, 3, 0),
-		Vector2i(0, 1): Vector4i(6, 0, 6, 7),
-		Vector2i(1, 1): Vector4i(0, 6, 7, 6),
+		Vector2i(0, 0): Vector4i(5, 1, 0, 1),
+		Vector2i(1, 0): Vector4i(1, 5, 1, 0),
+		Vector2i(0, 1): Vector4i(4, 0, 4, 5),
+		Vector2i(1, 1): Vector4i(0, 4, 5, 4),
 	})
 	_test_shape("L", [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)], 8, 1, {
-		Vector2i(0, 0): Vector4i(7, 3, 2, 3),
-		Vector2i(1, 0): Vector4i(3, 7, 7, 4),
-		Vector2i(0, 1): Vector4i(6, 4, 7, 7),
+		Vector2i(0, 0): Vector4i(5, 1, 2, 1),
+		Vector2i(1, 0): Vector4i(1, 5, 5, 4),
+		Vector2i(0, 1): Vector4i(4, 4, 5, 5),
 	})
 	if not failures.is_empty():
 		for failure in failures:

@@ -18,6 +18,8 @@ func _run_tests() -> void:
 	_test_light_beam_hits_line_targets()
 	_test_counter_red_triggers_followup()
 	_test_gravity_red_range_extends_attack()
+	_test_gravity_red_pulls_attack_target()
+	_test_gravity_red_collision_when_adjacent()
 	print("SKILL_TEST_PASS")
 	quit()
 
@@ -301,6 +303,58 @@ func _test_gravity_red_range_extends_attack() -> void:
 	var events: Array = result.get("attack_events", [])
 	assert(events.any(func(e): return str(e.get("type", "")) == "gem_flash"), "gravity attack should emit gem flash")
 	print("  [OK] gravity red range extends attack")
+
+
+func _test_gravity_red_pulls_attack_target() -> void:
+	print("--- Test: Gravity red gem pulls attack target after hit ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var red_slot := player.get_slot(Constants.SLOT_RED)
+	var gem := GemState.new()
+	gem.uid = "test_gravity_pull_gem"
+	gem.gem_id = Constants.GEM_GRAVITY
+	state.gems[gem.uid] = gem
+	red_slot.gem_uid = gem.uid
+	gem.owner_uid = player.uid
+	gem.slot_index = player.slots.find(red_slot)
+	var far_aim := player.pos + Vector2i(4, 0)
+	var guard := _spawn_test_guard(state, far_aim, "test_gravity_pull_target")
+	var start_pos := guard.pos
+	ctrl.select_action(Constants.ACTION_ATTACK)
+	var result := ctrl.try_attack_cell(far_aim)
+	assert(result.get("ok", false), "gravity should allow extended attack")
+	var events: Array = result.get("attack_events", [])
+	assert(events.any(func(e): return str(e.get("type", "")) == "move_step"), "gravity should pull attack target")
+	assert(guard.pos != start_pos, "attack target should move toward player after gravity hit")
+	print("  [OK] gravity red pulls attack target")
+
+
+func _test_gravity_red_collision_when_adjacent() -> void:
+	print("--- Test: Gravity pull collides when adjacent ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var gem := GemState.new()
+	gem.uid = "test_gravity_collision_gem"
+	gem.gem_id = Constants.GEM_GRAVITY
+	state.gems[gem.uid] = gem
+	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	var guard := _spawn_test_guard(state, player.pos + Vector2i(1, 0), "test_gravity_collision_target")
+	guard.hp = 50
+	var player_hp_before := player.hp
+	ctrl.select_action(Constants.ACTION_ATTACK)
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "adjacent gravity attack should succeed")
+	var events: Array = result.get("attack_events", [])
+	var collision_damage := events.filter(func(e: Dictionary) -> bool:
+		return str(e.get("type", "")) == "damage" and str(e.get("uid", "")) == player.uid
+	)
+	assert(not collision_damage.is_empty(), "gravity pull into player should deal collision damage to player")
+	assert(player.hp < player_hp_before, "player should take collision damage when enemy pulled in")
+	print("  [OK] gravity red collision when adjacent")
 
 
 func _spawn_test_guard(state: GameState, pos: Vector2i, uid: String) -> UnitState:

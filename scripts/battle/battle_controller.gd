@@ -17,6 +17,7 @@ signal anim_gem_flash(grid: Vector2i, gem_color: Color)
 var state: GameState = null
 var selected_action: String = ""
 var selected_unit_uid: String = ""
+var editor_unlimited_actions: bool = false
 
 var _action_svc: BattleActionService = null
 var _turn_svc: BattleTurnService = null
@@ -194,6 +195,8 @@ func check_tile_slot_action(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 func can_use_action(action: String) -> bool:
 	if state == null or state.phase != Constants.PHASE_PLAYER:
 		return false
+	if editor_unlimited_actions_enabled() and action in [Constants.ACTION_MOVE, Constants.ACTION_ATTACK]:
+		return true
 	match action:
 		Constants.ACTION_MOVE:
 			return not state.player_moved
@@ -285,6 +288,18 @@ func _editor_available() -> bool:
 	if settings != null:
 		return OS.is_debug_build() and bool(settings.get_value("battle_editor_enabled"))
 	return OS.is_debug_build()
+
+
+func editor_unlimited_actions_enabled() -> bool:
+	return editor_unlimited_actions and _editor_available()
+
+
+func player_move_budget(player: UnitState) -> int:
+	if player == null:
+		return 0
+	if editor_unlimited_actions_enabled():
+		return Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+	return player.move_points
 
 
 # ═══════════════════════════════════════════════════════════════════════════

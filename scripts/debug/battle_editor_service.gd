@@ -32,6 +32,8 @@ func execute(command_id: String, payload: Dictionary = {}) -> Dictionary:
 			return _remove_gem(payload)
 		"set_unit_stat":
 			return _set_unit_stat(payload)
+		"apply_unit_status":
+			return _apply_unit_status(payload)
 		"set_player_spawn":
 			return _set_player_spawn(payload)
 		"spawn_entity":
@@ -236,24 +238,32 @@ func _remove_gem(payload: Dictionary) -> Dictionary:
 	var target_kind := str(payload.get("target_kind", ""))
 	var unit: UnitState = ctrl.state.get_unit_at(pos)
 	var tile: TileState = ctrl.state.get_tile(pos)
-	var slot_index := -1
+	var slot_index := int(payload.get("slot_index", -1))
 	var slot: SlotState = null
 	var target_label := ""
 	if target_kind == "unit" or (target_kind.is_empty() and unit != null and _find_filled_slot_index(unit.slots, preferred_slot) >= 0):
 		if unit == null:
 			return _fail("no unit at %s" % pos)
-		slot_index = _find_filled_slot_index(unit.slots, preferred_slot)
-		if slot_index < 0:
+		if slot_index >= 0:
+			slot = unit.get_slot_by_index(slot_index)
+		else:
+			slot_index = _find_filled_slot_index(unit.slots, preferred_slot)
+			if slot_index >= 0:
+				slot = unit.get_slot_by_index(slot_index)
+		if slot == null or slot.gem_uid.is_empty():
 			return _fail("no gem found on unit at %s" % pos)
-		slot = unit.get_slot_by_index(slot_index)
 		target_label = "unit %s slot %s" % [unit.unit_def_id, _slot_label(slot)]
 	else:
 		if tile == null or not tile.has_slots():
 			return _fail("no slotted tile at %s" % pos)
-		slot_index = _find_filled_slot_index(tile.slots, preferred_slot)
-		if slot_index < 0:
+		if slot_index >= 0:
+			slot = tile.get_slot_by_index(slot_index)
+		else:
+			slot_index = _find_filled_slot_index(tile.slots, preferred_slot)
+			if slot_index >= 0:
+				slot = tile.get_slot_by_index(slot_index)
+		if slot == null or slot.gem_uid.is_empty():
 			return _fail("no gem found on tile at %s" % pos)
-		slot = tile.get_slot_by_index(slot_index)
 		target_label = "tile %s slot %s" % [tile.tile_id, _slot_label(slot)]
 	var gem: GemState = ctrl.state.gems.get(slot.gem_uid, null)
 	var gem_id := gem.gem_id if gem != null else "unknown_gem"
@@ -316,6 +326,39 @@ func _set_unit_stat(payload: Dictionary) -> Dictionary:
 		_:
 			return _fail("unsupported stat field: %s" % field)
 	return _finalize_mutation("set %s.%s = %s" % [unit.unit_def_id, field, raw_value])
+
+
+func _apply_unit_status(payload: Dictionary) -> Dictionary:
+	var ctrl := _ctrl
+	var pos: Vector2i = payload.get("pos", Vector2i.ZERO)
+	var status_id := str(payload.get("status_id", ""))
+	var unit: UnitState = ctrl.state.get_unit_at(pos)
+	if unit == null or not unit.alive:
+		return _fail("no live unit at %s" % pos)
+	match status_id:
+		Constants.STATUS_POISON:
+			StatusRules.apply_poison(ctrl.state, unit, 1, 2, "editor")
+		Constants.STATUS_BURNING:
+			StatusRules.apply_burning(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_SLOWED:
+			StatusRules.apply_slowed(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_PARALYZED:
+			StatusRules.apply_paralyzed(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_WET:
+			StatusRules.apply_wet(ctrl.state, unit, 2, "editor")
+		Constants.STATUS_ROOTED:
+			StatusRules.apply_rooted(ctrl.state, unit, 2, "editor")
+		Constants.STATUS_VULNERABLE:
+			StatusRules.apply_vulnerable(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_LIGHT_EXPOSED:
+			StatusRules.apply_light_exposed(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_BLINDED:
+			StatusRules.apply_blinded(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_ARMOR:
+			StatusRules.apply_armor(ctrl.state, unit, 3, 1, "editor")
+		_:
+			return _fail("unsupported status: %s" % status_id)
+	return _finalize_mutation("applied %s to %s" % [status_id, unit.uid])
 
 
 func _set_player_spawn(payload: Dictionary) -> Dictionary:
@@ -399,9 +442,9 @@ func _add_relic(payload: Dictionary) -> Dictionary:
 	var relic_id := str(payload.get("relic_id", ""))
 	if not _data_registry().has_relic_def(relic_id):
 		return _fail("unknown relic id: %s" % relic_id)
-	var run_service := _run_service()
-	if run_service == null or not run_service.is_run_active():
-		return _fail("no active run for relic editing")
+	var run_service := _ensure_run_for_relic_edit()
+	if run_service == null:
+		return _fail("RunService unavailable")
 	if run_service.has_relic(relic_id):
 		return _ok({"message": "relic already owned: %s" % relic_id})
 	run_service.acquire_relic(relic_id)
@@ -412,13 +455,22 @@ func _remove_relic(payload: Dictionary) -> Dictionary:
 	var relic_id := str(payload.get("relic_id", ""))
 	if not _data_registry().has_relic_def(relic_id):
 		return _fail("unknown relic id: %s" % relic_id)
-	var run_service := _run_service()
-	if run_service == null or not run_service.is_run_active():
-		return _fail("no active run for relic editing")
+	var run_service := _ensure_run_for_relic_edit()
+	if run_service == null:
+		return _fail("RunService unavailable")
 	if not run_service.has_relic(relic_id):
 		return _ok({"message": "relic not owned: %s" % relic_id})
 	run_service.remove_relic(relic_id)
 	return _finalize_mutation("removed relic %s" % relic_id)
+
+
+func _ensure_run_for_relic_edit() -> Node:
+	var run_service := _run_service()
+	if run_service == null:
+		return null
+	if not run_service.is_run_active():
+		run_service.start_run(1, 1)
+	return run_service
 
 
 func _export_encounter(payload: Dictionary) -> Dictionary:

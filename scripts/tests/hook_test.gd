@@ -19,6 +19,7 @@ func _run_tests() -> void:
 	_test_editor_console_batch_move_delete_commands()
 	_test_editor_console_entities_overlays_and_export()
 	_test_editor_console_relic_commands()
+	_test_editor_unlimited_actions()
 	_test_training_dummy_waits_and_tracks_as_spawnable()
 	_test_editor_console_import_encounter_file()
 	_test_editor_can_add_five_same_gems_to_red_slots()
@@ -257,6 +258,30 @@ func _test_editor_console_relic_commands() -> void:
 	assert(not run_service.has_relic("relic_prism"), "run should no longer own relic_prism")
 	run_service.end_run()
 	print("  [OK] editor console relic commands")
+
+
+func _test_editor_unlimited_actions() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 42)
+	ctrl.editor_unlimited_actions = true
+	ctrl.state.player_moved = true
+	ctrl.state.player_acted = true
+	assert(ctrl.can_use_action(Constants.ACTION_MOVE), "unlimited mode should allow move after moving")
+	assert(ctrl.can_use_action(Constants.ACTION_ATTACK), "unlimited mode should allow attack after acting")
+	var guards := []
+	for unit in ctrl.state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard" and unit.alive:
+			guards.append(unit)
+	assert(not guards.is_empty(), "tutorial should have patrol guard")
+	var guard: UnitState = guards[0]
+	var hp_before := guard.hp
+	ctrl.select_action(Constants.ACTION_ATTACK)
+	var attack_result := ctrl.try_attack_cell(guard.pos)
+	assert(attack_result.get("ok", false), "unlimited attack should succeed after acting")
+	assert(ctrl.can_use_action(Constants.ACTION_ATTACK), "unlimited mode should allow another attack")
+	var second_result := ctrl.try_attack_cell(guard.pos)
+	assert(second_result.get("ok", false), "unlimited mode should allow repeated attacks")
+	print("  [OK] editor unlimited actions")
 
 
 func _test_training_dummy_waits_and_tracks_as_spawnable() -> void:

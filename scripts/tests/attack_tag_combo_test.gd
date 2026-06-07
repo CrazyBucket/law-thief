@@ -188,8 +188,6 @@ func _setup_arena(state: GameState, player: UnitState, profiles: Array) -> Dicti
 		arena["arc_victim"] = _spawn_guard(state, ARC_VICTIM_POS, 60)
 	if profiles.has("split"):
 		arena["wing"] = _spawn_guard(state, WING_POS, 60)
-	if profiles.has("gravity"):
-		arena["pull_target"] = _spawn_guard(state, PULL_TARGET_POS, 60)
 	return arena
 
 

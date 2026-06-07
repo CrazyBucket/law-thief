@@ -160,7 +160,8 @@ static func _apply_explosion_intent_cells(state: GameState, unit: UnitState, int
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
 		return
-	intent.affected_cells = GemEffects.cross_explosion_cells(target.pos)
+	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+	intent.affected_cells = GemEffects.red_explosion_blast_cells(target.pos, gem_ctx)
 
 
 static func _build_skill_intent(
@@ -185,7 +186,8 @@ static func _build_skill_intent(
 	if intent.type == "explosion_attack":
 		var boom_target: UnitState = state.units.get(action.action_target_uid, null)
 		if boom_target != null:
-			intent.affected_cells = GemEffects.cross_explosion_cells(boom_target.pos)
+			var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
+			intent.affected_cells = GemEffects.red_explosion_blast_cells(boom_target.pos, gem_ctx)
 	if intent.type == "charge_explode":
 		var target: UnitState = state.units.get(action.action_target_uid, null)
 		if target != null:

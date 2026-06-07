@@ -98,6 +98,8 @@ static func execute_aimed(
 	if not attacker.alive:
 		return _fail("攻击者无效")
 	max_range = GemEffects.red_attack_range(state, attacker, max_range)
+	if GemEffects.unit_has_red_light(state, attacker) and not GemEffects.is_valid_light_aim(attacker, aim_cell):
+		return _fail("光束只能朝八个方向发射")
 	if not BoardUtils.can_unit_attack_cell(attacker, state, aim_cell, max_range):
 		return _fail("目标超出射程")
 
@@ -326,7 +328,10 @@ static func _apply_poison_at_cell(
 		radius = 1
 	if level >= 3:
 		duration += 1
-	ctx.push_event({"type": "poison_burst", "pos": cell, "radius": radius})
+	var burst := {"type": "poison_burst", "pos": cell, "radius": 0 if level >= 2 else radius, "duration": duration}
+	if level >= 2:
+		burst["pattern"] = "cross"
+	ctx.push_event(burst)
 	if BoardUtils.in_bounds(ctx.state, cell):
 		TileRules.create_poison_fog(ctx.state, cell, duration)
 		if level >= 2:
@@ -361,11 +366,8 @@ static func _apply_fire_tile_at_cell(
 
 static func _apply_cross_explosion_at(ctx: AttackContext, center: Vector2i) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
-	var explosion_level := GemTagResolver.tag_level(gem_ctx, "explosion")
-	if explosion_level >= 2:
-		var damage := Constants.EXPLOSION_CROSS_DAMAGE
-		if explosion_level >= 3:
-			damage *= 2
+	if GemEffects.explosion_uses_square_blast(gem_ctx):
+		var damage := GemEffects.explosion_scaled_damage(Constants.EXPLOSION_CROSS_DAMAGE, gem_ctx)
 		var square_events := GemEffects.explode_square_at(ctx.state, center, ctx.attacker.uid, damage, gem_ctx)
 		for ev in square_events:
 			ctx.events.append(ev)
@@ -392,15 +394,12 @@ static func _apply_gravity_aura(ctx: AttackContext) -> void:
 			"pos": ctx.attacker.pos,
 			"color": _data_registry().get_gem_color(gravity_gem),
 		})
+	if ctx.target == null or not ctx.target.alive or ctx.target.uid == ctx.attacker.uid:
+		return
 	var level := maxi(1, GemTagResolver.tag_level(ctx.payload.get("gem_tag_context", {}), "gravity"))
-	for unit in ctx.state.units.values():
-		if not unit.alive or unit.uid == ctx.attacker.uid:
-			continue
-		if BoardUtils.chebyshev(ctx.attacker.pos, unit.pos) > 2:
-			continue
-		ctx.events.append_array(
-			GemEffects.pull_unit_toward_with_events(ctx.state, unit, ctx.attacker.pos, level, ctx.attacker.uid)
-		)
+	ctx.events.append_array(
+		GemEffects.pull_unit_toward_with_events(ctx.state, ctx.target, ctx.attacker.pos, level, ctx.attacker.uid)
+	)
 
 
 static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
@@ -410,16 +409,37 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 	var cells := _light_beam_cells(ctx.state, from_cell, ctx.aim_cell, level >= 3)
 	if cells.is_empty():
 		return
-	var beam_color := _light_beam_color(gem_ctx)
-	var beam_width := 1 if level < 2 else 2
-	ctx.push_event({
-		"type": "light_beam",
-		"from": from_cell,
-		"to": cells[cells.size() - 1],
-		"cells": cells,
-		"color": beam_color,
-		"width": beam_width,
-	})
+	var hit_effects: Array[Dictionary] = []
+	var preview_ctx := gem_ctx.duplicate(true)
+	var preview_hit_uids: Dictionary = {}
+	for cell in cells:
+		var preview_dye := GemEffects.light_dye_element_at(ctx.state, cell)
+		if not preview_dye.is_empty():
+			preview_ctx = GemEffects.light_context_with_dye(preview_ctx, preview_dye)
+		var preview_target := ctx.state.get_unit_at(cell)
+		if preview_target == null or not preview_target.alive or preview_target.uid == ctx.attacker.uid or preview_hit_uids.has(preview_target.uid):
+			continue
+		preview_hit_uids[preview_target.uid] = true
+		hit_effects.append({
+			"cell": preview_target.pos,
+			"color": GemEffects.light_color_for_context(preview_ctx),
+		})
+	var beam_width := GemEffects.light_beam_width_for_level(level)
+	var beam_event := GemEffects.build_light_beam_event(
+		from_cell,
+		cells[cells.size() - 1],
+		gem_ctx,
+		beam_width,
+		{
+			"cells": cells,
+			"dye_transitions": GemEffects.light_dye_transitions(ctx.state, cells),
+			"hit_effects": hit_effects,
+			"end_color": GemEffects.light_color_for_context(preview_ctx),
+			"power": 0.95 + float(level) * 0.1,
+			"source_uid": ctx.attacker.uid,
+		}
+	)
+	ctx.push_event(beam_event)
 	var damage_ratio := 0.5
 	if level >= 3:
 		damage_ratio = 1.0
@@ -427,7 +447,11 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 		damage_ratio = 0.75
 	var damage := maxi(1, int(float(ctx.base_damage) * damage_ratio))
 	var hit_uids: Dictionary = {}
+	var traveled_ctx := gem_ctx.duplicate(true)
 	for cell in cells:
+		var dye := GemEffects.light_dye_element_at(ctx.state, cell)
+		if not dye.is_empty():
+			traveled_ctx = GemEffects.light_context_with_dye(traveled_ctx, dye)
 		var target := ctx.state.get_unit_at(cell)
 		if target == null or not target.alive or target.uid == ctx.attacker.uid or hit_uids.has(target.uid):
 			continue
@@ -437,7 +461,14 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 			ctx.push_damage_event(target.pos, dealt)
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			StatusRules.apply_light_exposed(ctx.state, target, 2 if level >= 3 else 1, ctx.attacker.uid)
-			_apply_light_colored_status(ctx, target, gem_ctx)
+			GemEffects.apply_light_colored_status(
+				ctx.state,
+				target,
+				ctx.attacker,
+				traveled_ctx,
+				ctx.events,
+				ctx.base_damage
+			)
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
 		var end_cell: Vector2i = cells[cells.size() - 1]
 		var blast := GemEffects.explode_cross_at(ctx.state, end_cell, ctx.attacker.uid, {
@@ -461,31 +492,6 @@ static func _light_beam_cells(state: GameState, from_cell: Vector2i, aim_cell: V
 			break
 		current += Vector2i(dx, dy)
 	return cells
-
-
-static func _light_beam_color(gem_ctx: Dictionary) -> Color:
-	if GemTagResolver.has_tag(gem_ctx, "fire"):
-		return Color(1.0, 0.24, 0.12, 1.0)
-	if GemTagResolver.has_tag(gem_ctx, "poison"):
-		return Color(0.32, 1.0, 0.34, 1.0)
-	if GemTagResolver.has_tag(gem_ctx, "arc"):
-		return Color(1.0, 0.92, 0.22, 1.0)
-	if GemTagResolver.has_tag(gem_ctx, "ice"):
-		return Color(0.55, 0.9, 1.0, 1.0)
-	if GemTagResolver.has_tag(gem_ctx, "explosion"):
-		return Color(1.0, 0.58, 0.18, 1.0)
-	return Color(1.0, 0.96, 0.58, 1.0)
-
-
-static func _apply_light_colored_status(ctx: AttackContext, target: UnitState, gem_ctx: Dictionary) -> void:
-	if GemTagResolver.has_tag(gem_ctx, "poison"):
-		StatusRules.apply_poison(ctx.state, target, 1, 0, ctx.attacker.uid)
-	if GemTagResolver.has_tag(gem_ctx, "fire"):
-		StatusRules.apply_burning(ctx.state, target, 1, ctx.attacker.uid)
-	if GemTagResolver.has_tag(gem_ctx, "ice"):
-		GemEffects.apply_ice_hit_effect(ctx.state, target, ctx.attacker.uid, GemTagResolver.tag_level(gem_ctx, "ice"))
-	if GemTagResolver.has_tag(gem_ctx, "arc"):
-		GemEffects.apply_arc_bounce_from_victim(ctx.state, target, ctx.attacker, ctx.base_damage, ctx.events, gem_ctx)
 
 
 static func _apply_red_counter(ctx: AttackContext) -> void:

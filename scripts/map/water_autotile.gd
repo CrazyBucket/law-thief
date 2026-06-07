@@ -6,8 +6,10 @@ const FRONT_RIGHT := Vector2i(1, 0)
 const FRONT_LEFT := Vector2i(0, 1)
 const BACK_LEFT := Vector2i(-1, 0)
 
-# Mewgenics WaterTile uses two eight-frame corner sheets. Every corner frame is
-# a 3-bit missing-neighbor mask: adjacent side A, diagonal, adjacent side B.
+# Mewgenics-style corner state for this project:
+# bit 1 = first adjacent edge exposed
+# bit 2 = true inner corner only (both adjacent tiles are water, diagonal is not)
+# bit 4 = second adjacent edge exposed
 const SIDE_A := 1
 const INNER_CORNER := 2
 const SIDE_B := 4
@@ -29,7 +31,7 @@ static func _corner_state(pos: Vector2i, water: Dictionary, bit_one_dir: Vector2
 	var bit_four_water := water.has(pos + bit_four_dir)
 	return (
 		(SIDE_A if not bit_one_water else 0)
-		| (INNER_CORNER if not water.has(pos + bit_one_dir + bit_four_dir) else 0)
+		| (INNER_CORNER if bit_one_water and bit_four_water and not water.has(pos + bit_one_dir + bit_four_dir) else 0)
 		| (SIDE_B if not bit_four_water else 0)
 	)
 

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const WaterAutotileClass := preload("res://scripts/map/water_autotile.gd")
+const WaterLayerClass := preload("res://scripts/map/water_layer.gd")
 
 const FRAME_SIZE := Vector2i(128, 64)
 const CANVAS_SIZE := Vector2i(640, 384)
@@ -17,6 +18,8 @@ var sheet_top: Image
 var sheet_right: Image
 var source_top: Image
 var source_right: Image
+var mask_top: Image
+var mask_right: Image
 var failures: Array[String] = []
 
 
@@ -26,15 +29,18 @@ func _initialize() -> void:
 	sheet_right = Image.load_from_file("res://assets/tiles/waterEdgeRight.generated.png")
 	source_top = Image.load_from_file("res://assets/tiles/waterEdge1.png")
 	source_right = Image.load_from_file("res://assets/tiles/waterEdge2.png")
+	mask_top = Image.load_from_file("res://assets/tiles/waterMaskTop.generated.png")
+	mask_right = Image.load_from_file("res://assets/tiles/waterMaskRight.generated.png")
 	_require(
-		sheet_top != null and sheet_right != null and source_top != null and source_right != null,
+		sheet_top != null and sheet_right != null and source_top != null and source_right != null
+			and mask_top != null and mask_right != null,
 		"failed to load water edge sheets"
 	)
 
 	_verify_source_preservation(sheet_top, source_top, range(8), "top/Sprite468")
-	_verify_source_preservation(sheet_right, source_right, [0, 2, 4, 5, 6, 7], "right/Sprite469")
-	_verify_frame_semantics(sheet_top, 0, 3, "top/Sprite468")
-	_verify_frame_semantics(sheet_right, 0, 1, "right/Sprite469")
+	_verify_source_preservation(sheet_right, source_right, range(8), "right/Sprite469")
+	_verify_single_tile_uses_top_pair()
+	_verify_single_fill_stays_inside_shore()
 	_verify_shape("single", [Vector2i(0, 0)])
 	_verify_shape("pair_x", [Vector2i(0, 0), Vector2i(1, 0)])
 	_verify_shape("pair_y", [Vector2i(0, 0), Vector2i(0, 1)])
@@ -66,7 +72,7 @@ func _verify_source_preservation(generated: Image, source: Image, frames: Array,
 		_require(mismatch_count == 0, "%s frame %d differs from source by %d shore pixels" % [
 			label, frame, mismatch_count,
 		])
-	print("  [OK] %s valid source states are preserved" % label)
+	print("  [OK] %s generated frames preserve source shore pixels" % label)
 
 
 func _verify_frame_semantics(sheet: Image, side_a_edge: int, side_b_edge: int, label: String) -> void:
@@ -82,6 +88,31 @@ func _verify_frame_semantics(sheet: Image, side_a_edge: int, side_b_edge: int, l
 		])
 	_require(not _has_gray(_frame(sheet, 0)), "%s state 0 must be empty" % label)
 	print("  [OK] %s states 0..7 body edges match bits 1/4" % label)
+
+
+func _verify_single_tile_uses_top_pair() -> void:
+	var composed := WaterLayerClass.compose_edge_image(sheet_top, sheet_right, Vector4i(5, 5, 5, 5))
+	var expected := Image.create(FRAME_SIZE.x, FRAME_SIZE.y, false, Image.FORMAT_RGBA8)
+	expected.fill(Color.TRANSPARENT)
+	_blit_opaque(expected, _frame(sheet_top, 5))
+	var bottom := _frame(sheet_top, 5)
+	bottom.flip_y()
+	_blit_opaque(expected, bottom)
+	var mismatches := 0
+	for y in range(FRAME_SIZE.y):
+		for x in range(FRAME_SIZE.x):
+			if composed.get_pixel(x, y) != expected.get_pixel(x, y):
+				mismatches += 1
+	_require(mismatches == 0, "single tile must equal top frame 5 plus its vertical mirror; mismatches=%d" % mismatches)
+	print("  [OK] single uses top frame 5 plus its vertical mirror")
+
+
+func _verify_single_fill_stays_inside_shore() -> void:
+	var fill := WaterLayerClass.compose_fill_image(mask_top, mask_right, Vector4i(5, 5, 5, 5))
+	for point in [Vector2i(64, 0), Vector2i(127, 32), Vector2i(64, 63), Vector2i(0, 32)]:
+		_require(fill.get_pixelv(point).a <= 0.01, "single fill leaks through shore tip at %s" % point)
+	_require(fill.get_pixel(64, 32).a > 0.99, "single fill must retain its center")
+	print("  [OK] single fill stays inside rounded shore tips")
 
 
 func _verify_shape(label: String, cells: Array[Vector2i]) -> void:
@@ -110,18 +141,10 @@ func _verify_shape(label: String, cells: Array[Vector2i]) -> void:
 
 
 func _compose_tile(canvas: Image, center: Vector2i, states: Vector4i) -> void:
-	_blend_frame(canvas, sheet_top, states.x, center, false, false)
-	_blend_frame(canvas, sheet_right, states.y, center, false, false)
-	_blend_frame(canvas, sheet_top, states.z, center, false, true)
-	_blend_frame(canvas, sheet_right, states.w, center, true, false)
+	_blend_image(canvas, WaterLayerClass.compose_edge_image(sheet_top, sheet_right, states), center)
 
 
-func _blend_frame(canvas: Image, sheet: Image, frame_index: int, center: Vector2i, flip_x: bool, flip_y: bool) -> void:
-	var image := _frame(sheet, frame_index)
-	if flip_x:
-		image.flip_x()
-	if flip_y:
-		image.flip_y()
+func _blend_image(canvas: Image, image: Image, center: Vector2i) -> void:
 	for y in range(FRAME_SIZE.y):
 		for x in range(FRAME_SIZE.x):
 			var c := image.get_pixel(x, y)
@@ -130,6 +153,14 @@ func _blend_frame(canvas: Image, sheet: Image, frame_index: int, center: Vector2
 			var dst := center + Vector2i(x - FRAME_SIZE.x / 2, y - FRAME_SIZE.y / 2)
 			if Rect2i(Vector2i.ZERO, CANVAS_SIZE).has_point(dst):
 				canvas.set_pixelv(dst, c)
+
+
+func _blit_opaque(target: Image, source: Image) -> void:
+	for y in range(FRAME_SIZE.y):
+		for x in range(FRAME_SIZE.x):
+			var c := source.get_pixel(x, y)
+			if c.a > 0.01:
+				target.set_pixel(x, y, c)
 
 
 func _frame(sheet: Image, frame_index: int) -> Image:

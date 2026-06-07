@@ -3,7 +3,6 @@ extends PanelContainer
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const BattleEditorItemButtonScript = preload("res://scripts/ui/battle_editor_item_button.gd")
 
-signal mode_toggled(enabled: bool)
 signal tool_selected(tool: Dictionary)
 signal tool_drag_started(tool: Dictionary)
 signal tool_cleared()
@@ -23,12 +22,9 @@ const _CATEGORY_LABELS := {
 
 var _registry: Node = null
 var _catalog: Dictionary = {}
-var _mode_enabled: bool = false
 var _selected_category: String = "units"
 var _selected_tool: Dictionary = {}
 
-var _mode_btn: Button = null
-var _collapse_btn: Button = null
 var _close_btn: Button = null
 var _status_label: Label = null
 var _search_input: LineEdit = null
@@ -39,15 +35,12 @@ var _content_box: VBoxContainer = null
 var _item_buttons: Dictionary = {}
 var _dragging: bool = false
 var _drag_offset: Vector2 = Vector2.ZERO
-var _collapsed: bool = false
-
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(340, 440)
 	add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
 	_build_ui()
-	_apply_mode_state()
 	if not _catalog.is_empty():
 		_refresh_category_buttons()
 		_refresh_tool_list()
@@ -60,11 +53,6 @@ func setup(registry: Node) -> void:
 		return
 	_refresh_category_buttons()
 	_refresh_tool_list()
-
-
-func set_mode_enabled(enabled: bool) -> void:
-	_mode_enabled = enabled
-	_apply_mode_state()
 
 
 func set_selected_tool(tool: Dictionary) -> void:
@@ -110,18 +98,6 @@ func _build_ui() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(spacer)
-
-	_mode_btn = Button.new()
-	_mode_btn.custom_minimum_size = Vector2(92, 34)
-	_mode_btn.pressed.connect(_on_mode_pressed)
-	header.add_child(_mode_btn)
-
-	_collapse_btn = Button.new()
-	_collapse_btn.custom_minimum_size = Vector2(34, 34)
-	_collapse_btn.text = "—"
-	_collapse_btn.pressed.connect(_on_collapse_pressed)
-	BattleUiTheme.apply_button(_collapse_btn, "ghost")
-	header.add_child(_collapse_btn)
 
 	_close_btn = Button.new()
 	_close_btn.custom_minimum_size = Vector2(34, 34)
@@ -264,41 +240,21 @@ func _refresh_item_button_states() -> void:
 		var btn: Button = _item_buttons[entry_id]
 		var active := str(_selected_tool.get("id", "")) == str(entry_id)
 		if btn.has_method("set_drag_enabled"):
-			btn.set_drag_enabled(_mode_enabled)
+			btn.set_drag_enabled(true)
 		BattleUiTheme.apply_button(btn, "ghost", active)
-
-
-func _apply_mode_state() -> void:
-	if _mode_btn == null:
-		return
-	_mode_btn.text = "放置开" if _mode_enabled else "放置关"
-	BattleUiTheme.apply_button(_mode_btn, "gem", _mode_enabled)
-	_refresh_item_button_states()
-	_update_status_label("")
 
 
 func _update_status_label(extra: String) -> void:
 	var lines: Array[String] = []
-	lines.append("拖拽放置: %s" % ("开启" if _mode_enabled else "关闭"))
 	if not _selected_tool.is_empty():
-		lines.append("当前: %s" % str(_selected_tool.get("id", "")))
+		var kind := str(_selected_tool.get("kind", ""))
+		var hint := "拖到棋盘放置"
+		if kind == "relic":
+			hint = "点击条目添加"
+		lines.append("当前: %s（%s）" % [str(_selected_tool.get("id", "")), hint])
 	if not extra.is_empty():
 		lines.append(extra)
 	_status_label.text = "\n".join(lines)
-
-
-func _on_mode_pressed() -> void:
-	_mode_enabled = not _mode_enabled
-	_apply_mode_state()
-	mode_toggled.emit(_mode_enabled)
-
-
-func _on_collapse_pressed() -> void:
-	_collapsed = not _collapsed
-	if _content_box != null:
-		_content_box.visible = not _collapsed
-	if _collapse_btn != null:
-		_collapse_btn.text = "+" if _collapsed else "—"
 
 
 func _sync_list_width() -> void:
@@ -327,8 +283,6 @@ func _on_tool_pressed(entry: Dictionary) -> void:
 
 
 func _on_tool_drag_started(entry: Dictionary) -> void:
-	if not _mode_enabled:
-		return
 	_selected_tool = entry
 	_refresh_item_button_states()
 	_update_status_label("正在拖拽")

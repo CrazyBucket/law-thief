@@ -15,7 +15,7 @@ var _header_row: HBoxContainer = null
 var _info_col: VBoxContainer = null
 var _status_clip: Control = null
 var _slot_clip: Control = null
-var _slot_box: HBoxContainer = null
+var _slot_box: Container = null
 var _portrait: TextureRect = null
 var _inspect_name: Label = null
 var _inspect_stats: Label = null
@@ -32,6 +32,7 @@ var _overload_chip: Label = null
 var _held_label: Label = null
 var _held_gem_icon: TextureRect = null
 var _hint_label: Label = null
+var _turn_chips: HBoxContainer = null
 var _phase_badge: Label = null
 var _message_label: Label = null
 var _queue_row: HBoxContainer = null
@@ -44,6 +45,7 @@ var _end_turn_btn: Button = null
 var _toggle_panel_btn: Button = null
 var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: Container = null
+var _relic_bar_root: Control = null
 var _show_relic_detail_cb: Callable = Callable()
 
 var _select_unit_cb: Callable = Callable()
@@ -79,6 +81,7 @@ func setup(deps: Dictionary) -> void:
 	_held_label = deps.get("held_label", null)
 	_held_gem_icon = deps.get("held_gem_icon", null)
 	_hint_label = deps.get("hint_label", null)
+	_turn_chips = deps.get("turn_chips", null)
 	_phase_badge = deps.get("phase_badge", null)
 	_message_label = deps.get("message_label", null)
 	_queue_row = deps.get("queue_row", null)
@@ -91,6 +94,7 @@ func setup(deps: Dictionary) -> void:
 	_toggle_panel_btn = deps.get("toggle_panel_btn", null)
 	_relic_bar_scroll = deps.get("relic_bar_scroll", null)
 	_relic_bar_vbox = deps.get("relic_bar_vbox", null)
+	_relic_bar_root = deps.get("relic_bar_root", null)
 	_show_relic_detail_cb = deps.get("show_relic_detail_cb", Callable())
 	_select_unit_cb = deps.get("select_unit_cb", Callable())
 	_set_timeline_hover_cb = deps.get("set_timeline_hover_cb", Callable())
@@ -104,6 +108,7 @@ func refresh(context: Dictionary) -> Dictionary:
 	var timeline_hover_uid: String = str(context.get("timeline_hover_uid", ""))
 	var enemy_phase_running: bool = bool(context.get("enemy_phase_running", false))
 	var enemy_turn_queue: Array[String] = _string_array_from(context.get("enemy_turn_queue", []))
+	var editor_compact: bool = bool(context.get("editor_compact", false))
 	if state == null:
 		return {
 			"inspect_uid": inspect_uid,
@@ -171,6 +176,7 @@ func refresh(context: Dictionary) -> Dictionary:
 	var active_turn_uid := _get_active_turn_uid(state, enemy_phase_running, enemy_turn_queue)
 	_refresh_turn_queue(state, active_turn_uid, timeline_hover_uid, enemy_phase_running)
 	_refresh_inspect(state, inspect_uid)
+	_apply_editor_compact_layout(editor_compact)
 	_refresh_action_buttons(enemy_phase_running)
 	_refresh_relic_bar()
 
@@ -220,6 +226,8 @@ func fit_status_panel(panel_visible: bool) -> void:
 
 func fit_status_panel_height() -> void:
 	var margins := _status_panel_content_margins()
+	if _slot_box != null and _slot_clip != null:
+		_slot_clip.custom_minimum_size.y = maxf(24.0, float(_slot_box.get_minimum_size().y))
 	var panel_h := _status_vbox.get_minimum_size().y + margins.y
 	if absf(panel_h - _status_panel.size.y) < 0.5:
 		return
@@ -308,8 +316,8 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		stat_parts.append(unit.intent.preview_text)
 	_inspect_stats.text = "\n".join(stat_parts)
-	for slot in unit.slots:
-		_slot_box.add_child(_create_slot_chip(state, unit, slot))
+	for slot_index in range(unit.slots.size()):
+		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index))
 
 
 func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
@@ -340,7 +348,7 @@ func _clear_inspect_header(title: String) -> void:
 		_inspect_status_row.get_child(0).free()
 
 
-func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Control:
+func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_index: int) -> Control:
 	var chip := PanelContainer.new()
 	var color := UnitLooks.slot_color(slot.slot_type)
 	var gem: GemState = null
@@ -349,6 +357,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 		if gem != null:
 			color = UnitLooks.gem_color(gem)
 	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
+	chip.custom_minimum_size = Vector2(0, 24)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	var label := Label.new()
@@ -356,29 +365,30 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState) -> Co
 	var is_dual := not slot.dual_type.is_empty()
 	var dual_name := _slot_display_name(slot.dual_type) if is_dual else ""
 	var display_name := ("%s/%s" % [slot_name, dual_name]) if is_dual else slot_name
+	var slot_prefix := "#%d %s" % [slot_index + 1, display_name]
 	if slot.is_split_disabled():
-		label.text = "%s×" % display_name
+		label.text = "%s ×" % slot_prefix
 		chip.tooltip_text = "%s槽：分裂已失效" % display_name
 	elif slot.locked:
-		label.text = "%s🔒" % display_name
+		label.text = "%s 🔒" % slot_prefix
 		chip.tooltip_text = "%s槽：锁定" % display_name
 	elif slot.gem_uid.is_empty():
-		label.text = "%s○" % display_name
+		label.text = "%s 空" % slot_prefix
 		var tip := "%s槽：空" % display_name
 		if is_dual:
 			tip += "（双色槽，可嵌入%s或%s宝石）" % [slot_name, dual_name]
 		chip.tooltip_text = tip
 	else:
 		if gem == null:
-			label.text = "%s?" % display_name
+			label.text = "%s ?" % slot_prefix
 			chip.tooltip_text = "%s槽：无宝石数据" % display_name
 		else:
 			var gem_icon := _make_gem_icon(gem, 14)
 			if gem_icon != null:
 				row.add_child(gem_icon)
-			label.text = display_name
+			label.text = "%s %s" % [slot_prefix, DataRegistry.get_gem_display_name(gem)]
 			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit, state)
-	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	row.add_child(label)
 	chip.add_child(row)
@@ -524,14 +534,17 @@ func _build_turn_timeline_uids(state: GameState, active_uid: String, _enemy_phas
 
 func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool) -> Control:
 	var root := Control.new()
-	root.custom_minimum_size = Vector2(58, 76)
+	root.custom_minimum_size = Vector2(46, 52)
+	var unit_name: String = DataRegistry.get_unit_display_name(unit.unit_def_id)
+	root.tooltip_text = "%s\nHP %d/%d · 速 %d" % [unit_name, unit.hp, unit.max_hp, unit.speed]
 	var stack := VBoxContainer.new()
 	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 2)
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(stack)
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(44, 44)
+	frame.custom_minimum_size = Vector2(40, 40)
 	var team_color := BattleUiTheme.PHASE_PLAYER if unit.team == Constants.TEAM_PLAYER else BattleUiTheme.PHASE_ENEMY
 	var accent := BattleUiTheme.BORDER
 	if is_hovered:
@@ -541,7 +554,7 @@ func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool)
 	frame.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
 	stack.add_child(frame)
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(34, 34)
+	icon.custom_minimum_size = Vector2(30, 30)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
@@ -551,24 +564,9 @@ func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool)
 		var arrow := Label.new()
 		arrow.text = "▼"
 		arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		arrow.add_theme_font_size_override("font_size", 12)
+		arrow.add_theme_font_size_override("font_size", 10)
 		arrow.add_theme_color_override("font_color", team_color)
 		stack.add_child(arrow)
-	var hp_label := Label.new()
-	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hp_label.text = "%d/%d" % [unit.hp, unit.max_hp]
-	hp_label.add_theme_font_size_override("font_size", 9)
-	hp_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	stack.add_child(hp_label)
-	var speed_label := Label.new()
-	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	speed_label.text = "%d" % unit.speed
-	speed_label.add_theme_font_size_override("font_size", 10)
-	speed_label.add_theme_color_override(
-		"font_color",
-		team_color if is_active else (BattleUiTheme.TEXT_GOLD if is_hovered else BattleUiTheme.TEXT_MUTED)
-	)
-	stack.add_child(speed_label)
 	var hover_btn := Button.new()
 	hover_btn.flat = true
 	hover_btn.focus_mode = Control.FOCUS_NONE
@@ -593,6 +591,17 @@ func _style_chip(label: Label, highlight: bool, color: Color) -> void:
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 
 
+func _apply_editor_compact_layout(compact: bool) -> void:
+	if _hint_label != null:
+		_hint_label.visible = not compact
+	if _inspect_stats != null:
+		_inspect_stats.visible = not compact
+	if _turn_chips != null:
+		_turn_chips.visible = not compact
+	if _held_label != null and compact:
+		_held_label.visible = not _held_label.text.is_empty()
+
+
 func _refresh_relic_bar() -> void:
 	if _relic_bar_vbox == null or _relic_bar_scroll == null:
 		return
@@ -606,11 +615,18 @@ func _refresh_relic_bar() -> void:
 			child.queue_free()
 		for relic_id in owned:
 			_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
-	_relic_bar_scroll.visible = not owned.is_empty()
-	if owned.is_empty():
+	var has_relics := not owned.is_empty()
+	if _relic_bar_root != null:
+		_relic_bar_root.visible = has_relics
+	_relic_bar_scroll.visible = has_relics
+	if not has_relics:
 		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
 		return
-	_relic_bar_scroll.custom_minimum_size = Vector2(220.0, 42.0)
+	var item_h := 36.0
+	var gap := 4.0
+	var content_h := owned.size() * item_h + maxi(owned.size() - 1, 0) * gap
+	var max_h := 180.0
+	_relic_bar_scroll.custom_minimum_size = Vector2(_STATUS_PANEL_WIDTH - 8.0, minf(content_h, max_h))
 
 
 func _string_array_from(values: Variant) -> Array[String]:
@@ -625,18 +641,25 @@ func _create_relic_badge(relic_id: String) -> Control:
 	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
 	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
 	var rarity_col := rarity_color(rarity)
-	var root := Control.new()
-	root.custom_minimum_size = Vector2(40, 40)
+	var root := HBoxContainer.new()
+	root.custom_minimum_size = Vector2(_STATUS_PANEL_WIDTH - 16.0, 36.0)
+	root.add_theme_constant_override("separation", 8)
 	var icon_tex := UnitLooks.get_relic_texture(relic_id)
 	if icon_tex != null:
 		var icon := TextureRect.new()
 		icon.texture = icon_tex
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(32, 32)
 		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		icon.self_modulate = rarity_col
 		root.add_child(icon)
+	var name_lbl := Label.new()
+	name_lbl.text = str(def.get("name", relic_id))
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_lbl.add_theme_font_size_override("font_size", 12)
+	name_lbl.add_theme_color_override("font_color", rarity_col)
+	root.add_child(name_lbl)
 	var click_btn := Button.new()
 	click_btn.flat = true
 	click_btn.focus_mode = Control.FOCUS_NONE

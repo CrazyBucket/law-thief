@@ -16,6 +16,10 @@ void vertex() {
 }
 
 void fragment() {
+	vec4 mask = texture(TEXTURE, UV);
+	if (mask.a <= 0.01) {
+		discard;
+	}
 	// Same coordinate, scroll, and sine-distortion structure as Mewgenics water.shader.
 	vec2 screen_scale = vec2(2.0, 9.0 / 8.0);
 	vec2 tex_scale = vec2(3.0, 6.0);
@@ -36,5 +40,5 @@ void fragment() {
 	vec3 texture_color = bottom.rgb * (1.0 - top.a) + top.rgb;
 	float luminance = smoothstep(0.16, 0.72, dot(texture_color, vec3(0.299, 0.587, 0.114)));
 	vec3 tinted = base_color.rgb * mix(0.72, 1.22, luminance);
-	COLOR = vec4(tinted, base_color.a);
+	COLOR = vec4(tinted, base_color.a * mask.a);
 }

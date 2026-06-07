@@ -13,6 +13,7 @@ func _run() -> void:
 	_test_aim_cell_shifts_cross_center()
 	_test_red_explosion_level_2_uses_square()
 	_test_red_explosion_level_3_doubles_square_damage()
+	_test_red_explosion_level_4_triples_square_damage()
 	_test_active_trigger_level_2_uses_square()
 	print("EXPLOSION_TEST_PASS")
 	quit()
@@ -134,6 +135,30 @@ func _test_red_explosion_level_3_doubles_square_damage() -> void:
 	var explode_ev := _first_explode_event(result.get("attack_events", []))
 	assert(explode_ev.get("pattern", "") == "square", "level 3 explosion should use square pattern")
 	print("  [OK] red explosion level 3 double damage")
+
+
+func _test_red_explosion_level_4_triples_square_damage() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 2027)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosions(state, player, 4)
+	var guards := _guards(state)
+	assert(guards.size() >= 1)
+	var primary := guards[0]
+	var soak := _spawn_guard(state, primary.pos + Vector2i(1, 1))
+	soak.hp = 100
+	soak.max_hp = 100
+	state.rebuild_occupancy()
+	var hp_before := soak.hp
+	var result := ctrl.try_attack_cell(primary.pos)
+	assert(result.get("ok", false))
+	assert(soak.hp < hp_before, "diagonal unit should take square explosion damage")
+	var dealt := hp_before - soak.hp
+	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE * 3, "level 4 explosion should deal triple damage, got %d" % dealt)
+	var explode_ev := _first_explode_event(result.get("attack_events", []))
+	assert(explode_ev.get("pattern", "") == "square", "level 4 explosion should use square pattern")
+	print("  [OK] red explosion level 4 triple damage")
 
 
 func _test_active_trigger_level_2_uses_square() -> void:

@@ -36,6 +36,7 @@ func begin_enemy_phase() -> void:
 	var player: UnitState = ctrl.state.get_player()
 	if player != null and player.has_status(Constants.STATUS_PARALYZED):
 		player.remove_status(Constants.STATUS_PARALYZED)
+	GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, player.uid if player != null else "")
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
 	ctrl.state.phase = Constants.PHASE_ENEMY
 	ctrl.selected_action = ""
@@ -70,6 +71,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	if enemy.has_status(Constants.STATUS_PARALYZED):
 		enemy.remove_status(Constants.STATUS_PARALYZED)
 		ctrl.state.log("%s 因麻痹跳过回合" % enemy.uid)
+		GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, enemy.uid)
 		ctrl._emit_changed()
 		return {
 			"events": [] as Array[Dictionary],
@@ -77,6 +79,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 		}
 	IntentSystem.refresh_unit_intent(ctrl.state, enemy)
 	var events := IntentSystem.execute_intent(ctrl.state, enemy)
+	GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, enemy.uid)
 	ctrl._check_battle_end()
 	ctrl._emit_changed()
 	return {

@@ -29,7 +29,7 @@ var _dmg_text: Node = null
 @onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpText
 @onready var _inspect_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip/StatusRow
 @onready var _inspect_stats: Label = $HudLayer/StatusPanel/VBox/StatsLabel
-@onready var _slot_box: HBoxContainer = $HudLayer/StatusPanel/VBox/SlotClip/SlotBox
+@onready var _slot_box: Container = $HudLayer/StatusPanel/VBox/SlotClip/SlotBox
 @onready var _status_clip: Control = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip
 @onready var _slot_clip: Control = $HudLayer/StatusPanel/VBox/SlotClip
 @onready var _turn_label: Label = $HudLayer/StatusPanel/VBox/TurnChips/TurnLabel
@@ -78,7 +78,7 @@ var _relic_reward_overlay: Node = null
 var _relic_detail_overlay: Node = null
 var _held_gem_icon: TextureRect = null
 var _overload_chip: Label = null
-var _relic_bar_panel: PanelContainer = null
+var _relic_bar_root: Control = null
 var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: Container = null
 var _tracked_player_uid: String = ""
@@ -88,14 +88,19 @@ var _editor_drag_active: bool = false
 var _editor_panel: Control = null
 var _editor_inspector: PanelContainer = null
 var _editor_tool_label: Label = null
+var _editor_target_label: Label = null
 var _editor_hover_label: Label = null
-var _editor_detail_label: Label = null
+var _editor_contents_box: VBoxContainer = null
+var _editor_gem_list: VBoxContainer = null
+var _editor_relic_list: VBoxContainer = null
+var _editor_status_box: VBoxContainer = null
+var _editor_status_grid: GridContainer = null
 var _editor_result_label: Label = null
 var _editor_remove_unit_btn: Button = null
 var _editor_remove_entity_btn: Button = null
 var _editor_remove_overlay_btn: Button = null
-var _editor_remove_gem_btn: Button = null
-var _editor_relic_btn: Button = null
+var _editor_unlimited_btn: Button = null
+var _editor_action_cell: Vector2i = Vector2i(-1, -1)
 var _editor_bound_state: GameState = null
 var _editor_dummy_stats: Dictionary = {}
 var _editor_session_active: bool = false
@@ -103,9 +108,6 @@ var _editor_run_snapshot: Dictionary = {}
 var _editor_auto_boot_enabled: bool = true
 var _editor_panel_toggle_btn: Button = null
 var _editor_inspector_toggle_btn: Button = null
-var _editor_inspector_dragging: bool = false
-var _editor_inspector_drag_offset: Vector2 = Vector2.ZERO
-var _editor_inspector_collapsed: bool = false
 var _editor_inspector_body: VBoxContainer = null
 var _editor_panel_user_positioned: bool = false
 
@@ -115,6 +117,27 @@ const _ENCOUNTER_RELIC_SOURCE := {
 	"ELITE_COMBAT": "elite_combat",
 	"END": "large_chest",
 }
+const _EDITOR_KIND_LABELS := {
+	"unit": "怪物",
+	"tile": "地块",
+	"entity": "实体",
+	"overlay": "Overlay",
+	"gem": "宝石",
+	"relic": "遗物",
+}
+const _EDITOR_STATUS_IDS: Array[String] = [
+	Constants.STATUS_POISON,
+	Constants.STATUS_BURNING,
+	Constants.STATUS_SLOWED,
+	Constants.STATUS_PARALYZED,
+	Constants.STATUS_WET,
+	Constants.STATUS_ROOTED,
+	Constants.STATUS_VULNERABLE,
+	Constants.STATUS_LIGHT_EXPOSED,
+	Constants.STATUS_BLINDED,
+	Constants.STATUS_ARMOR,
+]
+
 func _ready() -> void:
 	_controller.state_changed.connect(_on_controller_state_changed)
 	_controller.battle_ended.connect(_on_battle_ended)
@@ -141,11 +164,11 @@ func _ready() -> void:
 		_create_level_console()
 		_create_editor_ui()
 	_event_player.setup(
-		self,
+		self ,
 		_board,
 		_controller,
-		Callable(self, "_spawn_damage_text"),
-		Callable(self, "_scaled_anim_time")
+		Callable(self , "_spawn_damage_text"),
+		Callable(self , "_scaled_anim_time")
 	)
 	_setup_relic_bar()
 	_hud_presenter.setup({
@@ -184,12 +207,14 @@ func _ready() -> void:
 		"insert_btn": _insert_btn,
 		"end_turn_btn": _end_turn_btn,
 		"toggle_panel_btn": _toggle_panel_btn,
+		"turn_chips": _turn_chips,
+		"relic_bar_root": _relic_bar_root,
 		"relic_bar_scroll": _relic_bar_scroll,
 		"relic_bar_vbox": _relic_bar_vbox,
-		"show_relic_detail_cb": Callable(self, "_show_relic_detail_popup"),
-		"select_unit_cb": Callable(self, "_select_unit"),
-		"set_timeline_hover_cb": Callable(self, "_set_timeline_hover"),
-		"clear_timeline_hover_cb": Callable(self, "_clear_timeline_hover"),
+		"show_relic_detail_cb": Callable(self , "_show_relic_detail_popup"),
+		"select_unit_cb": Callable(self , "_select_unit"),
+		"set_timeline_hover_cb": Callable(self , "_set_timeline_hover"),
+		"clear_timeline_hover_cb": Callable(self , "_clear_timeline_hover"),
 	})
 	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
@@ -249,7 +274,6 @@ func _create_editor_ui() -> void:
 	_editor_panel = BattleEditorPanelScript.new()
 	_editor_panel.position = Vector2(8, 220)
 	_editor_panel.size = Vector2(360, 520)
-	_editor_panel.mode_toggled.connect(_on_editor_mode_toggled)
 	_editor_panel.tool_selected.connect(_on_editor_tool_selected)
 	_editor_panel.tool_drag_started.connect(_on_editor_tool_drag_started)
 	_editor_panel.relic_requested.connect(_on_editor_relic_requested)
@@ -268,8 +292,6 @@ func _create_editor_ui() -> void:
 	$HudLayer.add_child(_editor_panel_toggle_btn)
 
 	_editor_inspector = PanelContainer.new()
-	_editor_inspector.position = Vector2(size.x - 292, 140)
-	_editor_inspector.size = Vector2(284, 256)
 	_editor_inspector.mouse_filter = Control.MOUSE_FILTER_STOP
 	_editor_inspector.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.PHASE_PLAYER))
 	$HudLayer.add_child(_editor_inspector)
@@ -280,8 +302,6 @@ func _create_editor_ui() -> void:
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 6)
-	header.mouse_filter = Control.MOUSE_FILTER_STOP
-	header.gui_input.connect(_on_editor_inspector_header_gui_input)
 	inspector_vbox.add_child(header)
 
 	var title := Label.new()
@@ -293,13 +313,6 @@ func _create_editor_ui() -> void:
 	var header_spacer := Control.new()
 	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(header_spacer)
-
-	var collapse_btn := Button.new()
-	collapse_btn.custom_minimum_size = Vector2(34, 34)
-	collapse_btn.text = "—"
-	collapse_btn.pressed.connect(_on_editor_inspector_collapse_pressed)
-	BattleUiTheme.apply_button(collapse_btn, "ghost")
-	header.add_child(collapse_btn)
 
 	var close_btn := Button.new()
 	close_btn.custom_minimum_size = Vector2(34, 34)
@@ -317,15 +330,53 @@ func _create_editor_ui() -> void:
 	_editor_tool_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	_editor_inspector_body.add_child(_editor_tool_label)
 
+	_editor_target_label = Label.new()
+	_editor_target_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_editor_target_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	_editor_inspector_body.add_child(_editor_target_label)
+
 	_editor_hover_label = Label.new()
 	_editor_hover_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_editor_hover_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_editor_inspector_body.add_child(_editor_hover_label)
 
-	_editor_detail_label = Label.new()
-	_editor_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_editor_detail_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	_editor_inspector_body.add_child(_editor_detail_label)
+	_editor_contents_box = VBoxContainer.new()
+	_editor_contents_box.add_theme_constant_override("separation", 4)
+	_editor_inspector_body.add_child(_editor_contents_box)
+
+	var gem_title := Label.new()
+	gem_title.text = "宝石"
+	gem_title.add_theme_font_size_override("font_size", 12)
+	gem_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_editor_contents_box.add_child(gem_title)
+
+	_editor_gem_list = VBoxContainer.new()
+	_editor_gem_list.add_theme_constant_override("separation", 4)
+	_editor_contents_box.add_child(_editor_gem_list)
+
+	var relic_title := Label.new()
+	relic_title.text = "遗物"
+	relic_title.add_theme_font_size_override("font_size", 12)
+	relic_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_editor_contents_box.add_child(relic_title)
+
+	_editor_relic_list = VBoxContainer.new()
+	_editor_relic_list.add_theme_constant_override("separation", 4)
+	_editor_contents_box.add_child(_editor_relic_list)
+
+	_editor_status_box = VBoxContainer.new()
+	_editor_status_box.add_theme_constant_override("separation", 4)
+	_editor_inspector_body.add_child(_editor_status_box)
+	var status_title := Label.new()
+	status_title.text = "状态"
+	status_title.add_theme_font_size_override("font_size", 12)
+	status_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_editor_status_box.add_child(status_title)
+	_editor_status_grid = GridContainer.new()
+	_editor_status_grid.columns = 5
+	_editor_status_grid.add_theme_constant_override("h_separation", 4)
+	_editor_status_grid.add_theme_constant_override("v_separation", 4)
+	_editor_status_box.add_child(_editor_status_grid)
 
 	_editor_result_label = Label.new()
 	_editor_result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -356,17 +407,13 @@ func _create_editor_ui() -> void:
 	actions.add_child(_editor_remove_overlay_btn)
 	BattleUiTheme.apply_button(_editor_remove_overlay_btn, "ghost")
 
-	_editor_remove_gem_btn = Button.new()
-	_editor_remove_gem_btn.text = "删宝石"
-	_editor_remove_gem_btn.pressed.connect(_on_editor_remove_gem_pressed)
-	actions.add_child(_editor_remove_gem_btn)
-	BattleUiTheme.apply_button(_editor_remove_gem_btn, "ghost")
+	_editor_unlimited_btn = Button.new()
+	_editor_unlimited_btn.toggle_mode = true
+	_editor_unlimited_btn.text = "无限行动 关"
+	_editor_unlimited_btn.pressed.connect(_on_editor_unlimited_actions_pressed)
+	_editor_inspector_body.add_child(_editor_unlimited_btn)
+	BattleUiTheme.apply_button(_editor_unlimited_btn, "ghost")
 
-	_editor_relic_btn = Button.new()
-	_editor_relic_btn.text = "移除遗物"
-	_editor_relic_btn.pressed.connect(_on_editor_relic_remove_pressed)
-	_editor_inspector_body.add_child(_editor_relic_btn)
-	BattleUiTheme.apply_button(_editor_relic_btn, "ghost")
 
 	_editor_inspector_toggle_btn = Button.new()
 	_editor_inspector_toggle_btn.position = Vector2(size.x - 124, 108)
@@ -406,8 +453,7 @@ func _start_battle(encounter_id: String) -> void:
 	_board.init_unit_orientations()
 	if _editor_available() and _editor_panel != null and _editor_auto_boot_enabled:
 		_editor_auto_boot_enabled = false
-		_editor_panel.set_mode_enabled(true)
-		_on_editor_mode_toggled(true)
+		_enter_editor_mode()
 	if encounter_id == "tutorial_001" and not _editor_available() and bool(SettingsService.get_value("show_tutorial")):
 		_show_tutorial_intro()
 
@@ -427,6 +473,9 @@ func _on_action_pressed(action: String) -> void:
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
+	if _editor_available():
+		_editor_action_cell = cell
+		_refresh_editor_focus()
 	if _player_animating:
 		return
 	var state := _controller.state
@@ -477,12 +526,12 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				if player != null:
 					_board.start_strike_effect(player.uid, to_pos)
 				var attack_events: Array = atk_res.get("attack_events", [])
-				var has_projectile := false
+				var has_attack_visual := false
 				for ev in attack_events:
-					if str(ev.get("type", "")) == "projectile":
-						has_projectile = true
+					if str(ev.get("type", "")) in ["projectile", "light_beam"]:
+						has_attack_visual = true
 						break
-				if not has_projectile and from_pos.x >= 0:
+				if not has_attack_visual and from_pos.x >= 0:
 					await _event_player.play_prefire_projectile(from_pos, to_pos)
 				await _play_presentation_sequence(
 					atk_res.get("presentation_state", _controller.state.clone()),
@@ -518,12 +567,14 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 			_board.set_hover(Vector2i(-1, -1))
 			_board.clear_editor_preview()
 			_sync_editor_hover("", "")
+			_refresh_editor_focus()
 			_hide_preview_panel()
 			return
 		_board.set_hover(cell)
 		var preview := _editor_preview_for_cell(cell)
 		_board.set_editor_preview(_typed_preview_cells(preview.get("cells", [])), bool(preview.get("valid", false)), true)
 		_sync_editor_hover("格子 %s" % str(cell), str(preview.get("message", "")))
+		_refresh_editor_focus()
 		_preview_title.text = "编辑预览"
 		_preview_body.text = _format_preview_body(str(preview.get("message", "")))
 		_show_preview_panel(get_viewport().get_mouse_position())
@@ -534,6 +585,7 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		if _timeline_hover_uid.is_empty():
 			_board.set_timeline_hover_unit("")
 		_board.set_highlights(_controller.get_highlights())
+		_refresh_editor_focus()
 		return
 	_board.set_hover(cell)
 	_board.set_highlights(_controller.get_highlights(_hover_cell))
@@ -546,6 +598,7 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 	_preview_body.text = _format_preview_body(preview.get("body", ""))
 	var mouse: Vector2 = get_viewport().get_mouse_position()
 	_show_preview_panel(mouse)
+	_refresh_editor_focus()
 
 
 func _show_preview_panel(mouse: Vector2) -> void:
@@ -770,25 +823,41 @@ func _run_enemy_phase_async() -> void:
 		_enemy_turn_queue.append(enemy.uid)
 	_refresh()
 	for enemy in enemies:
+		if not is_inside_tree():
+			break
 		_refresh()
 		if not enemy.alive:
 			_consume_enemy_turn(enemy.uid)
 			continue
 		if _controller.state.phase == Constants.PHASE_ENDED:
 			break
-		await get_tree().create_timer(_scaled_anim_time(0.22)).timeout
+		await _await_scene_timer(0.22)
+		if not is_inside_tree():
+			break
 		var execution: Dictionary = _controller.execute_single_enemy(enemy)
 		var events: Array[Dictionary] = execution.get("events", [])
 		await _play_presentation_sequence(execution.get("presentation_state", _controller.state.clone()), events)
-		await get_tree().create_timer(_scaled_anim_time(0.35)).timeout
+		if not is_inside_tree():
+			break
+		await _await_scene_timer(0.35)
+		if not is_inside_tree():
+			break
 		_consume_enemy_turn(enemy.uid)
 		_refresh()
-	if _controller.state.phase != Constants.PHASE_ENDED:
+	if is_inside_tree() and _controller.state != null and _controller.state.phase != Constants.PHASE_ENDED:
 		_controller.finish_enemy_phase()
 	_enemy_phase_running = false
 	_enemy_turn_queue.clear()
+	if not is_inside_tree():
+		return
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
+
+
+func _await_scene_timer(seconds: float) -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().create_timer(_scaled_anim_time(seconds)).timeout
 
 
 func _exit_tree() -> void:
@@ -861,6 +930,8 @@ func _on_controller_state_changed() -> void:
 
 
 func _play_presentation_sequence(state_before: GameState, events: Array, economy_source: GameState = null) -> void:
+	if not is_inside_tree():
+		return
 	if economy_source != null:
 		_refresh_economy_chips()
 	var pending_battle_end: String = await _event_player.play_sequence(
@@ -870,6 +941,8 @@ func _play_presentation_sequence(state_before: GameState, events: Array, economy
 		events,
 		economy_source
 	)
+	if not is_inside_tree():
+		return
 	_refresh()
 	if not pending_battle_end.is_empty():
 		_apply_battle_end(pending_battle_end)
@@ -1239,11 +1312,12 @@ func _refresh() -> void:
 		"timeline_hover_uid": _timeline_hover_uid,
 		"enemy_phase_running": _enemy_phase_running,
 		"enemy_turn_queue": _enemy_turn_queue,
+		"editor_compact": _editor_available() and _editor_mode,
 	})
 	_inspect_uid = str(hud_state.get("inspect_uid", _inspect_uid))
 	_tracked_player_uid = str(hud_state.get("tracked_player_uid", _tracked_player_uid))
-	if _relic_bar_panel != null and _relic_bar_scroll != null:
-		_relic_bar_panel.visible = _relic_bar_scroll.visible
+	if _relic_bar_root != null and _relic_bar_scroll != null:
+		_relic_bar_root.visible = _relic_bar_scroll.visible
 	var active_turn_uid := str(hud_state.get("active_turn_uid", ""))
 	_board.set_active_turn_unit(active_turn_uid)
 	if _editor_drag_active:
@@ -1276,14 +1350,25 @@ func _fit_status_panel_height() -> void:
 	_layout_editor_ui()
 
 
-func _on_editor_mode_toggled(enabled: bool) -> void:
-	if enabled and not _editor_session_active:
+func _enter_editor_mode() -> void:
+	if not _editor_available():
+		return
+	if not _editor_session_active:
 		_begin_editor_session()
-	_editor_mode = enabled
+	_editor_mode = true
 	_editor_drag_active = false
-	if not enabled:
-		_board.clear_editor_preview()
-		_hide_preview_panel()
+	_sync_editor_inspector("")
+	_refresh()
+
+
+func _on_editor_mode_toggled(enabled: bool) -> void:
+	if enabled:
+		_enter_editor_mode()
+		return
+	_editor_mode = false
+	_editor_drag_active = false
+	_board.clear_editor_preview()
+	_hide_preview_panel()
 	_sync_editor_inspector("")
 	_refresh()
 
@@ -1293,7 +1378,7 @@ func _on_editor_tool_selected(tool: Dictionary) -> void:
 	_editor_drag_active = false
 	_sync_editor_inspector("")
 	if str(_editor_tool.get("kind", "")) == "relic":
-		_sync_editor_inspector("点击左侧遗物可直接获取")
+		_sync_editor_inspector("点击左侧遗物条目添加，下方列表可移除")
 	_board.clear_editor_preview()
 
 
@@ -1479,15 +1564,69 @@ func _sync_editor_hover(title: String, detail: String) -> void:
 		_editor_panel.set_hover_summary(detail)
 
 
+func _refresh_editor_focus() -> void:
+	if not _editor_available():
+		return
+	_sync_editor_inspector(_editor_result_label.text if _editor_result_label != null else "")
+
+
 func _sync_editor_inspector(message: String) -> void:
 	_bind_editor_state_signals()
 	if _editor_tool_label != null:
-		_editor_tool_label.text = "当前工具: %s" % (str(_editor_tool.get("id", "")) if not _editor_tool.is_empty() else "未选择")
-	if _editor_detail_label != null:
-		_editor_detail_label.text = _editor_focus_summary()
-	if _editor_result_label != null:
+		_editor_tool_label.text = _editor_tool_summary()
+	if _editor_target_label != null:
+		_editor_target_label.text = _editor_target_summary()
+	if _editor_result_label != null and not message.is_empty():
 		_editor_result_label.text = message
+	_rebuild_editor_contents()
+	_rebuild_editor_status_panel()
 	_refresh_editor_action_buttons()
+
+
+func _editor_tool_summary() -> String:
+	if _editor_tool.is_empty():
+		return "工具: 未选择（左侧列表选择资源）"
+	var kind := str(_editor_tool.get("kind", ""))
+	var kind_label := str(_EDITOR_KIND_LABELS.get(kind, kind))
+	var tool_id := str(_editor_tool.get("id", ""))
+	var action_hint := "拖到棋盘放置"
+	if kind == "relic":
+		action_hint = "点击条目添加"
+	return "工具: %s · %s（%s）" % [tool_id, kind_label, action_hint]
+
+
+func _editor_target_summary() -> String:
+	if not _editor_action_cell_valid():
+		return "操作目标: 点击棋盘格子锁定"
+	var state := _controller.state
+	if state == null:
+		return "操作目标: —"
+	var lines: Array[String] = ["操作目标: %s" % str(_editor_action_cell)]
+	var tile := state.get_tile(_editor_action_cell)
+	var unit := state.get_unit_at(_editor_action_cell)
+	if unit != null and unit.alive:
+		lines.append("%s · HP %d/%d" % [
+			DataRegistry.get_unit_display_name(unit.unit_def_id),
+			unit.hp,
+			unit.max_hp,
+		])
+		if unit.has_tag("unit:training_dummy"):
+			var stats: Dictionary = _editor_dummy_stats.get(unit.uid, {})
+			lines.append("稻草人: 受击 %d · 总伤 %d" % [
+				int(stats.get("hits", 0)),
+				int(stats.get("total_damage", 0)),
+			])
+	elif tile != null:
+		lines.append(DataRegistry.get_tile_display_name(tile.tile_id))
+	var entity := state.get_entity_at(_editor_action_cell)
+	if entity != null and entity.alive:
+		lines.append("实体: %s" % entity.entity_id)
+	if tile != null and not tile.modifiers.is_empty():
+		var overlay_ids: Array[String] = []
+		for modifier in tile.modifiers:
+			overlay_ids.append(str(modifier.get("type", "")))
+		lines.append("Overlay: %s" % ", ".join(overlay_ids))
+	return "\n".join(lines)
 
 
 func _bind_editor_state_signals() -> void:
@@ -1497,101 +1636,236 @@ func _bind_editor_state_signals() -> void:
 	_editor_bound_state.on_damage_taken.connect(_on_editor_damage_taken)
 
 
-func _editor_focus_summary() -> String:
-	var state := _controller.state
-	if state == null:
-		return ""
-	var cell := _hover_cell
-	if cell.x < 0:
-		return "悬停棋盘可查看当前格子内容"
-	var lines: Array[String] = []
-	var tile := state.get_tile(cell)
-	lines.append("格子: %s  地块: %s" % [str(cell), tile.tile_id if tile != null else "none"])
-	var unit := state.get_unit_at(cell)
-	if unit != null and unit.alive:
-		lines.append("单位: %s  HP %d/%d" % [unit.unit_def_id, unit.hp, unit.max_hp])
-		if unit.has_tag("unit:training_dummy"):
-			var stats: Dictionary = _editor_dummy_stats.get(unit.uid, {})
-			lines.append("受击: %d 次  总伤害: %d" % [int(stats.get("hits", 0)), int(stats.get("total_damage", 0))])
-			lines.append("最大单次: %d  最近来源: %s" % [int(stats.get("max_hit", 0)), str(stats.get("last_reason", "-"))])
-	var entity := state.get_entity_at(cell)
-	if entity != null and entity.alive:
-		lines.append("实体: %s" % entity.entity_id)
-	if tile != null and not tile.modifiers.is_empty():
-		var overlay_ids: Array[String] = []
-		for modifier in tile.modifiers:
-			overlay_ids.append(str(modifier.get("type", "")))
-		lines.append("Overlay: %s" % ", ".join(overlay_ids))
-	var gem_line := _editor_gem_summary(cell)
-	if not gem_line.is_empty():
-		lines.append(gem_line)
-	if RunService.is_run_active() and not RunService.get_owned_relics().is_empty():
-		lines.append("遗物: %d" % RunService.get_owned_relics().size())
-	return "\n".join(lines)
-
-
-func _editor_gem_summary(cell: Vector2i) -> String:
-	var state := _controller.state
-	if state == null:
-		return ""
-	var unit := state.get_unit_at(cell)
-	if unit != null:
-		var unit_gems: Array[String] = []
-		for slot in unit.slots:
-			if slot != null and not slot.gem_uid.is_empty():
-				var gem: GemState = state.gems.get(slot.gem_uid, null)
-				if gem != null:
-					unit_gems.append(gem.gem_id)
-		if not unit_gems.is_empty():
-			return "单位宝石: %s" % ", ".join(unit_gems)
-	var tile := state.get_tile(cell)
-	if tile != null and tile.has_slots():
-		var tile_gems: Array[String] = []
-		for slot in tile.slots:
-			if slot != null and not slot.gem_uid.is_empty():
-				var gem: GemState = state.gems.get(slot.gem_uid, null)
-				if gem != null:
-					tile_gems.append(gem.gem_id)
-		if not tile_gems.is_empty():
-			return "地块宝石: %s" % ", ".join(tile_gems)
-	return ""
-
-
 func _refresh_editor_action_buttons() -> void:
 	var state := _controller.state
-	var cell := _hover_cell
+	var cell := _editor_action_cell
 	var has_cell := state != null and cell.x >= 0
 	var tile := state.get_tile(cell) if has_cell else null
 	var unit := state.get_unit_at(cell) if has_cell else null
 	var entity := state.get_entity_at(cell) if has_cell else null
-	_editor_remove_unit_btn.disabled = unit == null or unit.uid == state.player_uid
-	_editor_remove_entity_btn.disabled = entity == null or not entity.alive
-	_editor_remove_overlay_btn.disabled = tile == null or tile.modifiers.is_empty()
-	_editor_remove_gem_btn.disabled = _editor_find_gem_remove_target(cell).is_empty()
-	var current_relic_id := str(_editor_tool.get("id", "")) if str(_editor_tool.get("kind", "")) == "relic" else ""
-	_editor_relic_btn.visible = not current_relic_id.is_empty()
-	_editor_relic_btn.disabled = current_relic_id.is_empty() or not RunService.is_run_active() or not RunService.has_relic(current_relic_id)
-	if _editor_relic_btn.visible:
-		_editor_relic_btn.text = "移除遗物 %s" % current_relic_id
+	_editor_remove_unit_btn.disabled = not has_cell or unit == null or unit.uid == state.player_uid
+	_editor_remove_entity_btn.disabled = not has_cell or entity == null or not entity.alive
+	_editor_remove_overlay_btn.disabled = not has_cell or tile == null or tile.modifiers.is_empty()
 
 
-func _editor_find_gem_remove_target(cell: Vector2i) -> Dictionary:
+func _rebuild_editor_contents() -> void:
+	_clear_editor_list(_editor_gem_list)
+	_clear_editor_list(_editor_relic_list)
+	if not _editor_action_cell_valid():
+		_editor_gem_list.add_child(_editor_empty_hint("锁定格子后显示槽位"))
+		_editor_relic_list.add_child(_editor_empty_hint("—"))
+		return
+	var gem_targets := _editor_list_gem_targets(_editor_action_cell)
+	if gem_targets.is_empty():
+		_editor_gem_list.add_child(_editor_empty_hint("该格无宝石"))
+	else:
+		for target in gem_targets:
+			_editor_gem_list.add_child(_create_editor_gem_row(target))
+	if not RunService.is_run_active():
+		_editor_relic_list.add_child(_editor_empty_hint("未开启 Run"))
+		return
+	var owned := RunService.get_owned_relics()
+	if owned.is_empty():
+		_editor_relic_list.add_child(_editor_empty_hint("无遗物 · 左侧列表点击添加"))
+	else:
+		for relic_id in owned:
+			_editor_relic_list.add_child(_create_editor_relic_row(str(relic_id)))
+
+
+func _rebuild_editor_status_panel() -> void:
+	if _editor_status_grid == null:
+		return
+	for child in _editor_status_grid.get_children():
+		child.queue_free()
+	if not _editor_action_cell_valid() or _controller == null or _controller.state == null:
+		_editor_status_box.visible = false
+		return
+	var unit := _controller.state.get_unit_at(_editor_action_cell)
+	if unit == null or not unit.alive:
+		_editor_status_box.visible = false
+		return
+	_editor_status_box.visible = true
+	for status_id in _EDITOR_STATUS_IDS:
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(36, 36)
+		btn.tooltip_text = StatusRegistry.display_name(status_id)
+		btn.pressed.connect(_on_editor_apply_status.bind(status_id))
+		BattleUiTheme.apply_button(btn, "ghost")
+		var icon_tex := StatusIcons.get_icon(status_id)
+		if icon_tex != null:
+			var icon := TextureRect.new()
+			icon.texture = icon_tex
+			icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			icon.custom_minimum_size = Vector2(22, 22)
+			icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			icon.set_anchors_preset(Control.PRESET_CENTER)
+			btn.add_child(icon)
+		_editor_status_grid.add_child(btn)
+
+
+func _on_editor_apply_status(status_id: String) -> void:
+	if not _editor_action_cell_valid():
+		return
+	var result := _controller.run_editor_action("apply_unit_status", {
+		"pos": _editor_action_cell,
+		"status_id": status_id,
+	})
+	_editor_result_label.text = str(result.get("message", ""))
+	_rebuild_editor_status_panel()
+	_refresh()
+
+
+func _clear_editor_list(list: VBoxContainer) -> void:
+	if list == null:
+		return
+	for child in list.get_children():
+		child.queue_free()
+
+
+func _editor_empty_hint(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	return label
+
+
+func _create_editor_gem_row(target: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
 	var state := _controller.state
+	var gem: GemState = null
+	var slot_index := int(target.get("slot_index", -1))
+	var target_kind := str(target.get("target_kind", ""))
+	if state != null and slot_index >= 0:
+		if target_kind == "unit":
+			var unit := state.get_unit_at(_editor_action_cell)
+			if unit != null and slot_index < unit.slots.size():
+				var slot: SlotState = unit.slots[slot_index]
+				if slot != null and not slot.gem_uid.is_empty():
+					gem = state.gems.get(slot.gem_uid, null)
+		elif target_kind == "tile":
+			var tile := state.get_tile(_editor_action_cell)
+			if tile != null and slot_index < tile.slots.size():
+				var slot: SlotState = tile.slots[slot_index]
+				if slot != null and not slot.gem_uid.is_empty():
+					gem = state.gems.get(slot.gem_uid, null)
+	if gem != null:
+		var icon := TextureRect.new()
+		icon.texture = UnitLooks.get_gem_texture(gem)
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(16, 16)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.self_modulate = UnitLooks.gem_sprite_modulate(gem)
+		row.add_child(icon)
+	var label := Label.new()
+	var gem_name := DataRegistry.get_gem_display_name(gem) if gem != null else str(target.get("label", ""))
+	label.text = "%s槽 · %s" % [_editor_slot_label(str(target.get("slot_type", ""))), gem_name]
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 11)
+	row.add_child(label)
+	var btn := Button.new()
+	btn.text = "移除"
+	btn.custom_minimum_size = Vector2(52, 28)
+	btn.pressed.connect(_on_editor_remove_gem_target.bind(target))
+	BattleUiTheme.apply_button(btn, "ghost")
+	row.add_child(btn)
+	return row
+
+
+func _create_editor_relic_row(relic_id: String) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+	var rarity := DataRegistry.get_relic_rarity(relic_id)
+	var rarity_col := _hud_presenter.rarity_color(rarity)
+	var icon_tex := UnitLooks.get_relic_texture(relic_id)
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(20, 20)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.self_modulate = rarity_col
+		row.add_child(icon)
+	var label := Label.new()
+	label.text = str(def.get("name", relic_id))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", rarity_col)
+	row.add_child(label)
+	var btn := Button.new()
+	btn.text = "移除"
+	btn.custom_minimum_size = Vector2(52, 28)
+	btn.pressed.connect(_on_editor_remove_relic.bind(relic_id))
+	BattleUiTheme.apply_button(btn, "ghost")
+	row.add_child(btn)
+	return row
+
+
+func _editor_list_gem_targets(cell: Vector2i) -> Array[Dictionary]:
+	var state := _controller.state
+	var targets: Array[Dictionary] = []
 	if state == null or cell.x < 0:
-		return {}
+		return targets
 	var unit := state.get_unit_at(cell)
 	if unit != null:
-		for slot_type in [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]:
-			for slot in unit.slots:
-				if slot != null and slot.accepts_slot_type(slot_type) and not slot.gem_uid.is_empty():
-					return {"target_kind": "unit", "slot_type": slot_type}
-	for slot_type in [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]:
-		var tile := state.get_tile(cell)
-		if tile != null and tile.has_slots():
-			for slot in tile.slots:
-				if slot != null and slot.accepts_slot_type(slot_type) and not slot.gem_uid.is_empty():
-					return {"target_kind": "tile", "slot_type": slot_type}
-	return {}
+		for i in range(unit.slots.size()):
+			var slot: SlotState = unit.slots[i]
+			if slot != null and not slot.gem_uid.is_empty():
+				var gem: GemState = state.gems.get(slot.gem_uid, null)
+				var gem_id := gem.gem_id if gem != null else "?"
+				targets.append({
+					"target_kind": "unit",
+					"slot_index": i,
+					"slot_type": slot.slot_type,
+					"label": "%s · %s" % [_editor_slot_label(slot.slot_type), gem_id],
+				})
+	var tile := state.get_tile(cell)
+	if tile != null and tile.has_slots():
+		for i in range(tile.slots.size()):
+			var slot: SlotState = tile.slots[i]
+			if slot != null and not slot.gem_uid.is_empty():
+				var gem: GemState = state.gems.get(slot.gem_uid, null)
+				var gem_id := gem.gem_id if gem != null else "?"
+				targets.append({
+					"target_kind": "tile",
+					"slot_index": i,
+					"slot_type": slot.slot_type,
+					"label": "%s · %s" % [_editor_slot_label(slot.slot_type), gem_id],
+				})
+	return targets
+
+
+func _editor_slot_label(slot_type: String) -> String:
+	match slot_type:
+		Constants.SLOT_RED:
+			return "红"
+		Constants.SLOT_BLUE:
+			return "蓝"
+		Constants.SLOT_BLACK:
+			return "黑"
+		_:
+			return slot_type
+
+
+func _on_editor_remove_gem_target(target: Dictionary) -> void:
+	if not _editor_action_cell_valid():
+		return
+	var result := _controller.run_editor_action("remove_gem", {
+		"pos": _editor_action_cell,
+		"target_kind": str(target.get("target_kind", "")),
+		"slot_index": int(target.get("slot_index", -1)),
+		"slot_type": str(target.get("slot_type", "")),
+	})
+	_sync_editor_inspector(str(result.get("message", "")))
+	_show_result(result)
+	_refresh()
 
 
 func _on_editor_relic_requested(relic_id: String) -> void:
@@ -1622,10 +1896,13 @@ func _end_editor_session() -> void:
 	_editor_run_snapshot = {}
 	_editor_dummy_stats.clear()
 	_editor_bound_state = null
+	_controller.editor_unlimited_actions = false
+	if _editor_unlimited_btn != null:
+		_editor_unlimited_btn.button_pressed = false
+		_editor_unlimited_btn.text = "无限行动 关"
 
 
-func _on_editor_relic_remove_pressed() -> void:
-	var relic_id := str(_editor_tool.get("id", ""))
+func _on_editor_remove_relic(relic_id: String) -> void:
 	if relic_id.is_empty():
 		return
 	var result := _controller.run_editor_action("remove_relic", {"relic_id": relic_id})
@@ -1634,19 +1911,23 @@ func _on_editor_relic_remove_pressed() -> void:
 	_refresh()
 
 
+func _editor_action_cell_valid() -> bool:
+	return _editor_action_cell.x >= 0
+
+
 func _on_editor_remove_unit_pressed() -> void:
-	if _hover_cell.x < 0:
+	if not _editor_action_cell_valid():
 		return
-	var result := _controller.run_editor_action("remove_unit", {"pos": _hover_cell})
+	var result := _controller.run_editor_action("remove_unit", {"pos": _editor_action_cell})
 	_sync_editor_inspector(str(result.get("message", "")))
 	_show_result(result)
 	_refresh()
 
 
 func _on_editor_remove_entity_pressed() -> void:
-	if _hover_cell.x < 0:
+	if not _editor_action_cell_valid():
 		return
-	var result := _controller.run_editor_action("remove_entity", {"pos": _hover_cell})
+	var result := _controller.run_editor_action("remove_entity", {"pos": _editor_action_cell})
 	_sync_editor_inspector(str(result.get("message", "")))
 	_show_result(result)
 	_refresh()
@@ -1654,27 +1935,13 @@ func _on_editor_remove_entity_pressed() -> void:
 
 func _on_editor_remove_overlay_pressed() -> void:
 	var state := _controller.state
-	if state == null or _hover_cell.x < 0:
+	if state == null or not _editor_action_cell_valid():
 		return
-	var tile := state.get_tile(_hover_cell)
+	var tile := state.get_tile(_editor_action_cell)
 	if tile == null or tile.modifiers.is_empty():
 		return
 	var overlay_id := str(tile.modifiers[0].get("type", ""))
-	var result := _controller.run_editor_action("remove_overlay", {"pos": _hover_cell, "overlay_id": overlay_id})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_remove_gem_pressed() -> void:
-	var target := _editor_find_gem_remove_target(_hover_cell)
-	if target.is_empty():
-		return
-	var result := _controller.run_editor_action("remove_gem", {
-		"pos": _hover_cell,
-		"slot_type": str(target.get("slot_type", "")),
-		"target_kind": str(target.get("target_kind", "")),
-	})
+	var result := _controller.run_editor_action("remove_overlay", {"pos": _editor_action_cell, "overlay_id": overlay_id})
 	_sync_editor_inspector(str(result.get("message", "")))
 	_show_result(result)
 	_refresh()
@@ -1693,7 +1960,7 @@ func _on_editor_damage_taken(unit_uid: String, amount: int, reason: String) -> v
 	stats["max_hit"] = maxi(int(stats.get("max_hit", 0)), amount)
 	stats["last_reason"] = reason
 	_editor_dummy_stats[unit_uid] = stats
-	if _hover_cell == unit.pos:
+	if _editor_action_cell == unit.pos:
 		_sync_editor_inspector("训练稻草人已记录本次伤害")
 
 
@@ -1734,25 +2001,12 @@ func _on_editor_inspector_toggle_pressed() -> void:
 		_editor_inspector_toggle_btn.visible = false
 
 
-func _on_editor_inspector_collapse_pressed() -> void:
-	_editor_inspector_collapsed = not _editor_inspector_collapsed
-	if _editor_inspector_body != null:
-		_editor_inspector_body.visible = not _editor_inspector_collapsed
-
-
-func _on_editor_inspector_header_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			_editor_inspector_dragging = true
-			_editor_inspector_drag_offset = get_global_mouse_position() - _editor_inspector.global_position
-		else:
-			_editor_inspector_dragging = false
-	elif event is InputEventMouseMotion and _editor_inspector_dragging and _editor_inspector != null:
-		var viewport_rect := get_viewport_rect()
-		var next_pos := get_global_mouse_position() - _editor_inspector_drag_offset
-		next_pos.x = clampf(next_pos.x, 0.0, maxf(viewport_rect.size.x - _editor_inspector.size.x, 0.0))
-		next_pos.y = clampf(next_pos.y, 0.0, maxf(viewport_rect.size.y - _editor_inspector.size.y, 0.0))
-		_editor_inspector.position = next_pos
+func _on_editor_unlimited_actions_pressed() -> void:
+	var enabled := _editor_unlimited_btn != null and _editor_unlimited_btn.button_pressed
+	_controller.editor_unlimited_actions = enabled
+	if _editor_unlimited_btn != null:
+		_editor_unlimited_btn.text = "无限行动 开" if enabled else "无限行动 关"
+	_refresh()
 
 
 func _select_unit(uid: String) -> void:
@@ -1975,6 +2229,11 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 		_enemy_turn_queue.remove_at(idx)
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		call_deferred("_layout_editor_ui")
+
+
 func _wire_hover_interactions() -> void:
 	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _toggle_panel_btn]:
 		if button == null:
@@ -1985,40 +2244,26 @@ func _wire_hover_interactions() -> void:
 func _setup_relic_bar() -> void:
 	if _relic_bar_scroll != null:
 		return
-	_relic_bar_panel = PanelContainer.new()
-	_relic_bar_panel.name = "RelicBarPanel"
-	_relic_bar_panel.position = Vector2(8, 160)
-	_relic_bar_panel.size = Vector2(360, 58)
-	_relic_bar_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_relic_bar_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.TEXT_GOLD.darkened(0.25)))
-	$HudLayer.add_child(_relic_bar_panel)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	_relic_bar_panel.add_child(row)
-
-	var label := Label.new()
-	label.text = "遗物"
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	row.add_child(label)
+	_relic_bar_root = Control.new()
+	_relic_bar_root.name = "RelicBarRoot"
+	_relic_bar_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_relic_bar_root.visible = false
+	$HudLayer.add_child(_relic_bar_root)
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "RelicBarScroll"
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	scroll.visible = false
-	row.add_child(scroll)
+	_relic_bar_root.add_child(scroll)
 
-	var relic_row := HBoxContainer.new()
-	relic_row.name = "RelicBarRow"
-	relic_row.add_theme_constant_override("separation", 6)
-	scroll.add_child(relic_row)
+	var relic_vbox := VBoxContainer.new()
+	relic_vbox.name = "RelicBarVBox"
+	relic_vbox.add_theme_constant_override("separation", 4)
+	scroll.add_child(relic_vbox)
 	_relic_bar_scroll = scroll
-	_relic_bar_vbox = relic_row
-	_relic_bar_panel.visible = false
+	_relic_bar_vbox = relic_vbox
 
 
 func _layout_editor_ui() -> void:
@@ -2028,22 +2273,31 @@ func _layout_editor_ui() -> void:
 	var left := 8.0
 	var top := 8.0
 	if _status_panel.visible:
-		top = _status_panel.position.y + _status_panel.size.y + 8.0
-	if _relic_bar_panel != null:
-		var relic_width := minf(420.0, maxf(viewport_size.x - 16.0, 260.0))
-		_relic_bar_panel.position = Vector2(left, top)
-		_relic_bar_panel.size = Vector2(relic_width, 58.0)
-		if _relic_bar_panel.visible:
-			top += _relic_bar_panel.size.y + 8.0
+		top = _status_panel.position.y + _status_panel.size.y + 4.0
+	if _relic_bar_root != null and _relic_bar_scroll != null:
+		var relic_width := _status_panel.size.x if _status_panel.visible else minf(420.0, maxf(viewport_size.x - 16.0, 260.0))
+		var relic_h := maxf(_relic_bar_scroll.custom_minimum_size.y, 0.0)
+		_relic_bar_root.position = Vector2(left, top)
+		_relic_bar_root.size = Vector2(relic_width, relic_h)
+		_relic_bar_scroll.size = Vector2(relic_width, relic_h)
+		if _relic_bar_root.visible and relic_h > 0.0:
+			top += relic_h + 4.0
 	var bottom_limit := viewport_size.y - _bottom_dock.size.y - 8.0
-	if _editor_panel != null:
+	if _editor_panel != null and _editor_panel.visible:
 		var editor_width := minf(380.0, maxf(viewport_size.x * 0.46, 340.0))
-		var editor_height := maxf(minf(600.0, bottom_limit - top), 360.0)
+		var editor_height := maxf(bottom_limit - top, 200.0)
 		_editor_panel.size = Vector2(editor_width, editor_height)
 		if not _editor_panel_user_positioned:
 			_editor_panel.position = Vector2(left, top)
 	if _editor_panel_toggle_btn != null:
 		_editor_panel_toggle_btn.position = Vector2(left, top)
+	if _editor_inspector != null and _editor_inspector.visible:
+		var inspector_w := 280.0
+		var inspector_h := maxf(_editor_inspector.get_combined_minimum_size().y, 320.0)
+		_editor_inspector.size = Vector2(inspector_w, inspector_h)
+		_editor_inspector.position = Vector2(viewport_size.x - inspector_w - 8.0, 8.0)
+	if _editor_inspector_toggle_btn != null:
+		_editor_inspector_toggle_btn.position = Vector2(viewport_size.x - _editor_inspector_toggle_btn.size.x - 8.0, 8.0)
 
 
 func _on_editor_panel_moved() -> void:

@@ -76,8 +76,10 @@ static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector
 
 
 ## 单位坐标发生任意变化后调用（含强制位移）
-static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos: Vector2i) -> void:
+static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos: Vector2i, opts: Dictionary = {}) -> void:
 	if unit.pos == old_pos:
+		return
+	if bool(opts.get("forced", false)):
 		return
 	if not _unit_occupies_any_modifier(state, unit, [Constants.TILE_MOD_FIRE, Constants.TILE_MOD_TOXIC_SMOKE]):
 		StatusRules.clear_burning(unit)

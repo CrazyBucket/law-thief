@@ -222,19 +222,17 @@ func _test_blue_poison_turn_end_spread_uses_level_context() -> void:
 	_case_count += 1
 	var state := _create_state()
 	var owner := _spawn_unit(state, "poison_owner", Vector2i(3, 3), Constants.TEAM_ENEMY)
-	var source := _spawn_unit(state, "poison_source", Vector2i(4, 3), Constants.TEAM_ENEMY)
-	var nearest_clean := _spawn_unit(state, "poison_clean", Vector2i(5, 3), Constants.TEAM_ENEMY)
+	var nearest_clean := _spawn_unit(state, "poison_clean", Vector2i(4, 3), Constants.TEAM_ENEMY)
 	var farther_clean := _spawn_unit(state, "poison_far", Vector2i(7, 3), Constants.TEAM_ENEMY)
 	_ensure_blue_slots(owner, 2)
 	_mount_on_slots(state, owner, Constants.SLOT_BLUE, ["poison", "poison"])
-	StatusRules.apply_poison(state, source, 1, 2, owner.uid)
-	StatusRules.tick_turn_end(state)
+	GemEffects.run_blue_poison_turn_end_spreads(state, owner.uid)
 	var nearest_poison := nearest_clean.get_status(Constants.STATUS_POISON)
 	if nearest_poison == null:
-		_fail("[blue_poison_turn_end] nearest clean ally should receive poison")
+		_fail("[blue_poison_turn_end] nearest clean unit should receive poison")
 		return
 	if str(nearest_poison.source_uid) != owner.uid:
-		_fail("[blue_poison_turn_end] spread poison source should be owner")
+		_fail("[blue_poison_turn_end] spread poison source should be carrier")
 		return
 	if farther_clean.has_status(Constants.STATUS_POISON):
 		_fail("[blue_poison_turn_end] farther ally should stay clean when nearer target exists")
