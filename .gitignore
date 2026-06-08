@@ -18,6 +18,7 @@ Thumbs.db
 
 # Saves / debug
 user://
+artifacts/verify/
 
 # Demo: 大而重的 VFX，通常 symlink 指向本机「下载」，避免克隆后他人机器路径失效而入库
 /assets/demo/vfx-free-pack

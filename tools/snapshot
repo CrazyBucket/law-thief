@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GODOT="${GODOT:-/opt/homebrew/bin/godot}"
+
+cd "$ROOT"
+exec "$GODOT" --headless --path . --script res://scripts/tools/ai_snapshot.gd -- "$@"

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "source": "/Users/jinhuiwu/code/learning-notes/game/design/law-thief/详细设计/宝石/宝石_v1.md",
+  "cases": [
+    {
+      "id": "fire/red/1",
+      "covers": ["gem_fire:red:1"],
+      "gems": ["gem_fire"],
+      "expect": {"damage": 10, "target_status": "burning", "fire_cells": 1}
+    },
+    {
+      "id": "fire/red/2",
+      "covers": ["gem_fire:red:2"],
+      "gems": ["gem_fire", "gem_fire"],
+      "expect": {"damage": 10, "target_status": "burning", "fire_cells": 2}
+    },
+    {
+      "id": "fire/red/3_already_burning",
+      "covers": ["gem_fire:red:3"],
+      "gems": ["gem_fire", "gem_fire", "gem_fire"],
+      "setup": {"target_status": "burning"},
+      "expect": {"damage": 10, "target_status": "burning", "fire_cells": 3}
+    },
+    {
+      "id": "combo/explosion_fire/red",
+      "covers": ["combo:explosion_fire:red"],
+      "gems": ["gem_explosion", "gem_fire"],
+      "expect": {"damage": 12, "combo_event": "explosion_fire", "fire_cells": 5}
+    },
+    {
+      "id": "combo/explosion_poison/red",
+      "covers": ["combo:explosion_poison:red"],
+      "gems": ["gem_explosion", "gem_poison"],
+      "expect": {"damage": 12, "combo_event": "explosion_poison", "poison_fog_cells": 5}
+    },
+    {
+      "id": "combo/fire_poison/red",
+      "covers": ["combo:fire_poison:red"],
+      "gems": ["gem_fire", "gem_poison"],
+      "expect": {"damage": 10, "combo_event": "fire_poison", "toxic_smoke_cells": 1}
+    }
+  ]
+}

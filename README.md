@@ -21,6 +21,22 @@ godot --path .
 
 同样在仓库根目录执行。
 
+AI / 日常开发优先使用统一入口：
+
+```bash
+./tools/context 爆炸
+./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
+./tools/coverage
+./tools/verify changed
+./tools/verify fast
+```
+
+`snapshot` 会将行动前后状态、差异、事件、不变量和数值计算 trace 写入
+`artifacts/verify/snapshot.json`。详细约定见 `AGENTS.md`。
+
+`coverage` 只把独立设计契约覆盖到的“宝石 × 槽位 × 等级”计为可信。可用
+`SEMANTIC_COVERAGE_MIN=50 ./tools/coverage` 设置最低覆盖率门禁。
+
 主场景无头启动：
 
 ```bash

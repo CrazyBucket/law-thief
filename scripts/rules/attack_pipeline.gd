@@ -50,6 +50,7 @@ class AttackContext:
 	var final_damage: int = 0
 	var events: Array[Dictionary] = []
 	var payload: Dictionary = {}
+	var trace: Array[Dictionary] = []
 
 	func _init(p_state: GameState, p_attacker: UnitState, p_aim_cell: Vector2i, p_target: UnitState = null) -> void:
 		state = p_state
@@ -84,6 +85,10 @@ class AttackContext:
 
 	func push_explode_event(pos: Vector2i, radius: int) -> void:
 		events.append({"type": "explode", "pos": pos, "radius": radius})
+
+	func push_trace(step: Dictionary) -> void:
+		if payload.get("debug_trace", false):
+			trace.append(step)
 
 
 ## 以瞄准格为唯一空间锚点执行攻击（空地 / 单位共用）
@@ -172,18 +177,34 @@ static func _phase_prepare(ctx: AttackContext) -> void:
 
 static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	ctx.base_damage = CombatRules.attack_damage(ctx.state, ctx.attacker)
+	ctx.push_trace({
+		"phase": "damage_calculate",
+		"operation": "attack_damage",
+		"base_attack": ctx.attacker.base_attack,
+		"result": ctx.base_damage,
+	})
 	var charge_bonus: int = int(ctx.payload.get("charge_bonus", 0))
 	if charge_bonus > 0:
 		ctx.base_damage += charge_bonus
+		ctx.push_trace({"phase": "damage_calculate", "operation": "add_charge_bonus", "value": charge_bonus, "result": ctx.base_damage})
 	var bonus_damage: int = int(ctx.payload.get("bonus_damage", 0))
 	if bonus_damage > 0:
 		ctx.base_damage += bonus_damage
+		ctx.push_trace({"phase": "damage_calculate", "operation": "add_bonus_damage", "value": bonus_damage, "result": ctx.base_damage})
 	if ctx.has_tag(TAG_SPLIT_SHOT):
 		var _split_registry := _relic_effect_registry()
 		var split_red_ratio := _split_red_damage_ratio(ctx)
 		if _split_registry != null:
 			split_red_ratio = _split_registry.query_override_modifier("split_red_damage_ratio", ctx.state, split_red_ratio)
 		ctx.base_damage = maxi(1, int(ctx.base_damage * split_red_ratio))
+		ctx.push_trace({
+			"phase": "damage_calculate",
+			"operation": "multiply_split_red_ratio",
+			"gem_level": _split_level(ctx),
+			"value": split_red_ratio,
+			"rounding": "floor_then_min_1",
+			"result": ctx.base_damage,
+		})
 	if ctx.target == null:
 		ctx.final_damage = 0
 		return
@@ -191,6 +212,12 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	if ctx.has_tag(TAG_PIERCING):
 		armor = 0
 	ctx.final_damage = maxi(0, ctx.base_damage - armor)
+	ctx.push_trace({
+		"phase": "damage_calculate",
+		"operation": "subtract_shield",
+		"value": armor,
+		"result": ctx.final_damage,
+	})
 
 
 static func _phase_hit(ctx: AttackContext) -> void:
@@ -250,6 +277,23 @@ static func _apply_tags_at_cell(
 	reason: String
 ) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
+	if not gem_ctx.is_empty():
+		ctx.push_trace({
+			"phase": "hit",
+			"operation": "resolve_gem_context",
+			"hit_cell": hit_cell,
+			"tag_counts": gem_ctx.get("tag_counts", {}),
+			"tag_levels": gem_ctx.get("tag_levels", {}),
+			"combos": gem_ctx.get("combos", []),
+		})
+		if ctx.has_tag(TAG_EXPLOSIVE):
+			ctx.push_trace({
+				"phase": "hit",
+				"operation": "multiply_explosion_stack",
+				"value": GemEffects.explosion_stack_multiplier(gem_ctx),
+				"base_explosion_damage": Constants.EXPLOSION_CROSS_DAMAGE,
+				"result": GemEffects.explosion_scaled_damage(Constants.EXPLOSION_CROSS_DAMAGE, gem_ctx),
+			})
 	var dealt := 0
 	if target != null and target.alive and not ctx.has_tag(TAG_EXPLOSIVE):
 		dealt = CombatRules.apply_damage(ctx.state, target, ctx.base_damage, ctx.attacker.uid, reason)
@@ -824,6 +868,8 @@ static func _data_registry() -> Node:
 static func _finish_execute(state: GameState, ctx: AttackContext, result: Dictionary) -> Dictionary:
 	state.unbind_combat_events()
 	CombatRules.end_deferred_death_hooks(state)
+	if ctx.payload.get("debug_trace", false):
+		result["trace"] = ctx.trace
 	return result
 
 
