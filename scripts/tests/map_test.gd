@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	print("=== 冒险地图生成测试 ===")
 	_test_single_print()
 	_test_topology()
+	_test_event_properties()
 	_test_rules_stress()
 	print("MAP_TEST_PASS")
 	quit()
@@ -102,6 +103,22 @@ func _test_topology() -> void:
 				assert(not node.children.is_empty(),
 					"节点(%d,%d) 应有 child" % [x, y])
 	print("  [OK] 无孤岛节点")
+
+
+func _test_event_properties() -> void:
+	var gen = _AdventureMapGenerator.new()
+	var matrix: Array = gen.generate(MAP_SEED)
+	var found_event := false
+	for x in range(_AdventureMapGenerator.GRID_SIZE):
+		for y in range(_AdventureMapGenerator.GRID_SIZE):
+			var node = matrix[x][y]
+			if node.room_type != "EVENT":
+				continue
+			found_event = true
+			var event_id := str(node.properties.get("event_id", ""))
+			assert(not event_id.is_empty(), "event node should carry event_id property")
+	assert(found_event, "map should generate at least one event node for property test")
+	print("  [OK] 事件节点已分配 event_id")
 
 
 # ── 约束规则压力测试 ──────────────────────────────────────────────────────────

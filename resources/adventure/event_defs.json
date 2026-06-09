@@ -1,0 +1,42 @@
+{
+  "event_debug_cache": {
+    "title": "废弃缓存",
+    "body": "你在墙缝里找到一处旧补给缓存，可以立刻换成金币，或者安装一段增益脚本。",
+    "options": [
+      {
+        "id": "take_gold",
+        "label": "拿走金币",
+        "effects": [
+          {"action": "grant_resource", "resource_id": "gold", "amount": 10}
+        ]
+      },
+      {
+        "id": "install_rule",
+        "label": "安装增益脚本",
+        "effects": [
+          {"action": "add_adventure_rule", "rule_id": "map_rule_gold_gain_10"}
+        ]
+      }
+    ]
+  },
+  "event_debug_relief": {
+    "title": "路边补给",
+    "body": "一名倒霉商人留下了几枚硬币和一包简陋急救用品。",
+    "options": [
+      {
+        "id": "take_gold",
+        "label": "拿 8 金币",
+        "effects": [
+          {"action": "grant_resource", "resource_id": "gold", "amount": 8}
+        ]
+      },
+      {
+        "id": "heal",
+        "label": "恢复 4 点生命",
+        "effects": [
+          {"action": "heal_player", "amount": 4}
+        ]
+      }
+    ]
+  }
+}

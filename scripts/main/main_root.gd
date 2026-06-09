@@ -488,7 +488,7 @@ func _on_continue_pressed() -> void:
 	_close_modal()
 	if not AdventureService.resume_loaded_run():
 		return
-	_fade_to_scene(MAP_SCENE)
+	_fade_to_scene(GameService.continue_scene_for_active_run())
 
 
 func _on_new_run_pressed() -> void:
@@ -535,6 +535,8 @@ func _on_exit_pressed() -> void:
 
 func _on_slot_changed(_slot_id: int) -> void:
 	_refresh_all()
+
+
 
 
 func _on_modal_backdrop_input(event: InputEvent) -> void:

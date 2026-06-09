@@ -22,6 +22,20 @@ var player_slot_gems: Array = []
 var carried_gem: Dictionary = {}
 ## room_id -> 结算结果快照，避免房间奖励在重进时重复结算
 var resolved_rooms: Dictionary = {}
+## resource_id -> amount
+var resources: Dictionary = {"gold": 0}
+## 按提交顺序记录资源变化
+var resource_ledger: Array = []
+## room_id -> room runtime state
+var room_states: Dictionary = {}
+## 当前生效的冒险规则实例
+var adventure_rules: Array = []
+## 运行时统计摘要
+var run_stats: Dictionary = {}
+## 当前整局流程阶段
+var run_phase: String = "MAP"
+## 尚未完成的玩家决策上下文
+var pending_decision: Dictionary = {}
 
 
 static func create(master_seed: int, map_seed: int) -> RunState:
@@ -92,6 +106,13 @@ func export_dict() -> Dictionary:
 		"player_slot_gems": player_slot_gems.duplicate(true),
 		"carried_gem": carried_gem.duplicate(true),
 		"resolved_rooms": resolved_rooms.duplicate(true),
+		"resources": resources.duplicate(true),
+		"resource_ledger": resource_ledger.duplicate(true),
+		"room_states": room_states.duplicate(true),
+		"adventure_rules": adventure_rules.duplicate(true),
+		"run_stats": run_stats.duplicate(true),
+		"run_phase": run_phase,
+		"pending_decision": pending_decision.duplicate(true),
 	}
 
 
@@ -131,4 +152,41 @@ static func from_dict(d: Dictionary) -> RunState:
 	var raw_resolved_rooms: Variant = d.get("resolved_rooms", {})
 	if raw_resolved_rooms is Dictionary:
 		s.resolved_rooms = (raw_resolved_rooms as Dictionary).duplicate(true)
+	var raw_resources: Variant = d.get("resources", {})
+	if raw_resources is Dictionary:
+		s.resources = (raw_resources as Dictionary).duplicate(true)
+	if not s.resources.has("gold"):
+		s.resources["gold"] = 0
+	var raw_resource_ledger: Variant = d.get("resource_ledger", [])
+	if raw_resource_ledger is Array:
+		s.resource_ledger = (raw_resource_ledger as Array).duplicate(true)
+	var raw_room_states: Variant = d.get("room_states", {})
+	if raw_room_states is Dictionary:
+		s.room_states = (raw_room_states as Dictionary).duplicate(true)
+	for room_id in s.resolved_rooms.keys():
+		if s.room_states.has(room_id):
+			continue
+		var raw_state: Variant = s.resolved_rooms.get(room_id, {})
+		var result := (raw_state as Dictionary).duplicate(true) if raw_state is Dictionary else {}
+		s.room_states[str(room_id)] = {
+			"status": "RESOLVED",
+			"room_type": str(result.get("room_type", "")),
+			"snapshot": {},
+			"transactions": [],
+			"result": result,
+		}
+	var raw_adventure_rules: Variant = d.get("adventure_rules", [])
+	if raw_adventure_rules is Array:
+		s.adventure_rules = (raw_adventure_rules as Array).duplicate(true)
+	for raw_rule in s.adventure_rules:
+		if raw_rule is Dictionary and str((raw_rule as Dictionary).get("scope", "")) == "chapter":
+			if int((raw_rule as Dictionary).get("chapter", 0)) <= 0:
+				(raw_rule as Dictionary)["chapter"] = s.current_chapter
+	var raw_run_stats: Variant = d.get("run_stats", {})
+	if raw_run_stats is Dictionary:
+		s.run_stats = (raw_run_stats as Dictionary).duplicate(true)
+	s.run_phase = str(d.get("run_phase", "MAP"))
+	var raw_pending_decision: Variant = d.get("pending_decision", {})
+	if raw_pending_decision is Dictionary:
+		s.pending_decision = (raw_pending_decision as Dictionary).duplicate(true)
 	return s

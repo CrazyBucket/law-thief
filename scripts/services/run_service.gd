@@ -2,8 +2,8 @@ extends Node
 
 const RUN_SAVE_FILE_NAME := "run_save.json"
 const RUN_SAVE_VERSION := 1
-const RUN_SAVE_SCHEMA_VERSION := 1
-const RUN_RULESET_VERSION := 1
+const RUN_SAVE_SCHEMA_VERSION := 2
+const RUN_RULESET_VERSION := 2
 const RUN_MIN_SUPPORTED_SCHEMA_VERSION := 1
 
 var _run: RunState = null
@@ -17,6 +17,11 @@ func _ready() -> void:
 func start_run(master_seed: int, map_seed: int) -> void:
 	_run = RunState.create(master_seed, map_seed)
 	_progress_payload = {}
+	_run.run_phase = "MAP"
+	_run.pending_decision = {}
+	var economy_service: Node = get_node_or_null("/root/EconomyService")
+	if economy_service != null and economy_service.has_method("get_starting_gold"):
+		_run.resources["gold"] = int(economy_service.call("get_starting_gold"))
 	RngService.start_run(master_seed)
 	DebugService.log_info("RunService: new run master_seed=%d map_seed=%d" % [master_seed, map_seed])
 	save_run()
@@ -96,13 +101,25 @@ func acquire_relic(relic_id: String) -> void:
 	DebugService.log_info("RunService: acquired %s" % relic_id)
 
 
-func acquire_gem(gem_id: String) -> void:
+func acquire_gem(gem_id: String) -> Dictionary:
 	if _run == null:
 		push_warning("RunService.acquire_gem: no active run")
-		return
+		return {"ok": false, "error": "no_active_run"}
+	if gem_id.is_empty():
+		return {"ok": false, "error": "empty_gem_id"}
+	if not _run.carried_gem.is_empty():
+		return {
+			"ok": false,
+			"error": "carried_gem_occupied",
+			"carried_gem_id": str(_run.carried_gem.get("gem_id", "")),
+		}
 	_run.carried_gem = {"gem_id": gem_id}
 	save_run()
 	DebugService.log_info("RunService: acquired gem %s" % gem_id)
+	return {
+		"ok": true,
+		"gem_id": gem_id,
+	}
 
 
 func remove_relic(relic_id: String) -> void:
@@ -116,16 +133,59 @@ func remove_relic(relic_id: String) -> void:
 func get_resolved_room(room_id: String) -> Dictionary:
 	if _run == null:
 		return {}
-	var raw: Variant = _run.resolved_rooms.get(room_id, {})
+	var raw: Variant = _run.resolved_rooms.get(room_id, _run.resolved_rooms.get(_legacy_room_id(room_id), {}))
 	if raw is Dictionary:
 		return (raw as Dictionary).duplicate(true)
+	var room_state := get_room_state(room_id)
+	if not room_state.is_empty():
+		var result: Variant = room_state.get("result", {})
+		if result is Dictionary:
+			return (result as Dictionary).duplicate(true)
 	return {}
 
 
 func is_room_resolved(room_id: String) -> bool:
 	if _run == null:
 		return false
-	return _run.resolved_rooms.has(room_id)
+	if _run.resolved_rooms.has(room_id) or _run.resolved_rooms.has(_legacy_room_id(room_id)):
+		return true
+	var room_state := get_room_state(room_id)
+	return str(room_state.get("status", "")) == "RESOLVED"
+
+
+func get_room_state(room_id: String) -> Dictionary:
+	if _run == null:
+		return {}
+	var raw: Variant = _run.room_states.get(room_id, _run.room_states.get(_legacy_room_id(room_id), {}))
+	if raw is Dictionary:
+		return (raw as Dictionary).duplicate(true)
+	return {}
+
+
+func ensure_room_state(room_id: String, room_type: String) -> Dictionary:
+	if _run == null:
+		return {}
+	var room_state := get_room_state(room_id)
+	if room_state.is_empty():
+		room_state = {
+			"status": "UNENTERED",
+			"room_type": room_type,
+			"snapshot": {},
+			"transactions": [],
+			"result": {},
+		}
+	else:
+		room_state["room_type"] = room_type if str(room_state.get("room_type", "")).is_empty() else room_state.get("room_type", room_type)
+	set_room_state(room_id, room_state, false)
+	return room_state
+
+
+func set_room_state(room_id: String, room_state: Dictionary, persist: bool = true) -> void:
+	if _run == null:
+		return
+	_run.room_states[room_id] = room_state.duplicate(true)
+	if persist:
+		save_run()
 
 
 func get_player_run_snapshot() -> Dictionary:
@@ -153,8 +213,42 @@ func get_player_run_snapshot() -> Dictionary:
 func mark_room_resolved(room_id: String, payload: Dictionary) -> void:
 	if _run == null:
 		return
+	var existing_state := get_room_state(room_id)
+	var snapshot := {}
+	var transactions: Array = []
+	if not existing_state.is_empty():
+		var raw_snapshot: Variant = existing_state.get("snapshot", {})
+		if raw_snapshot is Dictionary:
+			snapshot = (raw_snapshot as Dictionary).duplicate(true)
+		var raw_transactions: Variant = existing_state.get("transactions", [])
+		if raw_transactions is Array:
+			transactions = (raw_transactions as Array).duplicate(true)
 	_run.resolved_rooms[room_id] = payload.duplicate(true)
+	_run.room_states[room_id] = {
+		"status": "RESOLVED",
+		"room_type": str(payload.get("room_type", "")),
+		"snapshot": snapshot,
+		"transactions": transactions,
+		"result": payload.duplicate(true),
+	}
 	save_run()
+
+
+func append_room_transaction(room_id: String, transaction_id: String, result: Dictionary) -> void:
+	if _run == null:
+		return
+	var room_state := ensure_room_state(room_id, str(result.get("room_type", "")))
+	var transactions: Array = room_state.get("transactions", []).duplicate(true) if room_state.get("transactions", []) is Array else []
+	for raw_tx in transactions:
+		if raw_tx is Dictionary and str(raw_tx.get("transaction_id", "")) == transaction_id:
+			return
+	transactions.append({
+		"transaction_id": transaction_id,
+		"result": result.duplicate(true),
+	})
+	room_state["transactions"] = transactions
+	room_state["result"] = result.duplicate(true)
+	set_room_state(room_id, room_state)
 
 
 func heal_player_percent(ratio: float) -> Dictionary:
@@ -176,6 +270,142 @@ func heal_player_percent(ratio: float) -> Dictionary:
 		"amount": actual,
 		"after_hp": next_hp,
 		"max_hp": max_hp,
+	}
+
+
+func heal_player_amount(amount: int) -> Dictionary:
+	if _run == null:
+		return {}
+	var max_hp := _run.player_max_hp
+	if max_hp <= 0:
+		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+	var current_hp := _run.player_hp
+	if current_hp < 0:
+		current_hp = max_hp
+	var next_hp := mini(max_hp, current_hp + maxi(0, amount))
+	var actual := maxi(0, next_hp - current_hp)
+	_run.player_max_hp = max_hp
+	_run.player_hp = next_hp
+	save_run()
+	return {
+		"amount": actual,
+		"after_hp": next_hp,
+		"max_hp": max_hp,
+	}
+
+
+func get_balance(resource_id: String = "gold") -> int:
+	if _run == null:
+		return 0
+	return int(_run.resources.get(resource_id, 0))
+
+
+func set_resource_balance(resource_id: String, amount: int, persist: bool = true) -> void:
+	if _run == null:
+		return
+	_run.resources[resource_id] = amount
+	if persist:
+		save_run()
+
+
+func get_resource_ledger() -> Array:
+	if _run == null:
+		return []
+	return _run.resource_ledger.duplicate(true)
+
+
+func append_ledger_entry(entry: Dictionary) -> void:
+	if _run == null:
+		return
+	_run.resource_ledger.append(entry.duplicate(true))
+	save_run()
+
+
+func get_adventure_rules() -> Array:
+	if _run == null:
+		return []
+	return _run.adventure_rules.duplicate(true)
+
+
+func append_adventure_rule(rule: Dictionary) -> void:
+	if _run == null:
+		return
+	_run.adventure_rules.append(rule.duplicate(true))
+	save_run()
+
+
+func get_run_phase() -> String:
+	if _run == null:
+		return "MAP"
+	return str(_run.run_phase)
+
+
+func set_run_phase(phase: String) -> void:
+	if _run == null:
+		return
+	_run.run_phase = phase
+	save_run()
+
+
+func get_pending_decision() -> Dictionary:
+	if _run == null:
+		return {}
+	return _run.pending_decision.duplicate(true)
+
+
+func set_pending_decision(decision: Dictionary) -> void:
+	if _run == null:
+		return
+	_run.pending_decision = decision.duplicate(true)
+	save_run()
+
+
+func clear_pending_decision() -> void:
+	if _run == null:
+		return
+	_run.pending_decision = {}
+	save_run()
+
+
+func complete_run(result: String) -> void:
+	if _run == null:
+		return
+	RunHistoryService.record_run(build_run_record(result))
+
+
+func build_run_record(result: String) -> Dictionary:
+	if _run == null:
+		return {}
+	var gold_earned := 0
+	var gold_spent := 0
+	for raw_entry in _run.resource_ledger:
+		if not raw_entry is Dictionary:
+			continue
+		var entry := raw_entry as Dictionary
+		if str(entry.get("resource_id", "")) != "gold":
+			continue
+		var delta := int(entry.get("final_amount", 0))
+		if delta >= 0:
+			gold_earned += delta
+		else:
+			gold_spent += -delta
+	var active_rule_ids: Array[String] = []
+	for raw_rule in _run.adventure_rules:
+		if raw_rule is Dictionary:
+			active_rule_ids.append(str((raw_rule as Dictionary).get("rule_id", "")))
+	return {
+		"run_id": "run_%d_%d" % [int(Time.get_unix_time_from_system()), _run.master_seed],
+		"type": "run",
+		"result": result,
+		"chapter_reached": _run.current_chapter,
+		"ended_at": int(Time.get_unix_time_from_system()),
+		"master_seed": _run.master_seed,
+		"summary": {
+			"gold_earned": gold_earned,
+			"gold_spent": gold_spent,
+			"owned_relics": _run.owned_relics.duplicate(),
+			"active_rule_ids": active_rule_ids,
+		},
 	}
 
 
@@ -294,8 +524,6 @@ func save_run() -> void:
 	if _run == null:
 		return
 	capture_player_battle_state()
-	var slot_dir := ProjectSettings.globalize_path(SaveService.get_slot_dir())
-	DirAccess.make_dir_recursive_absolute(slot_dir)
 	var data := {
 		"version": RUN_SAVE_VERSION,
 		"save_schema_version": RUN_SAVE_SCHEMA_VERSION,
@@ -303,13 +531,9 @@ func save_run() -> void:
 		"run": _run.export_dict(),
 		"progress": _progress_payload,
 	}
-	var json_str := JSON.stringify(data, "\t")
-	var file := FileAccess.open(SaveService.slot_file_path(RUN_SAVE_FILE_NAME), FileAccess.WRITE)
-	if file == null:
+	if not SaveService.write_json_atomic(SaveService.slot_file_path(RUN_SAVE_FILE_NAME), data):
 		push_warning("RunService: cannot write active slot run save")
 		return
-	file.store_string(json_str)
-	file.close()
 	SaveService.touch_active_slot({
 		"has_run": true,
 		"map_seed": _run.map_seed,
@@ -322,23 +546,12 @@ func save_run() -> void:
 func load_run() -> bool:
 	_clear_loaded_state()
 	var path := SaveService.slot_file_path(RUN_SAVE_FILE_NAME)
-	if not FileAccess.file_exists(path):
+	var dict := SaveService.read_json_file(path)
+	if dict.is_empty():
+		if FileAccess.file_exists(path):
+			_invalidate_saved_run("进行中的这一局存档已损坏，已忽略。")
+			push_warning("RunService: JSON parse error in active slot run save")
 		return false
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return false
-	var text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	if json.parse(text) != OK:
-		_invalidate_saved_run("进行中的这一局存档已损坏，已忽略。")
-		push_warning("RunService: JSON parse error in active slot run save")
-		return false
-	var data: Variant = json.get_data()
-	if not data is Dictionary:
-		_invalidate_saved_run("进行中的这一局存档已损坏，已忽略。")
-		return false
-	var dict := data as Dictionary
 	var compat := inspect_run_save_compat(dict)
 	if not compat.get("ok", false):
 		_invalidate_saved_run(str(compat.get("reason", "进行中的这一局已不兼容。")))
@@ -394,6 +607,13 @@ func inspect_run_save_compat(data: Dictionary) -> Dictionary:
 		"save_schema_version": save_schema_version,
 		"ruleset_version": ruleset_version,
 	}
+
+
+func _legacy_room_id(room_id: String) -> String:
+	var idx := room_id.rfind(":")
+	if idx >= 0:
+		return room_id.substr(idx + 1)
+	return room_id
 
 
 func _invalidate_saved_run(reason: String) -> void:

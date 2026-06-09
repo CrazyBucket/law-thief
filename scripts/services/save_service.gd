@@ -39,6 +39,56 @@ func slot_file_path(relative_path: String, slot_id: int = -1) -> String:
 	return "%s/%s" % [get_slot_dir(slot_id), normalized]
 
 
+func read_json_file(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return {}
+	var data: Variant = json.get_data()
+	if data is Dictionary:
+		return (data as Dictionary).duplicate(true)
+	return {}
+
+
+func write_json_atomic(path: String, payload: Dictionary) -> bool:
+	var global_path := ProjectSettings.globalize_path(path)
+	var dir_path := global_path.get_base_dir()
+	DirAccess.make_dir_recursive_absolute(dir_path)
+	var temp_path := "%s.tmp" % global_path
+	var backup_path := "%s.bak" % global_path
+	var json_str := JSON.stringify(payload, "\t")
+	var file := FileAccess.open(temp_path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(json_str)
+	file.close()
+	var verify := read_json_file(temp_path)
+	if verify.is_empty():
+		DirAccess.remove_absolute(temp_path)
+		return false
+	if FileAccess.file_exists(global_path):
+		if FileAccess.file_exists(backup_path):
+			DirAccess.remove_absolute(backup_path)
+		var rename_backup := DirAccess.rename_absolute(global_path, backup_path)
+		if rename_backup != OK:
+			DirAccess.remove_absolute(temp_path)
+			return false
+	var rename_final := DirAccess.rename_absolute(temp_path, global_path)
+	if rename_final != OK:
+		if FileAccess.file_exists(temp_path):
+			DirAccess.remove_absolute(temp_path)
+		if FileAccess.file_exists(backup_path) and not FileAccess.file_exists(global_path):
+			DirAccess.rename_absolute(backup_path, global_path)
+		return false
+	return true
+
+
 func set_active_slot(slot_id: int) -> void:
 	_ensure_bootstrap()
 	var resolved_slot_id := _sanitize_slot_id(slot_id)
@@ -107,18 +157,9 @@ func _load_manager() -> void:
 	if not FileAccess.file_exists(MANAGER_PATH):
 		_save_manager()
 		return
-	var file := FileAccess.open(MANAGER_PATH, FileAccess.READ)
-	if file == null:
+	var dict := read_json_file(MANAGER_PATH)
+	if dict.is_empty():
 		return
-	var text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	if json.parse(text) != OK:
-		return
-	var data: Variant = json.get_data()
-	if not data is Dictionary:
-		return
-	var dict := data as Dictionary
 	_active_slot_id = _sanitize_slot_id(int(dict.get("active_slot_id", DEFAULT_SLOT_ID)))
 	var raw_meta: Variant = dict.get("slot_meta", {})
 	if raw_meta is Dictionary:
@@ -130,11 +171,7 @@ func _save_manager() -> void:
 		"active_slot_id": _active_slot_id,
 		"slot_meta": _slot_meta,
 	}
-	var file := FileAccess.open(MANAGER_PATH, FileAccess.WRITE)
-	if file == null:
-		return
-	file.store_string(JSON.stringify(payload, "\t"))
-	file.close()
+	write_json_atomic(MANAGER_PATH, payload)
 
 
 func _reload_slot_services() -> void:
@@ -179,7 +216,7 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 		progress_payload = run_data.get("progress", {})
 	var wins := 0
 	for record in records:
-		if record is Dictionary and str(record.get("result", "")) == "win":
+		if record is Dictionary and str(record.get("type", "encounter")) == "run" and str(record.get("result", "")) == "win":
 			wins += 1
 	var seen_relics := 0
 	for flag in flags:
@@ -228,20 +265,7 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 
 
 func _read_json_file(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path):
-		return {}
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return {}
-	var text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	if json.parse(text) != OK:
-		return {}
-	var data: Variant = json.get_data()
-	if data is Dictionary:
-		return (data as Dictionary).duplicate(true)
-	return {}
+	return read_json_file(path)
 
 
 func _format_timestamp(timestamp: int) -> String:

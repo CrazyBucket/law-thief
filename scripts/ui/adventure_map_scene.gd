@@ -92,6 +92,16 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 		"[color=#c8ccd8]坐标：[/color] (%d, %d)" % [cell.x, cell.y],
 		"[color=#c8ccd8]状态：[/color] %s" % ("[color=#8fd18a]已结算[/color]" if resolved else "[color=#f2d46a]未结算[/color]"),
 	])
+	var event_id := str(node.properties.get("event_id", ""))
+	if not event_id.is_empty():
+		lines.append("[color=#c8ccd8]事件：[/color] %s" % event_id)
+	var active_rules: Array = AdventureRuleRegistry.get_active_rule_display()
+	if not active_rules.is_empty():
+		var rule_names: Array[String] = []
+		for rule in active_rules:
+			if rule is Dictionary:
+				rule_names.append(str(rule.get("name", rule.get("rule_id", ""))))
+		lines.append("[color=#c8ccd8]全局规则：[/color] %s" % " / ".join(rule_names))
 	if is_current:
 		lines.append("[color=#f2d46a]当前位置[/color]")
 	elif reachable:
@@ -121,11 +131,12 @@ func _exit_tree() -> void:
 func _build_run_summary_text() -> String:
 	var snapshot := RunService.get_player_run_snapshot()
 	if snapshot.is_empty():
-		return "HP --/--  ·  遗物 0  ·  手持 无"
+		return "金币 0  ·  HP --/--  ·  遗物 0  ·  手持 无"
 	var carried_gem_name := str(snapshot.get("carried_gem_name", ""))
 	if carried_gem_name.is_empty():
 		carried_gem_name = "无"
-	return "%s  ·  HP %d/%d  ·  遗物 %d  ·  手持 %s" % [
+	return "金币 %d  ·  %s  ·  HP %d/%d  ·  遗物 %d  ·  手持 %s" % [
+		RunService.get_balance("gold"),
 		AdventureService.get_chapter_label(),
 		int(snapshot.get("hp", 0)),
 		int(snapshot.get("max_hp", 0)),

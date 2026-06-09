@@ -5,6 +5,10 @@ var pending_room_id: String = ""
 var adventure_return: bool = false
 var pending_battle_mode: String = "normal"
 
+const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
+const ROOM_SCENE := "res://scenes/adventure/room_placeholder.tscn"
+const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
+
 
 func start_battle(encounter_id: String) -> void:
 	pending_encounter_id = encounter_id
@@ -43,3 +47,19 @@ func reset_session_state() -> void:
 	pending_room_id = ""
 	adventure_return = false
 	pending_battle_mode = "normal"
+
+
+func continue_scene_for_active_run() -> String:
+	var phase := RunService.get_run_phase()
+	var pending: Dictionary = RunService.get_pending_decision()
+	match phase:
+		"ROOM":
+			return ROOM_SCENE
+		"BATTLE_REWARD":
+			pending_room_id = str(pending.get("room_id", ""))
+			pending_encounter_id = str(pending.get("encounter_id", pending_encounter_id))
+			adventure_return = true
+			AdventureService.pending_room_type = str(pending.get("room_type", AdventureService.pending_room_type))
+			return BATTLE_SCENE
+		_:
+			return MAP_SCENE

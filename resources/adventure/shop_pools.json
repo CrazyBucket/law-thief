@@ -1,0 +1,8 @@
+{
+  "default": {
+    "gem_offer_count": 2,
+    "relic_offer_count": 1,
+    "gem_source": "shop",
+    "relic_source": "shop"
+  }
+}

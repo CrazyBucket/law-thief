@@ -6,6 +6,9 @@ func _initialize() -> void:
 
 
 func _run_test() -> void:
+	var run_service: Node = root.get_node("RunService")
+	if run_service != null:
+		run_service.end_run()
 	var controller := BattleController.new()
 	controller.start_encounter("tutorial_001", 12345)
 	var state := controller.state

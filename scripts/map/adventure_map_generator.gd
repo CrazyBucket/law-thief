@@ -78,6 +78,15 @@ func _populate_rooms() -> void:
 			fallback_count += 1
 		else:
 			node.room_type = _weighted_pick(candidates)
+		_assign_properties(node)
+
+
+func _assign_properties(node) -> void:
+	node.properties.clear()
+	if node.room_type == "EVENT":
+		var event_pool: Array[String] = ["event_debug_cache", "event_debug_relief"]
+		var idx: int = (node.grid_pos.x + node.grid_pos.y + node.layer) % event_pool.size()
+		node.properties["event_id"] = event_pool[idx]
 
 
 func _is_valid(node, type_id: String) -> bool:

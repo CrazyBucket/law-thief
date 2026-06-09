@@ -1,6 +1,5 @@
 extends Node
 
-const _AdventureMapGenerator := preload("res://scripts/map/adventure_map_generator.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _AdventureBoardGenerator := preload("res://scripts/map/adventure_board_generator.gd")
 const _MapNode := preload("res://scripts/map/map_node.gd")
@@ -106,71 +105,54 @@ func get_room_scene_path(room_type: String) -> String:
 
 
 func room_id_for_cell(cell: Vector2i) -> String:
-	return "%d_%d" % [cell.x, cell.y]
+	return "chapter_%d:%d_%d" % [get_current_chapter(), cell.x, cell.y]
 
 
 func current_room_id() -> String:
 	return room_id_for_cell(current_pos)
 
 
+func room_type_for_room_id(room_id: String) -> String:
+	var parts := room_id.split(":")
+	var coord_part := parts[-1] if not parts.is_empty() else room_id
+	var coord := coord_part.split("_")
+	if coord.size() != 2:
+		return pending_room_type
+	var cell := Vector2i(int(coord[0]), int(coord[1]))
+	var node = get_node_at(cell)
+	if node == null:
+		return pending_room_type
+	return str(node.room_type)
+
+
+func event_id_for_room(room_id: String) -> String:
+	var parts := room_id.split(":")
+	var coord_part := parts[-1] if not parts.is_empty() else room_id
+	var coord := coord_part.split("_")
+	if coord.size() != 2:
+		return ""
+	var cell := Vector2i(int(coord[0]), int(coord[1]))
+	var node = get_node_at(cell)
+	if node == null:
+		return ""
+	return str(node.properties.get("event_id", ""))
+
+
 func resolve_pending_room() -> Dictionary:
-	if not RunService.is_run_active():
-		return {}
 	var room_id := current_room_id()
-	var existing := RunService.get_resolved_room(room_id)
-	if not existing.is_empty():
-		return existing
-	var mark_resolved := true
-	var result := {
-		"room_id": room_id,
-		"room_type": pending_room_type,
-	}
-	match pending_room_type:
-		"REST_SITE":
-			var heal_result := RunService.heal_player_percent(0.2)
-			result["summary"] = "营地休整，恢复 %d 点生命，当前 %d/%d。" % [
-				int(heal_result.get("amount", 0)),
-				int(heal_result.get("after_hp", 0)),
-				int(heal_result.get("max_hp", 0)),
-			]
-		"EVENT":
-			RunService.get_or_roll_gem_offer(room_id, "normal_chest", 3)
-			var offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, "normal_chest", 1)
-			var relic_id := str(offer[0]) if not offer.is_empty() else ""
-			if relic_id == "relic_placeholder":
-				relic_id = ""
-			result["relic_id"] = relic_id
-			if not relic_id.is_empty():
-				RunService.acquire_relic(relic_id)
-				var relic_def: Dictionary = DataRegistry.get_relic_def(relic_id)
-				result["summary"] = "神秘房间改为直接获得遗物：%s。" % str(relic_def.get("name", relic_id))
-			else:
-				result["summary"] = "神秘房间没有可发放的遗物。"
-		"SHOP":
-			RunService.get_or_roll_gem_offer(room_id, "shop", 3)
-			result["summary"] = "商店节点先保留，占位等待后续接入商品与购买流程。"
-		"END":
-			var chapter := get_current_chapter()
-			if chapter < CHAPTER_COUNT:
-				var completed := chapter
-				_advance_to_next_chapter()
-				result["chapter_advanced"] = true
-				result["summary"] = "完成第 %d 关，进入第 %d 关。" % [completed, get_current_chapter()]
-				mark_resolved = false
-			else:
-				result["run_complete"] = true
-				result["summary"] = "三条线路全部打通，本局胜利。"
-		_:
-			result["summary"] = "房间已结算。"
-	if mark_resolved:
-		RunService.mark_room_resolved(room_id, result)
-	return result
+	var response := RoomFlowService.submit_room_command(room_id, {})
+	var result: Variant = response.get("result", {})
+	if result is Dictionary:
+		return (result as Dictionary).duplicate(true)
+	return {}
 
 
 func finish_room_and_return() -> void:
 	var room_id := current_room_id()
+	RoomFlowService.leave_room(room_id)
 	var resolved := RunService.get_resolved_room(room_id)
 	if bool(resolved.get("run_complete", false)):
+		RunService.complete_run("win")
 		RunService.end_run()
 		reset_local_state()
 		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
@@ -253,7 +235,7 @@ func _navigate_to_room(room_type: String) -> void:
 
 
 func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
-	var gen := _AdventureMapGenerator.new()
+	var gen := AdventureMapGenerator.new()
 	map_matrix = gen.generate(seed_value)
 	map_seed = seed_value
 	current_pos = target_pos
@@ -279,6 +261,7 @@ func _serialize_map_matrix() -> Array:
 				"room_type": node.room_type,
 				"parents": _vec_array_to_dicts(node.parents),
 				"children": _vec_array_to_dicts(node.children),
+				"properties": node.properties.duplicate(true),
 			})
 		columns.append(out_column)
 	return columns
@@ -298,6 +281,9 @@ func _deserialize_map_matrix(raw_columns: Array) -> Array:
 				node.room_type = str(dict.get("room_type", ""))
 				node.parents = _dicts_to_vec_array(dict.get("parents", []))
 				node.children = _dicts_to_vec_array(dict.get("children", []))
+				var raw_properties: Variant = dict.get("properties", {})
+				if raw_properties is Dictionary:
+					node.properties = (raw_properties as Dictionary).duplicate(true)
 				out_column.append(node)
 		columns.append(out_column)
 	return columns
@@ -339,7 +325,7 @@ func _begin_chapter_map(chapter: int, base_seed: int) -> void:
 		run.current_chapter = maxi(1, chapter)
 		base_seed = run.map_seed
 	var chapter_seed := _chapter_map_seed(base_seed, chapter)
-	var gen := _AdventureMapGenerator.new()
+	var gen := AdventureMapGenerator.new()
 	map_matrix = gen.generate(chapter_seed)
 	map_seed = chapter_seed
 	current_pos = Vector2i.ZERO
@@ -356,6 +342,7 @@ func _advance_to_next_chapter() -> void:
 		return
 	var next_chapter := mini(CHAPTER_COUNT, run.current_chapter + 1)
 	run.resolved_rooms.clear()
+	run.room_states.clear()
 	run.relic_offer_snapshots.clear()
 	_begin_chapter_map(next_chapter, run.map_seed)
 	RunService.save_run()

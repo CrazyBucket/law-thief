@@ -1,0 +1,10 @@
+{
+  "map_rule_gold_gain_10": {
+    "name": "金币增益",
+    "desc": "后续获得的金币 +10%。",
+    "default_scope": "run",
+    "effects": [
+      {"modifier": "gold_gain_mult", "value": 1.1}
+    ]
+  }
+}

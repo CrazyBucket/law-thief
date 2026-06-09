@@ -11,7 +11,11 @@ func _initialize() -> void:
 
 func _run() -> void:
 	print("=== Chaos Launcher Test ===")
+	var adventure_service: Node = root.get_node("AdventureService")
+	var run_service: Node = root.get_node("RunService")
+	adventure_service.start_new_run(20260614)
 	_test_chaos_on_empty_aim_with_explosion()
+	run_service.end_run()
 	if _failed:
 		push_error("CHAOS_LAUNCHER_TEST_FAIL")
 		quit(1)

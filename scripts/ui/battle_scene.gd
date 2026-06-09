@@ -218,6 +218,7 @@ func _ready() -> void:
 	})
 	_apply_animation_speed()
 	_start_battle(GameService.pending_encounter_id)
+	call_deferred("_restore_battle_reward_if_needed")
 
 
 func _apply_ui_theme() -> void:
@@ -962,6 +963,7 @@ func _apply_battle_end(result: String) -> void:
 	_phase_badge.text = "结束 · 第%d回合" % end_turn
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 	if result == "win" and RunService.is_run_active():
+		_grant_combat_gold_once()
 		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
 			AdventureService.pending_room_type.to_upper(), "normal_chest"
 		))
@@ -981,6 +983,27 @@ func _apply_battle_end(result: String) -> void:
 	_finish_battle_and_navigate(result)
 
 
+func _grant_combat_gold_once() -> void:
+	if not GameService.adventure_return:
+		return
+	var room_id := GameService.pending_room_id
+	if room_id.is_empty():
+		return
+	var transaction_id := "%s:battle_gold" % room_id
+	var reward := EconomyService.get_combat_reward(AdventureService.pending_room_type)
+	var grant_result := EconomyService.grant("gold", reward, "combat_reward", {
+		"transaction_id": transaction_id,
+		"room_id": room_id,
+		"room_type": AdventureService.pending_room_type,
+	})
+	if not bool(grant_result.get("ok", false)):
+		return
+	var entry: Dictionary = grant_result.get("entry", {})
+	if entry.is_empty():
+		return
+	_message_label.text = "战斗结束 — 胜利 · %s" % EconomyService.format_entry(entry)
+
+
 func _placeholder_relic_offer() -> Array[String]:
 	var offer: Array[String] = []
 	offer.append("relic_placeholder")
@@ -988,6 +1011,7 @@ func _placeholder_relic_offer() -> Array[String]:
 
 
 func _show_gem_reward(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> void:
+	_mark_battle_reward_pending("gem", battle_result, not relic_offer.is_empty())
 	var overlay := _build_gem_overlay(gem_offer, relic_offer, battle_result)
 	_relic_reward_overlay = overlay
 	add_child(overlay)
@@ -1104,7 +1128,12 @@ func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[S
 
 func _on_gem_chosen(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
 	if not gem_id.is_empty():
-		RunService.acquire_gem(gem_id)
+		var acquire_result := RunService.acquire_gem(gem_id)
+		if not bool(acquire_result.get("ok", false)):
+			var carried_gem_id := str(acquire_result.get("carried_gem_id", ""))
+			var carried_name := DataRegistry.get_gem_display_name(carried_gem_id) if not carried_gem_id.is_empty() else "已有手持宝石"
+			_message_label.text = "无法领取：当前手持 %s，请先跳过或在后续流程中处理。" % carried_name
+			return
 	if canvas != null and is_instance_valid(canvas):
 		canvas.queue_free()
 	_relic_reward_overlay = null
@@ -1114,10 +1143,13 @@ func _on_gem_chosen(gem_id: String, battle_result: String, relic_offer: Array[St
 	if has_relics:
 		_show_relic_reward(relic_offer, battle_result)
 	else:
+		RunService.clear_pending_decision()
+		RunService.set_run_phase("MAP")
 		_finish_battle_and_navigate(battle_result)
 
 
 func _show_relic_reward(offer: Array[String], battle_result: String) -> void:
+	_mark_battle_reward_pending("relic", battle_result, false)
 	var overlay := _build_relic_overlay(offer, battle_result)
 	_relic_reward_overlay = overlay
 	add_child(overlay)
@@ -1257,6 +1289,8 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 	if _relic_reward_overlay != null:
 		_relic_reward_overlay.queue_free()
 		_relic_reward_overlay = null
+	RunService.clear_pending_decision()
+	RunService.set_run_phase("MAP")
 	_finish_battle_and_navigate(battle_result)
 
 
@@ -1269,6 +1303,7 @@ func _finish_battle_and_navigate(result: String) -> void:
 	if result == "win" and _controller.state != null:
 		RunService.capture_player_battle_state(_controller.state)
 	elif result != "win" and RunService.is_run_active():
+		RunService.complete_run("loss")
 		RunService.end_run()
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
 	if GameService.adventure_return:
@@ -1280,6 +1315,49 @@ func _finish_battle_and_navigate(result: String) -> void:
 			get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+
+
+func _mark_battle_reward_pending(reward_kind: String, battle_result: String, has_followup_relic: bool) -> void:
+	if not RunService.is_run_active():
+		return
+	RunService.set_run_phase("BATTLE_REWARD")
+	RunService.set_pending_decision({
+		"type": "battle_reward",
+		"room_id": GameService.pending_room_id,
+		"room_type": AdventureService.pending_room_type,
+		"encounter_id": _encounter_id,
+		"battle_result": battle_result,
+		"reward_kind": reward_kind,
+		"has_followup_relic": has_followup_relic,
+	})
+
+
+func _restore_battle_reward_if_needed() -> void:
+	if not RunService.is_run_active():
+		return
+	if RunService.get_run_phase() != "BATTLE_REWARD":
+		return
+	var pending := RunService.get_pending_decision()
+	if str(pending.get("type", "")) != "battle_reward":
+		return
+	var room_id := str(pending.get("room_id", GameService.pending_room_id))
+	var battle_result := str(pending.get("battle_result", "win"))
+	var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
+		AdventureService.pending_room_type.to_upper(), "normal_chest"
+	))
+	var gem_offer: Array[String] = RunService.get_or_roll_gem_offer(room_id, source, 3)
+	var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
+	match str(pending.get("reward_kind", "")):
+		"gem":
+			if _relic_reward_overlay == null:
+				var overlay := _build_gem_overlay(gem_offer, relic_offer, battle_result)
+				_relic_reward_overlay = overlay
+				add_child(overlay)
+		"relic":
+			if _relic_reward_overlay == null:
+				var overlay := _build_relic_overlay(relic_offer, battle_result)
+				_relic_reward_overlay = overlay
+				add_child(overlay)
 
 
 func _on_toggle_panel() -> void:
