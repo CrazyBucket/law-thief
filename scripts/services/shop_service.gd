@@ -1,6 +1,7 @@
 extends Node
 
 const CONFIG_PATH := "res://resources/adventure/shop_pools.json"
+const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
 
 var _config: Dictionary = {}
 
@@ -190,6 +191,7 @@ func _display_name(item_type: String, item_id: String) -> String:
 
 func _load_config() -> void:
 	_config = _load_json(CONFIG_PATH)
+	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_shop_pools(_config))
 
 
 func _load_json(path: String) -> Dictionary:

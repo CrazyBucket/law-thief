@@ -1,6 +1,7 @@
 extends Node
 
 const CONFIG_PATH := "res://resources/adventure/economy_config.json"
+const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
 
 var _config: Dictionary = {}
 
@@ -135,6 +136,7 @@ func format_entry(entry: Dictionary) -> String:
 
 func _load_config() -> void:
 	_config = _load_json(CONFIG_PATH)
+	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_economy_config(_config))
 
 
 func _load_json(path: String) -> Dictionary:
@@ -157,6 +159,14 @@ func _build_trace(resource_id: String, base_amount: int, reason: String, ctx: Di
 	var final_amount := base_amount
 	if resource_id == "gold" and reason.find("reward") >= 0:
 		var query := AdventureRuleRegistry.query_modifier("gold_gain_mult", base_amount, ctx)
+		final_amount = roundi(float(query.get("final_value", base_amount)))
+		var raw_modifiers: Variant = query.get("modifiers", [])
+		if raw_modifiers is Array:
+			for raw_modifier in raw_modifiers:
+				if raw_modifier is Dictionary:
+					modifiers.append((raw_modifier as Dictionary).duplicate(true))
+	elif resource_id == "gold" and reason == "shop_price":
+		var query := AdventureRuleRegistry.query_modifier("shop_price_mult", base_amount, ctx)
 		final_amount = roundi(float(query.get("final_value", base_amount)))
 		var raw_modifiers: Variant = query.get("modifiers", [])
 		if raw_modifiers is Array:

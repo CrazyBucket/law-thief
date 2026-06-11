@@ -6,6 +6,7 @@
       {
         "id": "take_gold",
         "label": "拿走金币",
+        "conditions": [],
         "effects": [
           {"action": "grant_resource", "resource_id": "gold", "amount": 10}
         ]
@@ -13,6 +14,7 @@
       {
         "id": "install_rule",
         "label": "安装增益脚本",
+        "conditions": [],
         "effects": [
           {"action": "add_adventure_rule", "rule_id": "map_rule_gold_gain_10"}
         ]
@@ -26,6 +28,7 @@
       {
         "id": "take_gold",
         "label": "拿 8 金币",
+        "conditions": [],
         "effects": [
           {"action": "grant_resource", "resource_id": "gold", "amount": 8}
         ]
@@ -33,9 +36,33 @@
       {
         "id": "heal",
         "label": "恢复 4 点生命",
+        "conditions": [],
         "effects": [
           {"action": "heal_player", "amount": 4}
         ]
+      }
+    ]
+  },
+  "event_debug_toll": {
+    "title": "收费闸机",
+    "body": "一台还在运转的旧闸机要求你缴纳 5 金币，否则什么都不给。",
+    "options": [
+      {
+        "id": "pay_for_heal",
+        "label": "支付 5 金币并恢复 4 点生命",
+        "conditions": [
+          {"type": "resource_gte", "resource_id": "gold", "amount": 5}
+        ],
+        "effects": [
+          {"action": "spend_resource", "resource_id": "gold", "amount": 5},
+          {"action": "heal_player", "amount": 4}
+        ]
+      },
+      {
+        "id": "leave",
+        "label": "转身离开",
+        "conditions": [],
+        "effects": []
       }
     ]
   }

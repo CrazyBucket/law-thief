@@ -22,6 +22,386 @@
       "expect": {"damage": 10, "target_status": "burning", "fire_cells": 3}
     },
     {
+      "id": "explosion/red/1_cross_only",
+      "covers": ["gem_explosion:red:1"],
+      "gems": ["gem_explosion"],
+      "extra_units": [
+        {"uid": "cross_target", "pos": [4, 3]},
+        {"uid": "diag_target", "pos": [4, 2]}
+      ],
+      "expect": {
+        "damage": 12,
+        "unit_damages": {"contract_target": 12, "cross_target": 12, "diag_target": 0},
+        "event_matches": [{"type": "explode", "pattern": "cross"}]
+      }
+    },
+    {
+      "id": "explosion/red/2_square_hits_diagonal",
+      "covers": ["gem_explosion:red:2"],
+      "gems": ["gem_explosion", "gem_explosion"],
+      "extra_units": [
+        {"uid": "cross_target", "pos": [4, 3]},
+        {"uid": "diag_target", "pos": [4, 2]}
+      ],
+      "expect": {
+        "damage": 12,
+        "unit_damages": {"contract_target": 12, "cross_target": 12, "diag_target": 12},
+        "event_matches": [{"type": "explode", "pattern": "square"}]
+      }
+    },
+    {
+      "id": "explosion/red/3_square_double_damage",
+      "covers": ["gem_explosion:red:3"],
+      "gems": ["gem_explosion", "gem_explosion", "gem_explosion"],
+      "extra_units": [
+        {"uid": "cross_target", "pos": [4, 3]},
+        {"uid": "diag_target", "pos": [4, 2]}
+      ],
+      "expect": {
+        "damage": 24,
+        "unit_damages": {"contract_target": 24, "cross_target": 24, "diag_target": 24},
+        "event_matches": [{"type": "explode", "pattern": "square"}]
+      }
+    },
+    {
+      "id": "poison/red/1_single_fog",
+      "covers": ["gem_poison:red:1"],
+      "gems": ["gem_poison"],
+      "expect": {
+        "damage": 10,
+        "poison_fog_cells": 1,
+        "unit_statuses": {
+          "contract_target": {
+            "poison": {"stacks": 2}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/red/2_cross_fog",
+      "covers": ["gem_poison:red:2"],
+      "gems": ["gem_poison", "gem_poison"],
+      "expect": {
+        "damage": 10,
+        "poison_fog_cells": 5,
+        "unit_statuses": {
+          "contract_target": {
+            "poison": {"stacks": 2}
+          }
+        },
+        "event_matches": [{"type": "poison_burst", "pattern": "cross"}]
+      }
+    },
+    {
+      "id": "poison/red/3_longer_duration",
+      "covers": ["gem_poison:red:3"],
+      "gems": ["gem_poison", "gem_poison", "gem_poison"],
+      "expect": {
+        "damage": 10,
+        "poison_fog_cells": 5,
+        "unit_statuses": {
+          "contract_target": {
+            "poison": {"stacks": 2}
+          }
+        },
+        "tile_modifier_durations": [
+          {"pos": [5, 3], "modifier": "poison_fog", "duration": 3}
+        ]
+      }
+    },
+    {
+      "id": "gravity/red/1_pull_one",
+      "covers": ["gem_gravity:red:1"],
+      "gems": ["gem_gravity"],
+      "target_pos": [6, 3],
+      "expect": {
+        "damage": 10,
+        "target_pos": [5, 3],
+        "event_counts": {"gem_flash": 1, "move_step": 1}
+      }
+    },
+    {
+      "id": "gravity/red/2_pull_two",
+      "covers": ["gem_gravity:red:2"],
+      "gems": ["gem_gravity", "gem_gravity"],
+      "target_pos": [6, 3],
+      "expect": {
+        "damage": 10,
+        "target_pos": [4, 3],
+        "event_counts": {"gem_flash": 1, "move_step": 2}
+      }
+    },
+    {
+      "id": "gravity/red/3_pull_three",
+      "covers": ["gem_gravity:red:3"],
+      "gems": ["gem_gravity", "gem_gravity", "gem_gravity"],
+      "target_pos": [6, 3],
+      "expect": {
+        "damage": 10,
+        "target_pos": [3, 3],
+        "event_counts": {"gem_flash": 1, "move_step": 3}
+      }
+    },
+    {
+      "id": "conductive/red/1_single_bounce",
+      "covers": ["gem_conductive:red:1"],
+      "gems": ["gem_conductive"],
+      "player_pos": [0, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "arc_near", "pos": [5, 1]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "arc_near": 2},
+        "event_counts": {"arc": 1}
+      }
+    },
+    {
+      "id": "conductive/red/2_extra_hop",
+      "covers": ["gem_conductive:red:2"],
+      "gems": ["gem_conductive", "gem_conductive"],
+      "player_pos": [0, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "arc_near", "pos": [5, 1]},
+        {"uid": "arc_chain", "pos": [7, 1]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "arc_near": 2, "arc_chain": 2},
+        "event_counts": {"arc": 2}
+      }
+    },
+    {
+      "id": "conductive/red/3_extra_range",
+      "covers": ["gem_conductive:red:3"],
+      "gems": ["gem_conductive", "gem_conductive", "gem_conductive"],
+      "player_pos": [0, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "arc_far", "pos": [6, 1]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "arc_far": 2},
+        "event_counts": {"arc": 1}
+      }
+    },
+    {
+      "id": "ice/red/1_apply_slow",
+      "covers": ["gem_ice:red:1"],
+      "gems": ["gem_ice"],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "slowed": {"stacks": 1}
+          }
+        },
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "ice/red/2_double_slow",
+      "covers": ["gem_ice:red:2"],
+      "gems": ["gem_ice", "gem_ice"],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "slowed": {"stacks": 2}
+          }
+        },
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "ice/red/3_freeze_slowed_target",
+      "covers": ["gem_ice:red:3"],
+      "gems": ["gem_ice", "gem_ice", "gem_ice"],
+      "setup": {
+        "target_statuses": [
+          {"status": "slowed", "stacks": 1}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "slowed": {"stacks": 3},
+            "paralyzed": {"duration": 1}
+          }
+        },
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "split/red/1_three_shots",
+      "covers": ["gem_split:red:1"],
+      "gems": ["gem_split"],
+      "player_stats": {"base_attack": 10},
+      "target_pos": [4, 3],
+      "extra_units": [
+        {"uid": "wing_up", "pos": [3, 2], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_down", "pos": [3, 4], "stats": {"hp": 20, "max_hp": 20}}
+      ],
+      "expect": {
+        "damage": 7,
+        "unit_damages": {"contract_target": 7, "wing_up": 7, "wing_down": 7}
+      }
+    },
+    {
+      "id": "split/red/2_four_shots",
+      "covers": ["gem_split:red:2"],
+      "gems": ["gem_split", "gem_split"],
+      "player_stats": {"base_attack": 10},
+      "target_pos": [4, 3],
+      "extra_units": [
+        {"uid": "wing_up", "pos": [3, 2], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_down", "pos": [3, 4], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_back", "pos": [3, 3], "stats": {"hp": 20, "max_hp": 20}}
+      ],
+      "expect": {
+        "damage": 5,
+        "unit_damages": {"contract_target": 5, "wing_up": 5, "wing_down": 5, "wing_back": 5}
+      }
+    },
+    {
+      "id": "split/red/3_five_shots",
+      "covers": ["gem_split:red:3"],
+      "gems": ["gem_split", "gem_split", "gem_split"],
+      "player_stats": {"base_attack": 10},
+      "target_pos": [4, 3],
+      "extra_units": [
+        {"uid": "wing_up", "pos": [3, 2], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_down", "pos": [3, 4], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_back", "pos": [3, 3], "stats": {"hp": 20, "max_hp": 20}},
+        {"uid": "wing_forward", "pos": [5, 3], "stats": {"hp": 20, "max_hp": 20}}
+      ],
+      "expect": {
+        "damage": 3,
+        "unit_damages": {
+          "contract_target": 3,
+          "wing_up": 3,
+          "wing_down": 3,
+          "wing_back": 3,
+          "wing_forward": 3
+        }
+      }
+    },
+    {
+      "id": "light/red/1_half_damage_line",
+      "covers": ["gem_light:red:1"],
+      "gems": ["gem_light"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "beam_second", "pos": [4, 1]}
+      ],
+      "expect": {
+        "damage": 5,
+        "unit_damages": {"contract_target": 5, "beam_second": 5},
+        "unit_statuses": {
+          "contract_target": {
+            "light_exposed": {"stacks": 1}
+          },
+          "beam_second": {
+            "light_exposed": {"stacks": 1}
+          }
+        },
+        "event_matches": [{"type": "light_beam", "width": 1.0}]
+      }
+    },
+    {
+      "id": "light/red/2_three_quarter_damage",
+      "covers": ["gem_light:red:2"],
+      "gems": ["gem_light", "gem_light"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "beam_second", "pos": [4, 1]}
+      ],
+      "expect": {
+        "damage": 7,
+        "unit_damages": {"contract_target": 7, "beam_second": 7},
+        "unit_statuses": {
+          "contract_target": {
+            "light_exposed": {"stacks": 1}
+          },
+          "beam_second": {
+            "light_exposed": {"stacks": 1}
+          }
+        },
+        "event_matches": [{"type": "light_beam", "width": 1.65}]
+      }
+    },
+    {
+      "id": "light/red/3_full_damage_pierces_wall",
+      "covers": ["gem_light:red:3"],
+      "gems": ["gem_light", "gem_light", "gem_light"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [5, 1],
+      "extra_units": [
+        {"uid": "beam_second", "pos": [6, 1]}
+      ],
+      "entities": [
+        {"uid": "beam_blocker", "entity_id": "entity_prop", "pos": [4, 1]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "beam_second": 10},
+        "unit_statuses": {
+          "contract_target": {
+            "light_exposed": {"stacks": 2}
+          },
+          "beam_second": {
+            "light_exposed": {"stacks": 2}
+          }
+        },
+        "event_matches": [{"type": "light_beam", "width": 2.35}]
+      }
+    },
+    {
+      "id": "echo/red/1_replays_fire",
+      "covers": ["gem_echo:red:1"],
+      "gems": ["gem_echo", "gem_fire"],
+      "expect": {
+        "damage": 10,
+        "target_status": "burning",
+        "fire_cells": 1,
+        "event_min_counts": {"gem_flash": 1, "fire_burst": 1}
+      }
+    },
+    {
+      "id": "echo/red/2_replays_two_tags",
+      "covers": ["gem_echo:red:2"],
+      "gems": ["gem_echo", "gem_echo", "gem_fire", "gem_gravity"],
+      "target_pos": [6, 3],
+      "expect": {
+        "damage": 10,
+        "target_status": "burning",
+        "target_pos": [5, 3],
+        "fire_cells": 1,
+        "event_min_counts": {"gem_flash": 1, "fire_burst": 1, "move_step": 1}
+      }
+    },
+    {
+      "id": "echo/red/3_followup_half_hit",
+      "covers": ["gem_echo:red:3"],
+      "gems": ["gem_echo", "gem_echo", "gem_echo", "gem_fire"],
+      "player_stats": {"base_attack": 10},
+      "expect": {
+        "damage": 15,
+        "target_status": "burning",
+        "fire_cells": 1,
+        "event_min_counts": {"gem_flash": 2, "fire_burst": 1}
+      }
+    },
+    {
       "id": "combo/explosion_fire/red",
       "covers": ["combo:explosion_fire:red"],
       "gems": ["gem_explosion", "gem_fire"],

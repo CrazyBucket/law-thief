@@ -25,6 +25,7 @@ func _run_tests() -> void:
 	assert(str(event_view.get("event_id", "")) == "event_debug_cache", "event view should load configured event")
 	var options: Array = event_view.get("options", [])
 	assert(options.size() == 2, "debug event should expose two options")
+	assert(bool((options[0] as Dictionary).get("enabled", false)), "unconditional option should be enabled")
 	var choose_rule: Dictionary = room_flow_service.submit_room_command(room_id, {
 		"action": "choose_option",
 		"option_id": "install_rule",
@@ -49,6 +50,35 @@ func _run_tests() -> void:
 	})
 	assert(choose_gold.get("ok", false), "gold option should succeed")
 	assert(economy_service.get_balance("gold") == 8, "gold option should grant direct gold")
+
+	adventure_service.start_new_run(20260614)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	adventure_service.pending_room_label = "事件"
+	node = adventure_service.get_current_node()
+	node.room_type = "EVENT"
+	node.properties["event_id"] = "event_debug_toll"
+	room_id = str(adventure_service.current_room_id())
+	view = room_flow_service.enter_room(room_id)
+	event_view = view.get("payload", {}).get("event", {})
+	options = event_view.get("options", [])
+	assert(options.size() == 2, "toll event should expose two options")
+	assert(not bool((options[0] as Dictionary).get("enabled", true)), "pay option should be disabled without gold")
+	assert(str((options[0] as Dictionary).get("disabled_reason", "")) != "", "disabled option should explain reason")
+	var blocked: Dictionary = room_flow_service.submit_room_command(room_id, {
+		"action": "choose_option",
+		"option_id": "pay_for_heal",
+	})
+	assert(not blocked.get("ok", true), "blocked option should fail")
+	economy_service.grant("gold", 5, "test_reward", {"transaction_id": "event_toll_seed"})
+	var refreshed: Dictionary = root.get_node("EventService").get_event_view(room_id)
+	var refreshed_options: Array = refreshed.get("options", [])
+	assert(bool((refreshed_options[0] as Dictionary).get("enabled", false)), "pay option should enable after getting gold")
+	var pay: Dictionary = room_flow_service.submit_room_command(room_id, {
+		"action": "choose_option",
+		"option_id": "pay_for_heal",
+	})
+	assert(pay.get("ok", false), "pay option should succeed after meeting condition")
 	run_service.end_run()
 	print("EVENT_SERVICE_TEST_PASS")
 	quit()

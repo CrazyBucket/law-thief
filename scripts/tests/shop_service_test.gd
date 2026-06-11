@@ -20,12 +20,14 @@ func _run_tests() -> void:
 	assert(node != null, "current node should exist")
 	node.room_type = "SHOP"
 	economy_service.grant("gold", 100, "test_reward", {"transaction_id": "shop_seed_gold"})
+	root.get_node("AdventureRuleRegistry").add_rule("map_rule_shop_discount_20", "run", "test", {"room_id": "chapter_1:0_0"})
 	var room_id: String = str(adventure_service.current_room_id())
 	var room_view: Dictionary = room_flow_service.enter_room(room_id)
 	var shop_view: Dictionary = room_view.get("payload", {}).get("shop", {})
 	var offers: Array = shop_view.get("offers", [])
 	assert(offers.size() >= 1, "shop should offer at least one item")
 	var offer: Dictionary = offers[0]
+	assert(int(offer.get("final_price", 0)) < int(offer.get("base_price", 0)), "shop price rule should reduce final price")
 	var offer_id: String = str(offer.get("offer_id", ""))
 	var before_gold: int = int(economy_service.get_balance("gold"))
 	var purchase: Dictionary = room_flow_service.submit_room_command(room_id, {

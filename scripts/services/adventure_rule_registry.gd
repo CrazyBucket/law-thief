@@ -1,6 +1,7 @@
 extends Node
 
 const CONFIG_PATH := "res://resources/adventure/map_rule_defs.json"
+const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
 
 var _defs: Dictionary = {}
 
@@ -35,6 +36,14 @@ func validate_rule(rule: Dictionary) -> Array[String]:
 		return errors
 	if get_rule_def(rule_id).is_empty():
 		errors.append("unknown_rule_id")
+		return errors
+	var def := get_rule_def(rule_id)
+	for raw_effect in def.get("effects", []):
+		if not raw_effect is Dictionary:
+			continue
+		var modifier := str((raw_effect as Dictionary).get("modifier", ""))
+		if modifier not in _Validator.MODIFIER_IDS:
+			errors.append("unknown_modifier")
 	return errors
 
 
@@ -42,6 +51,9 @@ func add_rule(rule_id: String, scope: String = "run", source: String = "", ctx: 
 	var def := get_rule_def(rule_id)
 	if def.is_empty():
 		return {"ok": false, "error": "unknown_rule_id"}
+	for raw_effect in def.get("effects", []):
+		if raw_effect is Dictionary and str((raw_effect as Dictionary).get("modifier", "")) not in _Validator.MODIFIER_IDS:
+			return {"ok": false, "error": "unknown_modifier"}
 	var instance_id := "%s:%s:%s" % [scope, rule_id, str(ctx.get("room_id", source))]
 	for raw_rule in RunService.get_adventure_rules():
 		if raw_rule is Dictionary and str(raw_rule.get("instance_id", "")) == instance_id:
@@ -58,6 +70,13 @@ func add_rule(rule_id: String, scope: String = "run", source: String = "", ctx: 
 	}
 	RunService.append_adventure_rule(rule)
 	return {"ok": true, "rule": rule}
+
+
+func remove_rule(rule_id: String, ctx: Dictionary = {}) -> Dictionary:
+	var scope_filter := str(ctx.get("scope", ""))
+	if RunService.remove_adventure_rule(rule_id, scope_filter):
+		return {"ok": true}
+	return {"ok": false, "error": "rule_not_found"}
 
 
 func get_active_rules(ctx: Dictionary = {}) -> Array[Dictionary]:
@@ -100,6 +119,20 @@ func query_modifier(modifier_id: String, base_value: Variant, ctx: Dictionary = 
 						"operation": "multiply",
 						"value": value,
 					})
+				"shop_price_mult":
+					final_value *= value
+					modifiers.append({
+						"id": str(rule.get("rule_id", "")),
+						"operation": "multiply",
+						"value": value,
+					})
+				"rest_heal_mult":
+					final_value *= value
+					modifiers.append({
+						"id": str(rule.get("rule_id", "")),
+						"operation": "multiply",
+						"value": value,
+					})
 	return {
 		"base_value": base_value,
 		"final_value": final_value,
@@ -118,6 +151,7 @@ func get_active_rule_display(ctx: Dictionary = {}) -> Array[Dictionary]:
 
 func _load_defs() -> void:
 	_defs = _load_json(CONFIG_PATH)
+	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_map_rule_defs(_defs))
 
 
 func _load_json(path: String) -> Dictionary:

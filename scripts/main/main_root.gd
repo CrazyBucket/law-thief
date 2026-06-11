@@ -599,6 +599,8 @@ func _draw_particles() -> void:
 
 
 func _create_meta_console() -> void:
+	if not OS.is_debug_build():
+		return
 	_meta_cli = MetaConsoleCli.new()
 	_console_layer = CanvasLayer.new()
 	_console_layer.layer = 64

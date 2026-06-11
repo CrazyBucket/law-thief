@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GODOT="${GODOT:-/opt/homebrew/bin/godot}"
+PRESET="${1:-Linux}"
+OUT_DIR="$ROOT/build"
+
+mkdir -p "$OUT_DIR"
+echo "EXPORT_RUN preset=$PRESET"
+"$GODOT" --headless --path "$ROOT" --export-release "$PRESET"
+echo "EXPORT_DONE preset=$PRESET"

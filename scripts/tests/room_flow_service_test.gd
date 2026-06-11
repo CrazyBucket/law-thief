@@ -28,6 +28,7 @@ func _run_tests() -> void:
 	var resolved: Dictionary = room_flow_service.submit_room_command(room_id, {})
 	assert(resolved.get("ok", false), "submit_room_command should succeed")
 	assert(str(resolved.get("state", "")) == "RESOLVED", "room should resolve after submit")
+	assert((resolved.get("result", {}) as Dictionary).has("heal"), "rest site should resolve through room effects and return heal payload")
 
 	var resolved_again: Dictionary = room_flow_service.submit_room_command(room_id, {})
 	assert(str(resolved_again.get("summary", "")) == str(resolved.get("summary", "")), "repeat submit should be idempotent")

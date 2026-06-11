@@ -1,0 +1,39 @@
+{
+  "START": {
+    "room_type": "START",
+    "ui_kind": "start",
+    "effects": []
+  },
+  "NORMAL_COMBAT": {
+    "room_type": "NORMAL_COMBAT",
+    "ui_kind": "battle",
+    "effects": []
+  },
+  "ELITE_COMBAT": {
+    "room_type": "ELITE_COMBAT",
+    "ui_kind": "battle",
+    "effects": []
+  },
+  "REST_SITE": {
+    "room_type": "REST_SITE",
+    "ui_kind": "rest",
+    "effects": [
+      {"action": "heal_player_percent", "amount": 0.2}
+    ]
+  },
+  "SHOP": {
+    "room_type": "SHOP",
+    "ui_kind": "shop",
+    "effects": []
+  },
+  "EVENT": {
+    "room_type": "EVENT",
+    "ui_kind": "event",
+    "effects": []
+  },
+  "END": {
+    "room_type": "END",
+    "ui_kind": "end",
+    "effects": []
+  }
+}

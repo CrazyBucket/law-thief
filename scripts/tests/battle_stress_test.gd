@@ -8,6 +8,7 @@ extends SceneTree
 
 const DEFAULT_ROUNDS := 30       # 每局最多执行回合数
 const DEFAULT_SEED   := 99991    # 默认 seed，可通过命令行 --seed=<N> 覆盖
+const DEFAULT_SEEDS  := [99991, 20260611, 20260616]
 const DEFAULT_ENCOUNTERS := [
 	"tutorial_001",
 	"template_a",
@@ -33,11 +34,18 @@ func _run_test() -> void:
 			if raw.is_valid_int():
 				run_seed = int(raw)
 
+	var seed_set := [run_seed]
+	if run_seed == DEFAULT_SEED:
+		seed_set.clear()
+		for seed_value in DEFAULT_SEEDS:
+			seed_set.append(seed_value)
+
 	var failures := 0
 	for encounter_id in DEFAULT_ENCOUNTERS:
-		var ok := _run_encounter_stress(encounter_id, run_seed)
-		if not ok:
-			failures += 1
+		for seed_value in seed_set:
+			var ok := _run_encounter_stress(encounter_id, seed_value)
+			if not ok:
+				failures += 1
 
 	if failures == 0:
 		print("STRESS_TEST_PASS")
@@ -109,6 +117,11 @@ func _do_player_turn(
 				if not _invariant_check(state, encounter_id, "round%d:player_move" % round_index):
 					return false
 
+	if not _try_random_slot_action(controller, state, encounter_id, round_index, Constants.ACTION_EXTRACT):
+		return false
+	if not _try_random_slot_action(controller, state, encounter_id, round_index, Constants.ACTION_INSERT):
+		return false
+
 	# 随机尝试攻击（如果有敌人相邻或在射程内）
 	if not state.player_acted:
 		var player := state.get_player()
@@ -126,6 +139,32 @@ func _do_player_turn(
 	if not _invariant_check(state, encounter_id, "round%d:end_player_turn" % round_index):
 		return false
 
+	return true
+
+
+func _try_random_slot_action(
+	controller: BattleController,
+	state: GameState,
+	encounter_id: String,
+	round_index: int,
+	action: String
+) -> bool:
+	if not controller.can_use_action(action):
+		return true
+	controller.select_action(action)
+	for unit in state.units.values():
+		if not unit is UnitState:
+			continue
+		for slot_index in range(unit.slots.size()):
+			var check := controller.check_slot_action(unit.uid, slot_index)
+			if not bool(check.get("ok", false)):
+				continue
+			var result := controller.try_extract(unit.uid, slot_index) if action == Constants.ACTION_EXTRACT else controller.try_insert(unit.uid, slot_index)
+			if not bool(result.get("ok", false)):
+				continue
+			if not _invariant_check(state, encounter_id, "round%d:%s" % [round_index, action]):
+				return false
+			return true
 	return true
 
 

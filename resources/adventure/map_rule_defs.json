@@ -6,5 +6,21 @@
     "effects": [
       {"modifier": "gold_gain_mult", "value": 1.1}
     ]
+  },
+  "map_rule_shop_discount_20": {
+    "name": "折扣标签",
+    "desc": "后续商店价格 -20%。",
+    "default_scope": "run",
+    "effects": [
+      {"modifier": "shop_price_mult", "value": 0.8}
+    ]
+  },
+  "map_rule_rest_heal_50": {
+    "name": "修整脚本",
+    "desc": "营地回复效果 +50%。",
+    "default_scope": "run",
+    "effects": [
+      {"modifier": "rest_heal_mult", "value": 1.5}
+    ]
   }
 }

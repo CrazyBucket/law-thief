@@ -2,6 +2,7 @@ class_name IntentSystem
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
@@ -253,7 +254,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	var custom_result: Dictionary = _behavior_for(unit).execute_custom_intent(state, unit, intent, move_start_pos)
 	if bool(custom_result.get("handled", false)):
 		anim_events.append_array(custom_result.get("events", [] as Array[Dictionary]))
-		return anim_events
+		return _validated_events(anim_events, "IntentSystem.execute_intent:%s" % intent.type)
 
 	match intent.type:
 		"melee_attack":
@@ -268,7 +269,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 		"move":
 			pass # 纯移动，无行动
 
-	return anim_events
+	return _validated_events(anim_events, "IntentSystem.execute_intent:%s" % intent.type)
 
 
 static func _execute_melee(
@@ -355,3 +356,9 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 
 static func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
+
+
+static func _validated_events(events: Array[Dictionary], context: String) -> Array[Dictionary]:
+	if OS.is_debug_build():
+		EventValidator.assert_valid(events, context)
+	return events

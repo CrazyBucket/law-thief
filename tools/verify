@@ -10,6 +10,9 @@ mkdir -p "$REPORT_DIR"
 FAST_TESTS=(
   testkit_snapshot_test
   gem_semantic_contract_test
+  full_run_contract_test
+  intent_consistency_contract_test
+  room_effect_executor_test
   explosion_test
   gem_level_context_test
   split_shot_test

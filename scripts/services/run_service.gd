@@ -260,7 +260,8 @@ func heal_player_percent(ratio: float) -> Dictionary:
 	var current_hp := _run.player_hp
 	if current_hp < 0:
 		current_hp = max_hp
-	var amount := maxi(1, int(ceil(float(max_hp) * ratio)))
+	var scaled_heal := maxf(0.0, float(max_hp) * ratio)
+	var amount := maxi(1, ceili(scaled_heal - 0.0001))
 	var next_hp := mini(max_hp, current_hp + amount)
 	var actual := maxi(0, next_hp - current_hp)
 	_run.player_max_hp = max_hp
@@ -284,6 +285,27 @@ func heal_player_amount(amount: int) -> Dictionary:
 		current_hp = max_hp
 	var next_hp := mini(max_hp, current_hp + maxi(0, amount))
 	var actual := maxi(0, next_hp - current_hp)
+	_run.player_max_hp = max_hp
+	_run.player_hp = next_hp
+	save_run()
+	return {
+		"amount": actual,
+		"after_hp": next_hp,
+		"max_hp": max_hp,
+	}
+
+
+func damage_player_amount(amount: int) -> Dictionary:
+	if _run == null:
+		return {}
+	var max_hp := _run.player_max_hp
+	if max_hp <= 0:
+		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+	var current_hp := _run.player_hp
+	if current_hp < 0:
+		current_hp = max_hp
+	var next_hp := maxi(0, current_hp - maxi(0, amount))
+	var actual := maxi(0, current_hp - next_hp)
 	_run.player_max_hp = max_hp
 	_run.player_hp = next_hp
 	save_run()
@@ -332,6 +354,24 @@ func append_adventure_rule(rule: Dictionary) -> void:
 		return
 	_run.adventure_rules.append(rule.duplicate(true))
 	save_run()
+
+
+func remove_adventure_rule(rule_id: String, scope_filter: String = "") -> bool:
+	if _run == null:
+		return false
+	for i in range(_run.adventure_rules.size()):
+		var raw_rule: Variant = _run.adventure_rules[i]
+		if not raw_rule is Dictionary:
+			continue
+		var rule := raw_rule as Dictionary
+		if str(rule.get("rule_id", "")) != rule_id:
+			continue
+		if not scope_filter.is_empty() and str(rule.get("scope", "")) != scope_filter:
+			continue
+		_run.adventure_rules.remove_at(i)
+		save_run()
+		return true
+	return false
 
 
 func get_run_phase() -> String:

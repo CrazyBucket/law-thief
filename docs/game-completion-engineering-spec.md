@@ -2,7 +2,7 @@
 
 文档状态：实施版 v1  
 适用阶段：从当前机制原型推进到可外部试玩的工程垂直切片  
-最后复核基线：`./tools/verify all` 通过 `41/41`，宝石语义契约覆盖率 `3.33%`
+最后复核基线：`./tools/verify all` 通过 `56/56`，宝石语义契约覆盖率 `30%`
 
 ## 1. 文档目的
 
@@ -844,14 +844,14 @@ TODO 状态使用：
 
 目标：先定义工程边界，防止继续向集中式服务追加临时逻辑。
 
-- [ ] 建立本 Spec 对应的全流程测试入口。
-- [ ] 将当前 `41/41` 验证结果作为基线记录。
-- [ ] 为 `RunState`、地图进度和房间结果建立 round-trip 测试。
-- [ ] 修复领取新宝石覆盖现有手持宝石的问题。
-- [ ] 为房间、交易与奖励定义稳定 ID 规范。
-- [ ] 为 adventure JSON 定义增加加载校验入口。
-- [ ] 将未知 effect / modifier / condition 在测试中设为失败。
-- [ ] 记录 `AdventureService.resolve_pending_room()` 的现有行为清单，作为迁移基线。
+- [x] 建立本 Spec 对应的全流程测试入口。
+- [x] 将当前 `41/41` 验证结果作为基线记录。
+- [x] 为 `RunState`、地图进度和房间结果建立 round-trip 测试。
+- [x] 修复领取新宝石覆盖现有手持宝石的问题。
+- [x] 为房间、交易与奖励定义稳定 ID 规范。
+- [x] 为 adventure JSON 定义增加加载校验入口。
+- [x] 将未知 effect / modifier / condition 在测试中设为失败。
+- [x] 记录 `AdventureService.resolve_pending_room()` 的现有行为清单，作为迁移基线。
 
 验收：
 
@@ -862,15 +862,15 @@ TODO 状态使用：
 
 目标：建立统一流程状态和幂等事务。
 
-- [ ] RunState 增加 `resources`、`resource_ledger`。
-- [ ] RunState 增加 `room_states`、`run_phase`、`pending_decision`。
-- [ ] 房间 ID 升级为包含章节的稳定 ID。
-- [ ] 实现 `RoomFlowService`。
-- [ ] 将休息点迁移为房间 effect，不再由 AdventureService 直接回血。
-- [ ] 将当前事件直接发遗物逻辑迁移为房间 effect。
-- [ ] 将房间结果与重复结算保护迁移到统一事务。
-- [ ] 为旧 `resolved_rooms` 提供迁移或开发期明确失效策略。
-- [ ] 让 `adventure_room_placeholder.gd` 改为通过房间视图模型渲染，而不是直接执行结算。
+- [x] RunState 增加 `resources`、`resource_ledger`。
+- [x] RunState 增加 `room_states`、`run_phase`、`pending_decision`。
+- [x] 房间 ID 升级为包含章节的稳定 ID。
+- [x] 实现 `RoomFlowService`。
+- [x] 将休息点迁移为房间 effect，不再由 AdventureService 直接回血。
+- [x] 将当前事件直接发遗物逻辑迁移为房间 effect。
+- [x] 将房间结果与重复结算保护迁移到统一事务。
+- [x] 为旧 `resolved_rooms` 提供迁移或开发期明确失效策略。
+- [x] 让 `adventure_room_placeholder.gd` 改为通过房间视图模型渲染，而不是直接执行结算。
 
 验收：
 
@@ -882,15 +882,15 @@ TODO 状态使用：
 
 目标：形成第一条真实资源获取与消费闭环。
 
-- [ ] 新增 `economy_config.json`，所有默认数值标记为占位值。
-- [ ] 实现 `EconomyService` 与账本。
-- [ ] 战斗胜利通过统一入口获得占位金币。
-- [ ] 实现 `ShopService` 固定 seed 库存。
-- [ ] 实现宝石与遗物商品。
-- [ ] 实现购买事务、余额校验和售罄状态。
-- [ ] 实现最小商店 UI。
-- [ ] 验证商店退出与继续恢复。
-- [ ] 为价格 trace 增加 UI 文案格式化工具，避免各界面各自拼接字符串。
+- [x] 新增 `economy_config.json`，所有默认数值标记为占位值。
+- [x] 实现 `EconomyService` 与账本。
+- [x] 战斗胜利通过统一入口获得占位金币。
+- [x] 实现 `ShopService` 固定 seed 库存。
+- [x] 实现宝石与遗物商品。
+- [x] 实现购买事务、余额校验和售罄状态。
+- [x] 实现最小商店 UI。
+- [x] 验证商店退出与继续恢复。
+- [x] 为价格 trace 增加 UI 文案格式化工具，避免各界面各自拼接字符串。
 
 占位默认值建议：
 
@@ -917,14 +917,14 @@ TODO 状态使用：
 
 目标：事件房间不再是单一硬编码奖励。
 
-- [ ] 新增 `event_defs.json`。
-- [ ] 实现 condition 校验器。
-- [ ] 实现通用 `RoomEffectExecutor`。
-- [ ] 实现事件候选快照与选项提交。
-- [ ] 实现最小事件 UI。
-- [ ] 提供至少两个 debug 事件验证资源、生命、遗物和规则效果。
-- [ ] 验证事件选择前退出、选择后退出和重复提交。
-- [ ] 为每个 effect 返回结构化摘要，供日志、UI 和测试共用。
+- [x] 新增 `event_defs.json`。
+- [x] 实现 condition 校验器。
+- [x] 实现通用 `RoomEffectExecutor`。
+- [x] 实现事件候选快照与选项提交。
+- [x] 实现最小事件 UI。
+- [x] 提供至少两个 debug 事件验证资源、生命、遗物和规则效果。
+- [x] 验证事件选择前退出、选择后退出和重复提交。
+- [x] 为每个 effect 返回结构化摘要，供日志、UI 和测试共用。
 
 验收：
 
@@ -935,16 +935,16 @@ TODO 状态使用：
 
 目标：地图可以承载并展示会影响后续流程的规则。
 
-- [ ] 新增 `map_rule_defs.json`。
-- [ ] 实现 `AdventureRuleRegistry`。
-- [ ] MapNode properties 纳入地图序列化。
-- [ ] 地图生成器支持给节点分配配置化 properties。
-- [ ] RunState 支持 `node`、`chapter`、`run` 三种规则作用域。
-- [ ] 实现 `gold_gain_mult`。
-- [ ] 实现 `shop_price_mult`。
-- [ ] 实现至少一个非经济 modifier。
-- [ ] 地图 UI 展示当前全局规则与节点局部规则。
-- [ ] 所有 modifier 计算输出 trace。
+- [x] 新增 `map_rule_defs.json`。
+- [x] 实现 `AdventureRuleRegistry`。
+- [x] MapNode properties 纳入地图序列化。
+- [x] 地图生成器支持给节点分配配置化 properties。
+- [x] RunState 支持 `node`、`chapter`、`run` 三种规则作用域。
+- [x] 实现 `gold_gain_mult`。
+- [x] 实现 `shop_price_mult`。
+- [x] 实现至少一个非经济 modifier。
+- [x] 地图 UI 展示当前全局规则与节点局部规则。
+- [x] 所有 modifier 计算输出 trace。
 
 验收：
 
@@ -956,14 +956,14 @@ TODO 状态使用：
 
 目标：任何关键决策点退出都不会破坏整局。
 
-- [ ] 存档改为临时文件校验后原子替换。
-- [ ] 保留最近有效备份。
-- [ ] 为 `run_phase` 建立恢复路由。
-- [ ] 支持从地图、房间、商店、事件、战后奖励恢复。
-- [ ] 通关与失败写入完整 run history。
-- [ ] 增加故障注入测试。
-- [ ] 增加整局固定 seed 无头测试。
-- [ ] 为损坏存档定义用户可见提示文案与回退策略。
+- [x] 存档改为临时文件校验后原子替换。
+- [x] 保留最近有效备份。
+- [x] 为 `run_phase` 建立恢复路由。
+- [x] 支持从地图、房间、商店、事件、战后奖励恢复。
+- [x] 通关与失败写入完整 run history。
+- [x] 增加故障注入测试。
+- [x] 增加整局固定 seed 无头测试。
+- [x] 为损坏存档定义用户可见提示文案与回退策略。
 
 验收：
 
@@ -974,13 +974,13 @@ TODO 状态使用：
 
 目标：在流程稳定后提高已有核心玩法可信度，不盲目扩大功能。
 
-- [ ] 宝石语义契约覆盖率提升到至少 `30%`。
-- [ ] 优先覆盖黑槽死亡链、蓝槽受击链和三级效果。
-- [ ] 将 EventValidator 接入调试构建关键行动出口。
-- [ ] 扩展随机压力测试的行动类型和 seed 集。
-- [ ] 为 AI 意图预览与执行增加一致性契约。
-- [ ] 根据实际重复与风险收口位移、事件和表现层接口。
-- [ ] 仅在存在明确迁移计划和回归保护时拆分大型文件。
+- [x] 宝石语义契约覆盖率提升到至少 `30%`。
+- [x] 优先覆盖黑槽死亡链、蓝槽受击链和三级效果。
+- [x] 将 EventValidator 接入调试构建关键行动出口。
+- [x] 扩展随机压力测试的行动类型和 seed 集。
+- [x] 为 AI 意图预览与执行增加一致性契约。
+- [x] 根据实际重复与风险收口位移、事件和表现层接口。
+- [x] 仅在存在明确迁移计划和回归保护时拆分大型文件。
 
 验收：
 
@@ -991,12 +991,12 @@ TODO 状态使用：
 
 目标：项目可以稳定交付给外部试玩。
 
-- [ ] 增加 `export_presets.cfg`。
-- [ ] 增加一键导出脚本。
-- [ ] 增加 CI，运行 `./tools/verify all`。
-- [ ] 增加导出包启动冒烟测试。
-- [ ] 确保正式构建关闭调试编辑器和开发控制台。
-- [ ] 完整鼠标流程与基本键盘焦点导航。
+- [x] 增加 `export_presets.cfg`。
+- [x] 增加一键导出脚本。
+- [x] 增加 CI，运行 `./tools/verify all`。
+- [x] 增加导出包启动冒烟测试。
+- [x] 确保正式构建关闭调试编辑器和开发控制台。
+- [x] 完整鼠标流程与基本键盘焦点导航。
 
 验收：
 

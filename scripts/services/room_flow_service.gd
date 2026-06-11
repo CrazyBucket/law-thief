@@ -173,8 +173,32 @@ func _resolve_room(room_id: String, room_type: String) -> Dictionary:
 	}
 	match room_type:
 		"REST_SITE":
-			var heal_result := RunService.heal_player_percent(0.2)
-			result["heal"] = heal_result
+			var room_def := RoomEffectExecutor.get_room_def(room_type)
+			var effects: Array = room_def.get("effects", [])
+			var hydrated_effects: Array[Dictionary] = []
+			for raw_effect in effects:
+				if not raw_effect is Dictionary:
+					continue
+				var effect := (raw_effect as Dictionary).duplicate(true)
+				if str(effect.get("action", "")) == "heal_player_percent":
+					var base_ratio := float(effect.get("amount", 0.0))
+					var heal_trace := AdventureRuleRegistry.query_modifier("rest_heal_mult", base_ratio, {"room_id": room_id})
+					effect["amount"] = float(heal_trace.get("final_value", base_ratio))
+					result["heal_trace"] = heal_trace
+				hydrated_effects.append(effect)
+			var effect_result := RoomEffectExecutor.apply_effects(hydrated_effects, {
+				"room_id": room_id,
+				"room_type": room_type,
+				"transaction_id": "%s:resolve" % room_id,
+				"action_id": "resolve",
+			})
+			if not bool(effect_result.get("ok", false)):
+				return {"ok": false, "error": str(effect_result.get("error", "room_effect_failed"))}
+			var results: Array = effect_result.get("results", [])
+			for raw_effect_result in results:
+				if raw_effect_result is Dictionary and (raw_effect_result as Dictionary).has("heal"):
+					result["heal"] = (raw_effect_result as Dictionary).get("heal", {})
+			var heal_result: Dictionary = result.get("heal", {})
 			result["summary"] = "营地休整，恢复 %d 点生命，当前 %d/%d。" % [
 				int(heal_result.get("amount", 0)),
 				int(heal_result.get("after_hp", 0)),

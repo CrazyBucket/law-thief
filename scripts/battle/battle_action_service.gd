@@ -1,6 +1,7 @@
 class_name BattleActionService
 extends RefCounted
 
+const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 var _ctrl: BattleController
@@ -77,7 +78,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
-	result["move_events"] = move_events
+	result["move_events"] = _validated_events(move_events, "BattleActionService.try_move")
 	result["presentation_state"] = presentation_state
 	return result
 
@@ -141,7 +142,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	return _ok({
 		"from_pos": from_pos,
 		"to_pos": to_pos,
-		"attack_events": attack_events,
+		"attack_events": _validated_events(attack_events, "BattleActionService.try_attack_cell"),
 		"presentation_state": presentation_state,
 	})
 
@@ -217,7 +218,7 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	if result.get("ok", false):
 		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_TRIGGER)
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
-		result["events"] = events
+		result["events"] = _validated_events(events, "BattleActionService.try_trigger")
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
 	return result
@@ -294,7 +295,7 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	if result.get("ok", false):
 		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_TRIGGER)
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
-		result["events"] = events
+		result["events"] = _validated_events(events, "BattleActionService.try_trigger_tile")
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
 	return result
@@ -307,3 +308,9 @@ func _ok(payload: Dictionary = {}) -> Dictionary:
 
 func _fail(reason: String) -> Dictionary:
 	return {"ok": false, "reason": reason}
+
+
+func _validated_events(events: Array[Dictionary], context: String) -> Array[Dictionary]:
+	if OS.is_debug_build():
+		EventValidator.assert_valid(events, context)
+	return events

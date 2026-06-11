@@ -40,13 +40,20 @@ func slot_file_path(relative_path: String, slot_id: int = -1) -> String:
 
 
 func read_json_file(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path):
+	var resolved_path := path if path.begins_with("/") else ProjectSettings.globalize_path(path)
+	if not FileAccess.file_exists(resolved_path):
 		return {}
-	var file := FileAccess.open(path, FileAccess.READ)
+	var file := FileAccess.open(resolved_path, FileAccess.READ)
 	if file == null:
 		return {}
-	var text := file.get_as_text()
+	var length := file.get_length()
+	var bytes := file.get_buffer(length)
 	file.close()
+	if bytes.size() != length:
+		return {}
+	var text := bytes.get_string_from_utf8()
+	if text.is_empty() and length > 0:
+		return {}
 	var json := JSON.new()
 	if json.parse(text) != OK:
 		return {}
@@ -57,16 +64,20 @@ func read_json_file(path: String) -> Dictionary:
 
 
 func write_json_atomic(path: String, payload: Dictionary) -> bool:
-	var global_path := ProjectSettings.globalize_path(path)
+	var global_path := path if path.begins_with("/") else ProjectSettings.globalize_path(path)
 	var dir_path := global_path.get_base_dir()
 	DirAccess.make_dir_recursive_absolute(dir_path)
 	var temp_path := "%s.tmp" % global_path
 	var backup_path := "%s.bak" % global_path
-	var json_str := JSON.stringify(payload, "\t")
+	var safe_payload: Variant = _json_safe(payload)
+	if not safe_payload is Dictionary:
+		return false
+	var json_str := JSON.stringify(safe_payload, "\t")
 	var file := FileAccess.open(temp_path, FileAccess.WRITE)
 	if file == null:
 		return false
 	file.store_string(json_str)
+	file.flush()
 	file.close()
 	var verify := read_json_file(temp_path)
 	if verify.is_empty():
@@ -81,12 +92,50 @@ func write_json_atomic(path: String, payload: Dictionary) -> bool:
 			return false
 	var rename_final := DirAccess.rename_absolute(temp_path, global_path)
 	if rename_final != OK:
-		if FileAccess.file_exists(temp_path):
-			DirAccess.remove_absolute(temp_path)
-		if FileAccess.file_exists(backup_path) and not FileAccess.file_exists(global_path):
-			DirAccess.rename_absolute(backup_path, global_path)
-		return false
+		if not _copy_file(temp_path, global_path):
+			if FileAccess.file_exists(temp_path):
+				DirAccess.remove_absolute(temp_path)
+			if FileAccess.file_exists(backup_path) and not FileAccess.file_exists(global_path):
+				DirAccess.rename_absolute(backup_path, global_path)
+			return false
+	if FileAccess.file_exists(temp_path):
+		DirAccess.remove_absolute(temp_path)
 	return true
+
+
+func _copy_file(from_path: String, to_path: String) -> bool:
+	var source := FileAccess.open(from_path, FileAccess.READ)
+	if source == null:
+		return false
+	var bytes := source.get_buffer(source.get_length())
+	source.close()
+	var target := FileAccess.open(to_path, FileAccess.WRITE)
+	if target == null:
+		return false
+	target.store_buffer(bytes)
+	target.flush()
+	target.close()
+	return not read_json_file(to_path).is_empty()
+
+
+func _json_safe(value: Variant) -> Variant:
+	if value is Vector2i:
+		return {"x": value.x, "y": value.y}
+	if value is Vector2:
+		return {"x": value.x, "y": value.y}
+	if value is Color:
+		return value.to_html(true)
+	if value is Dictionary:
+		var out := {}
+		for key in value.keys():
+			out[str(key)] = _json_safe(value[key])
+		return out
+	if value is Array:
+		var out: Array = []
+		for item in value:
+			out.append(_json_safe(item))
+		return out
+	return value
 
 
 func set_active_slot(slot_id: int) -> void:

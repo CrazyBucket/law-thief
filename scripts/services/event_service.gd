@@ -1,6 +1,7 @@
 extends Node
 
 const CONFIG_PATH := "res://resources/adventure/event_defs.json"
+const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
 
 var _defs: Dictionary = {}
 
@@ -22,9 +23,16 @@ func get_event_view(room_id: String) -> Dictionary:
 		if not raw_option is Dictionary:
 			continue
 		var option := (raw_option as Dictionary).duplicate(true)
+		var condition_result := RoomEffectExecutor.evaluate_conditions(option.get("conditions", []), {
+			"room_id": room_id,
+			"event_id": event_id,
+			"action_id": str(option.get("id", "")),
+		})
 		options.append({
 			"id": str(option.get("id", "")),
 			"label": str(option.get("label", "")),
+			"enabled": bool(condition_result.get("ok", false)),
+			"disabled_reason": str(condition_result.get("disabled_reason", "")),
 		})
 	return {
 		"ok": true,
@@ -53,15 +61,27 @@ func choose_option(room_id: String, option_id: String) -> Dictionary:
 			break
 	if target_option.is_empty():
 		return {"ok": false, "error": "option_not_found"}
-	var applied: Array[String] = []
-	for raw_effect in target_option.get("effects", []):
-		if not raw_effect is Dictionary:
-			continue
-		var effect := raw_effect as Dictionary
-		var effect_result := _apply_effect(effect, room_id, transaction_id)
-		if not bool(effect_result.get("ok", false)):
-			return effect_result
-		applied.append(str(effect_result.get("summary", "")))
+	var condition_result := RoomEffectExecutor.evaluate_conditions(target_option.get("conditions", []), {
+		"room_id": room_id,
+		"event_id": event_id,
+		"action_id": option_id,
+	})
+	if not bool(condition_result.get("ok", false)):
+		return {
+			"ok": false,
+			"error": "conditions_failed",
+			"disabled_reason": str(condition_result.get("disabled_reason", "")),
+		}
+	var effect_result := RoomEffectExecutor.apply_effects(target_option.get("effects", []), {
+		"room_id": room_id,
+		"room_type": "EVENT",
+		"transaction_id": transaction_id,
+		"event_id": event_id,
+		"action_id": option_id,
+	})
+	if not bool(effect_result.get("ok", false)):
+		return effect_result
+	var applied: Array[String] = effect_result.get("summaries", []).duplicate(true) if effect_result.get("summaries", []) is Array else []
 	var result := {
 		"room_id": room_id,
 		"room_type": "EVENT",
@@ -97,41 +117,9 @@ func _ensure_event_snapshot(room_id: String) -> Dictionary:
 	RunService.set_room_state(room_id, room_state)
 	return event_state
 
-
-func _apply_effect(effect: Dictionary, room_id: String, transaction_id: String) -> Dictionary:
-	match str(effect.get("action", "")):
-		"grant_resource":
-			var amount := int(effect.get("amount", 0))
-			var grant_result := EconomyService.grant(
-				str(effect.get("resource_id", "gold")),
-				amount,
-				"event_reward",
-				{"transaction_id": transaction_id, "room_id": room_id}
-			)
-			if not bool(grant_result.get("ok", false)):
-				return grant_result
-			var entry: Dictionary = grant_result.get("entry", {})
-			return {"ok": true, "summary": EconomyService.format_entry(entry)}
-		"add_adventure_rule":
-			var rule_id := str(effect.get("rule_id", ""))
-			var rule_result := AdventureRuleRegistry.add_rule(rule_id, "run", room_id, {"room_id": room_id})
-			if not bool(rule_result.get("ok", false)):
-				return rule_result
-			var display := AdventureRuleRegistry.get_rule_display(rule_id)
-			return {"ok": true, "summary": "获得规则 %s" % str(display.get("name", rule_id))}
-		"heal_player":
-			var amount := int(effect.get("amount", 0))
-			var heal_result := RunService.heal_player_amount(amount)
-			return {
-				"ok": true,
-				"summary": "恢复 %d 点生命" % int(heal_result.get("amount", 0)),
-			}
-		_:
-			return {"ok": false, "error": "unknown_effect"}
-
-
 func _load_defs() -> void:
 	_defs = _load_json(CONFIG_PATH)
+	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_event_defs(_defs))
 
 
 func _load_json(path: String) -> Dictionary:
