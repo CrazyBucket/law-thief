@@ -23,7 +23,7 @@ static func display_name(status_id: String) -> String:
 
 
 static func status_color(status_id: String) -> Color:
-	return get_def(status_id).get("color", Color(0.7, 0.7, 0.75))
+	return get_def(status_id).get("color", UiPalette.STATUS_FALLBACK)
 
 
 static func status_type(status_id: String) -> String:
@@ -178,7 +178,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_POISON: {
 		"display_name": "中毒",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.45, 0.92, 0.35),
+		"color": UiPalette.POISON_GREEN,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_TURN_END,
 		"true_damage": true,
@@ -187,7 +187,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_BURNING: {
 		"display_name": "着火",
 		"type": TYPE_DEBUFF,
-		"color": Color(1.0, 0.5, 0.1),
+		"color": UiPalette.FIRE_ORANGE,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_TURN_END,
 		"true_damage": true,
@@ -196,7 +196,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_ARMOR: {
 		"display_name": "护盾",
 		"type": TYPE_BUFF,
-		"color": Color(0.72, 0.78, 0.88),
+		"color": UiPalette.ARMOR_STEEL,
 		"stack_rule": STACK_MAX_VALUE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
@@ -204,7 +204,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_LIGHT_EXPOSED: {
 		"display_name": "曝光",
 		"type": TYPE_DEBUFF,
-		"color": Color(1.0, 0.95, 0.55),
+		"color": UiPalette.EXPOSE_YELLOW,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
 		"blocks_movement": false,
@@ -212,7 +212,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_BLINDED: {
 		"display_name": "致盲",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.95, 0.9, 0.68),
+		"color": UiPalette.BLIND_SAND,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_START,
 		"blocks_movement": false,
@@ -220,7 +220,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_ROOTED: {
 		"display_name": "束缚",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.55, 0.45, 0.95),
+		"color": UiPalette.BIND_VIOLET,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_START,
 		"blocks_movement": true,
@@ -228,7 +228,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_EXPOSED: {
 		"display_name": "暴露",
 		"type": TYPE_SYSTEM,
-		"color": Color(0.95, 0.75, 0.35),
+		"color": UiPalette.REVEAL_AMBER,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
@@ -236,7 +236,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_LAWLESS: {
 		"display_name": "失律",
 		"type": TYPE_SYSTEM,
-		"color": Color(0.95, 0.35, 0.35),
+		"color": UiPalette.DISORDER_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_NONE,
 		"blocks_movement": false,
@@ -244,7 +244,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_OVERLOAD_AI_CONTROL: {
 		"display_name": "AI接管",
 		"type": TYPE_SYSTEM,
-		"color": Color(0.85, 0.25, 0.95),
+		"color": UiPalette.AI_MAGENTA,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
@@ -252,7 +252,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_BOMB_RAT_PLUNDER: {
 		"display_name": "无律掠夺",
 		"type": TYPE_SYSTEM,
-		"color": Color(0.92, 0.55, 0.22),
+		"color": UiPalette.PLUNDER_ORANGE,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_NONE,
 		"blocks_movement": false,
@@ -260,7 +260,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_PARALYZED: {
 		"display_name": "麻痹",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.9, 0.9, 0.2),
+		"color": UiPalette.PARALYZE_YELLOW,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_START,
 		"blocks_movement": true,
@@ -269,7 +269,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_SLOWED: {
 		"display_name": "缓速",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.55, 0.85, 0.95),
+		"color": UiPalette.SLOW_CYAN,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_TURN_START,
 		"blocks_movement": false,
@@ -277,7 +277,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_WET: {
 		"display_name": "潮湿",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.4, 0.7, 1.0),
+		"color": UiPalette.WET_BLUE,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
@@ -285,7 +285,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_SLUGGISH: {
 		"display_name": "迟滞",
 		"type": TYPE_DEBUFF,
-		"color": Color(0.6, 0.85, 1.0),
+		"color": UiPalette.STAGNATE_ICE,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
@@ -293,7 +293,7 @@ static var _DEFS: Dictionary = {
 	Constants.STATUS_VULNERABLE: {
 		"display_name": "易伤",
 		"type": TYPE_DEBUFF,
-		"color": Color(1.0, 0.45, 0.45),
+		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,

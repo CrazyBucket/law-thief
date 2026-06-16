@@ -17,49 +17,49 @@ const DMG_TRUE    := "true"
 # ─── 颜色与样式字典 ──────────────────────────────────────────────────────────
 const _STYLES: Dictionary = {
 	DMG_NORMAL: {
-		"color":   Color(0.95, 0.30, 0.30, 1.0),
+		"color":   UiPalette.HILITE_DANGER,
 		"scale":   1.0,
 		"size":    20,
 		"bold":    false,
 	},
 	DMG_CRIT: {
-		"color":   Color(1.00, 0.28, 0.28, 1.0),
+		"color":   UiPalette.VULNERABLE_RED,
 		"scale":   1.0,
 		"size":    22,
 		"bold":    true,
 	},
 	DMG_HEAL: {
-		"color":   Color(0.28, 1.00, 0.55, 1.0),
+		"color":   UiPalette.HEAL_GREEN,
 		"scale":   1.0,
 		"size":    16,
 		"bold":    false,
 	},
 	DMG_ARMOR: {
-		"color":   Color(0.55, 0.80, 1.00, 1.0),
+		"color":   UiPalette.WET_BLUE,
 		"scale":   1.0,
 		"size":    14,
 		"bold":    false,
 	},
 	DMG_POISON: {
-		"color":   Color(0.42, 0.95, 0.45, 1.0),
+		"color":   UiPalette.POISON_GREEN,
 		"scale":   1.0,
 		"size":    15,
 		"bold":    false,
 	},
 	DMG_FIRE: {
-		"color":   Color(1.00, 0.52, 0.15, 1.0),
+		"color":   UiPalette.FIRE_ORANGE,
 		"scale":   1.0,
 		"size":    16,
 		"bold":    false,
 	},
 	DMG_ICE: {
-		"color":   Color(0.48, 0.88, 1.00, 1.0),
+		"color":   UiPalette.STAGNATE_ICE,
 		"scale":   1.0,
 		"size":    16,
 		"bold":    false,
 	},
 	DMG_TRUE: {
-		"color":   Color(1.00, 0.88, 0.25, 1.0),
+		"color":   UiPalette.CRIT_GOLD,
 		"scale":   1.0,
 		"size":    18,
 		"bold":    true,

@@ -13,6 +13,7 @@ var _dynamic_nodes: Array[Node] = []
 
 
 func _ready() -> void:
+	theme = BattleUiTheme.build_theme()
 	_apply_theme()
 	_room_id = AdventureService.current_room_id()
 	_title.text = "%s · %s" % [SaveService.get_active_slot_label(), AdventureService.pending_room_label]

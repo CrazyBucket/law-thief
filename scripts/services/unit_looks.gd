@@ -84,14 +84,7 @@ func gem_color(gem_ref: Variant) -> Color:
 
 
 func slot_color(slot_type: String) -> Color:
-	match slot_type:
-		"red":
-			return Color(0.95, 0.35, 0.35)
-		"blue":
-			return Color(0.35, 0.65, 0.95)
-		"black":
-			return Color(0.55, 0.55, 0.65)
-	return Color.WHITE
+	return UiPalette.slot_color(slot_type)
 
 
 func gem_symbol(gem_ref: Variant) -> String:

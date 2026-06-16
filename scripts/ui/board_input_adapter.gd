@@ -27,6 +27,8 @@ func _on_board_gui_input(event: InputEvent) -> void:
 	if _board == null:
 		return
 	if event is InputEventMouseMotion:
+		if _board.has_method("set_slot_hover"):
+			_board.set_slot_hover(event.position)
 		var hover_cell: Vector2i = _board.pick_cell(event.position)
 		_board.cell_hovered.emit(hover_cell, hover_cell.x >= 0)
 		return

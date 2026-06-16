@@ -20,6 +20,7 @@ var _board_input = BoardInputAdapterScript.new()
 
 
 func _ready() -> void:
+	theme = BattleUiTheme.build_theme()
 	if not AdventureService.run_active or AdventureService.map_matrix.is_empty():
 		AdventureService.start_new_run()
 	_apply_theme()

@@ -11,13 +11,13 @@ const ROOM_TO_TILE: Dictionary = {
 }
 
 const ROOM_DISPLAY: Dictionary = {
-	"START": {"glyph": "🏁", "label": "起点", "color": Color(0.45, 0.85, 0.55)},
-	"END": {"glyph": "👑", "label": "终点", "color": Color(0.95, 0.75, 0.25)},
-	"NORMAL_COMBAT": {"glyph": "⚔", "label": "战", "color": Color(0.92, 0.38, 0.38)},
-	"ELITE_COMBAT": {"glyph": "💀", "label": "精", "color": Color(0.75, 0.25, 0.55)},
-	"REST_SITE": {"glyph": "🏕", "label": "营", "color": Color(0.35, 0.72, 0.95)},
-	"SHOP": {"glyph": "🛒", "label": "店", "color": Color(0.95, 0.82, 0.42)},
-	"EVENT": {"glyph": "🎁", "label": "遗", "color": Color(0.65, 0.55, 0.95)},
+	"START": {"glyph": "🏁", "label": "起点", "color": UiPalette.ROOM_START},
+	"END": {"glyph": "👑", "label": "终点", "color": UiPalette.ROOM_END},
+	"NORMAL_COMBAT": {"glyph": "⚔", "label": "战", "color": UiPalette.ROOM_COMBAT},
+	"ELITE_COMBAT": {"glyph": "💀", "label": "精", "color": UiPalette.ROOM_ELITE},
+	"REST_SITE": {"glyph": "🏕", "label": "营", "color": UiPalette.ROOM_REST},
+	"SHOP": {"glyph": "🛒", "label": "店", "color": UiPalette.ROOM_SHOP},
+	"EVENT": {"glyph": "🎁", "label": "遗", "color": UiPalette.ROOM_EVENT},
 }
 
 
@@ -44,11 +44,11 @@ static func get_display(room_type: String, chapter: int = 1, chapter_count: int 
 			return {
 				"glyph": "👑",
 				"label": "终局 Boss",
-				"color": Color(0.95, 0.75, 0.25),
+				"color": UiPalette.ROOM_END,
 			}
 		return {
 			"glyph": "🚪",
 			"label": "大关出口",
-			"color": Color(0.55, 0.82, 0.95),
+			"color": UiPalette.ROOM_EXIT,
 		}
-	return ROOM_DISPLAY.get(room_type, {"glyph": "?", "label": room_type, "color": Color(0.6, 0.6, 0.65)})
+	return ROOM_DISPLAY.get(room_type, {"glyph": "?", "label": room_type, "color": UiPalette.ROOM_UNKNOWN})

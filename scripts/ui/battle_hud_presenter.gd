@@ -53,6 +53,7 @@ var _set_timeline_hover_cb: Callable = Callable()
 var _clear_timeline_hover_cb: Callable = Callable()
 
 var _relic_bar_ids: Array[String] = []
+var _intent_label: Label = null
 
 
 func setup(deps: Dictionary) -> void:
@@ -303,7 +304,7 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	var ratio := float(unit.hp) / float(maxi(unit.max_hp, 1))
 	_hp_bar.add_theme_stylebox_override(
 		"fill",
-		_flat_style(BattleUiTheme.hp_fill_color(ratio), BattleUiTheme.hp_fill_color(ratio).lightened(0.08))
+		BattleUiTheme.bar_fill_style(BattleUiTheme.hp_fill_color(ratio))
 	)
 	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
 	_refresh_inspect_shield(state, unit)
@@ -313,9 +314,8 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	var stack_lines := _status_stack_lines(unit)
 	if not stack_lines.is_empty():
 		stat_parts.append("层数：%s" % " · ".join(stack_lines))
-	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
-		stat_parts.append(unit.intent.preview_text)
 	_inspect_stats.text = "\n".join(stat_parts)
+	_refresh_intent_row(unit)
 	for slot_index in range(unit.slots.size()):
 		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index))
 
@@ -334,7 +334,29 @@ func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
 	_shield_row.tooltip_text = "护盾 %d" % shield_value
 
 
+func _refresh_intent_row(unit: UnitState) -> void:
+	var show := unit.intent != null and unit.team == Constants.TEAM_ENEMY
+	if not show:
+		if _intent_label != null:
+			_intent_label.visible = false
+		return
+	if _intent_label == null:
+		_intent_label = Label.new()
+		_intent_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_intent_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_SMALL)
+		var parent := _inspect_stats.get_parent()
+		parent.add_child(_intent_label)
+		parent.move_child(_intent_label, _inspect_stats.get_index() + 1)
+	var intent_col := UiPalette.intent_color(unit.intent.type)
+	_intent_label.visible = true
+	_intent_label.text = "%s %s" % [IntentState.intent_icon(unit.intent.type), unit.intent.preview_text]
+	_intent_label.add_theme_color_override("font_color", intent_col.lightened(0.2))
+	_intent_label.tooltip_text = "敌人下回合意图"
+
+
 func _clear_inspect_header(title: String) -> void:
+	if _intent_label != null:
+		_intent_label.visible = false
 	_portrait.texture = null
 	_portrait.self_modulate = Color.WHITE
 	_inspect_name.text = title
@@ -701,21 +723,13 @@ func _status_stack_lines(unit: UnitState) -> Array[String]:
 
 
 func rarity_color(rarity: String) -> Color:
-	match rarity:
-		"common":
-			return Color("#c8cad4")
-		"rare":
-			return Color("#6ec6f5")
-		"epic":
-			return Color("#c77dff")
-		"boss":
-			return Color("#ff8a5b")
-	return Color("#9aa0ad")
+	return UiPalette.rarity_color(rarity)
 
 
 func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
 	box.bg_color = bg
 	box.border_color = border
-	box.set_corner_radius_all(4)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(0)
 	return box

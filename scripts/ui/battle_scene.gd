@@ -69,6 +69,9 @@ var _player_animating: bool = false
 var _animation_speed_scale: float = 1.0
 var _enemy_turn_queue: Array[String] = []
 var _slot_popup: Control = null
+var _held_banner: PanelContainer = null
+var _held_banner_icon: TextureRect = null
+var _held_banner_label: Label = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
 var _preview_panel_tween: Tween = null
@@ -222,6 +225,9 @@ func _ready() -> void:
 
 
 func _apply_ui_theme() -> void:
+	for hud_child in $HudLayer.get_children():
+		if hud_child is Control:
+			(hud_child as Control).theme = BattleUiTheme.build_theme()
 	_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_status_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
 	_status_panel.clip_contents = true
@@ -236,7 +242,7 @@ func _apply_ui_theme() -> void:
 	_message_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
 	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	_hp_bar.add_theme_stylebox_override("background", _flat_style(Color(0.12, 0.13, 0.18), Color(0.22, 0.24, 0.3)))
+	_hp_bar.add_theme_stylebox_override("background", BattleUiTheme.bar_bg_style())
 	var shield_styles := BattleUiTheme.shield_bar_styles()
 	_shield_bar.add_theme_stylebox_override("background", shield_styles.background)
 	_shield_bar.add_theme_stylebox_override("fill", shield_styles.fill)
@@ -1023,10 +1029,11 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 
 	var root_ctrl := Control.new()
 	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.theme = BattleUiTheme.build_theme()
 	canvas.add_child(root_ctrl)
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.05, 0.05, 0.08, 0.82)
+	bg.color = Color(UiPalette.BG_DEEP, 0.82)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_ctrl.add_child(bg)
 
@@ -1040,7 +1047,7 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 
 	var title := Label.new()
 	title.text = "选择宝石"
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
 	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
@@ -1161,10 +1168,11 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 
 	var root_ctrl := Control.new()
 	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.theme = BattleUiTheme.build_theme()
 	canvas.add_child(root_ctrl)
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.05, 0.05, 0.08, 0.82)
+	bg.color = Color(UiPalette.BG_DEEP, 0.82)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_ctrl.add_child(bg)
 
@@ -1180,7 +1188,7 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 
 	var title := Label.new()
 	title.text = "无可选遗物" if is_no_relics else "选择遗物"
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
 	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED if is_no_relics else BattleUiTheme.TEXT_GOLD)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
@@ -1409,6 +1417,7 @@ func _refresh() -> void:
 		_board.set_highlights(_controller.get_highlights(_hover_cell))
 		_board.clear_editor_preview()
 	_sync_unit_slot_panels()
+	_update_held_banner()
 	_board.queue_redraw()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -2110,6 +2119,49 @@ func _clear_timeline_hover(uid: String = "") -> void:
 	_board.queue_redraw()
 
 
+## 手持宝石横幅：拔出后玩家处于"必须嵌入"的中间态，状态面板里的一行小字
+## 容易被忽略，这里在屏幕顶部常驻提示，直到宝石被嵌入
+func _update_held_banner() -> void:
+	var held := _controller.get_held_gem()
+	if held == null:
+		if _held_banner != null:
+			_held_banner.visible = false
+		return
+	if _held_banner == null:
+		_create_held_banner()
+	_held_banner_icon.texture = UnitLooks.get_gem_texture(held)
+	_held_banner_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
+	_held_banner_icon.visible = _held_banner_icon.texture != null
+	var gem_name: String = DataRegistry.get_gem_display_name(held)
+	_held_banner_label.text = "手持 %s — 点击发光槽位嵌入" % gem_name
+	_held_banner_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.25))
+	_held_banner.visible = true
+
+
+func _create_held_banner() -> void:
+	_held_banner = PanelContainer.new()
+	_held_banner.name = "HeldGemBanner"
+	_held_banner.add_theme_stylebox_override("panel", BattleUiTheme.tooltip_style())
+	_held_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_held_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_held_banner.offset_top = 56.0
+	_held_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_held_banner_icon = TextureRect.new()
+	_held_banner_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_held_banner_icon.custom_minimum_size = Vector2(20, 20)
+	_held_banner_icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	_held_banner_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(_held_banner_icon)
+	_held_banner_label = Label.new()
+	_held_banner_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_BODY)
+	row.add_child(_held_banner_label)
+	_held_banner.add_child(row)
+	$HudLayer.add_child(_held_banner)
+
+
 func _setup_held_gem_row() -> void:
 	if _held_label == null or _held_gem_icon != null:
 		return
@@ -2463,5 +2515,6 @@ func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
 	box.bg_color = bg
 	box.border_color = border
-	box.set_corner_radius_all(4)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(0)
 	return box

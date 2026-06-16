@@ -68,6 +68,8 @@ var selected_unit_uid: String = ""
 var timeline_hover_unit_uid: String = ""
 var active_turn_unit_uid: String = ""
 var slot_panel_action: String = ""
+var _slot_hover_unit_uid: String = ""
+var _slot_hover_index: int = -1
 var slot_panel_check: Callable = Callable()
 var _nameplate_alpha_by_uid: Dictionary = {}
 var _hover_outline_alpha_by_uid: Dictionary = {}
@@ -607,6 +609,19 @@ func _water_cell_set() -> Dictionary:
 func configure_unit_slot_panels(action: String, check_fn: Callable = Callable()) -> void:
 	slot_panel_action = action
 	slot_panel_check = check_fn
+	_slot_hover_unit_uid = ""
+	_slot_hover_index = -1
+	queue_redraw()
+
+
+func set_slot_hover(screen_pos: Vector2) -> void:
+	var hit := pick_unit_slot(screen_pos)
+	var uid := str(hit.get("unit_uid", ""))
+	var idx := int(hit.get("slot_index", -1))
+	if uid == _slot_hover_unit_uid and idx == _slot_hover_index:
+		return
+	_slot_hover_unit_uid = uid
+	_slot_hover_index = idx
 	queue_redraw()
 
 
@@ -699,8 +714,8 @@ func _draw_move_highlight_outlines() -> void:
 func _draw_editor_preview() -> void:
 	if not editor_preview_active or editor_preview_cells.is_empty():
 		return
-	var outline := Color(0.42, 0.92, 0.58, 0.96) if editor_preview_valid else Color(1.0, 0.38, 0.38, 0.96)
-	var fill := Color(0.18, 0.82, 0.38, 0.22) if editor_preview_valid else Color(0.92, 0.18, 0.18, 0.2)
+	var outline := Color(UiPalette.HILITE_REACH, 0.96) if editor_preview_valid else Color(UiPalette.HILITE_DANGER, 0.96)
+	var fill := Color(UiPalette.HILITE_REACH, 0.22) if editor_preview_valid else Color(UiPalette.HILITE_DANGER, 0.2)
 	for cell in editor_preview_cells:
 		var corners := IsoCoordinates.diamond_corners(grid_to_screen(cell))
 		draw_colored_polygon(corners, fill)
@@ -716,16 +731,16 @@ func _draw_highlight_outlines() -> void:
 	var effect_list: Array = highlights.get("effect_preview", [])
 	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
 	for grid in attack_range:
-		var c := Color(0.45, 0.92, 0.55, 0.45 + pulse * 0.25)
+		var c := Color(UiPalette.HILITE_REACH, 0.45 + pulse * 0.25)
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.6))
 	for grid in targets:
-		var c := Color(1.0, 0.92, 0.3, 0.55 + pulse * 0.35)
+		var c := Color(UiPalette.HILITE_TARGET, 0.55 + pulse * 0.35)
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
 	for grid in danger:
-		var c := Color(1.0, 0.28, 0.28, 0.5 + pulse * 0.35)
+		var c := Color(UiPalette.HILITE_DANGER, 0.5 + pulse * 0.35)
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
 	for grid in effect_list:
-		var c := Color(1.0, 0.52, 0.15, 0.45 + pulse * 0.3)
+		var c := Color(UiPalette.HILITE_RANGE, 0.45 + pulse * 0.3)
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.5))
 
 
@@ -747,21 +762,21 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
 	if grid in effect_list:
 		var a: float = 0.5 + pulse * 0.22
-		return Color(1.0, 0.22, 0.22, a)
+		return Color(UiPalette.HILITE_DANGER, a)
 	if grid in reachable:
 		var move_a: float = 0.28 + pulse * 0.12
-		return Color(0.42, 0.9, 0.5, move_a)
+		return Color(UiPalette.HILITE_REACH, move_a)
 	if grid in attack_range:
 		var a: float = 0.28 + pulse * 0.12
-		return Color(0.42, 0.9, 0.5, a)
+		return Color(UiPalette.HILITE_REACH, a)
 	if grid in targets:
 		var a: float = 0.52 + pulse * 0.22
-		return Color(1.0, 0.9, 0.25, a)
+		return Color(UiPalette.HILITE_TARGET, a)
 	if grid in danger:
 		var a: float = 0.42 + pulse * 0.22
-		return Color(1.0, 0.2, 0.2, a)
+		return Color(UiPalette.HILITE_DANGER, a)
 	if grid in paths:
-		return Color(0.95, 0.65, 0.2, 0.24 + pulse * 0.1)
+		return Color(UiPalette.HILITE_RANGE, 0.24 + pulse * 0.1)
 	return Color.TRANSPARENT
 
 
@@ -995,16 +1010,16 @@ func _draw_cell_outline(grid: Vector2i, color: Color, line_width: float) -> void
 
 
 func _reachable_outline_color() -> Color:
-	return Color(1.0, 1.0, 1.0, 0.92)
+	return Color(UiPalette.TEXT_BRIGHT, 0.92)
 
 
 func _hover_outline_color() -> Color:
-	return Color(0.76, 0.98, 0.78, 0.98)
+	return Color(UiPalette.HILITE_REACH.lightened(0.4), 0.98)
 
 
 func _cell_hover_outline_color() -> Color:
 	var reachable: Array = highlights.get("reachable", [])
-	return _hover_outline_color() if hover_cell in reachable else Color(0.95, 0.95, 1.0, 0.95)
+	return _hover_outline_color() if hover_cell in reachable else Color(UiPalette.TEXT_BRIGHT, 0.95)
 
 
 func _draw_unit_ground_outlines() -> void:
@@ -1015,9 +1030,9 @@ func _draw_unit_ground_outlines() -> void:
 		var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
 		var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
 		if hover_alpha > 0.01:
-			_draw_unit_focus_outline(unit, Color(1.0, 0.82, 0.32, 0.95), IsoCoordinates.visual(2.2), offset, 0.0, hover_alpha)
+			_draw_unit_focus_outline(unit, Color(UiPalette.EDGE_ACCENT.lightened(0.2), 0.95), IsoCoordinates.visual(2.2), offset, 0.0, hover_alpha)
 		if selection_alpha > 0.01:
-			_draw_unit_focus_outline(unit, Color(1.0, 1.0, 1.0, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, selection_alpha)
+			_draw_unit_focus_outline(unit, Color(UiPalette.TEXT_BRIGHT, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, selection_alpha)
 
 
 func _draw_unit_focus_outline(
@@ -1166,8 +1181,15 @@ func _draw_unit_slot_sector(item: Dictionary) -> void:
 	var end_angle: float = float(item.get("end_angle", 0.0))
 	var enabled := bool(item.get("enabled", false))
 	var slot: SlotState = item.get("slot", null)
-	var fill := _slot_panel_color(slot.slot_type if slot != null else "")
-	fill.a = 0.72 if enabled else 0.22
+	var hovered: bool = enabled \
+		and str(item.get("unit_uid", "")) == _slot_hover_unit_uid \
+		and int(item.get("slot_index", -1)) == _slot_hover_index
+	var base := _slot_panel_color(slot.slot_type if slot != null else "")
+	var fill := base
+	fill.a = 0.78 if enabled else 0.22
+	if hovered:
+		fill = base.lightened(0.18)
+		fill.a = 0.92
 	var points := PackedVector2Array()
 	var steps := 10
 	for i in range(steps + 1):
@@ -1179,23 +1201,56 @@ func _draw_unit_slot_sector(item: Dictionary) -> void:
 		var a := lerpf(start_angle, end_angle, t)
 		points.append(center + Vector2(cos(a), sin(a)) * inner_radius)
 	draw_colored_polygon(points, fill)
-	var line := Color(1.0, 1.0, 1.0, 0.72 if enabled else 0.26)
-	draw_polyline(points, line, IsoCoordinates.visual(1.15), true)
+	draw_polyline(points, Color(UiPalette.EDGE_DARK, 0.9 if enabled else 0.4), IsoCoordinates.visual(2.2), true)
+	var line := Color(UiPalette.TEXT_BRIGHT, 0.95) if hovered else Color(UiPalette.TEXT_BRIGHT, 0.6 if enabled else 0.22)
+	draw_polyline(points, line, IsoCoordinates.visual(1.1), true)
 	if slot != null and not slot.dual_type.is_empty():
 		var mid_angle := (start_angle + end_angle) * 0.5
 		var dual_col := _slot_panel_color(slot.dual_type)
 		dual_col.a = 0.46 if enabled else 0.16
 		var dual_center := center + Vector2(cos(mid_angle), sin(mid_angle)) * ((inner_radius + outer_radius) * 0.56)
 		draw_circle(dual_center, (outer_radius - inner_radius) * 0.42, dual_col)
+	_draw_slot_sector_content(item)
 	var label := _slot_panel_label(slot)
 	if not label.is_empty():
-		var font := ThemeDB.fallback_font
+		var font := BattleUiTheme.pixel_font()
 		var font_size := int(IsoCoordinates.visual(8.0))
 		var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 		var mid := (start_angle + end_angle) * 0.5
-		var text_pos := center + Vector2(cos(mid), sin(mid)) * ((inner_radius + outer_radius) * 0.5)
-		var text_col := Color(1.0, 1.0, 1.0, 0.95 if enabled else 0.42)
-		_draw_text_with_shadow(font, text_pos + Vector2(-label_size.x * 0.5, label_size.y * 0.35), label, font_size, text_col, Color(0, 0, 0, 0.9))
+		var text_pos := center + Vector2(cos(mid), sin(mid)) * (inner_radius + (outer_radius - inner_radius) * 0.28)
+		var text_col := Color(UiPalette.TEXT_BRIGHT, 0.95 if enabled else 0.42)
+		_draw_text_with_shadow(font, text_pos + Vector2(-label_size.x * 0.5, label_size.y * 0.35), label, font_size, text_col, UiPalette.TEXT_OUTLINE)
+
+
+## 扇区内容：已嵌宝石画图标，空槽画空心菱形占位，便于拔出/嵌入时一眼区分
+func _draw_slot_sector_content(item: Dictionary) -> void:
+	var slot: SlotState = item.get("slot", null)
+	if slot == null or state == null:
+		return
+	var center: Vector2 = item.get("center", Vector2.ZERO)
+	var inner_radius: float = float(item.get("inner_radius", 0.0))
+	var outer_radius: float = float(item.get("outer_radius", 0.0))
+	var mid := (float(item.get("start_angle", 0.0)) + float(item.get("end_angle", 0.0))) * 0.5
+	var enabled := bool(item.get("enabled", false))
+	var content_pos := center + Vector2(cos(mid), sin(mid)) * (inner_radius + (outer_radius - inner_radius) * 0.68)
+	var alpha := 1.0 if enabled else 0.45
+	if not slot.gem_uid.is_empty():
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem == null:
+			return
+		var tex: Texture2D = UnitLooks.get_gem_texture(gem)
+		var icon_size := (outer_radius - inner_radius) * 0.52
+		if tex != null:
+			var tint: Color = UnitLooks.gem_sprite_modulate(gem)
+			tint.a *= alpha
+			draw_texture_rect(tex, Rect2(content_pos - Vector2.ONE * icon_size * 0.5, Vector2.ONE * icon_size), false, tint)
+		else:
+			var gem_col: Color = UnitLooks.gem_color(gem)
+			gem_col.a = alpha
+			_draw_small_diamond(content_pos, icon_size * 0.4, icon_size * 0.3, gem_col)
+		return
+	var hole := (outer_radius - inner_radius) * 0.16
+	draw_arc(content_pos, hole, 0.0, TAU, 12, Color(UiPalette.TEXT_BRIGHT, 0.55 * alpha), IsoCoordinates.visual(1.0))
 
 
 func _unit_slot_panel_layout(unit: UnitState) -> Dictionary:
@@ -1225,6 +1280,7 @@ func _unit_slot_panel_layout(unit: UnitState) -> Dictionary:
 			"end_angle": end_angle,
 			"slot_index": i,
 			"slot": slot,
+			"unit_uid": unit.uid,
 			"visible": visible,
 			"enabled": enabled,
 		})
@@ -1286,25 +1342,28 @@ func _angle_between(angle: float, start_angle: float, end_angle: float) -> bool:
 func _slot_panel_color(slot_type: String) -> Color:
 	match slot_type:
 		Constants.SLOT_RED:
-			return Color(1.0, 0.16, 0.16, 1.0)
+			return UiPalette.SLOT_RED
 		Constants.SLOT_BLUE:
-			return Color(0.22, 0.62, 1.0, 1.0)
+			return UiPalette.SLOT_BLUE
 		Constants.SLOT_BLACK:
-			return Color(0.06, 0.06, 0.09, 1.0)
-	return Color(0.58, 0.58, 0.64, 1.0)
+			return UiPalette.SLOT_BLACK_DEEP
+	return UiPalette.INTENT_IDLE
 
 
 func _slot_panel_label(slot: SlotState) -> String:
 	if slot == null:
 		return ""
+	var label := "?"
 	match slot.slot_type:
 		Constants.SLOT_RED:
-			return "红"
+			label = "红"
 		Constants.SLOT_BLUE:
-			return "蓝"
+			label = "蓝"
 		Constants.SLOT_BLACK:
-			return "黑"
-	return "?"
+			label = "黑"
+	if slot.locked:
+		label += "·锁"
+	return label
 
 
 func _draw_small_diamond(center: Vector2, width: float, height: float, color: Color) -> void:
@@ -1377,20 +1436,17 @@ func _draw_shield_bar(origin: Vector2, unit: UnitState, shield_value: int) -> vo
 	var bar_h := IsoCoordinates.visual(4.0)
 	var bar_x := origin.x + icon_size + gap
 	StatusIcons.draw_icon(self, origin, Constants.STATUS_ARMOR, icon_size)
-	draw_rect(Rect2(bar_x, origin.y, bar_w, bar_h), BattleUiTheme.SHIELD_BG.darkened(0.05))
 	var max_ref := maxi(unit.max_hp, shield_value)
 	var ratio := clampf(float(shield_value) / float(maxi(max_ref, 1)), 0.0, 1.0)
-	draw_rect(Rect2(bar_x, origin.y, bar_w * ratio, bar_h), BattleUiTheme.SHIELD_FILL)
+	BattleUiTheme.draw_pixel_bar(self, Rect2(bar_x, origin.y, bar_w, bar_h), ratio, UiPalette.SHIELD_FILL)
 
 
 func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 	var width := IsoCoordinates.visual(36.0)
 	var bar_h := IsoCoordinates.visual(5.0)
 	var ratio := clampf(float(unit.hp) / float(maxi(unit.max_hp, 1)), 0.0, 1.0)
-	draw_rect(Rect2(center, Vector2(width, bar_h)), Color(0.12, 0.12, 0.16, 0.85))
-	var fill_color := Color(0.25, 0.85, 0.45) if unit.team == Constants.TEAM_PLAYER else Color(0.9, 0.35, 0.45)
-	draw_rect(Rect2(center, Vector2(width * ratio, bar_h)), fill_color)
-	var font := ThemeDB.fallback_font
+	BattleUiTheme.draw_pixel_bar(self, Rect2(center.x, center.y, width, bar_h), ratio, BattleUiTheme.hp_fill_color(ratio))
+	var font := BattleUiTheme.pixel_font()
 	var font_size := int(IsoCoordinates.visual(7.0))
 	var hp_text := "%d/%d" % [unit.hp, unit.max_hp]
 	var text_size := font.get_string_size(hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
@@ -1399,8 +1455,8 @@ func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
 		Vector2(center.x + (width - text_size.x) * 0.5, center.y + bar_h - IsoCoordinates.visual(0.5)),
 		hp_text,
 		font_size,
-		Color(0.98, 0.98, 1.0),
-		Color(0.04, 0.04, 0.08, 0.96)
+		UiPalette.TEXT_BRIGHT,
+		UiPalette.TEXT_OUTLINE
 	)
 
 
@@ -1469,6 +1525,7 @@ func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0,
 	var PAD_Y := IsoCoordinates.visual(2.0)
 	var WRAP_WIDTH := max_width if max_width > 0.0 else 999999.0
 	var sorted: Array = StatusRegistry.sort_statuses(unit.statuses)
+	var pixel_font := BattleUiTheme.pixel_font()
 	var cursor := Vector2.ZERO
 	var row_h := ICON_SIZE + GAP
 	for status in sorted:
@@ -1479,7 +1536,7 @@ func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0,
 		var item_h := ICON_SIZE
 		if not StatusIcons.has_icon(status.status_id):
 			var label: String = StatusRegistry.short_label(status)
-			var label_size := ThemeDB.fallback_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+			var label_size := pixel_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
 			item_w = label_size.x + PAD_X * 2.0
 			item_h = FONT_SIZE + PAD_Y * 2.0
 		if cursor.x > 0.0 and cursor.x + item_w > WRAP_WIDTH:
@@ -1489,33 +1546,31 @@ func _draw_status_row(origin: Vector2, unit: UnitState, icon_size: float = -1.0,
 		if StatusIcons.draw_icon(self , draw_pos, status.status_id, ICON_SIZE):
 			var badge_text: String = StatusRegistry.icon_badge(status)
 			if not badge_text.is_empty():
-				var badge_size := ThemeDB.fallback_font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+				var badge_size := pixel_font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
 				_draw_text_with_shadow(
-					ThemeDB.fallback_font,
+					pixel_font,
 					Vector2(draw_pos.x + ICON_SIZE - badge_size.x - IsoCoordinates.visual(0.5), draw_pos.y + ICON_SIZE - IsoCoordinates.visual(1.0)),
 					badge_text,
 					FONT_SIZE,
-					Color(0.98, 0.98, 1.0),
-					Color(0.02, 0.02, 0.04, 0.96)
+					UiPalette.TEXT_BRIGHT,
+					UiPalette.TEXT_OUTLINE
 				)
 		else:
-			var font := ThemeDB.fallback_font
 			var fallback_label: String = StatusRegistry.short_label(status)
-			var text_w: float = font.get_string_size(fallback_label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+			var text_w: float = pixel_font.get_string_size(fallback_label, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 			var chip_w := text_w + PAD_X * 2.0
 			var chip_h := FONT_SIZE + PAD_Y * 2.0
 			var color: Color = StatusRegistry.status_color(status.status_id)
-			var bg := color.darkened(0.5)
-			bg.a = 0.88
+			var bg := color.darkened(0.55)
 			draw_rect(Rect2(draw_pos, Vector2(chip_w, chip_h)), bg)
 			draw_rect(Rect2(draw_pos, Vector2(chip_w, chip_h)), color.lightened(0.1), false, 1.0)
 			_draw_text_with_shadow(
-				font,
+				pixel_font,
 				Vector2(draw_pos.x + PAD_X, draw_pos.y + PAD_Y + FONT_SIZE - 1.0),
 				fallback_label,
 				FONT_SIZE,
-				Color(0.95, 0.96, 0.98),
-				Color(0.02, 0.02, 0.04, 0.96)
+				UiPalette.TEXT_BRIGHT,
+				UiPalette.TEXT_OUTLINE
 			)
 		cursor.x += item_w + GAP
 
@@ -1606,24 +1661,7 @@ func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
 
 
 func _intent_badge_color(intent_type: String) -> Color:
-	match intent_type:
-		"melee_attack": return Color(0.95, 0.35, 0.35, 0.95)
-		"slam_attack": return Color(0.55, 0.85, 0.45, 0.95)
-		"ranged_attack": return Color(0.75, 0.82, 0.55, 0.95)
-		"explosion_attack": return Color(1.0, 0.55, 0.1, 0.95)
-		"charge_explode": return Color(1.0, 0.55, 0.1, 0.95)
-		"pull": return Color(0.6, 0.35, 0.9, 0.95)
-		"poison_attack": return Color(0.35, 0.85, 0.45, 0.95)
-		"arc_attack": return Color(0.95, 0.9, 0.25, 0.95)
-		"fire_attack": return Color(1.0, 0.45, 0.15, 0.95)
-		"ice_attack": return Color(0.45, 0.85, 1.0, 0.95)
-		"extract": return Color(0.95, 0.25, 0.75, 0.95)
-		"move": return Color(0.45, 0.75, 0.95, 0.95)
-		"lawless_extract", "lawless_attack", "lawless_move": return Color(0.9, 0.2, 0.2, 0.95)
-		"black_suicide": return Color(0.35, 0.35, 0.42, 0.95)
-		"bomb_rat_plunder_wait": return Color(0.7, 0.7, 0.75, 0.95)
-		"bomb_rat_plunder_steal": return Color(0.95, 0.35, 0.35, 0.95)
-	return Color(0.55, 0.58, 0.68, 0.85)
+	return Color(UiPalette.intent_color(intent_type), 0.95)
 
 
 func pick_cell(screen_pos: Vector2) -> Vector2i:

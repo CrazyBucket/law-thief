@@ -279,14 +279,7 @@ func _slot_label_for(slot: SlotState) -> String:
 
 
 func _slot_color(slot_type: String) -> Color:
-	match slot_type:
-		Constants.SLOT_RED:
-			return Color(1.0, 0.28, 0.22, 0.82)
-		Constants.SLOT_BLUE:
-			return Color(0.25, 0.62, 1.0, 0.82)
-		Constants.SLOT_BLACK:
-			return Color(0.18, 0.18, 0.24, 0.82)
-	return Color(0.55, 0.55, 0.6, 0.82)
+	return UiPalette.slot_color(slot_type)
 
 
 func _data_registry() -> Node:

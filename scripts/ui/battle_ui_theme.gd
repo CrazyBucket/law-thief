@@ -1,36 +1,84 @@
 class_name BattleUiTheme
 extends RefCounted
 
-const BG_DEEP := Color(0.05, 0.05, 0.09)
-const BG_PANEL := Color(0.09, 0.1, 0.14, 0.94)
-const BG_DOCK := Color(0.07, 0.08, 0.12, 0.96)
-const BORDER := Color(0.28, 0.3, 0.38, 0.85)
-const BORDER_ACCENT := Color(0.72, 0.58, 0.28, 0.95)
-const TEXT := Color(0.92, 0.93, 0.96)
-const TEXT_MUTED := Color(0.62, 0.65, 0.72)
-const TEXT_GOLD := Color(0.95, 0.82, 0.42)
-const TEXT_HINT := Color(0.78, 0.72, 0.48)
-const HP_HIGH := Color(0.28, 0.78, 0.48)
-const HP_MID := Color(0.9, 0.72, 0.22)
-const HP_LOW := Color(0.9, 0.28, 0.28)
-const SHIELD_FILL := Color(0.78, 0.82, 0.88)
-const SHIELD_FILL_HI := Color(0.88, 0.91, 0.96)
-const SHIELD_BG := Color(0.12, 0.13, 0.18)
-const SHIELD_BORDER := Color(0.38, 0.4, 0.46)
-const PHASE_PLAYER := Color(0.35, 0.72, 0.95)
-const PHASE_ENEMY := Color(0.92, 0.38, 0.38)
-const PHASE_END := Color(0.55, 0.58, 0.65)
+## 像素风 UI 主题工厂：颜色一律取自 UiPalette；风格约定为
+## 无圆角、不透明面板、外深内亮双层硬边、像素字体。
+
+const BG_DEEP := UiPalette.BG_DEEP
+const BG_PANEL := UiPalette.BG_PANEL
+const BG_DOCK := UiPalette.BG_DOCK
+const BORDER := UiPalette.EDGE_LIGHT
+const BORDER_ACCENT := UiPalette.EDGE_ACCENT
+const TEXT := UiPalette.TEXT_BRIGHT
+const TEXT_MUTED := UiPalette.TEXT_MUTED
+const TEXT_GOLD := UiPalette.TEXT_GOLD
+const TEXT_HINT := UiPalette.TEXT_HINT
+const HP_HIGH := UiPalette.HP_HIGH
+const HP_MID := UiPalette.HP_MID
+const HP_LOW := UiPalette.HP_LOW
+const SHIELD_FILL := UiPalette.SHIELD_FILL
+const SHIELD_FILL_HI := UiPalette.SHIELD_FILL_HI
+const SHIELD_BG := UiPalette.SHIELD_BG
+const SHIELD_BORDER := UiPalette.SHIELD_BORDER
+const PHASE_PLAYER := UiPalette.PHASE_PLAYER
+const PHASE_ENEMY := UiPalette.PHASE_ENEMY
+const PHASE_END := UiPalette.PHASE_END
+
+const FONT_SMALL := 12
+const FONT_BODY := 12
+const FONT_TITLE := 24
+
+const _PIXEL_FONT_PATH := "res://assets/ui/fusion-pixel-12px-zh_hans.ttf"
+
+static var _pixel_font_cache: FontFile = null
+static var _theme_cache: Theme = null
+
+
+static func pixel_font() -> Font:
+	if _pixel_font_cache != null:
+		return _pixel_font_cache
+	var font := FontFile.new()
+	var err := font.load_dynamic_font(_PIXEL_FONT_PATH)
+	if err != OK:
+		return ThemeDB.fallback_font
+	font.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+	font.hinting = TextServer.HINTING_NONE
+	font.generate_mipmaps = false
+	_pixel_font_cache = font
+	return _pixel_font_cache
+
+
+static func build_theme() -> Theme:
+	if _theme_cache != null:
+		return _theme_cache
+	var theme := Theme.new()
+	theme.default_font = pixel_font()
+	theme.default_font_size = FONT_BODY
+	theme.set_stylebox("panel", "TooltipPanel", tooltip_style())
+	theme.set_color("font_color", "TooltipLabel", TEXT)
+	_theme_cache = theme
+	return _theme_cache
+
+
+static func apply_root_theme(root: Control) -> void:
+	root.theme = build_theme()
+
+
+static func _pixel_box(bg: Color, edge: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = bg
+	box.border_color = edge
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(0)
+	box.shadow_color = UiPalette.EDGE_DARK
+	box.shadow_size = 2
+	box.shadow_offset = Vector2.ZERO
+	return box
 
 
 static func panel_style(accent: Color = BORDER) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = BG_PANEL
-	box.border_color = accent
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(10)
-	box.shadow_color = Color(0, 0, 0, 0.35)
-	box.shadow_size = 6
-	box.shadow_offset = Vector2(0, 3)
+	var box := _pixel_box(BG_PANEL, accent)
 	box.content_margin_left = 12
 	box.content_margin_right = 12
 	box.content_margin_top = 10
@@ -39,12 +87,9 @@ static func panel_style(accent: Color = BORDER) -> StyleBoxFlat:
 
 
 static func dock_style() -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = BG_DOCK
-	box.border_color = BORDER
-	box.set_border_width_all(1)
+	var box := _pixel_box(BG_DOCK, BORDER)
 	box.border_width_top = 2
-	box.set_corner_radius_all(0)
+	box.shadow_size = 0
 	box.content_margin_left = 16
 	box.content_margin_right = 16
 	box.content_margin_top = 10
@@ -53,11 +98,7 @@ static func dock_style() -> StyleBoxFlat:
 
 
 static func tooltip_style() -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.08, 0.09, 0.13, 0.98)
-	box.border_color = BORDER_ACCENT
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(8)
+	var box := _pixel_box(UiPalette.BG_RAISED, BORDER_ACCENT)
 	box.content_margin_left = 12
 	box.content_margin_right = 12
 	box.content_margin_top = 8
@@ -71,41 +112,47 @@ static func button_style(
 	disabled: bool = false
 ) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
-	box.set_corner_radius_all(8)
+	box.set_corner_radius_all(0)
 	box.set_border_width_all(2)
+	box.shadow_color = UiPalette.EDGE_DARK
+	box.shadow_size = 1
+	box.shadow_offset = Vector2(0, 1)
 	box.content_margin_left = 10
 	box.content_margin_right = 10
 	box.content_margin_top = 6
 	box.content_margin_bottom = 6
 	if disabled:
-		box.bg_color = Color(0.12, 0.12, 0.16, 0.55)
-		box.border_color = Color(0.25, 0.26, 0.32, 0.5)
+		box.bg_color = UiPalette.BG_RAISED.darkened(0.3)
+		box.border_color = UiPalette.EDGE_MID
+		box.shadow_size = 0
 		return box
+	var base := _action_base_color(kind)
+	if kind == "ghost":
+		box.bg_color = UiPalette.BG_RAISED
+		box.border_color = UiPalette.EDGE_MID
+		return box
+	if base == Color.TRANSPARENT:
+		box.bg_color = UiPalette.BG_RAISED
+		box.border_color = BORDER
+		return box
+	box.bg_color = base.darkened(0.35) if active else base.darkened(0.68)
+	box.border_color = base.lightened(0.25) if active else base.darkened(0.3)
+	return box
+
+
+static func _action_base_color(kind: String) -> Color:
 	match kind:
 		"move":
-			box.bg_color = Color(0.14, 0.34, 0.52, 0.95) if active else Color(0.1, 0.18, 0.28, 0.92)
-			box.border_color = Color(0.45, 0.78, 1.0) if active else Color(0.28, 0.45, 0.62)
+			return UiPalette.ACTION_MOVE
 		"combat":
-			box.bg_color = Color(0.52, 0.18, 0.18, 0.95) if active else Color(0.22, 0.12, 0.14, 0.92)
-			var combat_border_active := Color(1.0, 0.45, 0.38)
-			var combat_border_idle := Color(0.48, 0.28, 0.28)
-			box.border_color = combat_border_active if active else combat_border_idle
+			return UiPalette.ACTION_COMBAT
 		"skill":
-			box.bg_color = Color(0.42, 0.22, 0.62, 0.95) if active else Color(0.18, 0.12, 0.28, 0.92)
-			box.border_color = Color(0.82, 0.55, 1.0) if active else Color(0.42, 0.32, 0.58)
+			return UiPalette.ACTION_SKILL
 		"gem":
-			box.bg_color = Color(0.16, 0.38, 0.28, 0.95) if active else Color(0.1, 0.2, 0.16, 0.92)
-			box.border_color = Color(0.45, 0.92, 0.62) if active else Color(0.28, 0.52, 0.38)
+			return UiPalette.ACTION_GEM
 		"end":
-			box.bg_color = Color(0.58, 0.42, 0.12, 0.95) if active else Color(0.22, 0.18, 0.1, 0.92)
-			box.border_color = Color(1.0, 0.82, 0.35) if active else Color(0.52, 0.42, 0.22)
-		"ghost":
-			box.bg_color = Color(0.12, 0.12, 0.16, 0.75)
-			box.border_color = Color(0.32, 0.34, 0.4, 0.65)
-		_:
-			box.bg_color = Color(0.16, 0.16, 0.22, 0.92)
-			box.border_color = BORDER
-	return box
+			return UiPalette.ACTION_END
+	return Color.TRANSPARENT
 
 
 static func apply_button(button: Button, kind: String, active: bool = false) -> void:
@@ -113,22 +160,24 @@ static func apply_button(button: Button, kind: String, active: bool = false) -> 
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var style := button_style(kind, active and not disabled, disabled)
 		if state == "hover" and not disabled:
-			style.bg_color = style.bg_color.lightened(0.08)
+			style.bg_color = style.bg_color.lightened(0.1)
+			style.border_color = style.border_color.lightened(0.15)
 		if state == "pressed" and not disabled:
-			style.bg_color = style.bg_color.darkened(0.06)
+			style.bg_color = style.bg_color.darkened(0.12)
+			style.shadow_size = 0
 		button.add_theme_stylebox_override(state, style)
+	button.add_theme_font_override("font", pixel_font())
 	button.add_theme_color_override("font_color", TEXT if not disabled else TEXT_MUTED)
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_font_size_override("font_size", 14)
+	button.add_theme_font_size_override("font_size", FONT_BODY)
 
 
 static func chip_style(color: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
-	box.bg_color = color.darkened(0.55)
-	box.bg_color.a = 0.88
+	box.bg_color = color.darkened(0.62)
 	box.border_color = color.lightened(0.1)
 	box.set_border_width_all(1)
-	box.set_corner_radius_all(12)
+	box.set_corner_radius_all(0)
 	box.content_margin_left = 8
 	box.content_margin_right = 8
 	box.content_margin_top = 3
@@ -152,27 +201,61 @@ static func shield_bar_styles() -> Dictionary:
 
 
 static func shield_bg_style() -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = SHIELD_BG
-	box.border_color = SHIELD_BORDER
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(3)
-	return box
+	return bar_bg_style(SHIELD_BORDER)
 
 
 static func shield_fill_style() -> StyleBoxFlat:
+	return bar_fill_style(SHIELD_FILL)
+
+
+static func bar_bg_style(edge: Color = UiPalette.EDGE_MID) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
-	box.bg_color = SHIELD_FILL
-	box.border_color = SHIELD_FILL_HI
+	box.bg_color = UiPalette.BG_INSET
+	box.border_color = edge
 	box.set_border_width_all(1)
-	box.set_corner_radius_all(3)
+	box.set_corner_radius_all(0)
 	return box
+
+
+static func bar_fill_style(fill: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	box.border_color = fill.lightened(0.22)
+	box.border_width_top = 1
+	box.set_corner_radius_all(0)
+	return box
+
+
+## 棋盘世界空间的分段像素条；面板内 ProgressBar 走 bar_*_style。
+static func draw_pixel_bar(canvas: CanvasItem, rect: Rect2, ratio: float, fill: Color) -> void:
+	var clamped: float = clampf(ratio, 0.0, 1.0)
+	canvas.draw_rect(rect.grow(1), UiPalette.EDGE_DARK, true)
+	canvas.draw_rect(rect, UiPalette.BG_INSET, true)
+	var seg_w := 3.0
+	var gap := 1.0
+	var inner := rect.grow(-1)
+	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
+		return
+	var total_segs: int = maxi(1, int(floor((inner.size.x + gap) / (seg_w + gap))))
+	var lit_segs: int = int(round(clamped * float(total_segs)))
+	if clamped > 0.0:
+		lit_segs = maxi(lit_segs, 1)
+	for i in range(lit_segs):
+		var x := inner.position.x + float(i) * (seg_w + gap)
+		var w := minf(seg_w, inner.position.x + inner.size.x - x)
+		if w <= 0.0:
+			break
+		canvas.draw_rect(Rect2(x, inner.position.y, w, inner.size.y), fill, true)
+	var hi := Rect2(inner.position, Vector2(inner.size.x * clamped, 1))
+	if hi.size.x >= 1.0:
+		canvas.draw_rect(hi, fill.lightened(0.3), true)
 
 
 static func section_label(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_font_override("font", pixel_font())
+	label.add_theme_font_size_override("font_size", FONT_SMALL)
 	label.add_theme_color_override("font_color", TEXT_MUTED)
 	return label
 

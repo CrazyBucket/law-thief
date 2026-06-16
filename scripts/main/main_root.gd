@@ -42,6 +42,7 @@ var _meta_cli: MetaConsoleCli = null
 
 func _ready() -> void:
 	DebugService.log_info("Main scene ready")
+	theme = BattleUiTheme.build_theme()
 	_create_meta_console()
 	_spawn_background_particles()
 	_wire_actions()
@@ -57,10 +58,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_title_glow = (sin(_time * 1.35) + 1.0) * 0.5
-	var base_color := Color(0.92, 0.28, 0.38)
-	var glow_color := Color(1.0, 0.62, 0.44)
-	_title.add_theme_color_override("font_color", base_color.lerp(glow_color, _title_glow * 0.35))
-	_subtitle.add_theme_color_override("font_color", Color(0.72, 0.74, 0.82, 0.68 + _title_glow * 0.18))
+	_title.add_theme_color_override("font_color", UiPalette.BRAND_RED.lerp(UiPalette.BRAND_GLOW, _title_glow * 0.35))
+	_subtitle.add_theme_color_override("font_color", Color(UiPalette.TEXT_MUTED, 0.68 + _title_glow * 0.18))
 	_update_particles(delta)
 	_particle_canvas.queue_redraw()
 
@@ -98,7 +97,7 @@ func _apply_theme() -> void:
 	_slot_badge_panel.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(BattleUiTheme.TEXT_GOLD))
 	_summary_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
 	_modal_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
-	_title.add_theme_color_override("font_color", Color(0.94, 0.36, 0.4))
+	_title.add_theme_color_override("font_color", UiPalette.BRAND_RED)
 	_subtitle.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_slot_badge.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_summary.add_theme_color_override("font_color", BattleUiTheme.TEXT)
@@ -455,19 +454,9 @@ func _relic_desc(def: Dictionary) -> String:
 
 
 func _rarity_color(rarity: String) -> Color:
-	match rarity:
-		"common":
-			return Color("#c8cad4")
-		"rare":
-			return Color("#6ec6f5")
-		"epic":
-			return Color("#c77dff")
-		"legendary":
-			return Color("#ffd166")
-		"boss":
-			return Color("#ff6b6b")
-		_:
-			return BattleUiTheme.BORDER_ACCENT
+	if rarity.is_empty():
+		return BattleUiTheme.BORDER_ACCENT
+	return UiPalette.rarity_color(rarity)
 
 
 func _toggle_setting(key: String) -> void:
@@ -579,10 +568,10 @@ func _update_particles(delta: float) -> void:
 
 func _draw_particles() -> void:
 	var colors: Array[Color] = [
-		Color(0.92, 0.28, 0.38, 1.0),
-		Color(0.35, 0.65, 0.95, 1.0),
-		Color(1.0, 0.75, 0.2, 1.0),
-		Color(0.55, 0.9, 0.35, 1.0),
+		UiPalette.BRAND_RED,
+		UiPalette.SLOT_BLUE,
+		UiPalette.CRIT_GOLD,
+		UiPalette.RARITY_UNCOMMON,
 	]
 	for particle in _particles:
 		var color: Color = colors[int(particle["color_idx"])]
