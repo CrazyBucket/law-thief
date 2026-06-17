@@ -8,6 +8,7 @@ REPORT_DIR="$ROOT/artifacts/verify"
 mkdir -p "$REPORT_DIR"
 
 FAST_TESTS=(
+  combat_transaction_test
   testkit_snapshot_test
   gem_semantic_contract_test
   full_run_contract_test
@@ -17,15 +18,20 @@ FAST_TESTS=(
   gem_level_context_test
   split_shot_test
   gravity_test
+  bomb_rat_test
+  tile_overlay_reaction_test
 )
 
 CORE_TESTS=(
   encounter_load_test
   ai_test
+  combat_transaction_test
   smoke_test
   damage_debug_test
   stone_bow_guard_test
   split_shot_test
+  bomb_rat_test
+  tile_overlay_reaction_test
 )
 
 ALL_TESTS=()

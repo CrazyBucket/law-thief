@@ -354,8 +354,7 @@ static func tick_turn_end(state: GameState) -> void:
 ## 地块停留效果（通过 TileRules 的进入效果表统一分发）
 static func _tick_tile_stay(state: GameState, unit: UnitState) -> void:
 	TileRules.sync_standing_ground_effects(state, unit)
-	var tile := state.get_tile(unit.pos)
-	TileRules._apply_enter_effects(state, unit, tile)
+	TileRules.apply_enter_effects_for_occupied_cells(state, unit)
 
 
 ## overlay 对 status 参数的预处理表
@@ -375,17 +374,24 @@ static var _OVERLAY_STATUS_PRETICK: Array = [
 
 ## 通用 overlay-status 预处理：遍历表格，无需针对每种状态单独写函数
 static func _pretick_overlay_status_modifiers(state: GameState, unit: UnitState) -> void:
-	var tile := state.get_tile(unit.pos)
+	var applied: Dictionary = {}
 	for entry in _OVERLAY_STATUS_PRETICK:
 		var status_id: String = entry[0]
 		var modifier_type: String = entry[1]
 		var callback: Callable = entry[2]
-		if not tile.has_modifier(modifier_type):
+		var effect_key := "%s:%s" % [status_id, modifier_type]
+		if status_id == Constants.STATUS_BURNING \
+		and modifier_type in [Constants.TILE_MOD_FIRE, Constants.TILE_MOD_TOXIC_SMOKE]:
+			effect_key = "burning_firelike"
+		if applied.has(effect_key):
+			continue
+		if not TileRules.unit_occupies_modifier(state, unit, modifier_type):
 			continue
 		var status: StatusInstance = unit.get_status(status_id)
 		if status == null:
 			continue
 		callback.call(status, state, unit)
+		applied[effect_key] = true
 
 
 static func _apply(state: GameState, unit: UnitState, status_id: String, params: Dictionary) -> void:

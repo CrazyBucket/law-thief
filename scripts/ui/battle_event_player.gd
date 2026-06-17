@@ -431,8 +431,10 @@ func _apply_event_state(ev: Dictionary) -> void:
 			var duration := CombatConfig.poison_fog_duration()
 			if int(ev.get("duration", 0)) > 0:
 				duration = int(ev.get("duration", duration))
+			TileRules.begin_overlay_batch(_display_state)
 			for cell in cells:
 				TileRules.create_poison_fog(_display_state, cell, duration)
+			TileRules.end_overlay_batch(_display_state)
 		"fire_burst":
 			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
 		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam":

@@ -225,6 +225,9 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 - [x] `BattleActionService.try_move()` 与 `IntentSystem._execute_move()` 已改用 `CombatTransaction`。
 - [x] `attack_pipeline.gd`、`displacement.gd`、`entity_rules.gd`、`enemy_behavior.gd`、`gem_effects.gd` 等高频事件入口已开始改用 `CombatEventBuilder`。
 - [x] `damage` 事件在新入口中写入 `uid` / `victim_uid`，旧字段 `pos` 保留给表现层兼容。
+- [x] `CombatTransaction.damage_unit()` / `true_damage_unit()` 会在无外部事件 sink 时临时绑定自身事件数组，确保受伤/死亡连锁事件不丢失。
+- [x] 攻击管线、强制位移、实体碰撞、敌人特殊行为与主要宝石伤害路径已迁移到事务伤害入口，减少裸 `damage` 事件构造。
+- [x] 新增 `combat_transaction_test`，并将其纳入 `./tools/verify changed` 的战斗核心回归。
 - [x] `BattleEventPlayer._prime_event_state()` 应用 `move_step` 时同步 display state 占格。
 - [x] `BattleEventPlayer` 对连续爆炸 cluster 批量播放 `explode`、`damage`、`move_step`、`split_spawn` 与范围特效，避免同一结算链在表现层排队。
 - [x] `BoardUtils` 增加无副作用位置辅助，用于 AI/意图计算“站在某格时”的 footprint、距离和射击原点。

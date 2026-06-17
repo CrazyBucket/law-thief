@@ -5,7 +5,7 @@ const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
-const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 
 static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
@@ -272,16 +272,8 @@ static func execute_custom_intent(
 			var events: Array[Dictionary] = []
 			var target: UnitState = state.units.get(intent.target_uid, null)
 			if target != null and target.alive and BoardUtils.manhattan(unit.pos, target.pos) == 1:
-				var dealt := CombatRules.apply_damage(state, target, intent.damage, unit.uid, "lawless_attack")
-				if dealt > 0:
-					events.append(_EventBuilder.damage(target, dealt, {
-						"is_crit": true,
-						"attacker_uid": unit.uid,
-						"source_uid": unit.uid,
-						"reason": "lawless_attack",
-						"lethal": not target.alive,
-						"remaining_hp": target.hp,
-					}))
+				var tx := _CombatTransaction.begin(state, events)
+				tx.damage_unit(target, intent.damage, unit.uid, "lawless_attack", {"is_crit": true})
 			return {
 				"handled": true,
 				"events": events,
@@ -372,15 +364,8 @@ static func _execute_charge_explosion(state: GameState, unit: UnitState, target_
 		return events
 	events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
 	events.append_array(GemEffects.explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
-	var self_dealt := CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "self_explosion")
-	if self_dealt > 0:
-		events.append(_EventBuilder.damage(unit, self_dealt, {
-			"attacker_uid": unit.uid,
-			"source_uid": unit.uid,
-			"reason": "self_explosion",
-			"lethal": not unit.alive,
-			"remaining_hp": unit.hp,
-		}))
+	var tx := _CombatTransaction.begin(state, events)
+	tx.damage_unit(unit, unit.hp, unit.uid, "self_explosion")
 	return events
 
 
@@ -395,14 +380,7 @@ static func _enemy_red_damage_events(
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
-	var dealt := CombatRules.apply_damage(state, target, amount, unit.uid, reason)
-	if dealt <= 0:
-		return [] as Array[Dictionary]
-	return [_EventBuilder.damage(target, dealt, {
-		"is_crit": is_crit,
-		"attacker_uid": unit.uid,
-		"source_uid": unit.uid,
-		"reason": reason,
-		"lethal": not target.alive,
-		"remaining_hp": target.hp,
-	})]
+	var events: Array[Dictionary] = []
+	var tx := _CombatTransaction.begin(state, events)
+	tx.damage_unit(target, amount, unit.uid, reason, {"is_crit": is_crit})
+	return events

@@ -33,15 +33,31 @@ func move_unit(unit: UnitState, to_pos: Vector2i, opts: Dictionary = {}) -> void
 func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: String, opts: Dictionary = {}) -> int:
 	if state == null or unit == null or not unit.alive or amount <= 0:
 		return 0
+	var had_event_sink := state.has_combat_event_sink()
+	if not had_event_sink:
+		state.bind_combat_events(events)
 	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason)
+	if not had_event_sink:
+		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
-	var event_opts := opts.duplicate(true)
-	event_opts["attacker_uid"] = source_uid
-	event_opts["source_uid"] = source_uid
-	event_opts["reason"] = reason
-	event_opts["lethal"] = not unit.alive
-	event_opts["remaining_hp"] = unit.hp
+	var event_opts := _damage_event_opts(unit, source_uid, reason, opts)
+	append_event(_EventBuilder.damage(unit, dealt, event_opts))
+	return dealt
+
+
+func true_damage_unit(unit: UnitState, amount: int, source_uid: String, reason: String, opts: Dictionary = {}) -> int:
+	if state == null or unit == null or not unit.alive or amount <= 0:
+		return 0
+	var had_event_sink := state.has_combat_event_sink()
+	if not had_event_sink:
+		state.bind_combat_events(events)
+	var dealt := CombatRules.apply_true_damage(state, unit, amount, source_uid, reason)
+	if not had_event_sink:
+		state.unbind_combat_events()
+	if dealt <= 0:
+		return 0
+	var event_opts := _damage_event_opts(unit, source_uid, reason, opts)
 	append_event(_EventBuilder.damage(unit, dealt, event_opts))
 	return dealt
 
@@ -64,3 +80,13 @@ func finish(context: String = "") -> Array[Dictionary]:
 		if state != null:
 			_InvariantChecker.assert_valid(state, context)
 	return events
+
+
+func _damage_event_opts(unit: UnitState, source_uid: String, reason: String, opts: Dictionary) -> Dictionary:
+	var event_opts := opts.duplicate(true)
+	event_opts["attacker_uid"] = source_uid
+	event_opts["source_uid"] = source_uid
+	event_opts["reason"] = reason
+	event_opts["lethal"] = not unit.alive
+	event_opts["remaining_hp"] = unit.hp
+	return event_opts

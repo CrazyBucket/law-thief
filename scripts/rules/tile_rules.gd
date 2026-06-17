@@ -6,20 +6,65 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
 
+static var _overlay_batch_depth := 0
+static var _overlay_batch_state: GameState = null
+static var _overlay_batch_cells: Dictionary = {}
+
 # ─── Overlay 进入效果表 ────────────────────────────────────────────────────────
-# 每条记录：{ modifier → Callable(state, unit) }
+# 每条记录：{ modifier → [{ key, apply }] }，key 用于同一次进入/生成触发的状态级去重。
 # 新增一种 overlay 的进入效果只需在此表加一行，不改其他任何函数
 static var _ENTER_EFFECTS: Dictionary = {
-	Constants.TILE_MOD_POISON_FOG: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_poison(state, unit, 1, 0),
-	Constants.TILE_MOD_FIRE: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_burning(state, unit, 1),
-	Constants.TILE_MOD_TOXIC_SMOKE: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_poison(state, unit, 1, 0)
-		StatusRules.apply_burning(state, unit, 1),
-	Constants.TILE_MOD_POISON_PUDDLE: func(state: GameState, unit: UnitState) -> void:
-		StatusRules.apply_poison(state, unit, 1, 0),
+	Constants.TILE_MOD_POISON_FOG: [
+		{"key": "poison", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_poison(state, unit, 1, 0)},
+	],
+	Constants.TILE_MOD_FIRE: [
+		{"key": "burning", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_burning(state, unit, 1)},
+	],
+	Constants.TILE_MOD_TOXIC_SMOKE: [
+		{"key": "poison", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_poison(state, unit, 1, 0)},
+		{"key": "burning", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_burning(state, unit, 1)},
+	],
+	Constants.TILE_MOD_POISON_PUDDLE: [
+		{"key": "poison", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_poison(state, unit, 1, 0)},
+	],
 }
+
+
+static func begin_overlay_batch(state: GameState) -> void:
+	if state == null:
+		return
+	if _overlay_batch_depth == 0 or _overlay_batch_state != state:
+		_overlay_batch_state = state
+		_overlay_batch_cells.clear()
+		_overlay_batch_depth = 0
+	_overlay_batch_depth += 1
+
+
+static func end_overlay_batch(state: GameState) -> void:
+	if _overlay_batch_depth <= 0:
+		return
+	_overlay_batch_depth -= 1
+	if _overlay_batch_depth > 0:
+		return
+	var batch_state := _overlay_batch_state if _overlay_batch_state != null else state
+	var cells: Array[Vector2i] = []
+	for key in _overlay_batch_cells.keys():
+		cells.append(_overlay_batch_cells[key])
+	_overlay_batch_state = null
+	_overlay_batch_cells.clear()
+	if batch_state == null or cells.is_empty():
+		return
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		if a.x == b.x:
+			return a.y < b.y
+		return a.x < b.x
+	)
+	_apply_enter_effects_to_occupants_for_cells(batch_state, cells)
 
 ## 单位当前所在格的地形常驻效果（水域→潮湿）；出生、停留、进入时均需同步
 static func sync_standing_ground_effects(state: GameState, unit: UnitState) -> void:
@@ -105,10 +150,10 @@ static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = -
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = int(merged.get("duration", 0)) + add_turns
 		tile.modifiers[i] = merged
-		_apply_enter_effects_to_occupant(state, pos, tile)
+		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_POISON_FOG, add_turns)
-	_apply_enter_effects_to_occupant(state, pos, tile)
+	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 static func create_overlay(
@@ -136,7 +181,7 @@ static func create_overlay(
 				return {"ok": false, "message": "poison_puddle requires a water tile at %s" % pos}
 			tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, duration if duration > 0 else 2, payload)
-			_apply_enter_effects_to_occupant(state, pos, tile)
+			_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 			return {"ok": true}
 	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
 
@@ -164,6 +209,7 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
 		tile.modifiers[i] = merged
+		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_FIRE, duration)
 
@@ -173,10 +219,8 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 		tile.tile_id = Constants.TILE_FLOOR
 		tile._init_ground_tags()
 
-	# 如果此刻有单位站在上面，立刻上火
-	var occupant := state.get_unit_at(pos)
-	if occupant != null and occupant.alive:
-		StatusRules.apply_burning(state, occupant, 1)
+	# 如果此刻有单位站在上面，按 overlay 进入规则结算。
+	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 	# 如果此刻有油桶站在上面，触发爆炸
 	var barrel := state.get_entity_at(pos)
@@ -201,10 +245,10 @@ static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
 		tile.modifiers[i] = merged
-		_apply_enter_effects_to_occupant(state, pos, tile)
+		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_TOXIC_SMOKE, duration)
-	_apply_enter_effects_to_occupant(state, pos, tile)
+	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 ## 火焰蔓延：[着火] 的地块引燃相邻可燃格（每回合 50% 概率）
@@ -217,6 +261,7 @@ static func spread_fire(state: GameState) -> void:
 		var tile: TileState = state.tiles[key]
 		if tile.has_modifier(Constants.TILE_MOD_FIRE):
 			fire_positions.append(tile.pos)
+	begin_overlay_batch(state)
 	for pos in fire_positions:
 		for neighbor in BoardUtils.neighbors4(pos):
 			if not BoardUtils.in_bounds(state, neighbor):
@@ -238,41 +283,80 @@ static func spread_fire(state: GameState) -> void:
 		var utile := state.get_tile(unit.pos)
 		if utile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE) and not utile.has_modifier(Constants.TILE_MOD_FIRE):
 			create_fire(state, unit.pos)
+	end_overlay_batch(state)
 
 
 # ─── 内部工具 ──────────────────────────────────────────────────────────────────
 
 static func _apply_enter_effects(state: GameState, unit: UnitState, tile: TileState) -> void:
-	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
-	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
-	if tile_immune:
+	if _tile_effect_immune(state):
 		return
+	_apply_enter_effects_from_tile(state, unit, tile, {})
+
+
+static func apply_enter_effects_for_occupied_cells(state: GameState, unit: UnitState) -> void:
+	_apply_enter_effects_for_occupied_cells(state, unit)
+
+
+static func _apply_enter_effects_from_tile(
+	state: GameState,
+	unit: UnitState,
+	tile: TileState,
+	applied: Dictionary
+) -> void:
 	for modifier_type in _ENTER_EFFECTS.keys():
-		if tile.has_modifier(modifier_type):
-			_ENTER_EFFECTS[modifier_type].call(state, unit)
+		if not tile.has_modifier(modifier_type):
+			continue
+		for raw_effect in _ENTER_EFFECTS[modifier_type]:
+			var effect: Dictionary = raw_effect
+			var key := "%s:%s" % [unit.uid, str(effect.get("key", modifier_type))]
+			if applied.has(key):
+				continue
+			var callback: Callable = effect["apply"]
+			callback.call(state, unit)
+			applied[key] = true
 
 
 static func _apply_enter_effects_for_occupied_cells(state: GameState, unit: UnitState) -> void:
-	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
-	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
-	if tile_immune:
+	if _tile_effect_immune(state):
 		return
 	var applied: Dictionary = {}
 	for tile in _occupied_tiles(state, unit):
-		for modifier_type in _ENTER_EFFECTS.keys():
-			if applied.has(modifier_type):
-				continue
-			if not tile.has_modifier(modifier_type):
-				continue
-			_ENTER_EFFECTS[modifier_type].call(state, unit)
-			applied[modifier_type] = true
+		_apply_enter_effects_from_tile(state, unit, tile, applied)
 
 
 static func _apply_enter_effects_to_occupant(state: GameState, pos: Vector2i, tile: TileState) -> void:
 	var occupant := state.get_unit_at(pos)
 	if occupant == null or not occupant.alive:
 		return
-	_apply_enter_effects(state, occupant, tile)
+	if _tile_effect_immune(state):
+		return
+	_apply_enter_effects_from_tile(state, occupant, tile, {})
+
+
+static func _queue_or_apply_enter_effects_to_occupant(state: GameState, pos: Vector2i, tile: TileState) -> void:
+	if _overlay_batch_depth > 0 and _overlay_batch_state == state:
+		_overlay_batch_cells[state.tile_key(pos)] = pos
+		return
+	_apply_enter_effects_to_occupant(state, pos, tile)
+
+
+static func _apply_enter_effects_to_occupants_for_cells(state: GameState, cells: Array[Vector2i]) -> void:
+	if _tile_effect_immune(state):
+		return
+	var applied: Dictionary = {}
+	for pos in cells:
+		if not BoardUtils.in_bounds(state, pos):
+			continue
+		var occupant := state.get_unit_at(pos)
+		if occupant == null or not occupant.alive:
+			continue
+		_apply_enter_effects_from_tile(state, occupant, state.get_tile(pos), applied)
+
+
+static func _tile_effect_immune(state: GameState) -> bool:
+	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+	return registry != null and bool(registry.query_modifier("tile_effect_immune", state))
 
 
 static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_type: String) -> bool:
@@ -298,7 +382,7 @@ static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_t
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_fog_duration())
-	_apply_enter_effects_to_occupant(state, tile.pos, tile)
+	_queue_or_apply_enter_effects_to_occupant(state, tile.pos, tile)
 
 
 static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileState]:
@@ -316,8 +400,16 @@ static func _unit_occupies_modifier(state: GameState, unit: UnitState, modifier_
 	return false
 
 
+static func unit_occupies_modifier(state: GameState, unit: UnitState, modifier_type: String) -> bool:
+	return _unit_occupies_modifier(state, unit, modifier_type)
+
+
 static func _unit_occupies_any_modifier(state: GameState, unit: UnitState, modifier_types: Array[String]) -> bool:
 	for modifier_type in modifier_types:
 		if _unit_occupies_modifier(state, unit, modifier_type):
 			return true
 	return false
+
+
+static func unit_occupies_any_modifier(state: GameState, unit: UnitState, modifier_types: Array[String]) -> bool:
+	return _unit_occupies_any_modifier(state, unit, modifier_types)

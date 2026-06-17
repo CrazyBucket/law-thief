@@ -1,7 +1,7 @@
 class_name EntityRules
 extends RefCounted
 
-const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 ## 单位步入实体格
 static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary = {}) -> void:
@@ -38,15 +38,8 @@ static func on_unit_collide_entity(
 	if not entity.blocks_movement():
 		return false
 	var collision_damage := maxi(1, actual_steps)
-	var unit_dealt := CombatRules.apply_damage(state, unit, collision_damage, source_uid, "entity_collision")
-	if unit_dealt > 0:
-		events.append(_EventBuilder.damage(unit, unit_dealt, {
-			"attacker_uid": source_uid,
-			"source_uid": source_uid,
-			"reason": "entity_collision",
-			"lethal": not unit.alive,
-			"remaining_hp": unit.hp,
-		}))
+	var tx := _CombatTransaction.begin(state, events)
+	tx.damage_unit(unit, collision_damage, source_uid, "entity_collision")
 	if entity.max_hp > 0:
 		_damage_entity(state, entity, collision_damage, source_uid, events)
 	return true
@@ -135,19 +128,14 @@ static func _explode_barrel(
 	state.log("油桶 %s 爆炸！" % entity.uid)
 	events.append({"type": "explode", "pos": entity.pos, "radius": Constants.BARREL_EXPLOSION_RADIUS})
 	var hit_uids: Dictionary = {}
+	var tx := _CombatTransaction.begin(state, events)
+	TileRules.begin_overlay_batch(state)
 	for cell in BoardUtils.cells_in_radius(entity.pos, Constants.BARREL_EXPLOSION_RADIUS):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
 		var hit_unit := state.get_unit_at(cell)
 		if hit_unit != null and hit_unit.alive and not hit_uids.has(hit_unit.uid):
 			hit_uids[hit_unit.uid] = true
-			var dealt := CombatRules.apply_damage(state, hit_unit, Constants.BARREL_EXPLOSION_DAMAGE, source_uid, "barrel_explosion")
-			if dealt > 0:
-				events.append(_EventBuilder.damage(hit_unit, dealt, {
-					"attacker_uid": source_uid,
-					"source_uid": source_uid,
-					"reason": "barrel_explosion",
-					"lethal": not hit_unit.alive,
-					"remaining_hp": hit_unit.hp,
-				}))
+			tx.damage_unit(hit_unit, Constants.BARREL_EXPLOSION_DAMAGE, source_uid, "barrel_explosion")
 		TileRules.create_fire(state, cell)
+	TileRules.end_overlay_batch(state)

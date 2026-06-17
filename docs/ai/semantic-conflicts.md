@@ -26,5 +26,9 @@ Default authority: detailed gem and numeric design.
 - `详细设计/宝石/宝石_v1.md` says fire + poison creates toxic smoke for 1 turn, with both fire and poison fog effects.
 - `详细设计/地块/地块.md` says poison fog disappears when it encounters fire or explosion.
 - Product direction on 2026-06-17 explicitly expects fire to create toxic smoke when it meets poison fog.
+- `blue_black_combo_test.gd` currently expects some black-death `explosion+poison+fire_gem`
+  combinations to increase the raw `poison_fog` tile count, but the implementation converts those
+  cells to `toxic_smoke` when poison fog enters fire. This failure exists on `HEAD` before the
+  combat transaction damage refactor.
 
 Default authority: detailed gem design plus current product direction. Current implementation treats fire entering poison fog and poison fog entering fire as the same reaction: consume fire/poison fog and create `toxic_smoke`. Water still takes precedence over this reaction.

@@ -8,7 +8,7 @@ const GemComboResolver = preload("res://scripts/rules/gem_combo_resolver.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
-const CombatEventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -99,26 +99,9 @@ class AttackContext:
 	func push_event(ev: Dictionary) -> void:
 		events.append(ev)
 
-	func push_damage_event(pos: Vector2i, damage: int, is_crit: bool = false, victim: UnitState = null) -> void:
-		if victim != null:
-			events.append(CombatEventBuilder.damage(victim, damage, {
-				"pos": pos,
-				"is_crit": is_crit,
-				"attacker_uid": attacker.uid,
-				"source_uid": attacker.uid,
-			}))
-		else:
-			events.append(CombatEventBuilder.damage_at(pos, damage, {
-				"is_crit": is_crit,
-				"attacker_uid": attacker.uid,
-				"source_uid": attacker.uid,
-			}))
-
-	func push_move_event(uid: String, from: Vector2i, to: Vector2i) -> void:
-		events.append(CombatEventBuilder.move_step(uid, from, to))
-
-	func push_explode_event(pos: Vector2i, radius: int) -> void:
-		events.append({"type": "explode", "pos": pos, "radius": radius})
+	func damage_unit(unit: UnitState, amount: int, reason: String, opts: Dictionary = {}) -> int:
+		var tx := CombatTransaction.begin(state, events)
+		return tx.damage_unit(unit, amount, attacker.uid, reason, opts)
 
 	func push_trace(step: Dictionary) -> void:
 		if payload.get("debug_trace", false):
@@ -330,9 +313,8 @@ static func _apply_tags_at_cell(
 			})
 	var dealt := 0
 	if target != null and target.alive and not ctx.has_tag(TAG_EXPLOSIVE):
-		dealt = CombatRules.apply_damage(ctx.state, target, ctx.base_damage, ctx.attacker.uid, reason)
+		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell})
 		if dealt > 0:
-			ctx.push_damage_event(hit_cell, dealt, false, target)
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			_apply_direct_hit_extras(ctx, target)
 
@@ -435,11 +417,13 @@ static func _apply_poison_at_cell(
 		burst["pattern"] = "cross"
 	ctx.push_event(burst)
 	if BoardUtils.in_bounds(ctx.state, cell):
+		TileRules.begin_overlay_batch(ctx.state)
 		TileRules.create_poison_fog(ctx.state, cell, duration)
 		if level >= 2:
 			for neighbor in BoardUtils.neighbors4(cell):
 				if BoardUtils.in_bounds(ctx.state, neighbor):
 					TileRules.create_poison_fog(ctx.state, neighbor, duration)
+		TileRules.end_overlay_batch(ctx.state)
 	if unit != null and unit.alive:
 		StatusRules.apply_poison(ctx.state, unit, 1, 0, ctx.attacker.uid)
 
@@ -453,17 +437,18 @@ static func _apply_fire_tile_at_cell(
 ) -> void:
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "fire"))
 	ctx.push_event({"type": "fire_burst", "pos": cell})
+	TileRules.begin_overlay_batch(ctx.state)
 	TileRules.create_fire(ctx.state, cell)
 	var spread_count := 0
 	if level >= 2:
 		spread_count += 1
 	if level >= 3 and had_burning_before:
 		spread_count += 1
-	if spread_count <= 0:
-		return
-	for spread_cell in _random_adjacent_cells(ctx.state, cell, spread_count, "fire_spread_%d_%d" % [cell.x, cell.y]):
-		TileRules.create_fire(ctx.state, spread_cell)
-		ctx.push_event({"type": "fire_burst", "pos": spread_cell, "spread": true})
+	if spread_count > 0:
+		for spread_cell in _random_adjacent_cells(ctx.state, cell, spread_count, "fire_spread_%d_%d" % [cell.x, cell.y]):
+			TileRules.create_fire(ctx.state, spread_cell)
+			ctx.push_event({"type": "fire_burst", "pos": spread_cell, "spread": true})
+	TileRules.end_overlay_batch(ctx.state)
 
 
 static func _apply_cross_explosion_at(ctx: AttackContext, center: Vector2i) -> void:
@@ -558,9 +543,10 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 		if target == null or not target.alive or target.uid == ctx.attacker.uid or hit_uids.has(target.uid):
 			continue
 		hit_uids[target.uid] = true
-		var dealt := CombatRules.apply_damage(ctx.state, target, damage, ctx.attacker.uid, "light_beam" if reason.is_empty() else reason)
+		var dealt := ctx.damage_unit(target, damage, "light_beam" if reason.is_empty() else reason, {
+			"pos": target.pos,
+		})
 		if dealt > 0:
-			ctx.push_damage_event(target.pos, dealt, false, target)
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			StatusRules.apply_light_exposed(ctx.state, target, 2 if level >= 3 else 1, ctx.attacker.uid)
 		GemEffects.apply_light_colored_status(
@@ -606,9 +592,7 @@ static func _apply_red_counter(ctx: AttackContext) -> void:
 	if bool(ctx.state.battle_temp_flags.get(once_key, false)):
 		return
 	ctx.state.battle_temp_flags[once_key] = true
-	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, ctx.base_damage, ctx.attacker.uid, "counter_red")
-	if dealt > 0:
-		ctx.push_damage_event(ctx.target.pos, dealt, false, ctx.target)
+	ctx.damage_unit(ctx.target, ctx.base_damage, "counter_red")
 
 
 static func _apply_red_echo_followup(ctx: AttackContext) -> void:
@@ -622,9 +606,8 @@ static func _apply_red_echo_followup(ctx: AttackContext) -> void:
 	if bool(ctx.state.battle_temp_flags.get(once_key, false)):
 		return
 	ctx.state.battle_temp_flags[once_key] = true
-	var dealt := CombatRules.apply_damage(ctx.state, ctx.target, maxi(1, int(ceil(float(ctx.base_damage) * 0.5))), ctx.attacker.uid, "echo_red")
+	var dealt := ctx.damage_unit(ctx.target, maxi(1, int(ceil(float(ctx.base_damage) * 0.5))), "echo_red")
 	if dealt > 0:
-		ctx.push_damage_event(ctx.target.pos, dealt, false, ctx.target)
 		ctx.push_event({"type": "gem_flash", "pos": ctx.attacker.pos, "echo_followup": true})
 
 
@@ -817,9 +800,8 @@ static func _apply_crowbar_break(ctx: AttackContext, target: UnitState, break_da
 	for slot in target.slots:
 		if not slot.locked or slot.lock_type != Constants.LOCK_ARMOR:
 			continue
-		var dealt := CombatRules.apply_damage(ctx.state, target, break_damage, ctx.attacker.uid, "crowbar_break")
+		var dealt := ctx.damage_unit(target, break_damage, "crowbar_break")
 		if dealt > 0:
-			ctx.push_damage_event(target.pos, dealt, false, target)
 			StatusRules.apply_exposed(ctx.state, target, slot, ctx.state.turn_index)
 
 

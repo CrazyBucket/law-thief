@@ -2,6 +2,7 @@ class_name BombRatRules
 extends RefCounted
 
 const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 const PLUNDER_PHASE_WAIT := 1
 const PLUNDER_PHASE_STEAL := 2
@@ -41,7 +42,14 @@ static func compute_lawless_intent(
 	unit: UnitState,
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
-	StatusRules.set_bomb_rat_plunder_phase(unit, PLUNDER_PHASE_STEAL)
+	if not black_slot_empty(unit):
+		StatusRules.clear_lawless(unit)
+		return compute_intent(state, unit, cell_blockers)
+	if StatusRules.get_bomb_rat_plunder_phase(unit) < 0:
+		StatusRules.apply_bomb_rat_plunder(state, unit, PLUNDER_PHASE_WAIT)
+	var phase := StatusRules.get_bomb_rat_plunder_phase(unit)
+	if phase == PLUNDER_PHASE_WAIT:
+		return _plunder_wait_intent(unit)
 	var intent := _plunder_steal_intent(state, unit, cell_blockers)
 	if intent.type == "move":
 		intent.preview_text = "失律追猎"
@@ -71,21 +79,15 @@ static func execute_plunder_wait(unit: UnitState) -> void:
 static func execute_plunder_steal(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
 	var target: UnitState = state.units.get(intent.target_uid, null)
-	if target != null and target.alive and BoardUtils.manhattan(unit.pos, target.pos) == 1:
+	if target != null and target.alive and BoardUtils.are_units_adjacent(unit, target):
 		if intent.path.is_empty():
 			unit.facing = UnitState.facing_from_unit_to_cell(unit, target.pos)
-		var dealt := CombatRules.apply_damage(state, target, intent.damage, unit.uid, "bomb_rat_plunder")
-		if dealt > 0:
-			events.append({
-				"type": "damage",
-				"pos": target.pos,
-				"damage": dealt,
-				"is_crit": false,
-				"attacker_uid": unit.uid,
-				"keep_facing": true,
-			})
-		if target.alive:
-			_force_steal_nearest_gem(state, unit, target, events)
+		var tx := _CombatTransaction.begin(state, events)
+		tx.damage_unit(target, intent.damage, unit.uid, "bomb_rat_plunder", {
+			"keep_facing": true,
+		})
+		if target.alive and _force_steal_nearest_gem(state, unit, target, events):
+			StatusRules.clear_lawless(unit)
 	StatusRules.clear_bomb_rat_plunder(unit)
 	sync_plunder_state(state, unit)
 	return events
@@ -147,14 +149,14 @@ static func _plunder_steal_intent(
 	unit: UnitState,
 	cell_blockers: Dictionary
 ) -> IntentState:
-	var victim := _nearest_gem_carrier(state, unit)
+	var victim := _nearest_gem_carrier(state, unit, cell_blockers)
 	if victim == null:
 		return IntentState.wait(unit.uid)
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid
 	intent.target_uid = victim.uid
 	intent.damage = CombatRules.attack_damage(state, unit)
-	if BoardUtils.manhattan(unit.pos, victim.pos) == 1:
+	if BoardUtils.are_units_adjacent(unit, victim):
 		intent.type = "bomb_rat_plunder_steal"
 		intent.preview_text = "无律掠夺 (%d)" % intent.damage
 		return intent
@@ -165,10 +167,11 @@ static func _plunder_steal_intent(
 		unit.move_points,
 		unit.uid,
 		{},
-		cell_blockers
+		cell_blockers,
+		unit
 	)
 	var end_pos: Vector2i = intent.path.back() if not intent.path.is_empty() else unit.pos
-	if BoardUtils.manhattan(end_pos, victim.pos) == 1:
+	if BoardUtils.are_units_adjacent_at(unit, end_pos, victim):
 		intent.type = "bomb_rat_plunder_steal"
 		intent.preview_text = "无律掠夺 (%d)" % intent.damage
 	else:
@@ -178,40 +181,55 @@ static func _plunder_steal_intent(
 	return intent
 
 
-static func _nearest_gem_carrier(state: GameState, rat: UnitState) -> UnitState:
+static func _nearest_gem_carrier(
+	state: GameState,
+	rat: UnitState,
+	cell_blockers: Dictionary
+) -> UnitState:
 	var best: UnitState = null
 	var best_dist := 999999
-	var best_is_player := false
+	var best_board_dist := 999999
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == rat.uid:
 			continue
 		if not _has_stealable_gem(unit):
 			continue
-		var dist := _path_distance_to_carrier(state, rat, unit)
+		var dist := _path_distance_to_carrier(state, rat, unit, cell_blockers)
 		if dist < 0:
 			continue
-		var is_player: bool = unit.team == Constants.TEAM_PLAYER
-		if dist < best_dist or (dist == best_dist and best_is_player and not is_player):
+		var board_dist := BoardUtils.distance_between_units(rat, unit)
+		if best == null \
+		or dist < best_dist \
+		or (dist == best_dist and board_dist < best_board_dist) \
+		or (dist == best_dist and board_dist == best_board_dist and unit.uid < best.uid):
 			best_dist = dist
+			best_board_dist = board_dist
 			best = unit
-			best_is_player = is_player
 	return best
 
 
-static func _path_distance_to_carrier(state: GameState, rat: UnitState, unit: UnitState) -> int:
-	if BoardUtils.manhattan(rat.pos, unit.pos) <= 1:
+static func _path_distance_to_carrier(
+	state: GameState,
+	rat: UnitState,
+	unit: UnitState,
+	cell_blockers: Dictionary
+) -> int:
+	if BoardUtils.are_units_adjacent(rat, unit):
 		return 0
 	var path := BoardUtils.path_toward(
 		state,
 		rat.pos,
 		unit.pos,
 		state.board_size.x * state.board_size.y,
-		rat.uid
+		rat.uid,
+		{},
+		cell_blockers,
+		rat
 	)
 	if path.is_empty():
 		return -1
 	var end_pos: Vector2i = path[path.size() - 1]
-	if BoardUtils.manhattan(end_pos, unit.pos) > 1:
+	if not BoardUtils.are_units_adjacent_at(rat, end_pos, unit):
 		return -1
 	return path.size()
 
@@ -229,7 +247,7 @@ static func _force_steal_nearest_gem(
 	rat: UnitState,
 	victim: UnitState,
 	events: Array[Dictionary]
-) -> void:
+) -> bool:
 	var stolen_slot: SlotState = null
 	for slot in victim.slots:
 		if slot.gem_uid.is_empty() or slot.locked:
@@ -237,10 +255,10 @@ static func _force_steal_nearest_gem(
 		stolen_slot = slot
 		break
 	if stolen_slot == null:
-		return
+		return false
 	var gem: GemState = state.gems.get(stolen_slot.gem_uid, null)
 	if gem == null:
-		return
+		return false
 	stolen_slot.gem_uid = ""
 	if victim.team == Constants.TEAM_ENEMY and not EnemyBehavior.unit_has_any_gem(victim):
 		StatusRules.apply_lawless(state, victim, gem.uid)
@@ -251,7 +269,7 @@ static func _force_steal_nearest_gem(
 				host = slot
 				break
 	if host == null or not host.gem_uid.is_empty():
-		return
+		return false
 	host.gem_uid = gem.uid
 	gem.owner_uid = rat.uid
 	gem.slot_index = rat.slots.find(host)
@@ -260,6 +278,7 @@ static func _force_steal_nearest_gem(
 		% [rat.uid, victim.uid, _data_registry().get_gem_display_name(gem), host.slot_type]
 	)
 	events.append({"type": "gem_flash", "pos": rat.pos, "color": Color(0.95, 0.25, 0.25)})
+	return true
 
 
 static func _data_registry() -> Node:

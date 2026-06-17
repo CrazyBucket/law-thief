@@ -85,6 +85,8 @@ func _test_knockback_unit_collision_both_take_damage() -> void:
 	var expected_dmg := maxi(1, actual_steps)
 	assert(a.hp == a_hp_before - expected_dmg, "A should take collision dmg=%d" % expected_dmg)
 	assert(b.hp == b_hp_before - expected_dmg, "B should take same collision dmg=%d" % expected_dmg)
+	_assert_damage_event_identity(events, a.uid, "unit_collision")
+	_assert_damage_event_identity(events, b.uid, "unit_collision")
 	print("  [OK] unit collision: A and B both take max(1, actual_steps) damage")
 
 
@@ -315,3 +317,17 @@ func _make_large_unit(state: GameState, uid: String, team: String, pos: Vector2i
 	unit.footprint_size = fp
 	state._add_unit_to_occupancy(unit)
 	return unit
+
+
+func _assert_damage_event_identity(events: Array, uid: String, reason: String) -> void:
+	for ev in events:
+		if str(ev.get("type", "")) != "damage":
+			continue
+		if str(ev.get("uid", "")) != uid:
+			continue
+		assert(str(ev.get("victim_uid", "")) == uid, "damage event should mirror victim_uid for %s" % uid)
+		assert(str(ev.get("reason", "")) == reason, "damage event reason should be %s" % reason)
+		assert(ev.has("remaining_hp"), "damage event should include remaining_hp")
+		assert(ev.has("lethal"), "damage event should include lethal")
+		return
+	assert(false, "missing damage event for %s reason=%s events=%s" % [uid, reason, str(events)])

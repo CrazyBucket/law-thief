@@ -3,6 +3,7 @@ extends RefCounted
 
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -230,15 +231,8 @@ static func _deal_unit_collision_damage(
 	if registry != null:
 		var mult: float = float(registry.query_modifier("collision_damage_mult", state))
 		final_amount = maxi(1, int(float(amount) * mult))
-		var dealt := CombatRules.apply_damage(state, unit, final_amount, source_uid, reason)
-		if dealt > 0:
-			events.append(_EventBuilder.damage(unit, dealt, {
-				"attacker_uid": source_uid,
-				"source_uid": source_uid,
-				"reason": reason,
-				"lethal": not unit.alive,
-				"remaining_hp": unit.hp,
-			}))
+	var tx := _CombatTransaction.begin(state, events)
+	tx.damage_unit(unit, final_amount, source_uid, reason)
 
 
 static func _blocking_entity_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> EntityState:
