@@ -20,3 +20,11 @@ extension until product design confirms it.
 such as 2-point explosion examples. Current detailed gem and numeric design specify 12 damage.
 
 Default authority: detailed gem and numeric design.
+
+## Fire And Poison Fog Reaction
+
+- `详细设计/宝石/宝石_v1.md` says fire + poison creates toxic smoke for 1 turn, with both fire and poison fog effects.
+- `详细设计/地块/地块.md` says poison fog disappears when it encounters fire or explosion.
+- Product direction on 2026-06-17 explicitly expects fire to create toxic smoke when it meets poison fog.
+
+Default authority: detailed gem design plus current product direction. Current implementation treats fire entering poison fog and poison fog entering fire as the same reaction: consume fire/poison fog and create `toxic_smoke`. Water still takes precedence over this reaction.

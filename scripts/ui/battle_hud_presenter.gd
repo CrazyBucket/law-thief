@@ -3,6 +3,7 @@ extends RefCounted
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
+const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 const _STATUS_PANEL_WIDTH := 320.0
 
@@ -193,7 +194,7 @@ func refresh_economy_chips(state: GameState) -> void:
 		return
 	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
 	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
-	var active_count: int = state.overload_active_mutations.size()
+	var active_count: int = OverloadRules.overload_gem_count(state)
 	var pending_count: int = 1 if state.overload_pending else 0
 	if _overload_chip != null:
 		_overload_chip.text = "过载 %d+%d" % [active_count, pending_count] if pending_count > 0 else "过载 %d" % active_count
@@ -201,7 +202,7 @@ func refresh_economy_chips(state: GameState) -> void:
 	_move_chip.tooltip_text = "本回合还能否移动"
 	_act_chip.tooltip_text = "本回合还能否行动"
 	if _overload_chip != null:
-		_overload_chip.tooltip_text = "当前异变 %d 层%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
+		_overload_chip.tooltip_text = "场上过载槽宝石 %d 颗%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
 	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
 
@@ -499,8 +500,11 @@ func _refresh_action_buttons(enemy_phase_running: bool) -> void:
 	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
 	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
 	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
-	_extract_btn.text = "拔出" if _controller.can_use_action(Constants.ACTION_EXTRACT) else "拔出×"
-	_insert_btn.text = "嵌入" if _controller.can_use_action(Constants.ACTION_INSERT) else "嵌入×"
+	_move_btn.text = "机动"
+	_attack_btn.text = "射击"
+	_extract_btn.text = "拔取"
+	_insert_btn.text = "嵌入"
+	_end_turn_btn.text = "结束回合"
 
 
 func _refresh_turn_queue(state: GameState, active_uid: String, timeline_hover_uid: String, enemy_phase_running: bool) -> void:
@@ -705,7 +709,7 @@ func relic_desc_text(def: Dictionary) -> String:
 func _overload_summary_text(state: GameState) -> String:
 	if state == null:
 		return ""
-	var active_count: int = state.overload_active_mutations.size()
+	var active_count: int = OverloadRules.overload_gem_count(state)
 	if not state.overload_pending and active_count <= 0:
 		return ""
 	if state.overload_pending:

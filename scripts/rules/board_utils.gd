@@ -1,6 +1,8 @@
 class_name BoardUtils
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 const _MIN_STEP_COST: float = 0.05
 const _FULL_PATH_BUDGET_FACTOR: float = 8.0
 const _DEFAULT_PATH_COST_PROFILE := {
@@ -144,7 +146,7 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 			water_cost = maxf(0.0, water_cost - float(reduce))
 		cost += water_cost
 	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-		var fog_cost := float(Constants.POISON_FOG_DAMAGE) * float(profile.get("poison_damage_weight", 2.0))
+		var fog_cost := float(CombatConfig.poison_fog_damage()) * float(profile.get("poison_damage_weight", 2.0))
 		if tile_immune:
 			fog_cost = 0.0
 		elif registry != null:
@@ -492,6 +494,12 @@ static func footprint_cells_at(footprint: Vector2i, anchor: Vector2i) -> Array[V
 	return cells
 
 
+static func footprint_cells_for_unit_at(unit: UnitState, anchor: Vector2i) -> Array[Vector2i]:
+	if unit == null:
+		return [] as Array[Vector2i]
+	return footprint_cells_at(unit.footprint_size, anchor)
+
+
 ## 计算两个单位之间的最短曼哈顿距离（多格单位取占格间最小值）
 static func distance_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
 	if unit_a.footprint_size == Vector2i(1, 1) and unit_b.footprint_size == Vector2i(1, 1):
@@ -503,6 +511,37 @@ static func distance_between_units(unit_a: UnitState, unit_b: UnitState) -> int:
 			if d < min_dist:
 				min_dist = d
 	return min_dist
+
+
+static func distance_between_unit_at_and_unit(unit_a: UnitState, anchor_a: Vector2i, unit_b: UnitState) -> int:
+	if unit_a == null or unit_b == null:
+		return 999999
+	if unit_a.footprint_size == Vector2i(1, 1) and unit_b.footprint_size == Vector2i(1, 1):
+		return manhattan(anchor_a, unit_b.pos)
+	var min_dist: int = 999999
+	for ca in footprint_cells_for_unit_at(unit_a, anchor_a):
+		for cb in unit_b.occupied_cells():
+			var d := manhattan(ca, cb)
+			if d < min_dist:
+				min_dist = d
+	return min_dist
+
+
+static func distance_between_unit_at_and_cell(unit: UnitState, anchor: Vector2i, cell: Vector2i) -> int:
+	if unit == null:
+		return 999999
+	if unit.footprint_size == Vector2i(1, 1):
+		return manhattan(anchor, cell)
+	var min_dist: int = 999999
+	for occupied in footprint_cells_for_unit_at(unit, anchor):
+		var d := manhattan(occupied, cell)
+		if d < min_dist:
+			min_dist = d
+	return min_dist
+
+
+static func are_units_adjacent_at(unit_a: UnitState, anchor_a: Vector2i, unit_b: UnitState) -> bool:
+	return distance_between_unit_at_and_unit(unit_a, anchor_a, unit_b) == 1
 
 
 ## 占格间最短切比雪夫距离（分裂宝石「周围 N 格」等范围判定）
@@ -530,11 +569,28 @@ static func can_unit_reach_unit(attacker: UnitState, target: UnitState, max_rang
 	return distance_between_units(attacker, target) <= max_range
 
 
+static func can_unit_reach_unit_at(attacker: UnitState, anchor: Vector2i, target: UnitState, max_range: int) -> bool:
+	return distance_between_unit_at_and_unit(attacker, anchor, target) <= max_range
+
+
 static func can_unit_attack_cell(attacker: UnitState, state: GameState, cell: Vector2i, max_range: int) -> bool:
 	var target := state.get_unit_at(cell)
 	if target != null and target.alive and target.uid != attacker.uid:
 		return can_unit_reach_unit(attacker, target, max_range)
 	return is_within_manhattan_range_of_cell(attacker.pos, cell, max_range)
+
+
+static func can_unit_attack_cell_at(
+	attacker: UnitState,
+	state: GameState,
+	anchor: Vector2i,
+	cell: Vector2i,
+	max_range: int
+) -> bool:
+	var target := state.get_unit_at(cell)
+	if target != null and target.alive and target.uid != attacker.uid:
+		return can_unit_reach_unit_at(attacker, anchor, target, max_range)
+	return distance_between_unit_at_and_cell(attacker, anchor, cell) <= max_range
 
 
 ## 检查 unit 的整个 footprint 向 direction 平移一步后是否合法（用于推拉校验）
@@ -639,11 +695,17 @@ static func los_cells_between(from_pos: Vector2i, to_pos: Vector2i) -> Array[Vec
 static func projectile_origin_cell(attacker: UnitState, target_pos: Vector2i) -> Vector2i:
 	if attacker == null:
 		return target_pos
+	return projectile_origin_cell_at(attacker, attacker.pos, target_pos)
+
+
+static func projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, target_pos: Vector2i) -> Vector2i:
+	if attacker == null:
+		return target_pos
 	if attacker.footprint_size == Vector2i(1, 1):
-		return attacker.pos
-	var best := attacker.pos
+		return anchor
+	var best := anchor
 	var best_dist := 999999
-	for cell in attacker.occupied_cells():
+	for cell in footprint_cells_for_unit_at(attacker, anchor):
 		var dist := chebyshev(cell, target_pos)
 		if dist < best_dist:
 			best_dist = dist

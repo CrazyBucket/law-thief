@@ -31,10 +31,11 @@ func _run_tests() -> void:
 func _test_pending_cancel(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_reset_slots(state, player, guard)
 	controller.select_action(Constants.ACTION_INSERT)
-	var first := controller.try_insert(guard.uid, 0)
+	var first := controller.try_insert(guard.uid, 2)
 	if not first.get("ok", false):
 		_fail("first insert failed: %s" % first.get("reason", ""))
 		return
+	state.held_gem_uid = _make_gem(state, Constants.GEM_FIRE, player.uid)
 	var second := controller.try_insert(guard.uid, 1)
 	if not second.get("ok", false):
 		_fail("second insert failed: %s" % second.get("reason", ""))
@@ -52,10 +53,11 @@ func _test_pending_cancel(controller: BattleController, state: GameState, player
 func _test_forced_insert_appends_slot(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_reset_slots(state, player, guard)
 	controller.select_action(Constants.ACTION_INSERT)
-	var first := controller.try_insert(guard.uid, 0)
+	var first := controller.try_insert(guard.uid, 2)
 	if not first.get("ok", false):
 		_fail("first insert for forced overload failed: %s" % first.get("reason", ""))
 		return
+	state.held_gem_uid = _make_gem(state, Constants.GEM_FIRE, player.uid)
 	var held_before := state.held_gem_uid
 	var slot_count_before := guard.slots.size()
 	var original_red_uid := guard.get_slot_by_index(0).gem_uid
@@ -84,7 +86,8 @@ func _test_forced_insert_appends_slot(controller: BattleController, state: GameS
 func _test_pending_activation(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_reset_slots(state, player, guard)
 	controller.select_action(Constants.ACTION_INSERT)
-	var first := controller.try_insert(guard.uid, 0)
+	var first := controller.try_insert(guard.uid, 2)
+	state.held_gem_uid = _make_gem(state, Constants.GEM_FIRE, player.uid)
 	var second := controller.try_insert(guard.uid, 1)
 	if not first.get("ok", false) or not second.get("ok", false):
 		_fail("insert chain failed before activation")
@@ -102,8 +105,9 @@ func _test_pending_activation(controller: BattleController, state: GameState, pl
 
 func _test_lawless_any_extract(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_force_player_phase(state)
-	state.overload_active_mutations = [Constants.OVERLOAD_LAWLESS_ANY_EXTRACT]
 	_reset_slots(state, player, guard)
+	_mark_overload_slot(guard, 0)
+	state.overload_active_mutations = [Constants.OVERLOAD_LAWLESS_ANY_EXTRACT]
 	state.held_gem_uid = ""
 	controller.select_action(Constants.ACTION_EXTRACT)
 	var result := controller.try_extract(guard.uid, 0)
@@ -118,11 +122,12 @@ func _test_lawless_any_extract(controller: BattleController, state: GameState, p
 
 func _test_operation_damage(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_force_player_phase(state)
-	state.overload_active_mutations = [Constants.OVERLOAD_GEM_OP_DAMAGE]
 	_reset_slots(state, player, guard)
+	_mark_overload_slot(guard, 0)
+	state.overload_active_mutations = [Constants.OVERLOAD_GEM_OP_DAMAGE]
 	var hp_before := player.hp
 	controller.select_action(Constants.ACTION_INSERT)
-	var result := controller.try_insert(guard.uid, 0)
+	var result := controller.try_insert(guard.uid, 2)
 	if not result.get("ok", false):
 		_fail("insert for damage test failed: %s" % result.get("reason", ""))
 		return
@@ -134,8 +139,9 @@ func _test_operation_damage(controller: BattleController, state: GameState, play
 
 func _test_echo_extract(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_force_player_phase(state)
-	state.overload_active_mutations = [Constants.OVERLOAD_ECHO_EXTRACT]
 	_reset_slots(state, player, guard)
+	_mark_overload_slot(guard, 0)
+	state.overload_active_mutations = [Constants.OVERLOAD_ECHO_EXTRACT]
 	state.held_gem_uid = ""
 	controller.select_action(Constants.ACTION_EXTRACT)
 	var slot := guard.get_slot_by_index(0)
@@ -175,6 +181,7 @@ func _reset_slots(state: GameState, player: UnitState, guard: UnitState) -> void
 	state.overload_pending = false
 	state.overload_last_action = ""
 	state.overload_last_insert_turn = 0
+	state.overload_active_mutations.clear()
 	state.overload_echo_gems.clear()
 
 
@@ -195,6 +202,12 @@ func _force_player_phase(state: GameState) -> void:
 	state.overload_pending = false
 	state.overload_last_action = ""
 	state.overload_last_insert_turn = 0
+
+
+func _mark_overload_slot(unit: UnitState, slot_index: int) -> void:
+	var slot := unit.get_slot_by_index(slot_index)
+	if slot != null:
+		slot.lock_type = Constants.LOCK_OVERLOAD_SLOT
 
 
 func _find_unit_by_def(state: GameState, unit_def_id: String) -> UnitState:

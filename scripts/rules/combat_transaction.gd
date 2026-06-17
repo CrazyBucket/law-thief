@@ -1,0 +1,66 @@
+class_name CombatTransaction
+extends RefCounted
+
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _EventValidator = preload("res://scripts/debug/event_validator.gd")
+const _InvariantChecker = preload("res://scripts/debug/battle_invariant_checker.gd")
+
+var state: GameState = null
+var events: Array[Dictionary] = []
+
+
+static func begin(battle_state: GameState, existing_events: Array[Dictionary] = []) -> CombatTransaction:
+	var tx := CombatTransaction.new()
+	tx.state = battle_state
+	tx.events = existing_events
+	return tx
+
+
+func move_unit(unit: UnitState, to_pos: Vector2i, opts: Dictionary = {}) -> void:
+	if state == null or unit == null or not unit.alive:
+		return
+	var from_pos := unit.pos
+	if from_pos == to_pos:
+		return
+	if not bool(opts.get("keep_facing", false)):
+		unit.facing = UnitState.facing_from_step(from_pos, to_pos)
+	state.move_unit(unit, to_pos)
+	if bool(opts.get("emit_signal", true)):
+		state.on_unit_move.emit(unit.uid, from_pos, to_pos)
+	append_event(_EventBuilder.move_step(unit.uid, from_pos, to_pos, opts))
+
+
+func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: String, opts: Dictionary = {}) -> int:
+	if state == null or unit == null or not unit.alive or amount <= 0:
+		return 0
+	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason)
+	if dealt <= 0:
+		return 0
+	var event_opts := opts.duplicate(true)
+	event_opts["attacker_uid"] = source_uid
+	event_opts["source_uid"] = source_uid
+	event_opts["reason"] = reason
+	event_opts["lethal"] = not unit.alive
+	event_opts["remaining_hp"] = unit.hp
+	append_event(_EventBuilder.damage(unit, dealt, event_opts))
+	return dealt
+
+
+func append_event(event: Dictionary) -> void:
+	if event.is_empty():
+		return
+	events.append(event)
+
+
+func append_events(new_events: Array) -> void:
+	for event in new_events:
+		if event is Dictionary:
+			append_event(event)
+
+
+func finish(context: String = "") -> Array[Dictionary]:
+	if OS.is_debug_build():
+		_EventValidator.assert_valid(events, context)
+		if state != null:
+			_InvariantChecker.assert_valid(state, context)
+	return events

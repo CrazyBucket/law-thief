@@ -1,6 +1,8 @@
 class_name BattleEventPlayer
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 var _host: Node = null
 var _board = null
 var _controller: BattleController = null
@@ -98,18 +100,9 @@ func play_events(events: Array) -> void:
 			await _play_projectile_volley(projectile_batch)
 			continue
 		if ev_type == "explode":
-			_prime_event_state(ev)
-			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
-			_board.queue_redraw()
-			_apply_event_state(ev)
-			i += 1
-			var blast_tail := _collect_blast_tail(events, i)
-			i = int(blast_tail.get("next_index", i))
-			var damage_batch: Array = blast_tail.get("damage", [])
-			var move_batch: Array = blast_tail.get("move_step", [])
-			_play_damage_batch(damage_batch)
-			if not move_batch.is_empty():
-				await _play_parallel_move_batch(move_batch)
+			var blast_cluster := _collect_blast_cluster(events, i)
+			i = int(blast_cluster.get("next_index", i))
+			await _play_blast_cluster(blast_cluster)
 			await _await_anim_delay(0.75)
 			_board.queue_redraw()
 			continue
@@ -170,24 +163,56 @@ func _collect_consecutive_events(events: Array, start: int, types: Array) -> Arr
 	return batch
 
 
-func _collect_blast_tail(events: Array, start: int) -> Dictionary:
+func _collect_blast_cluster(events: Array, start: int) -> Dictionary:
+	var explode_batch: Array = []
 	var damage_batch: Array = []
 	var move_batch: Array = []
+	var fx_batch: Array = []
+	var split_spawn_batch: Array = []
 	var i := start
 	while i < events.size():
 		var tail_type := str(events[i].get("type", ""))
-		if tail_type == "damage":
+		if tail_type == "explode":
+			explode_batch.append(events[i])
+		elif tail_type == "damage":
 			damage_batch.append(events[i])
 		elif tail_type == "move_step":
 			move_batch.append(events[i])
+		elif tail_type in ["poison_burst", "fire_burst", "frost_pulse"]:
+			fx_batch.append(events[i])
+		elif tail_type == "split_spawn":
+			split_spawn_batch.append(events[i])
 		else:
 			break
 		i += 1
 	return {
+		"explode": explode_batch,
 		"damage": damage_batch,
 		"move_step": move_batch,
+		"area_fx": fx_batch,
+		"split_spawn": split_spawn_batch,
 		"next_index": i,
 	}
+
+
+func _play_blast_cluster(cluster: Dictionary) -> void:
+	var explode_batch: Array = cluster.get("explode", [])
+	var damage_batch: Array = cluster.get("damage", [])
+	var move_batch: Array = cluster.get("move_step", [])
+	var fx_batch: Array = cluster.get("area_fx", [])
+	var split_spawn_batch: Array = cluster.get("split_spawn", [])
+	for explode_event in explode_batch:
+		_prime_event_state(explode_event)
+	for explode_event in explode_batch:
+		_board.play_explosion(explode_event.get("pos", Vector2i.ZERO))
+	_apply_area_events_for_blast(fx_batch)
+	_play_split_spawn_batch(split_spawn_batch)
+	_board.queue_redraw()
+	for explode_event in explode_batch:
+		_apply_event_state(explode_event)
+	_play_damage_batch(damage_batch)
+	if not move_batch.is_empty():
+		await _play_parallel_move_batch(move_batch)
 
 
 func _play_damage_batch(batch: Array) -> void:
@@ -222,6 +247,18 @@ func _play_area_fx_batch(batch: Array) -> void:
 				_board.play_heal_effect(fx_event.get("pos", Vector2i.ZERO))
 	for fx_event in batch:
 		_apply_event_state(fx_event)
+
+
+func _apply_area_events_for_blast(batch: Array) -> void:
+	if batch.is_empty():
+		return
+	_play_area_fx_batch(batch)
+
+
+func _play_split_spawn_batch(batch: Array) -> void:
+	for split_event in batch:
+		_apply_event_state(split_event)
+		_board.play_gem_flash(split_event.get("pos", Vector2i.ZERO), Color(0.35, 0.88, 0.55))
 
 
 func _play_parallel_move_batch(batch: Array) -> void:
@@ -355,7 +392,8 @@ func _prime_event_state(ev: Dictionary) -> void:
 			if unit != null:
 				var from_pos: Vector2i = ev.get("from", unit.pos)
 				var to_pos: Vector2i = ev.get("to", unit.pos)
-				unit.pos = to_pos
+				if unit.pos != to_pos:
+					_display_state.move_unit(unit, to_pos)
 				unit.facing = UnitState.facing_from_step(from_pos, to_pos)
 
 
@@ -390,7 +428,7 @@ func _apply_event_state(ev: Dictionary) -> void:
 				for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
 					if BoardUtils.in_bounds(_display_state, cell):
 						cells.append(cell)
-			var duration := Constants.POISON_FOG_DURATION
+			var duration := CombatConfig.poison_fog_duration()
 			if int(ev.get("duration", 0)) > 0:
 				duration = int(ev.get("duration", duration))
 			for cell in cells:

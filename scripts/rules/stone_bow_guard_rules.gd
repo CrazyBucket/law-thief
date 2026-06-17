@@ -24,13 +24,13 @@ static func can_shoot_from_anchor(
 ) -> bool:
 	if state == null or unit == null or target == null or not target.alive:
 		return false
-	var dist := BoardUtils.distance_between_units(unit, target)
+	var dist := BoardUtils.distance_between_unit_at_and_unit(unit, anchor, target)
 	if dist < Constants.STONE_BOW_KITE_MIN_RANGE:
 		return false
 	var max_range := attack_range_for(anchor, move_path)
 	if dist > max_range:
 		return false
-	var from_cell := BoardUtils.projectile_origin_cell(unit, target.pos)
+	var from_cell := BoardUtils.projectile_origin_cell_at(unit, anchor, target.pos)
 	return not BoardUtils.projectile_blocked_before_aim(state, from_cell, target.pos)
 
 
@@ -66,11 +66,7 @@ static func _rng_service() -> Node:
 
 
 static func in_range(state: GameState, unit: UnitState, from_pos: Vector2i, target: UnitState, move_path: Array) -> bool:
-	var saved_pos := unit.pos
-	unit.pos = from_pos
-	var ok := can_shoot_from_anchor(state, unit, from_pos, target, move_path)
-	unit.pos = saved_pos
-	return ok
+	return can_shoot_from_anchor(state, unit, from_pos, target, move_path)
 
 
 ## 石弓专用风筝 AI：每步决策用当前玩家坐标；已在射程内优先原地架设射击
@@ -103,10 +99,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			)
 			if move_path.is_empty():
 				continue
-		var saved_pos := enemy.pos
-		enemy.pos = move_pos
-		var dist: int = BoardUtils.distance_between_units(enemy, player)
-		enemy.pos = saved_pos
+		var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, move_pos, player)
 		var max_range: int = attack_range_for(turn_start, move_path)
 		if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range:
 			continue
@@ -137,10 +130,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if _anchor_blocked(state, enemy, move_pos, cell_blockers):
 			continue
-		var saved_pos := enemy.pos
-		enemy.pos = move_pos
-		var new_dist: int = BoardUtils.distance_between_units(enemy, player)
-		enemy.pos = saved_pos
+		var new_dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, move_pos, player)
 		if can_shoot_here and new_dist >= Constants.STONE_BOW_KITE_MIN_RANGE:
 			continue
 		if can_shoot_here and new_dist < current_dist:
@@ -308,12 +298,9 @@ static func _open_shot_anchors(
 			var anchor := Vector2i(x, y)
 			if _anchor_blocked(state, enemy, anchor, cell_blockers):
 				continue
-			var saved := enemy.pos
-			enemy.pos = anchor
-			var dist := BoardUtils.distance_between_units(enemy, player)
-			var from_cell := BoardUtils.projectile_origin_cell(enemy, player.pos)
+			var dist := BoardUtils.distance_between_unit_at_and_unit(enemy, anchor, player)
+			var from_cell := BoardUtils.projectile_origin_cell_at(enemy, anchor, player.pos)
 			var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
-			enemy.pos = saved
 			if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range or blocked:
 				continue
 			anchors.append(anchor)

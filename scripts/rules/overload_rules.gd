@@ -51,6 +51,7 @@ static func cancel_pending(state: GameState) -> void:
 static func activate_pending(state: GameState) -> void:
 	if state == null or not state.overload_pending:
 		return
+	sync_active_mutations_to_overload_slots(state, false)
 	var mutation := _pick_next_mutation(state)
 	state.overload_pending = false
 	state.overload_pending_turn = 0
@@ -59,6 +60,7 @@ static func activate_pending(state: GameState) -> void:
 		return
 	if mutation not in state.overload_active_mutations:
 		state.overload_active_mutations.append(mutation)
+	sync_active_mutations_to_overload_slots(state, true)
 	state.log("过载生效：%s" % mutation_label(mutation))
 	match mutation:
 		Constants.OVERLOAD_RANDOM_ENEMY_GEMS:
@@ -71,19 +73,52 @@ static func activate_pending(state: GameState) -> void:
 
 
 static func is_active(state: GameState, mutation: String) -> bool:
-	return state != null and mutation in state.overload_active_mutations
+	if state == null:
+		return false
+	sync_active_mutations_to_overload_slots(state, false)
+	return mutation in state.overload_active_mutations
 
 
-static func on_enemy_gem_extracted(state: GameState, unit: UnitState, _slot_type: String, gem_uid: String) -> void:
-	if not is_active(state, Constants.OVERLOAD_LAWLESS_ANY_EXTRACT):
+static func overload_gem_count(state: GameState) -> int:
+	if state == null:
+		return 0
+	var count := 0
+	for unit in state.units.values():
+		if unit == null or not unit.alive:
+			continue
+		count += _count_overload_slot_gems(unit.slots)
+	for tile in state.tiles.values():
+		if tile == null:
+			continue
+		count += _count_overload_slot_gems(tile.slots)
+	return count
+
+
+static func sync_active_mutations_to_overload_slots(state: GameState, allow_growth: bool = true) -> void:
+	if state == null:
+		return
+	var target_count := overload_gem_count(state)
+	while state.overload_active_mutations.size() > target_count:
+		state.overload_active_mutations.pop_back()
+	if not allow_growth:
+		return
+	while state.overload_active_mutations.size() < target_count:
+		var mutation := _pick_next_mutation(state)
+		if mutation.is_empty():
+			return
+		state.overload_active_mutations.append(mutation)
+
+
+static func on_enemy_gem_extracted(state: GameState, unit: UnitState, _slot_type: String, gem_uid: String, force_active: bool = false) -> void:
+	if not force_active and not is_active(state, Constants.OVERLOAD_LAWLESS_ANY_EXTRACT):
 		return
 	if unit == null or unit.team != Constants.TEAM_ENEMY:
 		return
 	StatusRules.apply_lawless(state, unit, gem_uid)
 
 
-static func leave_extract_echo(state: GameState, slot: SlotState, gem: GemState, owner_uid: String = "") -> void:
-	if not is_active(state, Constants.OVERLOAD_ECHO_EXTRACT):
+static func leave_extract_echo(state: GameState, slot: SlotState, gem: GemState, owner_uid: String = "", force_active: bool = false) -> void:
+	if not force_active and not is_active(state, Constants.OVERLOAD_ECHO_EXTRACT):
 		return
 	if slot == null or gem == null or not slot.gem_uid.is_empty():
 		return
@@ -118,6 +153,7 @@ static func apply_gem_operation_backlash(state: GameState) -> void:
 static func tick_turn_start(state: GameState) -> void:
 	if state == null:
 		return
+	sync_active_mutations_to_overload_slots(state, true)
 	_clear_expired_echoes(state)
 	if is_active(state, Constants.OVERLOAD_RANDOM_ENEMY_GEMS):
 		fill_random_enemy_gem(state)
@@ -237,6 +273,16 @@ static func _pick_next_mutation(state: GameState) -> String:
 	if rng == null:
 		return candidates[0] if not candidates.is_empty() else ""
 	return str(rng.pick("overload_mutation_%d_%d" % [state.turn_index, state.overload_active_mutations.size()], candidates))
+
+
+static func _count_overload_slot_gems(slots: Array) -> int:
+	var count := 0
+	for slot in slots:
+		if slot == null:
+			continue
+		if slot.lock_type == Constants.LOCK_OVERLOAD_SLOT and not slot.gem_uid.is_empty():
+			count += 1
+	return count
 
 
 static func _clear_expired_echoes(state: GameState) -> void:

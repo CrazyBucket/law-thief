@@ -3,6 +3,7 @@ extends RefCounted
 
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 
 static func _rng_service() -> Node:
@@ -449,7 +450,7 @@ static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
 static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInstance) -> void:
 	match status.status_id:
 		Constants.STATUS_POISON:
-			var poison_dmg := status.stacks * Constants.POISON_FOG_DAMAGE
+			var poison_dmg := status.stacks * CombatConfig.poison_fog_damage()
 			CombatRules.apply_true_damage(state, unit, poison_dmg, status.source_uid, "poison")
 		Constants.STATUS_BURNING:
 			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "burning")

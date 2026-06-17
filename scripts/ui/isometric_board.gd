@@ -475,22 +475,29 @@ func _draw() -> void:
 	var drawn_entities: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
-	_draw_move_highlight_outlines()
+	if not _has_unified_overlays():
+		_draw_move_highlight_outlines()
+	if _has_unified_overlays():
+		_draw_overlay_routes()
 	_draw_editor_preview()
 	for grid in _sorted_cells():
 		_draw_entity_at_grid(grid, drawn_entities)
+		_draw_dropped_gems_at_grid(grid)
 		if hover_cell == grid:
 			var hover_unit := state.get_unit_at(hover_cell)
 			if hover_unit == null or not hover_unit.alive:
 				TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell), _cell_hover_outline_color())
 	_draw_unit_ground_outlines()
+	if _has_unified_overlays():
+		_draw_unified_overlay_outlines()
 	_draw_gem_visuals(false)
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
 		if unit != null and unit.alive and not drawn_units.has(unit.uid):
 			drawn_units[unit.uid] = true
 			_draw_unit(unit)
-	_draw_highlight_outlines()
+	if not _has_unified_overlays():
+		_draw_highlight_outlines()
 	_draw_anim_particles()
 	_draw_projectile()
 	_draw_gem_visuals(true)
@@ -669,6 +676,40 @@ func _draw_entity_at_grid(grid: Vector2i, drawn_entities: Dictionary) -> void:
 			TileRenderer.draw_prop_fallback(self, center)
 
 
+func _draw_dropped_gems_at_grid(grid: Vector2i) -> void:
+	if state == null or _gem_sprites == null:
+		return
+	var drops: Array[Dictionary] = []
+	for raw_drop in state.dropped_gems.values():
+		if not raw_drop is Dictionary:
+			continue
+		var drop := raw_drop as Dictionary
+		if drop.get("pos", Vector2i(-999, -999)) == grid:
+			drops.append(drop)
+	if drops.is_empty():
+		return
+	drops.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return str(a.get("gem_uid", "")) < str(b.get("gem_uid", ""))
+	)
+	var center := grid_to_screen(grid) + Vector2(0.0, IsoCoordinates.visual(4.0))
+	var spacing := IsoCoordinates.visual(12.0)
+	var size := IsoCoordinates.visual(13.0)
+	var start_x := -spacing * float(drops.size() - 1) * 0.5
+	for i in range(drops.size()):
+		var gem_uid := str(drops[i].get("gem_uid", ""))
+		var gem: GemState = state.gems.get(gem_uid, null)
+		if gem == null:
+			continue
+		var pos := center + Vector2(start_x + spacing * float(i), 0.0)
+		_draw_soft_backdrop(pos + Vector2(0.0, IsoCoordinates.visual(5.0)), size * 0.55, size * 0.24, Color(0.0, 0.0, 0.0, 0.42))
+		var tex: Texture2D = _gem_sprites.texture_for_gem_id(gem.gem_id)
+		var tint: Color = _gem_sprites.modulate_for_gem_id(gem.gem_id)
+		if tex != null:
+			draw_texture_rect(tex, Rect2(pos - Vector2.ONE * size * 0.5, Vector2.ONE * size), false, tint)
+		else:
+			_draw_small_diamond(pos, size * 0.42, size * 0.32, tint)
+
+
 func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 	if not data is Dictionary or not data.has("battle_editor_tool"):
 		return false
@@ -744,6 +785,79 @@ func _draw_highlight_outlines() -> void:
 		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.5))
 
 
+func _has_unified_overlays() -> bool:
+	var overlays: Array = highlights.get("overlays", [])
+	var routes: Array = highlights.get("routes", [])
+	return not overlays.is_empty() or not routes.is_empty()
+
+
+func _draw_unified_overlay_outlines() -> void:
+	var overlays: Array = highlights.get("overlays", [])
+	if overlays.is_empty():
+		return
+	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
+	for raw_overlay in overlays:
+		if not raw_overlay is Dictionary:
+			continue
+		var overlay: Dictionary = raw_overlay
+		var kind := str(overlay.get("kind", ""))
+		var cells: Array = overlay.get("cells", [])
+		if cells.is_empty():
+			continue
+		var base_color := _overlay_outline_color(kind, pulse)
+		var base_width := _overlay_line_width(kind)
+		for raw_cell in cells:
+			var cell: Vector2i = raw_cell
+			var color := base_color
+			var width := base_width
+			if cell == hover_cell:
+				color = color.lightened(0.18)
+				color.a = minf(1.0, color.a + 0.12)
+				width += IsoCoordinates.visual(0.6)
+			_draw_cell_outline(cell, color, width)
+
+
+func _draw_overlay_routes() -> void:
+	var routes: Array = highlights.get("routes", [])
+	if routes.is_empty():
+		return
+	for raw_route in routes:
+		if not raw_route is Dictionary:
+			continue
+		var route: Dictionary = raw_route
+		var path: Array = route.get("path", [])
+		if path.size() < 2:
+			continue
+		var points := PackedVector2Array()
+		for raw_cell in path:
+			var cell: Vector2i = raw_cell
+			points.append(grid_to_screen(cell))
+		if points.size() < 2:
+			continue
+		var kind := str(route.get("kind", ""))
+		var color := _route_color(kind)
+		var width := IsoCoordinates.visual(5.2 if kind == "move" else 4.0)
+		draw_polyline(points, color, width, false)
+		_draw_route_arrow(points, color, bool(route.get("arrow_reverse", false)))
+
+
+func _draw_route_arrow(points: PackedVector2Array, color: Color, reverse_direction: bool) -> void:
+	if points.size() < 2:
+		return
+	var end_pos: Vector2 = points[points.size() - 1]
+	var prev_pos: Vector2 = points[points.size() - 2]
+	var direction: Vector2 = prev_pos - end_pos if reverse_direction else end_pos - prev_pos
+	if direction.length() < 0.01:
+		return
+	direction = direction.normalized()
+	var perp := Vector2(-direction.y, direction.x)
+	var tip := end_pos + direction * IsoCoordinates.visual(8.0)
+	var base := end_pos - direction * IsoCoordinates.visual(7.0)
+	var left := base + perp * IsoCoordinates.visual(6.0)
+	var right := base - perp * IsoCoordinates.visual(6.0)
+	draw_colored_polygon(PackedVector2Array([tip, left, right]), color)
+
+
 func _draw_tile(grid: Vector2i) -> void:
 	var center := grid_to_screen(grid)
 	var tile := state.get_tile(grid)
@@ -753,6 +867,9 @@ func _draw_tile(grid: Vector2i) -> void:
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
+	var overlays: Array = highlights.get("overlays", [])
+	if not overlays.is_empty():
+		return _tile_overlay_highlight(grid, overlays)
 	var reachable: Array = highlights.get("reachable", [])
 	var attack_range: Array = highlights.get("attack_range", [])
 	var targets: Array = highlights.get("targets", [])
@@ -778,6 +895,137 @@ func _tile_highlight(grid: Vector2i) -> Color:
 	if grid in paths:
 		return Color(UiPalette.HILITE_RANGE, 0.24 + pulse * 0.1)
 	return Color.TRANSPARENT
+
+
+func _tile_overlay_highlight(grid: Vector2i, overlays: Array) -> Color:
+	var best_kind := ""
+	var best_priority := -999
+	for raw_overlay in overlays:
+		if not raw_overlay is Dictionary:
+			continue
+		var overlay: Dictionary = raw_overlay
+		var cells: Array = overlay.get("cells", [])
+		if not grid in cells:
+			continue
+		var kind := str(overlay.get("kind", ""))
+		var priority := _overlay_priority(kind)
+		if priority >= best_priority:
+			best_priority = priority
+			best_kind = kind
+	if best_kind.is_empty():
+		return Color.TRANSPARENT
+	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
+	var base := _overlay_base_color(best_kind)
+	var alpha := _overlay_fill_alpha(best_kind, pulse)
+	if grid == hover_cell:
+		alpha = minf(0.78, alpha + 0.14)
+	return Color(base, alpha)
+
+
+func _overlay_priority(kind: String) -> int:
+	match kind:
+		"danger":
+			return 90
+		"effect":
+			return 80
+		"target":
+			return 70
+		"map_current":
+			return 66
+		"map_choice":
+			return 60
+		"intent_path":
+			return 50
+		"attack_range":
+			return 40
+		"move":
+			return 30
+		"map_resolved":
+			return 10
+	return 0
+
+
+func _overlay_base_color(kind: String) -> Color:
+	match kind:
+		"move":
+			return UiPalette.HILITE_MOVE
+		"attack_range":
+			return UiPalette.HILITE_RANGE.darkened(0.08)
+		"target":
+			return UiPalette.HILITE_TARGET
+		"danger":
+			return UiPalette.HILITE_DANGER
+		"effect":
+			return UiPalette.FIRE_ORANGE
+		"intent_path":
+			return UiPalette.INTENT_MOVE
+		"map_current":
+			return UiPalette.ROOM_START
+		"map_choice":
+			return UiPalette.ROOM_EXIT
+		"map_resolved":
+			return UiPalette.EDGE_LIGHT
+	return UiPalette.TEXT_BRIGHT
+
+
+func _overlay_fill_alpha(kind: String, pulse: float) -> float:
+	match kind:
+		"danger":
+			return 0.34 + pulse * 0.18
+		"effect":
+			return 0.32 + pulse * 0.16
+		"target":
+			return 0.32 + pulse * 0.18
+		"map_current":
+			return 0.36 + pulse * 0.16
+		"map_choice":
+			return 0.26 + pulse * 0.14
+		"intent_path":
+			return 0.18 + pulse * 0.12
+		"attack_range":
+			return 0.20 + pulse * 0.10
+		"move":
+			return 0.22 + pulse * 0.10
+		"map_resolved":
+			return 0.10
+	return 0.18
+
+
+func _overlay_outline_color(kind: String, pulse: float) -> Color:
+	var base := _overlay_base_color(kind)
+	var alpha: float = 0.62 + pulse * 0.22
+	match kind:
+		"move":
+			alpha = 0.58 + pulse * 0.18
+		"attack_range", "intent_path":
+			alpha = 0.48 + pulse * 0.18
+		"map_resolved":
+			alpha = 0.28
+		"map_current", "map_choice", "target", "danger", "effect":
+			alpha = 0.72 + pulse * 0.22
+	return Color(base, alpha)
+
+
+func _overlay_line_width(kind: String) -> float:
+	match kind:
+		"target", "danger", "effect", "map_current":
+			return IsoCoordinates.visual(2.0)
+		"map_choice":
+			return IsoCoordinates.visual(1.8)
+		"move", "attack_range", "intent_path":
+			return IsoCoordinates.visual(1.45)
+	return IsoCoordinates.visual(1.3)
+
+
+func _route_color(kind: String) -> Color:
+	match kind:
+		"move":
+			return Color(UiPalette.HILITE_MOVE.lightened(0.16), 0.42)
+		"intent":
+			return Color(UiPalette.INTENT_ATTACK.lightened(0.08), 0.36)
+		"map_choice":
+			return Color(UiPalette.ROOM_EXIT.lightened(0.14), 0.32)
+	return Color(UiPalette.TEXT_BRIGHT, 0.34)
 
 
 func _draw_unit(unit: UnitState) -> void:
@@ -1114,35 +1362,52 @@ func _draw_unit_statuses(unit: UnitState, origin: Vector2) -> void:
 func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 	if state == null or _gem_sprites == null:
 		return
-	var occupied_slots: Array[SlotState] = []
+	var visible_slots: Array[SlotState] = []
 	for slot in unit.slots:
-		if slot.gem_uid.is_empty():
+		if slot == null:
 			continue
-		if _anim.masked_embedded_gems.has(slot.gem_uid):
+		if not slot.gem_uid.is_empty() and _anim.masked_embedded_gems.has(slot.gem_uid):
 			continue
-		occupied_slots.append(slot)
-	if occupied_slots.is_empty():
+		visible_slots.append(slot)
+	if visible_slots.is_empty():
 		return
 	var icon_size := IsoCoordinates.visual(10.0)
 	var spacing := IsoCoordinates.visual(11.0)
-	var start_x := anchor.x - spacing * float(occupied_slots.size() - 1) * 0.5
+	var start_x := anchor.x - spacing * float(visible_slots.size() - 1) * 0.5
 	var icon_y := anchor.y - IsoCoordinates.visual(13.0)
-	for i in range(occupied_slots.size()):
-		var slot: SlotState = occupied_slots[i]
+	for i in range(visible_slots.size()):
+		var slot: SlotState = visible_slots[i]
+		var cx := start_x + spacing * float(i)
+		var pos := Vector2(cx, icon_y)
+		if slot.gem_uid.is_empty():
+			var slot_col := UnitLooks.slot_color(slot.slot_type)
+			slot_col.a = 0.82
+			var slot_fill := slot_col
+			slot_fill.a = 0.18
+			_draw_small_diamond(pos, icon_size * 0.34, icon_size * 0.26, slot_fill)
+			var corners := PackedVector2Array([
+				pos + Vector2(0, -icon_size * 0.34),
+				pos + Vector2(icon_size * 0.34, 0),
+				pos + Vector2(0, icon_size * 0.34),
+				pos + Vector2(-icon_size * 0.34, 0),
+				pos + Vector2(0, -icon_size * 0.34),
+			])
+			draw_polyline(corners, slot_col, IsoCoordinates.visual(1.1), false)
+			continue
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			continue
 		var tex: Texture2D = _gem_sprites.texture_for_gem_id(gem.gem_id)
-		if tex == null:
-			continue
-		var tint: Color = _gem_sprites.modulate_for_gem_id(gem.gem_id)
-		var cx := start_x + spacing * float(i)
-		draw_texture_rect(
-			tex,
-			Rect2(Vector2(cx - icon_size * 0.5, icon_y - icon_size * 0.5), Vector2(icon_size, icon_size)),
-			false,
-			tint
+		if tex != null:
+			var tint: Color = _gem_sprites.modulate_for_gem_id(gem.gem_id)
+			draw_texture_rect(
+				tex,
+				Rect2(Vector2(cx - icon_size * 0.5, icon_y - icon_size * 0.5), Vector2(icon_size, icon_size)),
+				false,
+				tint
 			)
+		else:
+			_draw_small_diamond(pos, icon_size * 0.38, icon_size * 0.3, UnitLooks.gem_color(gem))
 
 
 func _draw_unit_slot_panels() -> void:

@@ -331,75 +331,131 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -68.0
+offset_top = -94.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
 
 [node name="BottomBar" type="HBoxContainer" parent="HudLayer/BottomDock" unique_id=1733280692]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 alignment = 1
 
-[node name="MoveGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=950617322]
+[node name="MoveGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=950617322]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/MoveGroup"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="HudLayer/BottomDock/BottomBar/MoveGroup/VBox"]
+layout_mode = 2
+text = "机动"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar/MoveGroup/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
+alignment = 1
 
-[node name="MoveBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/MoveGroup" unique_id=1245834913]
-custom_minimum_size = Vector2(72, 44)
+[node name="MoveBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/MoveGroup/VBox/Row" unique_id=1245834913]
+custom_minimum_size = Vector2(86, 44)
 layout_mode = 2
-text = "移动"
+text = "机动"
 
 [node name="Sep1" type="VSeparator" parent="HudLayer/BottomDock/BottomBar" unique_id=1406504939]
 layout_mode = 2
 
-[node name="CombatGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=252820956]
+[node name="CombatGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=252820956]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/CombatGroup"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="HudLayer/BottomDock/BottomBar/CombatGroup/VBox"]
+layout_mode = 2
+text = "战斗"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar/CombatGroup/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
+alignment = 1
 
-[node name="AttackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/CombatGroup" unique_id=607068084]
-custom_minimum_size = Vector2(72, 44)
+[node name="AttackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row" unique_id=607068084]
+custom_minimum_size = Vector2(86, 44)
 layout_mode = 2
-text = "攻击"
+text = "射击"
 
 [node name="Sep2" type="VSeparator" parent="HudLayer/BottomDock/BottomBar" unique_id=1484710149]
 layout_mode = 2
 
-[node name="GemGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=848915569]
+[node name="GemGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=848915569]
+custom_minimum_size = Vector2(194, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/GemGroup"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="HudLayer/BottomDock/BottomBar/GemGroup/VBox"]
+layout_mode = 2
+text = "宝石"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar/GemGroup/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
+alignment = 1
 
-[node name="ExtractBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup" unique_id=669162660]
-custom_minimum_size = Vector2(72, 44)
+[node name="ExtractBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row" unique_id=669162660]
+custom_minimum_size = Vector2(86, 44)
 layout_mode = 2
-text = "拔出"
+text = "拔取"
 
-[node name="InsertBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup" unique_id=395543423]
-custom_minimum_size = Vector2(72, 44)
+[node name="InsertBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row" unique_id=395543423]
+custom_minimum_size = Vector2(86, 44)
 layout_mode = 2
 text = "嵌入"
 
 [node name="Sep3" type="VSeparator" parent="HudLayer/BottomDock/BottomBar" unique_id=1050004594]
 layout_mode = 2
 
-[node name="TurnGroup" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=1170894654]
+[node name="TurnGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=1170894654]
+custom_minimum_size = Vector2(192, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/TurnGroup"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="Title" type="Label" parent="HudLayer/BottomDock/BottomBar/TurnGroup/VBox"]
+layout_mode = 2
+text = "回合"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="HudLayer/BottomDock/BottomBar/TurnGroup/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
+alignment = 1
 
-[node name="EndTurnBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup" unique_id=1438587814]
-custom_minimum_size = Vector2(96, 44)
+[node name="EndTurnBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row" unique_id=1438587814]
+custom_minimum_size = Vector2(104, 44)
 layout_mode = 2
 text = "结束回合"
 
-[node name="BackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup" unique_id=1049951023]
-custom_minimum_size = Vector2(56, 44)
+[node name="BackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row" unique_id=1049951023]
+custom_minimum_size = Vector2(60, 44)
 layout_mode = 2
 text = "返回"
 
 [connection signal="pressed" from="HudLayer/TogglePanelBtn" to="." method="_on_toggle_panel"]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/MoveGroup/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/EndTurnBtn" to="." method="_on_end_turn_pressed"]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/BackBtn" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/MoveGroup/VBox/Row/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn" to="." method="_on_end_turn_pressed"]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/BackBtn" to="." method="_on_back_pressed"]

@@ -1,6 +1,7 @@
 class_name TileRules
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
@@ -19,18 +20,6 @@ static var _ENTER_EFFECTS: Dictionary = {
 	Constants.TILE_MOD_POISON_PUDDLE: func(state: GameState, unit: UnitState) -> void:
 		StatusRules.apply_poison(state, unit, 1, 0),
 }
-
-# ─── 覆盖层共存反应表 ──────────────────────────────────────────────────────────
-# 每条记录：{ [new_mod, existing_mod] → Callable(state, tile) }
-# 返回值约定：true = 阻止 new_mod 实际写入（已被反应消耗）
-static var _OVERLAY_REACTIONS: Dictionary = {
-	# 水 + 火 → 火熄灭，地块恢复正常
-	[Constants.TILE_MOD_FIRE, Constants.TILE_MOD_POISON_FOG]: func(state: GameState, tile: TileState) -> bool:
-		tile.remove_modifier(Constants.TILE_MOD_POISON_FOG)
-		state.log("爆炸/烈火消散了位于 %s 的毒雾" % [tile.pos])
-		return false,   # fire 本身仍然写入
-}
-
 
 ## 单位当前所在格的地形常驻效果（水域→潮湿）；出生、停留、进入时均需同步
 static func sync_standing_ground_effects(state: GameState, unit: UnitState) -> void:
@@ -96,13 +85,17 @@ static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────
 
-static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = Constants.POISON_FOG_DURATION) -> void:
+static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = -1) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
+	if duration < 0:
+		duration = CombatConfig.poison_fog_duration()
 	var tile := state.get_tile(pos)
 	# 水洼中无法形成毒雾，但可变成毒水洼（如已有水洼则转化）
 	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
 		_convert_water_to_poison_puddle(state, tile)
+		return
+	if _run_overlay_reactions(state, tile, Constants.TILE_MOD_POISON_FOG):
 		return
 	var add_turns := duration
 	for i in range(tile.modifiers.size()):
@@ -127,10 +120,10 @@ static func create_overlay(
 ) -> Dictionary:
 	match overlay_id:
 		Constants.TILE_MOD_POISON_FOG:
-			create_poison_fog(state, pos, duration if duration > 0 else Constants.POISON_FOG_DURATION)
+			create_poison_fog(state, pos, duration if duration > 0 else CombatConfig.poison_fog_duration())
 			return {"ok": true}
 		Constants.TILE_MOD_FIRE:
-			create_fire(state, pos, duration if duration > 0 else Constants.FIRE_DURATION)
+			create_fire(state, pos, duration if duration > 0 else CombatConfig.fire_duration())
 			return {"ok": true}
 		Constants.TILE_MOD_TOXIC_SMOKE:
 			create_toxic_smoke(state, pos, duration if duration > 0 else 1)
@@ -148,9 +141,11 @@ static func create_overlay(
 	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
 
 
-static func create_fire(state: GameState, pos: Vector2i, duration: int = Constants.FIRE_DURATION) -> void:
+static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
+	if duration < 0:
+		duration = CombatConfig.fire_duration()
 	var tile := state.get_tile(pos)
 
 	# 火 + 水洼 → 熄灭（直接 return，不创建火）
@@ -158,8 +153,8 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = Constan
 		state.log("火焰在水洼 %s 中熄灭" % [pos])
 		return
 
-	# 触发共存反应（fire 叠加时检查是否与毒雾反应）
-	_run_overlay_reactions(state, tile, Constants.TILE_MOD_FIRE)
+	if _run_overlay_reactions(state, tile, Constants.TILE_MOD_FIRE):
+		return
 
 	# 更新或新建 fire modifier
 	for i in range(tile.modifiers.size()):
@@ -230,7 +225,7 @@ static func spread_fire(state: GameState) -> void:
 			if ntile.has_modifier(Constants.TILE_MOD_FIRE):
 				continue
 			if ntile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
-				if bool(rng.chance("tile_fire_spread_%s" % str(neighbor), Constants.FIRE_SPREAD_CHANCE)):
+				if bool(rng.chance("tile_fire_spread_%s" % str(neighbor), CombatConfig.fire_spread_chance())):
 					create_fire(state, neighbor)
 
 	# [着火] 的单位路过可燃格也会点燃（已在 on_unit_moved_through 的 burning 触发中隐含，
@@ -280,15 +275,29 @@ static func _apply_enter_effects_to_occupant(state: GameState, pos: Vector2i, ti
 	_apply_enter_effects(state, occupant, tile)
 
 
-static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_type: String) -> void:
-	for key in _OVERLAY_REACTIONS.keys():
-		if key[0] == incoming_type and tile.has_modifier(key[1]):
-			_OVERLAY_REACTIONS[key].call(state, tile)
+static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_type: String) -> bool:
+	if incoming_type == Constants.TILE_MOD_FIRE:
+		if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+			create_toxic_smoke(state, tile.pos)
+			state.log("火焰点燃毒雾，%s 生成毒烟" % [tile.pos])
+			return true
+		if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+			create_toxic_smoke(state, tile.pos)
+			return true
+	if incoming_type == Constants.TILE_MOD_POISON_FOG:
+		if tile.has_modifier(Constants.TILE_MOD_FIRE):
+			create_toxic_smoke(state, tile.pos)
+			state.log("毒雾卷入火焰，%s 生成毒烟" % [tile.pos])
+			return true
+		if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+			create_toxic_smoke(state, tile.pos)
+			return true
+	return false
 
 
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
-	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, Constants.POISON_FOG_DURATION)
+	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_fog_duration())
 	_apply_enter_effects_to_occupant(state, tile.pos, tile)
 
 

@@ -70,6 +70,27 @@ The result is `artifacts/verify/snapshot.json`. It contains:
 - A test must encode an explicit design rule, not duplicate an implementation formula.
 - When changing gem semantics, update the design document or call out why it cannot be updated.
 
+## UI Copy and Comments
+
+- Player-facing text must sound like game UI, not debug output, implementation notes, or AI-generated instructions.
+- Do not show internal ids, coordinates, seeds, room ids, event ids, script names, or rule ids in normal player UI. Put them behind debug/editor UI only.
+- Keep persistent UI copy short and state-based: one label should express one thing such as state, command, result, or warning.
+- Prefer in-world terms: room, route, threat, slot, gem, intent, reward. Avoid engineering terms like node, payload, event id, hover, or schema in player-facing text.
+- Do not use long instructional strings as permanent HUD text. First-time tutorials and tooltips may explain controls; the main HUD should show the current choice or result.
+- New player-facing strings should go through localization data, or the change must explicitly explain why temporary hard-coded text is acceptable.
+- Code comments should explain design intent, invariants, ordering constraints, or non-obvious tradeoffs. Do not add comments that merely restate what the next line of code does.
+- When touching UI, check visual hierarchy, color semantics, overlap, and whether debug-only details are leaking into the normal player experience.
+
+## Battle State Mutation Rules
+
+- Do not add new direct `unit.pos = ...` writes in battle rules, AI, or presentation code except constructors, clones, import/deserialization, or documented no-side-effect planning helpers.
+- Use `GameState.move_unit()` for existing movement until `CombatTransaction` is introduced, so `_cell_occupancy` stays synchronized.
+- New movement events must include `type`, `uid`, `from`, and `to`; avoid writing ad hoc `move_step` dictionaries in multiple places.
+- New damage events must include the victim identity (`uid` and/or `victim_uid`) in addition to `pos`, `damage`, and `is_crit`.
+- Presentation-state application must preserve the same invariants as real state. If a display state moves a unit, its occupancy index must move too.
+- AI preview/scoring should use no-side-effect position helpers instead of temporarily mutating a real `UnitState`.
+- The staged plan for this work lives in `docs/combat-transaction-refactor-todo.md`.
+
 ## Relevant Paths
 
 ```text

@@ -119,11 +119,7 @@ static func execute_slam(
 
 
 static func _can_slam_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i, target: UnitState) -> bool:
-	var saved := unit.pos
-	unit.pos = anchor
-	var ok := BoardUtils.are_units_adjacent(unit, target)
-	unit.pos = saved
-	return ok
+	return BoardUtils.are_units_adjacent_at(unit, anchor, target)
 
 
 static func _anchor_passable_for_plan(

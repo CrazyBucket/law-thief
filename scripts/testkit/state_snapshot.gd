@@ -17,6 +17,7 @@ static func capture(state: GameState, events: Array = [], include_log: bool = tr
 		"result": state.result,
 		"units": [],
 		"gems": [],
+		"dropped_gems": [],
 		"tiles": [],
 		"entities": [],
 		"events": _json_safe(events),
@@ -35,6 +36,11 @@ static func capture(state: GameState, events: Array = [], include_log: bool = tr
 	gem_uids.sort()
 	for uid in gem_uids:
 		snapshot["gems"].append(_gem(state.gems[uid]))
+
+	var dropped_gem_uids := state.dropped_gems.keys()
+	dropped_gem_uids.sort()
+	for uid in dropped_gem_uids:
+		snapshot["dropped_gems"].append(_dropped_gem(state.dropped_gems[uid]))
 
 	var tile_keys := state.tiles.keys()
 	tile_keys.sort()
@@ -145,6 +151,16 @@ static func _entity(entity: EntityState) -> Dictionary:
 		"max_hp": entity.max_hp,
 		"alive": entity.alive,
 		"tags": entity.tags.duplicate(),
+	}
+
+
+static func _dropped_gem(drop: Dictionary) -> Dictionary:
+	return {
+		"gem_uid": str(drop.get("gem_uid", "")),
+		"gem_id": str(drop.get("gem_id", "")),
+		"pos": _json_safe(drop.get("pos", Vector2i.ZERO)),
+		"source_unit_uid": str(drop.get("source_unit_uid", "")),
+		"source_slot_type": str(drop.get("source_slot_type", "")),
 	}
 
 

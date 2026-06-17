@@ -30,6 +30,8 @@ var resource_ledger: Array = []
 var room_states: Dictionary = {}
 ## 当前生效的冒险规则实例
 var adventure_rules: Array = []
+## 跨战斗保留的过载异变；进入战斗后会按过载槽宝石数量校正层数
+var overload_active_mutations: Array[String] = []
 ## 运行时统计摘要
 var run_stats: Dictionary = {}
 ## 当前整局流程阶段
@@ -110,6 +112,7 @@ func export_dict() -> Dictionary:
 		"resource_ledger": resource_ledger.duplicate(true),
 		"room_states": room_states.duplicate(true),
 		"adventure_rules": adventure_rules.duplicate(true),
+		"overload_active_mutations": overload_active_mutations.duplicate(),
 		"run_stats": run_stats.duplicate(true),
 		"run_phase": run_phase,
 		"pending_decision": pending_decision.duplicate(true),
@@ -178,6 +181,12 @@ static func from_dict(d: Dictionary) -> RunState:
 	var raw_adventure_rules: Variant = d.get("adventure_rules", [])
 	if raw_adventure_rules is Array:
 		s.adventure_rules = (raw_adventure_rules as Array).duplicate(true)
+	var raw_overload_mutations: Variant = d.get("overload_active_mutations", [])
+	if raw_overload_mutations is Array:
+		for item in raw_overload_mutations:
+			var mutation := str(item)
+			if not mutation.is_empty():
+				s.overload_active_mutations.append(mutation)
 	for raw_rule in s.adventure_rules:
 		if raw_rule is Dictionary and str((raw_rule as Dictionary).get("scope", "")) == "chapter":
 			if int((raw_rule as Dictionary).get("chapter", 0)) <= 0:

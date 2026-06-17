@@ -1,6 +1,7 @@
 extends Node
 
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
@@ -316,9 +317,9 @@ func get_overlay_display_name(overlay_id: String) -> String:
 func get_overlay_default_duration(overlay_id: String) -> int:
 	match overlay_id:
 		Constants.TILE_MOD_POISON_FOG:
-			return Constants.POISON_FOG_DURATION
+			return CombatConfig.poison_fog_duration()
 		Constants.TILE_MOD_FIRE:
-			return Constants.FIRE_DURATION
+			return CombatConfig.fire_duration()
 		Constants.TILE_MOD_TOXIC_SMOKE:
 			return 1
 		Constants.TILE_MOD_POISON_PUDDLE:
@@ -356,7 +357,7 @@ func get_gem_tag(gem_ref: Variant) -> String:
 		return tag
 	var profile := get_gem_ability_profile(gem_ref, ABILITY_UNIT_RED_ACTIVE)
 	if not profile.is_empty():
-		return _tag_from_legacy_profile(profile)
+		return profile
 	return _gem_id_from_ref(gem_ref)
 
 
@@ -744,7 +745,7 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 			resolved_damage = damage
 			params["damage"] = damage
 		"cross_burst":
-			resolved_damage = Constants.EXPLOSION_CROSS_DAMAGE
+			resolved_damage = CombatConfig.explosion_cross_damage()
 			params["damage"] = resolved_damage
 		_:
 			if resolved_damage != 0 and not params.has("damage"):
@@ -769,14 +770,6 @@ func _gem_pool_weight(gem_id: String, rarity_weights: Dictionary, tag_weights: D
 	if tag_weights.has(tag):
 		weight *= maxf(0.0, float(tag_weights.get(tag, 1.0)))
 	return weight
-
-
-func _tag_from_legacy_profile(profile: String) -> String:
-	match profile:
-		"fire_gem":
-			return "fire"
-		_:
-			return profile
 
 
 func _next_uid(prefix: String) -> String:
@@ -830,12 +823,12 @@ func _register_gem_effect_profiles() -> void:
 			"enemy_intent": {
 				"type": "pull",
 				"preview_key": "gem.intent.pull",
-				"params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE},
+				"params": {"damage": CombatConfig.gravity_collision_damage()},
 				"damage": 0,
 			},
 			"ability_descriptions": {
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
-				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": Constants.GRAVITY_COLLISION_DAMAGE}},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": CombatConfig.gravity_collision_damage()}},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.gravity.black_death"},
 				ABILITY_TILE_ACTIVE: {"key": "gem.effect.gravity.tile_active"},
 				ABILITY_TILE_TURN_START: {"key": "gem.effect.gravity.tile_turn_start"},
@@ -1560,7 +1553,19 @@ func _roll_enemy_total_gem_slots(
 		items,
 		item_weights
 	)
-	return int(picked) if picked != null else mini(1, max_slots)
+	var picked_count := int(picked) if picked != null else mini(1, max_slots)
+	if _enemy_requires_initial_gem(enemy_data, def):
+		picked_count = maxi(1, picked_count)
+	return clampi(picked_count, 0, max_slots)
+
+
+func _enemy_requires_initial_gem(enemy_data: Dictionary, def: Dictionary) -> bool:
+	if bool(enemy_data.get("allow_empty_gems", false)) or bool(def.get("allow_empty_gems", false)):
+		return false
+	for raw_tag in def.get("tags", []):
+		if str(raw_tag) == "unit:test_fixture":
+			return false
+	return not def.get("slots", []).is_empty()
 
 
 func _enemy_total_slot_weights(chapter: int, room_type: String) -> Array[float]:
@@ -1645,7 +1650,8 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 		player.max_hp = run.player_max_hp
 	if run.player_hp >= 0:
 		player.hp = mini(player.max_hp, maxi(0, run.player_hp))
-	for i in range(mini(player.slots.size(), run.player_slot_gems.size())):
+	_ensure_player_slots_for_restore(player, run.player_slot_gems)
+	for i in range(run.player_slot_gems.size()):
 		var raw_slot: Variant = run.player_slot_gems[i]
 		if not raw_slot is Dictionary:
 			continue
@@ -1662,6 +1668,9 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 			
 		var slot: SlotState = player.slots[i]
 		slot.gem_uid = gem.uid
+		var lock_type := str(slot_snapshot.get("lock_type", ""))
+		if not lock_type.is_empty():
+			slot.lock_type = lock_type
 		if slot.dual_type.is_empty():
 			var dual_type := str(slot_snapshot.get("dual_type", ""))
 			if not dual_type.is_empty():
@@ -1680,6 +1689,30 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 			carried.slot_index = -1
 			state.gems[carried.uid] = carried
 			state.held_gem_uid = carried.uid
+	state.overload_active_mutations = run.overload_active_mutations.duplicate()
+
+
+## 过载等战斗内追加的槽位只写入 player_slot_gems，不会进入 extra_slots
+func _ensure_player_slots_for_restore(player: UnitState, slot_gems: Array) -> void:
+	while player.slots.size() < slot_gems.size():
+		var i := player.slots.size()
+		var raw_slot: Variant = slot_gems[i]
+		var slot_type := Constants.SLOT_RED
+		var dual_type := ""
+		var lock_type := ""
+		if raw_slot is Dictionary:
+			var snapshot := raw_slot as Dictionary
+			slot_type = str(snapshot.get("slot_type", Constants.SLOT_RED))
+			if slot_type.is_empty():
+				slot_type = Constants.SLOT_RED
+			dual_type = str(snapshot.get("dual_type", ""))
+			lock_type = str(snapshot.get("lock_type", ""))
+		var slot := SlotState.create(slot_type)
+		if not dual_type.is_empty():
+			slot.dual_type = dual_type
+		if not lock_type.is_empty():
+			slot.lock_type = lock_type
+		player.slots.append(slot)
 
 
 ## 根据章节和房间类型映射到对应的敌人宝石 pool key

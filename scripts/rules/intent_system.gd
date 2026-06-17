@@ -6,6 +6,7 @@ const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 ## 敌人回合执行时按照预计算的意图行动
@@ -207,24 +208,23 @@ static func _build_skill_intent(
 		if split_target != null:
 			var anchor: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
 			var aim_pos := split_target.pos
-			var saved_pos := unit.pos
-			unit.pos = anchor
-			var origin := _SplitShotRules.attacker_origin(unit, aim_pos)
-			unit.pos = saved_pos
+			var origin := BoardUtils.projectile_origin_cell_at(unit, anchor, aim_pos)
 			intent.affected_cells = []
 			var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
 			var split_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
-			for cell in _SplitShotRules.all_hit_cells(origin, aim_pos, [], split_level):
+			var split_cells: Array[Vector2i] = _SplitShotRules.all_hit_cells(origin, aim_pos, [], split_level)
+			for cell in split_cells:
 				if not cell in intent.affected_cells:
 					intent.affected_cells.append(cell)
 	if intent.type == "light_beam":
 		var light_target: UnitState = state.units.get(action.action_target_uid, null)
 		if light_target != null:
 			intent.affected_cells = []
-			var from_cell := BoardUtils.projectile_origin_cell(unit, light_target.pos)
+			var anchor: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
+			var from_cell := BoardUtils.projectile_origin_cell_at(unit, anchor, light_target.pos)
 			var dx := signi(light_target.pos.x - from_cell.x)
 			var dy := signi(light_target.pos.y - from_cell.y)
-			var current := from_cell + Vector2i(dx, dy)
+			var current: Vector2i = from_cell + Vector2i(dx, dy)
 			while BoardUtils.in_bounds(state, current):
 				intent.affected_cells.append(current)
 				current += Vector2i(dx, dy)
@@ -318,18 +318,15 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 	if not StatusRules.can_move(unit):
 		return events
 	var previous := unit.pos
+	var tx := _CombatTransaction.begin(state, events)
 	for step in intent.path:
 		if not BoardUtils.unit_footprint_passable(state, unit, step, unit.uid):
 			state.log("%s 移动受阻：%s 无法落脚" % [unit.uid, step])
 			break
-		var from_pos := unit.pos
-		unit.facing = UnitState.facing_from_step(from_pos, step)
-		state.move_unit(unit, step)
+		tx.move_unit(unit, step, {"reason": "intent_move"})
 		TileRules.on_unit_moved_through(state, unit, step)
-		state.on_unit_move.emit(unit.uid, from_pos, step)
-		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": step})
 	TileRules.finish_voluntary_move(state, unit, previous)
-	return events
+	return tx.finish("IntentSystem._execute_move")
 
 
 static func _execute_extract(state: GameState, unit: UnitState, intent: IntentState) -> void:

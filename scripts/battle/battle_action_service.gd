@@ -3,6 +3,7 @@ extends RefCounted
 
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 var _ctrl: BattleController
 
@@ -52,13 +53,10 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var presentation_state: GameState = state.clone()
 	var previous := player.pos
 	var move_events: Array[Dictionary] = []
+	var tx := _CombatTransaction.begin(state, move_events)
 	for step in path:
-		var from_pos := player.pos
-		player.facing = UnitState.facing_from_step(from_pos, step)
-		state.move_unit(player, step)
+		tx.move_unit(player, step, {"reason": "player_move"})
 		TileRules.on_unit_moved_through(state, player, step)
-		state.on_unit_move.emit(player.uid, from_pos, step)
-		move_events.append({"type": "move_step", "uid": player.uid, "from": from_pos, "to": step})
 		if not player.alive:
 			break
 	if player.alive:
@@ -78,7 +76,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
-	result["move_events"] = _validated_events(move_events, "BattleActionService.try_move")
+	result["move_events"] = _validated_events(tx.finish("BattleActionService.try_move"), "BattleActionService.try_move")
 	result["presentation_state"] = presentation_state
 	return result
 
@@ -191,7 +189,7 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert(ctrl.state, player, target, slot)
 	if result.get("ok", false):
-		OverloadRules.record_insert(ctrl.state)
+		OverloadRules.record_insert(ctrl.state, bool(result.get("overload_forced", false)))
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
@@ -268,7 +266,7 @@ func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("槽位无效")
 	var result := GemRules.insert_tile(ctrl.state, player, tile, slot)
 	if result.get("ok", false):
-		OverloadRules.record_insert(ctrl.state)
+		OverloadRules.record_insert(ctrl.state, bool(result.get("overload_forced", false)))
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl._check_battle_end()
 		ctrl._emit_changed()

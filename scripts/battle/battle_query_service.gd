@@ -5,6 +5,7 @@ const _StatusUi = preload("res://scripts/ui/status_ui.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 var _ctrl: BattleController
 
@@ -29,6 +30,8 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 		"paths": [],
 		"danger": [],
 		"effect_preview": [],
+		"overlays": [],
+		"routes": [],
 	}
 	var ctrl = _c()
 	if ctrl == null:
@@ -44,25 +47,97 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	var unlimited := ctrl.editor_unlimited_actions_enabled()
 	var move_budget := ctrl.player_move_budget(player)
 	if action == Constants.ACTION_MOVE and (unlimited or (not state.player_moved and StatusRules.can_move(player))):
-		result["reachable"] = BoardUtils.reachable_cells(state, player.pos, move_budget)
+		var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
+		result["reachable"] = reachable
+		_append_overlay(result, "move", reachable)
+		if hover_cell in reachable and hover_cell != player.pos:
+			var move_path := BoardUtils.astar_path(
+				state,
+				player.pos,
+				hover_cell,
+				move_budget,
+				player.uid,
+				{"allow_partial_path": false},
+				{},
+				player
+			)
+			if not move_path.is_empty() and move_path[-1] == hover_cell:
+				var route: Array = [player.pos]
+				route.append_array(move_path)
+				_append_route(result, "move", route, {"arrow_reverse": false})
 	elif action == Constants.ACTION_ATTACK and (unlimited or not state.player_acted):
-		result["attack_range"] = _attack_target_cells(state, player)
+		var attack_range := _attack_target_cells(state, player)
+		result["attack_range"] = attack_range
+		_append_overlay(result, "attack_range", attack_range)
 		if hover_cell.x >= 0 and BoardUtils.in_bounds(state, hover_cell):
-			result["effect_preview"] = _attack_hit_preview_cells(state, player, hover_cell)
+			var hit_preview := _attack_hit_preview_cells(state, player, hover_cell)
+			result["effect_preview"] = hit_preview
+			_append_overlay(result, "effect", hit_preview, {"source_uid": player.uid, "target_cell": hover_cell})
 		else:
-			result["effect_preview"] = _attack_effect_preview(state, player)
+			var effect_preview := _attack_effect_preview(state, player)
+			result["effect_preview"] = effect_preview
+			_append_overlay(result, "effect", effect_preview, {"source_uid": player.uid})
 	elif action == Constants.ACTION_EXTRACT and ctrl.can_use_action(Constants.ACTION_EXTRACT):
-		result["targets"] = _gem_target_cells(ctrl, state, player)
+		var targets := _gem_target_cells(ctrl, state, player)
+		result["targets"] = targets
+		_append_overlay(result, "target", targets, {"action": action})
 	elif action == Constants.ACTION_INSERT and ctrl.can_use_action(Constants.ACTION_INSERT):
-		result["targets"] = _gem_target_cells(ctrl, state, player)
+		var targets := _gem_target_cells(ctrl, state, player)
+		result["targets"] = targets
+		_append_overlay(result, "target", targets, {"action": action})
 	var selected_uid: String = ctrl.selected_unit_uid
 	if not selected_uid.is_empty():
 		var selected_unit: UnitState = state.units.get(selected_uid, null)
 		if selected_unit != null and selected_unit.alive and selected_unit.intent != null:
-			result["paths"] = selected_unit.intent.path.duplicate()
+			var intent_path: Array = selected_unit.intent.path.duplicate()
+			result["paths"] = intent_path
+			if not intent_path.is_empty():
+				_append_overlay(result, "intent_path", intent_path, {"unit_uid": selected_unit.uid})
+				var route: Array = [selected_unit.pos]
+				route.append_array(intent_path)
+				_append_route(result, "intent", route, {"unit_uid": selected_unit.uid, "arrow_reverse": false})
 			if not selected_unit.intent.affected_cells.is_empty():
-				result["danger"] = selected_unit.intent.affected_cells.duplicate()
+				var danger_cells: Array = selected_unit.intent.affected_cells.duplicate()
+				result["danger"] = danger_cells
+				_append_overlay(result, "danger", danger_cells, {"unit_uid": selected_unit.uid})
 	return result
+
+
+func _append_overlay(result: Dictionary, kind: String, cells: Array, options: Dictionary = {}) -> void:
+	if cells.is_empty():
+		return
+	var unique_cells: Array[Vector2i] = []
+	var seen := {}
+	for raw_cell in cells:
+		var cell: Vector2i = raw_cell
+		if seen.has(cell):
+			continue
+		seen[cell] = true
+		unique_cells.append(cell)
+	if unique_cells.is_empty():
+		return
+	var overlay := {
+		"kind": kind,
+		"cells": unique_cells,
+	}
+	for key in options.keys():
+		overlay[key] = options[key]
+	result["overlays"].append(overlay)
+
+
+func _append_route(result: Dictionary, kind: String, path: Array, options: Dictionary = {}) -> void:
+	if path.size() < 2:
+		return
+	var clean_path: Array[Vector2i] = []
+	for raw_cell in path:
+		clean_path.append(raw_cell)
+	var route := {
+		"kind": kind,
+		"path": clean_path,
+	}
+	for key in options.keys():
+		route[key] = options[key]
+	result["routes"].append(route)
 
 
 func get_cell_preview(cell: Vector2i) -> Dictionary:
@@ -79,22 +154,25 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 		return {}
 	var unit: UnitState = state.get_unit_at(cell)
 	var tile: TileState = state.get_tile(cell)
-	var lines: Array[String] = ["%s %s" % [_data_registry().get_tile_display_name(tile.tile_id), cell]]
+	var title: String = _data_registry().get_tile_display_name(tile.tile_id)
+	if ctrl.editor_unlimited_actions_enabled():
+		title = "%s (%d, %d)" % [title, cell.x, cell.y]
+	var lines: Array[String] = [title]
 	var spike := BoardUtils.spike_entity_at(state, cell)
 	if spike != null:
-		lines.append("地刺：步入 %d 伤害；被强制位移踩入附加易伤并受到 %d 伤害" % [
+		lines.append("地刺：踏入受 %d 伤害；被推入时易伤并受 %d 伤害" % [
 			Constants.SPIKE_DAMAGE, Constants.SPIKE_COLLISION_DAMAGE
 		])
 	var blocking := BoardUtils.blocking_entity_at(state, cell)
 	if blocking != null and blocking.is_indestructible():
-		lines.append("静物：不可通行，攻击无效")
+		lines.append("障碍物：阻挡移动与射击")
 	match tile.tile_id:
 		Constants.TILE_WATER:
 			lines.append("水洼：导电连锁区域")
 		Constants.TILE_PILLAR:
 			lines.append("机关柱：嵌入宝石产生持续光环")
 	if tile.has_modifier("poison_fog"):
-		lines.append("毒雾：进入叠 1 层毒；回合结束仍在其内再叠 1 层（每层 %d 伤害）" % Constants.POISON_FOG_DAMAGE)
+		lines.append("毒雾：进入叠毒；回合结束仍在其中会继续叠毒（每层 %d 伤害）" % CombatConfig.poison_fog_damage())
 	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		lines.append("毒烟：同时视为火焰与毒雾，持续 1 回合")
 	if tile.has_slots():
@@ -102,11 +180,11 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			var tslot: SlotState = tile.slots[i]
 			lines.append(_slot_preview_line_tile(state, tile, tslot))
 	if unit != null:
-		lines.append("%s HP %d/%d" % [_data_registry().get_unit_display_name(unit.unit_def_id), unit.hp, unit.max_hp])
+		lines.append("%s 生命 %d/%d" % [_data_registry().get_unit_display_name(unit.unit_def_id), unit.hp, unit.max_hp])
 		for status_line in _StatusUi.preview_lines(unit):
 			lines.append(status_line)
 		if unit.intent != null and unit.team == Constants.TEAM_ENEMY and ctrl.selected_unit_uid == unit.uid:
-			lines.append("意图: %s" % unit.intent.preview_text)
+			lines.append("意图：%s" % unit.intent.preview_text)
 		for i in range(unit.slots.size()):
 			var slot: SlotState = unit.slots[i]
 			lines.append(_slot_preview_line(state, unit, slot))
@@ -115,36 +193,36 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			var move_budget := ctrl.player_move_budget(player)
 			var can_move_now := ctrl.editor_unlimited_actions_enabled() or (not state.player_moved and StatusRules.can_move(player))
 			if can_move_now and cell in BoardUtils.reachable_cells(state, player.pos, move_budget):
-				lines.append("→ 点击移动")
+				lines.append("落点可达")
 		Constants.ACTION_ATTACK:
 			var can_attack_now := ctrl.editor_unlimited_actions_enabled() or not state.player_acted
 			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
 				if blocking != null and blocking.is_indestructible() and unit == null:
-					lines.append("→ 点击射击（静物不受伤害）")
+					lines.append("射击会被障碍挡下")
 				elif tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
-					lines.append("→ 点击电击水域（相连水域及边缘潮湿单位导电）")
+					lines.append("水面导电：相连水域与潮湿单位会连锁")
 				else:
-					lines.append("→ 点击射击（%d 伤害）" % CombatRules.attack_damage(state, player))
+					lines.append("射击预览：%d 伤害" % CombatRules.attack_damage(state, player))
 				if unit != null:
 					lines.append_array(_death_gem_preview_lines(state, unit))
 		Constants.ACTION_EXTRACT:
 			if unit != null and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 				var valid := _valid_slot_indices(ctrl, unit)
 				if not valid.is_empty():
-					lines.append("→ 可拔出: %s（免费）" % ", ".join(valid))
+					lines.append("可拔出：%s（免费）" % ", ".join(valid))
 			elif tile.has_slots() and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 				var tile_valid := _valid_tile_slot_indices(ctrl, tile)
 				if not tile_valid.is_empty():
-					lines.append("→ 可从地块拔出: %s（免费）" % ", ".join(tile_valid))
+					lines.append("可从地块拔出：%s（免费）" % ", ".join(tile_valid))
 		Constants.ACTION_INSERT:
 			if unit != null and ctrl.can_use_action(Constants.ACTION_INSERT):
 				var insert_valid := _valid_slot_indices(ctrl, unit)
 				if not insert_valid.is_empty():
-					lines.append("→ 可嵌入: %s（免费）" % ", ".join(insert_valid))
+					lines.append("可嵌入：%s（免费）" % ", ".join(insert_valid))
 			elif tile.has_slots() and ctrl.can_use_action(Constants.ACTION_INSERT):
 				var tile_insert_valid := _valid_tile_slot_indices(ctrl, tile)
 				if not tile_insert_valid.is_empty():
-					lines.append("→ 可嵌入地块: %s（免费）" % ", ".join(tile_insert_valid))
+					lines.append("可嵌入地块：%s（免费）" % ", ".join(tile_insert_valid))
 	return {"title": lines[0] if not lines.is_empty() else "", "body": "\n".join(lines)}
 
 
@@ -152,35 +230,35 @@ func get_action_hint() -> String:
 	var ctrl = _c()
 	if ctrl == null:
 		push_error("BattleQueryService: _ctrl is null in get_action_hint")
-		return "请选择操作"
+		return "选择指令"
 	match ctrl.selected_action:
 		Constants.ACTION_MOVE:
 			if ctrl.editor_unlimited_actions_enabled():
-				return "移动：编辑无限模式，全图可达且可重复移动"
+				return "机动待命 · 编辑模式"
 			if ctrl.state != null:
 				var player: UnitState = ctrl.state.get_player()
 				if player != null and not StatusRules.can_move(player):
 					var block_reason := StatusRules.move_block_reason(player)
 					if block_reason.is_empty():
-						return "移动：暂时无法移动"
-					return "移动：%s" % block_reason
-			return "移动：点击白色边框格（悬浮为浅绿，每回合 1 次）"
+						return "机动受阻"
+					return "机动受阻：%s" % block_reason
+			return "机动待命"
 
 		Constants.ACTION_ATTACK:
 			if ctrl.editor_unlimited_actions_enabled():
-				return "射击：编辑无限模式，可重复攻击"
-			return "射击：点击 %d 格内任意格（不含自己，消耗行动）" % Constants.ATTACK_RANGE
+				return "射击待命 · 编辑模式"
+			return "射击待命 · 射程 %d" % Constants.ATTACK_RANGE
 		Constants.ACTION_EXTRACT:
-			return "拔出：点击目标 → 选槽位（免费）"
+			return "拔取宝石"
 		Constants.ACTION_INSERT:
 			if ctrl.state != null and ctrl.state.overload_pending:
-				return "过载预兆：结束回合后生效；切换/取消嵌入可避免"
+				return "过载预兆：结束回合后生效"
 			if ctrl.state != null \
 				and ctrl.state.overload_last_action == Constants.ACTION_INSERT \
 				and ctrl.state.overload_last_insert_turn == ctrl.state.turn_index:
-				return "嵌入：再次嵌入会触发过载，可强行跨色入槽"
-			return "嵌入：点击目标 → 选槽位（免费，替换时原宝石回到手中）"
-	return "请选择操作"
+				return "嵌入待命 · 再次嵌入将过载"
+			return "嵌入宝石"
+	return "选择指令"
 
 
 func get_tutorial_hint() -> String:
@@ -197,7 +275,7 @@ func get_tutorial_hint() -> String:
 		return ""
 	var held := ctrl.get_held_gem()
 	if held == null and not state.player_acted:
-		return "① 拔出：点击炸弹鼠 → 选红槽偷走爆炸（免费）"
+		return "先夺取炸弹鼠红槽的爆炸宝石"
 	if held != null and not state.player_acted:
 		var player: UnitState = state.get_player()
 		var guard_near := false
@@ -206,12 +284,12 @@ func get_tutorial_hint() -> String:
 				guard_near = true
 				break
 		if guard_near:
-			return "② 嵌入：点击巡路甲兵 → 选黑槽塞入爆炸（免费）\n③ 攻击：点击巡路甲兵补刀 → 触发死亡爆炸"
+			return "把爆炸嵌入巡路甲兵黑槽，再射击引爆"
 		else:
-			return "② 移动靠近巡路甲兵 → 嵌入黑槽 → 攻击补刀"
+			return "靠近巡路甲兵，嵌入黑槽后击杀引爆"
 	if held == null and state.player_acted:
-		return "行动已用，点「结束回合」"
-	return "目标：偷爆炸 → 塞死亡槽 → 补刀引爆"
+		return "行动已用，结束回合"
+	return "夺爆炸，塞黑槽，击杀引爆"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

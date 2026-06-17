@@ -34,9 +34,11 @@ func _ready() -> void:
 
 func _apply_theme() -> void:
 	$HudLayer/TopBar.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT.darkened(0.2)))
-	$HudLayer/PreviewPanel.add_theme_stylebox_override("panel", BattleUiTheme.tooltip_style())
+	$HudLayer/PreviewPanel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
 	BattleUiTheme.apply_button(_back_btn, "ghost")
 	BattleUiTheme.apply_button(_regen_btn, "ghost")
+	_regen_btn.visible = OS.is_debug_build()
+	_seed_label.visible = OS.is_debug_build()
 	_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	_seed_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
@@ -46,9 +48,26 @@ func _apply_theme() -> void:
 func _rebuild_board() -> void:
 	_map_state = AdventureService.build_board_state()
 	_board.set_battle_state(_map_state)
+	var reachable := AdventureService.get_reachable_cells()
+	var resolved_cells := _resolved_map_cells()
+	var overlays: Array = []
+	if not resolved_cells.is_empty():
+		overlays.append({"kind": "map_resolved", "cells": resolved_cells})
+	overlays.append({"kind": "map_current", "cells": [AdventureService.current_pos]})
+	if not reachable.is_empty():
+		overlays.append({"kind": "map_choice", "cells": reachable})
+	var routes: Array = []
+	for cell in reachable:
+		routes.append({
+			"kind": "map_choice",
+			"path": [AdventureService.current_pos, cell],
+			"arrow_reverse": false,
+		})
 	_board.set_highlights({
 		"targets": [AdventureService.current_pos],
-		"reachable": AdventureService.get_reachable_cells(),
+		"reachable": reachable,
+		"overlays": overlays,
+		"routes": routes,
 	})
 
 
@@ -60,8 +79,13 @@ func _refresh_hud() -> void:
 		node.room_type, AdventureService.get_current_chapter(), AdventureService.get_chapter_count()
 	)
 	_title.text = "%s · %s" % [SaveService.get_active_slot_label(), AdventureService.get_chapter_label()]
-	_hint.text = "当前：%s %s  |  层级 L%d  |  点击高亮相邻格前进" % [display["glyph"], display["label"], int(node.layer)]
-	_seed_label.text = "种子 %d" % AdventureService.map_seed
+	_hint.text = "当前位置：%s %s  ·  前方 %d 个选择" % [
+		display["glyph"],
+		display["label"],
+		AdventureService.get_reachable_cells().size(),
+	]
+	if _seed_label.visible:
+		_seed_label.text = "调试种子 %d" % AdventureService.map_seed
 	_run_summary.text = _build_run_summary_text()
 
 
@@ -74,8 +98,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 	_board.set_hover(cell if has_cell else Vector2i(-1, -1))
 	if not has_cell:
-		_preview_title.text = "地块预览"
-		_preview_body.text = "将鼠标移到棋盘格子上查看房间信息。"
+		_preview_title.text = "路线图"
+		_preview_body.text = "选择前方房间，确认下一段旅程。"
 		return
 	var node = AdventureService.get_node_at(cell)
 	if node == null:
@@ -89,13 +113,13 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 	var resolved: bool = RunService.is_room_resolved(room_id)
 	_preview_title.text = "%s %s" % [display["glyph"], display["label"]]
 	var lines: PackedStringArray = PackedStringArray([
-		"[color=#c8ccd8]层数：[/color] L%d" % node.layer,
-		"[color=#c8ccd8]坐标：[/color] (%d, %d)" % [cell.x, cell.y],
-		"[color=#c8ccd8]状态：[/color] %s" % ("[color=#8fd18a]已结算[/color]" if resolved else "[color=#f2d46a]未结算[/color]"),
+		"[color=#c8ccd8]路标：[/color] 第 %d 层" % node.layer,
+		"[color=#c8ccd8]状态：[/color] %s" % ("[color=#8fd18a]已探索[/color]" if resolved else "[color=#f2d46a]未探索[/color]"),
+		"[color=#c8ccd8]预期：[/color] %s" % _room_preview_line(str(node.room_type)),
 	])
 	var event_id := str(node.properties.get("event_id", ""))
 	if not event_id.is_empty():
-		lines.append("[color=#c8ccd8]事件：[/color] %s" % event_id)
+		lines.append("[color=#c8ccd8]事件：[/color] 未知事件")
 	var active_rules: Array = AdventureRuleRegistry.get_active_rule_display()
 	if not active_rules.is_empty():
 		var rule_names: Array[String] = []
@@ -104,11 +128,11 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 				rule_names.append(str(rule.get("name", rule.get("rule_id", ""))))
 		lines.append("[color=#c8ccd8]全局规则：[/color] %s" % " / ".join(rule_names))
 	if is_current:
-		lines.append("[color=#f2d46a]当前位置[/color]")
+		lines.append("[color=#f2d46a]你在这里[/color]")
 	elif reachable:
-		lines.append("[color=#5eb8f2]可进入 → 点击进入[/color]")
+		lines.append("[color=#5eb8f2]路线已连通[/color]")
 	else:
-		lines.append("[color=#888c96]不可进入（需从相邻格走过来）[/color]")
+		lines.append("[color=#888c96]尚未连通[/color]")
 	_preview_body.text = "\n".join(lines)
 
 
@@ -144,3 +168,33 @@ func _build_run_summary_text() -> String:
 		int(snapshot.get("owned_relic_count", 0)),
 		carried_gem_name,
 	]
+
+
+func _resolved_map_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for x in range(AdventureService.map_matrix.size()):
+		var column: Array = AdventureService.map_matrix[x]
+		for y in range(column.size()):
+			var cell := Vector2i(x, y)
+			if RunService.is_room_resolved(AdventureService.room_id_for_cell(cell)):
+				cells.append(cell)
+	return cells
+
+
+func _room_preview_line(room_type: String) -> String:
+	match room_type:
+		"START":
+			return "旅程起点"
+		"END":
+			return "本章出口或终局挑战"
+		"NORMAL_COMBAT":
+			return "常规战斗，获得基础奖励"
+		"ELITE_COMBAT":
+			return "强敌战斗，风险与奖励更高"
+		"REST_SITE":
+			return "休整与恢复"
+		"SHOP":
+			return "补给、交易与构筑调整"
+		"EVENT":
+			return "特殊事件，结果未明"
+	return "未知房间"

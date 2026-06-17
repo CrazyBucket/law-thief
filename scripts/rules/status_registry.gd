@@ -1,6 +1,8 @@
 class_name StatusRegistry
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 const TICK_TURN_START := "turn_start"
 const TICK_TURN_END := "turn_end"
 const TICK_NONE := "none"
@@ -119,7 +121,7 @@ static func icon_badge(status: StatusInstance) -> String:
 static func tooltip(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON:
-			return "中毒：回合结束受到 %d 点真实伤害，层数递减" % (status.stacks * Constants.POISON_FOG_DAMAGE)
+			return "中毒：回合结束受到 %d 点真实伤害，层数递减" % (status.stacks * CombatConfig.poison_fog_damage())
 		Constants.STATUS_BURNING:
 			return "着火：回合结束受到 %d 点真实伤害，层数递减；处于火焰中层数x2" % status.stacks
 		Constants.STATUS_PARALYZED:

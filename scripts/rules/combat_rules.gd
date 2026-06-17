@@ -83,6 +83,7 @@ static func end_deferred_death_hooks(state: GameState) -> void:
 			"damage": int(entry.get("damage", 0)),
 			"reason": entry.get("reason", ""),
 		})
+		_drop_enemy_gems_to_ground(state, unit)
 		_active_death_chain_id = prev_chain_id
 	_pending_deaths.clear()
 	_death_event_sink = []
@@ -118,6 +119,7 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 			"damage": int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0)),
 			"reason": reason,
 		})
+		_drop_enemy_gems_to_ground(state, unit)
 		_active_death_chain_id = prev_chain_id
 
 
@@ -126,6 +128,40 @@ static func _record_damage_pair(state: GameState, victim_uid: String, source_uid
 		return
 	state.battle_temp_flags["damaged_by:%s:%s:%d" % [victim_uid, source_uid, state.turn_index]] = true
 	state.battle_temp_flags["last_damage_taken:%s" % victim_uid] = amount
+
+
+static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> void:
+	if state == null or unit == null or unit.team != Constants.TEAM_ENEMY:
+		return
+	var registry := _data_registry()
+	for unit_slot in unit.slots:
+		if unit_slot == null or unit_slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(unit_slot.gem_uid, null)
+		if gem == null:
+			unit_slot.gem_uid = ""
+			continue
+		gem.owner_uid = ""
+		gem.slot_index = -1
+		state.dropped_gems[gem.uid] = {
+			"gem_uid": gem.uid,
+			"gem_id": gem.gem_id,
+			"pos": unit.pos,
+			"source_unit_uid": unit.uid,
+			"source_slot_type": unit_slot.slot_type,
+		}
+		unit_slot.gem_uid = ""
+		var gem_name := gem.gem_id
+		if registry != null:
+			gem_name = registry.get_gem_display_name(gem)
+		state.log("%s 掉落在 %s" % [
+			gem_name,
+			unit.pos,
+		])
+
+
+static func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("DataRegistry")
 
 
 ## 近战攻击（pipeline 版本）：返回 {ok, reason, events}

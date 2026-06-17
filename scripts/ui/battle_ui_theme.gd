@@ -7,6 +7,7 @@ extends RefCounted
 const BG_DEEP := UiPalette.BG_DEEP
 const BG_PANEL := UiPalette.BG_PANEL
 const BG_DOCK := UiPalette.BG_DOCK
+const BG_INSET := UiPalette.BG_INSET
 const BORDER := UiPalette.EDGE_LIGHT
 const BORDER_ACCENT := UiPalette.EDGE_ACCENT
 const TEXT := UiPalette.TEXT_BRIGHT
@@ -87,13 +88,32 @@ static func panel_style(accent: Color = BORDER) -> StyleBoxFlat:
 
 
 static func dock_style() -> StyleBoxFlat:
-	var box := _pixel_box(BG_DOCK, BORDER)
+	var box := _pixel_box(BG_DOCK.darkened(0.08), BORDER_ACCENT.darkened(0.25))
 	box.border_width_top = 2
-	box.shadow_size = 0
-	box.content_margin_left = 16
-	box.content_margin_right = 16
-	box.content_margin_top = 10
-	box.content_margin_bottom = 10
+	box.border_width_left = 0
+	box.border_width_right = 0
+	box.border_width_bottom = 0
+	box.shadow_size = 3
+	box.content_margin_left = 18
+	box.content_margin_right = 18
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	return box
+
+
+static func command_group_style(kind: String, active: bool = false) -> StyleBoxFlat:
+	var accent := _action_base_color(kind)
+	if accent == Color.TRANSPARENT:
+		accent = BORDER
+	var bg := BG_INSET
+	if active:
+		bg = accent.darkened(0.72)
+	var box := _pixel_box(bg, accent.darkened(0.24) if not active else accent.lightened(0.1))
+	box.shadow_size = 1
+	box.content_margin_left = 8
+	box.content_margin_right = 8
+	box.content_margin_top = 5
+	box.content_margin_bottom = 7
 	return box
 
 

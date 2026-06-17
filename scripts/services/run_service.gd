@@ -692,19 +692,23 @@ func capture_player_battle_state(state: GameState = null) -> void:
 	_run.player_max_hp = player.max_hp
 	_run.player_slot_gems = []
 	for slot in player.slots:
-		if slot == null or slot.gem_uid.is_empty():
+		if slot == null:
 			_run.player_slot_gems.append({})
+			continue
+		if slot.gem_uid.is_empty():
+			_run.player_slot_gems.append(_serialize_empty_slot_snapshot(slot))
 			continue
 		var gem: GemState = source_state.gems.get(slot.gem_uid, null)
 		if gem == null:
-			_run.player_slot_gems.append({})
+			_run.player_slot_gems.append(_serialize_empty_slot_snapshot(slot))
 			continue
-		_run.player_slot_gems.append(_serialize_gem_snapshot(gem, slot.slot_type, slot.dual_type))
+		_run.player_slot_gems.append(_serialize_gem_snapshot(gem, slot.slot_type, slot.dual_type, slot.lock_type))
 	_run.carried_gem = {}
 	if not source_state.held_gem_uid.is_empty():
 		var carried: GemState = source_state.gems.get(source_state.held_gem_uid, null)
 		if carried != null:
 			_run.carried_gem = _serialize_gem_snapshot(carried)
+	_run.overload_active_mutations = source_state.overload_active_mutations.duplicate()
 
 
 func _collect_weight_ctx_from_state(state: GameState, owned_gem_ids: Array[String], gem_colors: Array[String]) -> void:
@@ -725,12 +729,21 @@ func _collect_weight_ctx_from_state(state: GameState, owned_gem_ids: Array[Strin
 			owned_gem_ids.append(held.gem_id)
 
 
-func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: String = "") -> Dictionary:
+func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: String = "", lock_type: String = "") -> Dictionary:
 	return {
 		"gem_id": gem.gem_id,
 		"def_overrides": gem.def_overrides.duplicate(true),
 		"slot_type": slot_type,
 		"dual_type": dual_type,
+		"lock_type": lock_type,
+	}
+
+
+func _serialize_empty_slot_snapshot(slot: SlotState) -> Dictionary:
+	return {
+		"slot_type": slot.slot_type,
+		"dual_type": slot.dual_type,
+		"lock_type": slot.lock_type,
 	}
 
 

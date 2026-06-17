@@ -25,6 +25,8 @@ var board_size: Vector2i = Constants.BOARD_SIZE
 var player_uid: String = ""
 var units: Dictionary = {}
 var gems: Dictionary = {}
+## gem_uid -> {"gem_uid": String, "pos": Vector2i}
+var dropped_gems: Dictionary = {}
 var tiles: Dictionary = {}
 var entities: Dictionary = {}  # uid → EntityState
 var held_gem_uid: String = ""
@@ -276,6 +278,7 @@ func clone() -> GameState:
 		snapshot.units[uid] = units[uid].clone()
 	for uid in gems.keys():
 		snapshot.gems[uid] = gems[uid].clone()
+	snapshot.dropped_gems = dropped_gems.duplicate(true)
 	for key in tiles.keys():
 		snapshot.tiles[key] = tiles[key].clone()
 	for uid in entities.keys():

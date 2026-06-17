@@ -1,6 +1,8 @@
 class_name EnemyAI
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 ## 分值评估系统 (Utility AI)
 ## 核心思路：遍历所有合法行动 → 模拟执行 → 打分 → 选最高分
 ## 怪物行动经济：每回合 1 次移动 + 1 次行动（攻击/技能）
@@ -144,10 +146,7 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 		return results
 
 	# 检查从 from_pos 能否攻击到玩家
-	var saved_pos := enemy.pos
-	enemy.pos = from_pos
-	var can_attack := BoardUtils.are_units_adjacent(enemy, player)
-	enemy.pos = saved_pos
+	var can_attack := BoardUtils.are_units_adjacent_at(enemy, from_pos, player)
 	if not can_attack:
 		return results
 
@@ -188,13 +187,10 @@ static func _evaluate_ranged_attacks_from(
 	if player == null or not player.alive:
 		return results
 	var max_range: int = GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
-	var saved := enemy.pos
-	enemy.pos = from_pos
-	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
-	var dist: int = BoardUtils.distance_between_units(enemy, player)
-	var from_cell := BoardUtils.projectile_origin_cell(enemy, player.pos)
+	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
+	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
+	var from_cell := BoardUtils.projectile_origin_cell_at(enemy, from_pos, player.pos)
 	var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
-	enemy.pos = saved
 	if not in_range or blocked:
 		return results
 	var candidate := ActionCandidate.new()
@@ -267,7 +263,7 @@ static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var damage: int = Constants.EXPLOSION_CROSS_DAMAGE
+	var damage: int = CombatConfig.explosion_cross_damage()
 	candidate.score = float(damage) * _w(profile, "w_damage", 10.0)
 	if player.hp <= damage:
 		candidate.score += _w(profile, "w_kill_player", 200.0)
@@ -314,7 +310,7 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 # ─── 引力技能评分 ─────────────────────────────────────────────────────────
 static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	var max_range := GemEffects.gravity_pull_range(state, enemy, Constants.ENEMY_GRAVITY_PULL_RANGE)
+	var max_range := GemEffects.gravity_pull_range(state, enemy, CombatConfig.enemy_gravity_pull_range())
 	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
 	if dist > max_range:
 		return results
@@ -374,8 +370,8 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 	for unit in state.units.values():
 		if not unit.alive or unit.team == player.team or unit.uid == player.uid:
 			continue
-		if BoardUtils.chebyshev(player.pos, unit.pos) <= Constants.ARC_CHAIN_RANGE:
-			score += base * Constants.ARC_CHAIN_DAMAGE_RATIO * _w(profile, "w_damage", 10.0) * 0.5
+		if BoardUtils.chebyshev(player.pos, unit.pos) <= CombatConfig.arc_chain_range():
+			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage", 10.0) * 0.5
 	candidate.score = score
 	candidate.description = "电击"
 	results.append(candidate)
@@ -416,17 +412,14 @@ static func _score_ice_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 
 static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	var saved := enemy.pos
-	enemy.pos = from_pos
-	var in_range := BoardUtils.are_units_adjacent(enemy, player)
-	enemy.pos = saved
+	var in_range := BoardUtils.are_units_adjacent_at(enemy, from_pos, player)
 	if not in_range:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var base := float(CombatRules.attack_damage(state, enemy)) * Constants.SPLIT_ATTACK_DAMAGE_RATIO
+	var base := float(CombatRules.attack_damage(state, enemy)) * CombatConfig.split_attack_damage_ratio()
 	var score: float = base * _w(profile, "w_damage", 10.0)
 	candidate.score = score
 	candidate.description = "分裂攻击"
@@ -437,7 +430,7 @@ static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vec
 static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
-	if not BoardUtils.can_unit_attack_cell(enemy, state, player.pos, max_range):
+	if not BoardUtils.can_unit_attack_cell_at(enemy, state, from_pos, player.pos, max_range):
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -472,10 +465,7 @@ static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: V
 static func _score_echo_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var max_range := GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
-	var saved := enemy.pos
-	enemy.pos = from_pos
-	var in_range := BoardUtils.can_unit_reach_unit(enemy, player, max_range)
-	enemy.pos = saved
+	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
 	if not in_range:
 		return results
 	var candidate := ActionCandidate.new()
@@ -589,7 +579,7 @@ static func _evaluate_tile_safety(state: GameState, pos: Vector2i, profile: Dict
 		score -= float(Constants.SPIKE_DAMAGE) * _w(profile, "w_self_damage", 8.0)
 	var tile: TileState = state.get_tile(pos)
 	if tile.has_modifier("poison_fog"):
-		score -= float(Constants.POISON_FOG_DAMAGE) * _w(profile, "w_self_damage", 8.0)
+		score -= float(CombatConfig.poison_fog_damage()) * _w(profile, "w_self_damage", 8.0)
 	return score
 
 

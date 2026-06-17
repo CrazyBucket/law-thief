@@ -163,6 +163,7 @@ const OVERLOAD_SPAWN_ENFORCER := "spawn_enforcer"
 const OVERLOAD_AI_CONTROL := "ai_control"
 const OVERLOAD_SPAWN_LAW_BEAST := "spawn_law_beast"
 const OVERLOAD_GEM_OP_DAMAGE_AMOUNT := 3
+const LOCK_OVERLOAD_SLOT := "overload_slot"
 
 const BOMB_RAT_HP_ROLL_MAX := 5
 

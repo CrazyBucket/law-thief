@@ -2,6 +2,7 @@ class_name Displacement
 extends RefCounted
 
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -142,7 +143,11 @@ static func _push_directional(
 		state.move_unit(unit, next)
 		TileRules.on_unit_moved_through(state, unit, next)
 		state.on_unit_move.emit(unit.uid, from_pos, next)
-		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": next})
+		events.append(_EventBuilder.move_step(unit.uid, from_pos, next, {
+			"forced": true,
+			"source_uid": source_uid,
+			"reason": "forced_displacement",
+		}))
 
 		var moved_tile := state.get_tile(next)
 		var _ice_registry := _relic_effect_registry()
@@ -184,7 +189,11 @@ static func star_relocate(
 		var from_pos := unit.pos
 		state.move_unit(unit, landing)
 		state.on_unit_move.emit(unit.uid, from_pos, landing)
-		events.append({"type": "move_step", "uid": unit.uid, "from": from_pos, "to": landing})
+		events.append(_EventBuilder.move_step(unit.uid, from_pos, landing, {
+			"forced": true,
+			"source_uid": source_uid,
+			"reason": "star_relocate",
+		}))
 		TileRules.on_unit_position_changed(state, unit, from_pos, {"forced": true})
 		# 落地后结算目标格地形（地刺、火焰、毒雾等）
 		TileRules.on_unit_entered(state, unit, from_pos, {"forced": true, "source_uid": source_uid})
@@ -221,9 +230,15 @@ static func _deal_unit_collision_damage(
 	if registry != null:
 		var mult: float = float(registry.query_modifier("collision_damage_mult", state))
 		final_amount = maxi(1, int(float(amount) * mult))
-	var dealt := CombatRules.apply_damage(state, unit, final_amount, source_uid, reason)
-	if dealt > 0:
-		events.append({"type": "damage", "uid": unit.uid, "pos": unit.pos, "damage": dealt, "is_crit": false})
+		var dealt := CombatRules.apply_damage(state, unit, final_amount, source_uid, reason)
+		if dealt > 0:
+			events.append(_EventBuilder.damage(unit, dealt, {
+				"attacker_uid": source_uid,
+				"source_uid": source_uid,
+				"reason": reason,
+				"lethal": not unit.alive,
+				"remaining_hp": unit.hp,
+			}))
 
 
 static func _blocking_entity_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> EntityState:

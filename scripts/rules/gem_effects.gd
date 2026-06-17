@@ -5,6 +5,8 @@ const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const GemEchoRules = preload("res://scripts/rules/gem_echo_rules.gd")
 const GemComboResolver = preload("res://scripts/rules/gem_combo_resolver.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 
@@ -284,7 +286,9 @@ static func red_attack_range(state: GameState, unit: UnitState, base_range: int 
 	return base_range + red_attack_range_bonus(state, unit)
 
 
-static func gravity_pull_range(state: GameState, unit: UnitState, base_range: int = Constants.ENEMY_GRAVITY_PULL_RANGE) -> int:
+static func gravity_pull_range(state: GameState, unit: UnitState, base_range: int = -1) -> int:
+	if base_range < 0:
+		base_range = CombatConfig.enemy_gravity_pull_range()
 	return base_range + red_attack_range_bonus(state, unit)
 
 
@@ -377,7 +381,7 @@ static func explode_cross_at(
 	opts: Dictionary = {}
 ) -> Array[Dictionary]:
 	var center_damage: int = int(opts.get("center_damage", 0))
-	var cross_damage: int = int(opts.get("cross_damage", Constants.EXPLOSION_CROSS_DAMAGE))
+	var cross_damage: int = int(opts.get("cross_damage", CombatConfig.explosion_cross_damage()))
 	var knockback_center: bool = bool(opts.get("knockback_center", false))
 	var exclude_unit_uid: String = str(opts.get("exclude_unit_uid", ""))
 	var gem_ctx: Dictionary = opts.get("gem_tag_context", {})
@@ -393,7 +397,7 @@ static func explode_cross_at(
 					state, center_unit, center_damage, source_uid, "explosion_cross"
 				)
 				if dealt_center > 0:
-					events.append(_explosion_damage_event(center_unit, dealt_center, source_uid))
+					events.append(_explosion_damage_event(center_unit, dealt_center, source_uid, "explosion_cross"))
 				if knockback_center and center_unit.alive:
 					_Displacement.knockback(
 						state, center_unit, center, 1, source_uid, events, Constants.KNOCKBACK_COLLISION_DAMAGE, true
@@ -421,7 +425,7 @@ static func explode_cross_at(
 		splashed[hit_unit.uid] = true
 		var dealt := CombatRules.apply_damage(state, hit_unit, cross_damage, source_uid, "explosion_cross")
 		if dealt > 0:
-			events.append(_explosion_damage_event(hit_unit, dealt, source_uid))
+			events.append(_explosion_damage_event(hit_unit, dealt, source_uid, "explosion_cross"))
 		for gem_slot in hit_unit.slots:
 			if gem_slot.locked and gem_slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, gem_slot, state.turn_index)
@@ -460,15 +464,14 @@ static func explode_square_at(
 	return events
 
 
-static func _explosion_damage_event(unit: UnitState, dealt: int, source_uid: String) -> Dictionary:
-	return {
-		"type": "damage",
-		"uid": unit.uid,
-		"pos": unit.pos,
-		"damage": dealt,
-		"is_crit": false,
+static func _explosion_damage_event(unit: UnitState, dealt: int, source_uid: String, reason: String = "explosion") -> Dictionary:
+	return _EventBuilder.damage(unit, dealt, {
 		"attacker_uid": source_uid,
-	}
+		"source_uid": source_uid,
+		"reason": reason,
+		"lethal": not unit.alive,
+		"remaining_hp": unit.hp,
+	})
 
 
 static func _explode_at(state: GameState, center: Vector2i, damage: int, source_uid: String) -> Array[Dictionary]:
@@ -489,7 +492,7 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 		hit_uids[hit_unit.uid] = true
 		var dealt := CombatRules.apply_damage(state, hit_unit, damage, source_uid, "explosion")
 		if dealt > 0:
-			events.append(_explosion_damage_event(hit_unit, dealt, source_uid))
+			events.append(_explosion_damage_event(hit_unit, dealt, source_uid, "explosion"))
 		for slot in hit_unit.slots:
 			if slot.locked and slot.lock_type == Constants.LOCK_ARMOR:
 				StatusRules.apply_exposed(state, hit_unit, slot, state.turn_index)
@@ -631,12 +634,12 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 				blast_center = resolve_blast_center(target_unit.pos, ctx.get("target_pos", null))
 				exclude_uid = target_unit.uid
 			if explosion_uses_square_blast(gem_ctx):
-				var damage := explosion_scaled_damage(Constants.EXPLOSION_CROSS_DAMAGE, gem_ctx)
+				var damage := explosion_scaled_damage(CombatConfig.explosion_cross_damage(), gem_ctx)
 				out_events.append_array(explode_square_at(state, blast_center, owner.uid, damage, gem_ctx))
 			else:
 				out_events.append_array(
 					explode_cross_at(state, blast_center, owner.uid, {
-						"center_damage": Constants.EXPLOSION_CROSS_DAMAGE,
+						"center_damage": CombatConfig.explosion_cross_damage(),
 						"exclude_unit_uid": exclude_uid,
 						"gem_tag_context": gem_ctx,
 					})
@@ -644,7 +647,7 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			return true
 		"poison":
 			var poison_level := 1
-			var poison_duration := Constants.POISON_FOG_DURATION
+			var poison_duration := CombatConfig.poison_fog_duration()
 			var poison_radius := 0
 			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
 			if gem_ctx.is_empty():
@@ -820,7 +823,7 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 			if gem_ctx.is_empty():
 				gem_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_OWNER_DAMAGED, _slot)
 			var level := GemTagResolver.tag_level(gem_ctx, "arc")
-			var chance := Constants.ARC_PARALYSIS_CHANCE
+			var chance := CombatConfig.arc_paralysis_chance()
 			if level >= 3:
 				chance = 1.0
 			elif level >= 2:
@@ -846,7 +849,13 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 			if source != null and source.alive and damage > 0:
 				var dealt := CombatRules.apply_damage(state, source, CombatRules.attack_damage(state, owner), owner.uid, "counter_blue")
 				if dealt > 0:
-					_events_from_ctx(ctx).append({"type": "damage", "pos": source.pos, "damage": dealt, "is_crit": false})
+					_events_from_ctx(ctx).append(_EventBuilder.damage(source, dealt, {
+						"attacker_uid": owner.uid,
+						"source_uid": owner.uid,
+						"reason": "counter_blue",
+						"lethal": not source.alive,
+						"remaining_hp": source.hp,
+					}))
 			return true
 		"echo":
 			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
@@ -961,7 +970,7 @@ static func _run_unit_death_effect_with_events(
 			for unit in state.units.values():
 				if not unit.alive or unit.uid == owner.uid:
 					continue
-				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
+				if BoardUtils.chebyshev(owner.pos, unit.pos) <= CombatConfig.ice_death_radius():
 					candidates.append(unit)
 			var rng := _rng_service()
 			if not candidates.is_empty() and rng != null:
@@ -989,7 +998,7 @@ static func _run_unit_death_effect_with_events(
 			for unit in state.units.values():
 				if not unit.alive or unit.uid == owner.uid:
 					continue
-				if BoardUtils.chebyshev(owner.pos, unit.pos) <= Constants.ICE_DEATH_RADIUS:
+				if BoardUtils.chebyshev(owner.pos, unit.pos) <= CombatConfig.ice_death_radius():
 					StatusRules.apply_sluggish(state, unit, owner.uid)
 					if ice_level >= 2:
 						StatusRules.apply_slowed(state, unit, 1, owner.uid)
@@ -1010,7 +1019,13 @@ static func _run_unit_death_effect_with_events(
 				var amount := maxi(1, int(gem_ctx.get("damage", owner.max_hp)))
 				var dealt := CombatRules.apply_damage(state, source, amount, owner.uid, "counter_black")
 				if dealt > 0:
-					out_events.append({"type": "damage", "pos": source.pos, "damage": dealt, "is_crit": false})
+					out_events.append(_EventBuilder.damage(source, dealt, {
+						"attacker_uid": owner.uid,
+						"source_uid": owner.uid,
+						"reason": "counter_black",
+						"lethal": not source.alive,
+						"remaining_hp": source.hp,
+					}))
 			return true
 		"echo":
 			_apply_black_echo(state, owner, out_events, gem_ctx)
@@ -1062,12 +1077,18 @@ static func _apply_lightning_death_strike(
 	out_events: Array[Dictionary]
 ) -> void:
 	var dealt := CombatRules.apply_true_damage(
-		state, strike_target, Constants.LIGHTNING_DEATH_DAMAGE, owner.uid, "lightning_death"
+		state, strike_target, CombatConfig.lightning_death_damage(), owner.uid, "lightning_death"
 	)
 	if dealt > 0:
-		out_events.append({"type": "damage", "pos": strike_target.pos, "damage": dealt, "is_crit": false})
+		out_events.append(_EventBuilder.damage(strike_target, dealt, {
+			"attacker_uid": owner.uid,
+			"source_uid": owner.uid,
+			"reason": "lightning_death",
+			"lethal": not strike_target.alive,
+			"remaining_hp": strike_target.hp,
+		}))
 	var rng := _rng_service()
-	if strike_target.alive and rng != null and bool(rng.chance("gem_arc_death_paralyze_%s_%s" % [owner.uid, strike_target.uid], Constants.ARC_PARALYSIS_CHANCE)):
+	if strike_target.alive and rng != null and bool(rng.chance("gem_arc_death_paralyze_%s_%s" % [owner.uid, strike_target.uid], CombatConfig.arc_paralysis_chance())):
 		StatusRules.apply_paralyzed(state, strike_target, 1, owner.uid)
 	out_events.append({"type": "lightning", "pos": owner.pos, "target_pos": strike_target.pos})
 
@@ -1097,12 +1118,18 @@ static func _reflect_light_on_damage(
 			gem_ctx,
 			0.72,
 			{"power": 0.72, "impact_size": 0.72, "source_uid": owner.uid}
-		))
+			))
 		var dealt := CombatRules.apply_damage(state, target, damage, owner.uid, "light_reflect")
 		if dealt > 0:
-			out_events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
+			out_events.append(_EventBuilder.damage(target, dealt, {
+				"attacker_uid": owner.uid,
+				"source_uid": owner.uid,
+				"reason": "light_reflect",
+				"lethal": not target.alive,
+				"remaining_hp": target.hp,
+			}))
 			StatusRules.apply_light_exposed(state, target, 1, owner.uid)
-			apply_light_colored_status(state, target, owner, gem_ctx, out_events, damage)
+		apply_light_colored_status(state, target, owner, gem_ctx, out_events, damage)
 
 
 static func _resolve_black_light(
@@ -1125,9 +1152,15 @@ static func _resolve_black_light(
 			{},
 			1.35 + float(level) * 0.18,
 			{"power": 1.25, "impact_size": 1.3, "source_uid": owner.uid}
-		))
+			))
 		if dealt > 0:
-			out_events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
+			out_events.append(_EventBuilder.damage(unit, dealt, {
+				"attacker_uid": owner.uid,
+				"source_uid": owner.uid,
+				"reason": "light_judgement",
+				"lethal": not unit.alive,
+				"remaining_hp": unit.hp,
+			}))
 		unit.remove_status(Constants.STATUS_LIGHT_EXPOSED)
 		if level >= 3 and unit.alive:
 			StatusRules.apply_blinded(state, unit, 1, owner.uid)
@@ -1408,10 +1441,14 @@ static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: 
 		"explosion":
 			out_events.append({"type": "explode", "pos": tile.pos, "radius": 1})
 			for unit in state.units.values():
-				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= 1:
-					var dealt := CombatRules.apply_damage(state, unit, 1, "", "pillar_burn")
-					if dealt > 0:
-						out_events.append({"type": "damage", "pos": unit.pos, "damage": dealt, "is_crit": false})
+					if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= 1:
+						var dealt := CombatRules.apply_damage(state, unit, 1, "", "pillar_burn")
+						if dealt > 0:
+							out_events.append(_EventBuilder.damage(unit, dealt, {
+								"reason": "pillar_burn",
+								"lethal": not unit.alive,
+								"remaining_hp": unit.hp,
+							}))
 			return true
 		"gravity":
 			out_events.append({"type": "gem_flash", "pos": tile.pos, "color": _data_registry().get_gem_color(gem)})
@@ -1558,7 +1595,7 @@ static func _calc_arc_damage(base_damage: int, state: GameState = null) -> int:
 		var registry := _relic_effect_registry()
 		if registry != null:
 			mult = float(registry.query_modifier("arc_damage_mult", state))
-	return maxi(1, int(base_damage * Constants.ARC_CHAIN_DAMAGE_RATIO * mult))
+	return maxi(1, int(base_damage * CombatConfig.arc_chain_damage_ratio() * mult))
 
 
 static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
@@ -1617,7 +1654,7 @@ static func apply_arc_bounce_from_victim(
 	var arc_damage := _calc_arc_damage(base_damage, state)
 	var registry := _relic_effect_registry()
 	var bounce_hops: int = 1 + (int(registry.query_modifier("arc_bounce_count_bonus", state)) if registry != null else 0)
-	var arc_range := Constants.ARC_CHAIN_RANGE
+	var arc_range := CombatConfig.arc_chain_range()
 	var arc_level := GemTagResolver.tag_level(gem_ctx, "arc")
 	if arc_level >= 2:
 		bounce_hops += 1
@@ -1670,9 +1707,15 @@ static func _arc_to(
 		return
 	var dealt := CombatRules.apply_damage(state, target, damage, source_uid, "arc")
 	if dealt > 0:
-		events.append({"type": "damage", "pos": target.pos, "damage": dealt, "is_crit": false})
+		events.append(_EventBuilder.damage(target, dealt, {
+			"attacker_uid": source_uid,
+			"source_uid": source_uid,
+			"reason": "arc",
+			"lethal": not target.alive,
+			"remaining_hp": target.hp,
+		}))
 	var rng := _rng_service()
-	if target.alive and rng != null and bool(rng.chance("gem_arc_proc_%s" % source_uid, Constants.ARC_PROC_CHANCE)):
+	if target.alive and rng != null and bool(rng.chance("gem_arc_proc_%s" % source_uid, CombatConfig.arc_proc_chance())):
 		StatusRules.apply_paralyzed(state, target, 1, source_uid)
 	events.append({"type": "arc", "pos": target.pos})
 
@@ -1712,7 +1755,7 @@ static func _scatter_fire_on_death(
 	level: int = 1
 ) -> void:
 	var all_cells: Array[Vector2i] = []
-	for cell in BoardUtils.cells_in_radius(owner.pos, Constants.FIRE_DEATH_RADIUS):
+	for cell in BoardUtils.cells_in_radius(owner.pos, CombatConfig.fire_death_radius()):
 		if BoardUtils.in_bounds(state, cell):
 			all_cells.append(cell)
 	# 优先选空格
@@ -1731,8 +1774,8 @@ static func _scatter_fire_on_death(
 	rng.shuffle_in_place("gem_fire_death_scatter_occ_%s" % owner.uid, occupied_cells)
 	var pool: Array[Vector2i] = occupied_cells if level >= 2 else empty_cells
 	pool.append_array(empty_cells if level >= 2 else occupied_cells)
-	var count := Constants.FIRE_DEATH_FIRE_COUNT + (2 if level >= 3 else 0)
-	var duration := Constants.FIRE_DURATION + (1 if level >= 3 else 0)
+	var count := CombatConfig.fire_death_fire_count() + (2 if level >= 3 else 0)
+	var duration := CombatConfig.fire_duration() + (1 if level >= 3 else 0)
 	count = mini(count, pool.size())
 	for i in range(count):
 		TileRules.create_fire(state, pool[i], duration)
