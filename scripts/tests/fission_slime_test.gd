@@ -16,6 +16,7 @@ func _run_test() -> void:
 	_test_black_split_can_extract()
 	_test_blue_only_on_single_target()
 	_test_clone_hp_ratio()
+	_test_split_clones_keep_full_slot_layout()
 	_test_black_split_level_ratios()
 	_test_slam_pushes_adjacent_target()
 	_test_split_redirect_skips_without_neighbor()
@@ -126,6 +127,64 @@ func _test_clone_hp_ratio() -> void:
 			break
 	assert(clone_hp == 6, "clone hp should be 30%% of 20 = 6, got %d" % clone_hp)
 	print("  [OK] death clones inherit level 1 30%% hp")
+
+
+func _test_split_clones_keep_full_slot_layout() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	_mount_gem(state, slime, Constants.SLOT_RED, Constants.GEM_FIRE)
+	_mount_gem(state, slime, Constants.SLOT_BLUE, Constants.GEM_POISON)
+	var slot_types: Array[String] = []
+	for slot in slime.slots:
+		slot_types.append(slot.slot_type)
+	var presentation_state := state.clone()
+	var events: Array[Dictionary] = []
+	state.kill_unit(slime)
+	GemEffectsScript.on_unit_death(state, slime, events)
+	var clone_count := 0
+	var first_clone: UnitState = null
+	for unit in state.units.values():
+		if not unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			continue
+		clone_count += 1
+		if first_clone == null:
+			first_clone = unit
+		assert(unit.slots.size() == slot_types.size(), "split clone should show full slot layout")
+		for i in range(slot_types.size()):
+			assert(unit.slots[i].slot_type == slot_types[i], "split clone slot order should match source")
+		var black: SlotState = unit.get_slot(Constants.SLOT_BLACK)
+		assert(black != null and black.lock_type == Constants.LOCK_SPLIT_DISABLED, "split clone black slot should hold disabled split")
+		var black_gem: GemState = state.gems.get(black.gem_uid, null)
+		assert(black_gem != null and black_gem.gem_id == Constants.GEM_SPLIT, "split clone black slot should show split gem")
+	assert(clone_count == 2, "death split should create two clones")
+	assert(first_clone != null, "death split should expose a clone for slot inspection")
+	var player := state.get_player()
+	var moved_in_range := false
+	for neighbor in BoardUtils.neighbors4(first_clone.pos):
+		if BoardUtils.unit_footprint_passable(state, player, neighbor, player.uid):
+			state.move_unit(player, neighbor)
+			moved_in_range = true
+			break
+	assert(moved_in_range, "test setup should place player beside split clone")
+	state.held_gem_uid = ""
+	controller.select_action(Constants.ACTION_EXTRACT)
+	var targets: Array = controller.get_highlights().get("targets", [])
+	assert(first_clone.pos in targets, "disabled split gem should keep clone visible as an extract target")
+	var clone_black := first_clone.get_slot(Constants.SLOT_BLACK)
+	var black_check := controller.check_slot_action(first_clone.uid, first_clone.slots.find(clone_black))
+	assert(not black_check.get("ok", false), "disabled split gem should remain non-operable")
+	var presenter := BattleEventPlayer.new()
+	presenter.set("_controller", controller)
+	presenter.set("_display_state", presentation_state)
+	var split_event: Dictionary = events.filter(func(ev: Dictionary) -> bool: return str(ev.get("type", "")) == "split_spawn")[0]
+	presenter._apply_event_state(split_event)
+	var display_clone: UnitState = presentation_state.units.get(str(split_event.get("uid", "")), null)
+	assert(display_clone != null, "split presentation should register clone")
+	var display_black := display_clone.get_slot(Constants.SLOT_BLACK)
+	assert(display_black != null and presentation_state.gems.has(display_black.gem_uid), "split presentation should copy locked black gem")
+	print("  [OK] split clones keep full slot layout")
 
 
 func _test_black_split_level_ratios() -> void:

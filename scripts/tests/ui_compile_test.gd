@@ -98,6 +98,10 @@ func _validate_scene(path: String, node: Node) -> void:
 			if not node.has_node("BoardLayer/IsometricBoard"):
 				_fail("battle scene missing IsometricBoard")
 				return
+			var board: Node = node.get_node("BoardLayer/IsometricBoard")
+			_probe_shader_fx_api(board)
+			if _failed:
+				return
 			if not node.has_node("HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"):
 				_fail("battle scene missing ShieldRow")
 				return
@@ -106,6 +110,24 @@ func _validate_scene(path: String, node: Node) -> void:
 				_fail("adventure map missing IsometricBoard")
 				return
 	print("  [OK] scene boot %s" % path)
+
+
+func _probe_shader_fx_api(board: Node) -> void:
+	for method_name in [
+		"play_lightning_bolt",
+		"play_lightning_strike",
+		"play_fire_burst",
+		"play_frost_pulse",
+		"play_poison_burst",
+	]:
+		if not board.has_method(method_name):
+			_fail("IsometricBoard missing shader fx method: %s" % method_name)
+			return
+	board.call("play_lightning_bolt", Vector2i(1, 1), Vector2i(3, 1))
+	board.call("play_lightning_strike", Vector2i(2, 2))
+	board.call("play_fire_burst", Vector2i(3, 2))
+	board.call("play_frost_pulse", Vector2i(4, 2))
+	board.call("play_poison_burst", Vector2i(5, 2), 0, "")
 
 
 func _check_invalid_operators() -> void:

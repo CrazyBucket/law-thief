@@ -217,8 +217,6 @@ func _add_editor_slot_picker(
 
 
 func _should_show_slot(slot: SlotState, action: String) -> bool:
-	if slot.is_split_disabled():
-		return false
 	match action:
 		Constants.ACTION_INSERT:
 			return true

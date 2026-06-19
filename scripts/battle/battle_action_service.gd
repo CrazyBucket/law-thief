@@ -33,6 +33,8 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		return _fail("不是玩家回合")
 	var state: GameState = ctrl.state
 	var unlimited := ctrl.editor_unlimited_actions_enabled()
+	if not unlimited and OverloadRules.blocks_player_manual_actions(state):
+		return _fail("AI 已接管本回合")
 	if not unlimited and state.player_moved:
 		return _fail("本回合已移动")
 	var player: UnitState = state.get_player()
@@ -53,7 +55,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var presentation_state: GameState = state.clone()
 	var previous := player.pos
 	var move_events: Array[Dictionary] = []
-	var tx := _CombatTransaction.begin(state, move_events)
+	var tx := _CombatTransaction.begin(state, move_events).bind_event_sink()
 	for step in path:
 		tx.move_unit(player, step, {"reason": "player_move"})
 		TileRules.on_unit_moved_through(state, player, step)
@@ -94,6 +96,8 @@ func try_attack(target_uid: String) -> Dictionary:
 		return _fail("战斗未开始")
 	if ctrl.state.phase != Constants.PHASE_PLAYER:
 		return _fail("不是玩家回合")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	if not ctrl.editor_unlimited_actions_enabled() and ctrl.state.player_acted:
 		return _fail("本回合已行动")
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
@@ -110,7 +114,10 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	if ctrl.state == null or ctrl.state.phase != Constants.PHASE_PLAYER:
 		return _fail("不是玩家回合")
 	var state: GameState = ctrl.state
-	if not ctrl.editor_unlimited_actions_enabled() and state.player_acted:
+	var unlimited := ctrl.editor_unlimited_actions_enabled()
+	if not unlimited and OverloadRules.blocks_player_manual_actions(state):
+		return _fail("AI 已接管本回合")
+	if not unlimited and state.player_acted:
 		return _fail("本回合已行动")
 	var player: UnitState = state.get_player()
 	if player == null:
@@ -132,7 +139,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	if not atk_result.get("ok", false):
 		return _fail(atk_result.get("reason", "无法攻击"))
 	attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
-	if not ctrl.editor_unlimited_actions_enabled():
+	if not unlimited:
 		state.player_acted = true
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
 	ctrl._check_battle_end()
@@ -156,6 +163,8 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
@@ -180,6 +189,8 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
@@ -203,6 +214,8 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
@@ -233,6 +246,8 @@ func try_extract_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():
@@ -257,6 +272,8 @@ func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():
@@ -280,6 +297,8 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		return _fail("内部错误：controller 未初始化")
 	if ctrl.state == null:
 		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():

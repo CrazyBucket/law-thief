@@ -10,6 +10,9 @@ func _run_tests() -> void:
 	_test_damage_unit_event_shape()
 	_test_true_damage_unit_lethal_event_shape()
 	_test_damage_unit_preserves_existing_event_sink()
+	_test_begin_from_state_reuses_existing_event_sink()
+	_test_bound_move_sink_captures_spike_damage()
+	_test_event_validator_requires_damage_identity()
 	print("COMBAT_TRANSACTION_TEST_PASS")
 	quit()
 
@@ -80,6 +83,55 @@ func _test_damage_unit_preserves_existing_event_sink() -> void:
 	_assert_events_valid(tx_events, "damage_unit_preserves_existing_event_sink")
 	tx.finish("combat_transaction_test.bound_sink")
 	print("  [OK] damage_unit preserves existing sink")
+
+
+func _test_begin_from_state_reuses_existing_event_sink() -> void:
+	var state := _make_state()
+	var attacker := _make_unit(state, "attacker", Constants.TEAM_PLAYER, Vector2i(1, 1), 10)
+	var victim := _make_unit(state, "victim", Constants.TEAM_ENEMY, Vector2i(2, 1), 10)
+	var events: Array[Dictionary] = []
+	state.bind_combat_events(events)
+	var tx := CombatTransaction.begin_from_state(state)
+	tx.damage_unit(victim, 2, attacker.uid, "sink_reuse_test")
+	tx.finish("combat_transaction_test.sink_reuse")
+	assert(state.has_combat_event_sink(), "begin_from_state should not unbind an existing event sink")
+	state.unbind_combat_events()
+	assert(events.size() == 1, "begin_from_state should append damage to the existing sink")
+	assert(events[0].get("uid", "") == victim.uid, "sink damage event should include uid")
+	_assert_events_valid(events, "begin_from_state_reuses_existing_event_sink")
+	print("  [OK] begin_from_state reuses existing event sink")
+
+
+func _test_bound_move_sink_captures_spike_damage() -> void:
+	var state := _make_state()
+	var unit := _make_unit(state, "walker", Constants.TEAM_PLAYER, Vector2i(1, 1), 20)
+	state.add_entity(EntityState.create("spike_test", Constants.ENTITY_SPIKE, Vector2i(2, 1)))
+	var events: Array[Dictionary] = []
+	var tx := CombatTransaction.begin(state, events).bind_event_sink()
+	tx.move_unit(unit, Vector2i(2, 1), {"reason": "test_move"})
+	TileRules.on_unit_moved_through(state, unit, unit.pos)
+	tx.finish("combat_transaction_test.bound_move_spike")
+	assert(not state.has_combat_event_sink(), "bound movement transaction should restore event sink")
+	var damage_events := events.filter(func(ev): return ev.get("type", "") == "damage")
+	assert(damage_events.size() == 1, "spike damage should be captured in movement events")
+	var damage_ev: Dictionary = damage_events[0]
+	assert(damage_ev.get("uid", "") == unit.uid, "spike damage event should include uid")
+	assert(damage_ev.get("victim_uid", "") == unit.uid, "spike damage event should include victim_uid")
+	assert(damage_ev.get("reason", "") == "spike_enter", "spike damage should keep reason")
+	_assert_events_valid(events, "bound_move_sink_captures_spike_damage")
+	print("  [OK] bound move sink captures spike damage")
+
+
+func _test_event_validator_requires_damage_identity() -> void:
+	var violations := EventValidator.validate_events([
+		{"type": "damage", "pos": Vector2i(1, 1), "damage": 1, "is_crit": false},
+	])
+	assert(not violations.is_empty(), "damage without uid should violate event contract")
+	assert(
+		violations.any(func(v: String) -> bool: return v.find("uid") >= 0),
+		"damage identity violation should mention uid: %s" % str(violations)
+	)
+	print("  [OK] event validator requires damage identity")
 
 
 func _assert_events_valid(events: Array, context: String) -> void:

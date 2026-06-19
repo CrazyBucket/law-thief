@@ -71,21 +71,28 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
+	var was_overload_slot := slot.lock_type == Constants.LOCK_OVERLOAD_SLOT
 	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
 	var lawless_active := OverloadRules.is_active(state, Constants.OVERLOAD_LAWLESS_ANY_EXTRACT)
+	var slot_type := slot.slot_type
 	state.held_gem_uid = gem.uid
 	gem.owner_uid = actor.uid
 	gem.slot_index = -1
 	slot.gem_uid = ""
-	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot.slot_type, _data_registry().get_gem_display_name(gem)])
-	OverloadRules.leave_extract_echo(state, slot, gem, target_unit.uid, echo_active)
-	_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot.slot_type, gem.uid)
-	OverloadRules.on_enemy_gem_extracted(state, target_unit, slot.slot_type, gem.uid, lawless_active)
+	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot_type, _data_registry().get_gem_display_name(gem)])
+	if was_overload_slot:
+		_remove_unit_slot(state, target_unit, slot)
+	else:
+		OverloadRules.leave_extract_echo(state, slot, gem, target_unit.uid, echo_active)
+	_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot_type, gem.uid)
+	OverloadRules.on_enemy_gem_extracted(state, target_unit, slot_type, gem.uid, lawless_active)
 	var registry := _relic_effect_registry()
 	if registry != null:
 		registry.fire_event("after_extract", state, {
-			"unit_uid": actor.uid, "gem_id": gem.gem_id, "slot_type": slot.slot_type
+			"unit_uid": actor.uid, "gem_id": gem.gem_id, "slot_type": slot_type
 		})
+	if was_overload_slot:
+		OverloadRules.sync_active_mutations_to_overload_slots(state, false)
 	IntentSystem.refresh_all_intents(state)
 	return _ok({"gem_uid": gem.uid})
 
@@ -117,7 +124,9 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	if gem == null:
 		return _fail("宝石不存在")
 	var overload_forced := false
-	if not slot.gem_uid.is_empty() and (OverloadRules.can_force_insert(state) or target_unit.uid == actor.uid):
+	var should_create_overload_slot := OverloadRules.can_force_insert(state) \
+		or (not slot.gem_uid.is_empty() and target_unit.uid == actor.uid)
+	if should_create_overload_slot:
 		overload_forced = true
 		slot = _make_overload_slot(slot)
 		target_unit.slots.append(slot)
@@ -201,13 +210,18 @@ static func extract_tile(state: GameState, actor: UnitState, tile: TileState, sl
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
+	var was_overload_slot := slot.lock_type == Constants.LOCK_OVERLOAD_SLOT
 	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
 	state.held_gem_uid = gem.uid
 	gem.owner_uid = ""
 	gem.slot_index = -1
 	slot.gem_uid = ""
 	state.log("%s 从 %s 地块拔出 %s" % [actor.uid, tile.tile_id, _data_registry().get_gem_display_name(gem)])
-	OverloadRules.leave_extract_echo(state, slot, gem, "", echo_active)
+	if was_overload_slot:
+		_remove_tile_slot(state, tile, slot)
+		OverloadRules.sync_active_mutations_to_overload_slots(state, false)
+	else:
+		OverloadRules.leave_extract_echo(state, slot, gem, "", echo_active)
 	return _ok({"gem_uid": gem.uid})
 
 
@@ -240,7 +254,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	if gem == null:
 		return _fail("宝石不存在")
 	var overload_forced := false
-	if not slot.gem_uid.is_empty() and OverloadRules.can_force_insert(state):
+	if OverloadRules.can_force_insert(state):
 		overload_forced = true
 		slot = _make_overload_slot(slot)
 		tile.slots.append(slot)
@@ -298,6 +312,44 @@ static func _make_overload_slot(slot: SlotState) -> SlotState:
 	overflow_slot.lock_type = Constants.LOCK_OVERLOAD_SLOT
 	overflow_slot.unlock_until_turn = -1
 	return overflow_slot
+
+
+static func _remove_unit_slot(state: GameState, unit: UnitState, slot: SlotState) -> void:
+	var idx := unit.slots.find(slot)
+	if idx < 0:
+		return
+	unit.slots.remove_at(idx)
+	_reindex_unit_gems(state, unit)
+
+
+static func _remove_tile_slot(state: GameState, tile: TileState, slot: SlotState) -> void:
+	var idx := tile.slots.find(slot)
+	if idx < 0:
+		return
+	tile.slots.remove_at(idx)
+	_reindex_tile_gems(state, tile)
+
+
+static func _reindex_unit_gems(state: GameState, unit: UnitState) -> void:
+	for i in range(unit.slots.size()):
+		var slot: SlotState = unit.slots[i]
+		if slot == null or slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			gem.owner_uid = unit.uid
+			gem.slot_index = i
+
+
+static func _reindex_tile_gems(state: GameState, tile: TileState) -> void:
+	for i in range(tile.slots.size()):
+		var slot: SlotState = tile.slots[i]
+		if slot == null or slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			gem.owner_uid = ""
+			gem.slot_index = i
 
 
 static func _behavior_for(unit: UnitState) -> GDScript:

@@ -418,6 +418,134 @@
       "covers": ["combo:fire_poison:red"],
       "gems": ["gem_fire", "gem_poison"],
       "expect": {"damage": 10, "combo_event": "fire_poison", "toxic_smoke_cells": 1}
+    },
+    {
+      "id": "combo/light_poison/red",
+      "covers": ["combo:light_poison:red"],
+      "gems": ["gem_light", "gem_poison"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "expect": {
+        "damage": 5,
+        "poison_fog_cells": 0,
+        "unit_statuses": {
+          "contract_target": {
+            "poison": {"stacks": 1},
+            "light_exposed": {"stacks": 1}
+          }
+        },
+        "event_counts": {"light_beam": 1, "poison_burst": 0}
+      }
+    },
+    {
+      "id": "combo/light_fire/red",
+      "covers": ["combo:light_fire:red"],
+      "gems": ["gem_light", "gem_fire"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "expect": {
+        "damage": 5,
+        "fire_cells": 0,
+        "unit_statuses": {
+          "contract_target": {
+            "burning": {"stacks": 1},
+            "light_exposed": {"stacks": 1}
+          }
+        },
+        "event_counts": {"light_beam": 1, "fire_burst": 0}
+      }
+    },
+    {
+      "id": "combo/light_arc/red",
+      "covers": ["combo:light_arc:red"],
+      "gems": ["gem_light", "gem_conductive"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "light_arc_chain", "pos": [3, 2]}
+      ],
+      "expect": {
+        "unit_damages": {
+          "contract_target": 5,
+          "light_arc_chain": 2
+        },
+        "event_counts": {"light_beam": 1, "arc": 1}
+      }
+    },
+    {
+      "id": "combo/light_ice/red",
+      "covers": ["combo:light_ice:red"],
+      "gems": ["gem_light", "gem_ice"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "expect": {
+        "damage": 5,
+        "unit_statuses": {
+          "contract_target": {
+            "slowed": {"stacks": 1},
+            "light_exposed": {"stacks": 1}
+          }
+        },
+        "event_counts": {"light_beam": 1}
+      }
+    },
+    {
+      "id": "combo/light_split/red",
+      "covers": ["combo:light_split:red"],
+      "gems": ["gem_light", "gem_split"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [2, 3],
+      "target_pos": [5, 3],
+      "extra_units": [
+        {"uid": "light_split_upper", "pos": [4, 1]},
+        {"uid": "light_split_lower", "pos": [4, 5]}
+      ],
+      "expect": {
+        "unit_damages": {
+          "contract_target": 3,
+          "light_split_upper": 3,
+          "light_split_lower": 3
+        },
+        "event_counts": {"light_beam": 3, "projectile": 0}
+      }
+    },
+    {
+      "id": "combo/light_explosion/red",
+      "covers": ["combo:light_explosion:red"],
+      "gems": ["gem_light", "gem_explosion"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [3, 1],
+      "extra_units": [
+        {"uid": "light_explosion_end_neighbor", "pos": [6, 1]}
+      ],
+      "expect": {
+        "unit_damages": {
+          "contract_target": 5,
+          "light_explosion_end_neighbor": 17
+        },
+        "event_matches": [
+          {"type": "light_beam", "width": 1.0},
+          {"type": "explode", "pos": [7, 1], "pattern": "cross"}
+        ]
+      }
+    },
+    {
+      "id": "combo/light_gravity/red_not_declared",
+      "covers": ["combo:light_gravity:red:not_declared"],
+      "gems": ["gem_light", "gem_gravity"],
+      "player_stats": {"base_attack": 10},
+      "player_pos": [1, 1],
+      "target_pos": [4, 1],
+      "expect": {
+        "damage": 5,
+        "target_pos": [4, 1],
+        "event_counts": {"light_beam": 1, "move_step": 0}
+      }
     }
   ]
 }

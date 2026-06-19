@@ -17,6 +17,9 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
+const FxLightningShader := preload("res://scenes/battle/fx_lightning_bolt.gdshader")
+const FxRadialBurstShader := preload("res://scenes/battle/fx_radial_burst.gdshader")
+const FxCloudPulseShader := preload("res://scenes/battle/fx_cloud_pulse.gdshader")
 const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
 const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
 const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
@@ -118,6 +121,7 @@ var _soft_gradient_tex: Texture2D = null
 var _light_beam_soft_texture: Texture2D = null
 var _light_beam_nodes: Array[Node2D] = []
 var _beam_layer: Control = null
+var _shader_fx_seed: int = 0
 
 @export_group("Light Beam FX")
 @export_range(2.0, 30.0, 0.5) var light_beam_base_half_width: float = 13.5
@@ -126,6 +130,14 @@ var _beam_layer: Control = null
 @export_range(0.1, 2.0, 0.05) var light_beam_duration: float = 0.46
 @export_range(-60.0, 0.0, 1.0) var light_beam_plane_height: float = -28.0
 @export_range(0.0, 20.0, 1.0) var light_beam_source_drop: float = 7.0
+
+@export_group("Shader FX")
+@export_range(0.1, 2.0, 0.05) var lightning_fx_duration: float = 0.34
+@export_range(0.1, 2.0, 0.05) var radial_fx_duration: float = 0.42
+@export_range(0.1, 2.0, 0.05) var cloud_fx_duration: float = 0.58
+@export_range(0.1, 2.0, 0.05) var explosion_presentation_duration: float = 0.75
+@export_range(0.05, 0.95, 0.05) var explosion_impact_ratio: float = 0.16
+@export_range(0.05, 0.95, 0.05) var lightning_impact_ratio: float = 0.41
 # 抛射物动画：二次贝塞尔曲线飞行（支持齐射）
 
 ## Knight 底板锚点在格心；贴图腿长导致视觉上偏悬空，下移若干像素压住地面感
@@ -514,6 +526,49 @@ func _ensure_combat_visual_layers() -> void:
 	add_child(_beam_layer)
 
 
+func _spawn_shader_rect_fx(
+	shader: Shader,
+	center: Vector2,
+	fx_size: Vector2,
+	duration: float,
+	params: Dictionary = {},
+	rotation: float = 0.0
+) -> Control:
+	_ensure_combat_visual_layers()
+	if _beam_layer == null or shader == null:
+		return null
+	_shader_fx_seed += 1
+	var rect := ColorRect.new()
+	rect.name = "ShaderFx"
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.color = Color.WHITE
+	rect.size = fx_size
+	rect.position = center - fx_size * 0.5
+	rect.pivot_offset = fx_size * 0.5
+	rect.rotation = rotation
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("progress", 0.0)
+	material.set_shader_parameter("seed", float(_shader_fx_seed))
+	for key in params.keys():
+		material.set_shader_parameter(str(key), params[key])
+	rect.material = material
+	_beam_layer.add_child(rect)
+	var tween := create_tween()
+	tween.tween_method(func(v: float) -> void:
+		if not is_instance_valid(rect):
+			return
+		var live_material := rect.material as ShaderMaterial
+		if live_material != null:
+			live_material.set_shader_parameter("progress", v)
+	, 0.0, 1.0, _scaled_duration(duration))
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(rect):
+			rect.queue_free()
+	)
+	return rect
+
+
 func _ensure_water_layers() -> void:
 	if _water_fill_layer != null:
 		return
@@ -836,12 +891,14 @@ func _draw_overlay_routes() -> void:
 			continue
 		var kind := str(route.get("kind", ""))
 		var color := _route_color(kind)
-		var width := IsoCoordinates.visual(5.2 if kind == "move" else 4.0)
-		draw_polyline(points, color, width, false)
-		_draw_route_arrow(points, color, bool(route.get("arrow_reverse", false)))
+		var width := IsoCoordinates.visual(3.2 if kind == "move" else 3.0)
+		var outline := Color(0.02, 0.04, 0.06, minf(0.5, color.a + 0.18))
+		draw_polyline(points, outline, width + IsoCoordinates.visual(2.0), true)
+		draw_polyline(points, color, width, true)
+		_draw_route_arrow(points, color, width, bool(route.get("arrow_reverse", false)))
 
 
-func _draw_route_arrow(points: PackedVector2Array, color: Color, reverse_direction: bool) -> void:
+func _draw_route_arrow(points: PackedVector2Array, color: Color, width: float, reverse_direction: bool) -> void:
 	if points.size() < 2:
 		return
 	var end_pos: Vector2 = points[points.size() - 1]
@@ -851,11 +908,14 @@ func _draw_route_arrow(points: PackedVector2Array, color: Color, reverse_directi
 		return
 	direction = direction.normalized()
 	var perp := Vector2(-direction.y, direction.x)
-	var tip := end_pos + direction * IsoCoordinates.visual(8.0)
-	var base := end_pos - direction * IsoCoordinates.visual(7.0)
-	var left := base + perp * IsoCoordinates.visual(6.0)
-	var right := base - perp * IsoCoordinates.visual(6.0)
-	draw_colored_polygon(PackedVector2Array([tip, left, right]), color)
+	var tip := end_pos
+	var base := end_pos - direction * IsoCoordinates.visual(10.0)
+	var left := base + perp * IsoCoordinates.visual(5.5)
+	var right := base - perp * IsoCoordinates.visual(5.5)
+	var chevron := PackedVector2Array([left, tip, right])
+	var outline := Color(0.02, 0.04, 0.06, minf(0.55, color.a + 0.2))
+	draw_polyline(chevron, outline, width + IsoCoordinates.visual(2.0), true)
+	draw_polyline(chevron, color, width, true)
 
 
 func _draw_tile(grid: Vector2i) -> void:
@@ -1020,7 +1080,7 @@ func _overlay_line_width(kind: String) -> float:
 func _route_color(kind: String) -> Color:
 	match kind:
 		"move":
-			return Color(UiPalette.HILITE_MOVE.lightened(0.16), 0.42)
+			return Color(0.72, 0.96, 1.0, 0.82)
 		"intent":
 			return Color(UiPalette.INTENT_ATTACK.lightened(0.08), 0.36)
 		"map_choice":
@@ -1056,8 +1116,13 @@ func _draw_unit(unit: UnitState) -> void:
 		_draw_active_turn_aura(unit, aura_center, aura_alpha)
 	var hp_bar_pos := center + IsoCoordinates.visual_vec(Vector2(-18, 6))
 	var name_alpha := float(_nameplate_alpha_by_uid.get(unit.uid, 0.0))
+	var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
 	if pose_tex != null:
+		if hover_alpha > 0.01:
+			_draw_unit_texture_outline(pose_tex, Rect2(top_left, sprite_size), hover_alpha)
 		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
+	elif hover_alpha > 0.01:
+		_draw_unit_focus_outline(unit, Color(UiPalette.TEXT_BRIGHT, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, hover_alpha)
 	if name_alpha > 0.01:
 		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
@@ -1275,12 +1340,28 @@ func _draw_unit_ground_outlines() -> void:
 		if not unit.alive:
 			continue
 		var offset: Vector2 = _anim.move_offsets.get(unit.uid, Vector2.ZERO)
-		var hover_alpha := float(_hover_outline_alpha_by_uid.get(unit.uid, 0.0))
 		var selection_alpha := float(_selection_outline_alpha_by_uid.get(unit.uid, 0.0))
-		if hover_alpha > 0.01:
-			_draw_unit_focus_outline(unit, Color(UiPalette.EDGE_ACCENT.lightened(0.2), 0.95), IsoCoordinates.visual(2.2), offset, 0.0, hover_alpha)
 		if selection_alpha > 0.01:
 			_draw_unit_focus_outline(unit, Color(UiPalette.TEXT_BRIGHT, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, selection_alpha)
+
+
+func _draw_unit_texture_outline(texture: Texture2D, rect: Rect2, alpha: float) -> void:
+	if texture == null or alpha <= 0.01:
+		return
+	var px := maxf(1.0, IsoCoordinates.visual(2.0))
+	var outline := Color(UiPalette.TEXT_BRIGHT, 0.82 * alpha)
+	var offsets := [
+		Vector2(-px, 0.0),
+		Vector2(px, 0.0),
+		Vector2(0.0, -px),
+		Vector2(0.0, px),
+		Vector2(-px, -px),
+		Vector2(px, -px),
+		Vector2(-px, px),
+		Vector2(px, px),
+	]
+	for offset in offsets:
+		draw_texture_rect(texture, Rect2(rect.position + offset, rect.size), false, outline)
 
 
 func _draw_unit_focus_outline(
@@ -1575,7 +1656,7 @@ func _unit_slot_panel_in_range(unit: UnitState) -> bool:
 
 
 func _slot_panel_should_show(slot: SlotState) -> bool:
-	if slot == null or slot.is_split_disabled():
+	if slot == null:
 		return false
 	match slot_panel_action:
 		Constants.ACTION_EXTRACT:
@@ -2320,6 +2401,175 @@ func _push_sprite_sequence(cfg: Dictionary) -> bool:
 
 
 ## 播放伤害/爆炸特效
+func play_lightning_bolt(from_grid: Vector2i, to_grid: Vector2i, bolt_color: Color = Color(0.58, 0.9, 1.0)) -> void:
+	var from_scr := grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0.0, -44.0))
+	var to_scr := grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0.0, -38.0))
+	_spawn_lightning_between_points(from_scr, to_scr, bolt_color)
+	_spawn_radial_burst_at_grid(
+		to_grid,
+		Color(0.84, 0.98, 1.0, 1.0),
+		Color(0.12, 0.52, 1.0, 0.74),
+		{
+			"ring_width": 0.07,
+			"ray_count": 16.0,
+			"ray_strength": 0.72,
+			"core_strength": 0.2,
+			"squash": 0.62,
+		},
+		0.28
+	)
+	queue_redraw()
+
+
+func play_lightning_bolt_task(from_grid: Vector2i, to_grid: Vector2i, bolt_color: Color = Color(0.58, 0.9, 1.0)) -> void:
+	play_lightning_bolt(from_grid, to_grid, bolt_color)
+	if is_inside_tree():
+		await get_tree().create_timer(_scaled_duration(lightning_fx_duration)).timeout
+
+
+func play_electrical_batch(events: Array) -> Dictionary:
+	for event in events:
+		var from_grid: Vector2i = event.get("from", event.get("pos", Vector2i.ZERO))
+		var to_grid: Vector2i = event.get("target_pos", event.get("pos", from_grid))
+		if from_grid == to_grid:
+			play_lightning_strike(to_grid)
+		else:
+			play_lightning_bolt(from_grid, to_grid)
+	var duration := _scaled_duration(lightning_fx_duration)
+	return {
+		"duration": duration,
+		"impact_time": duration * lightning_impact_ratio,
+	}
+
+
+func play_lightning_strike(grid: Vector2i, bolt_color: Color = Color(0.58, 0.9, 1.0)) -> void:
+	var to_scr := grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -34.0))
+	var from_scr := to_scr + IsoCoordinates.visual_vec(Vector2(0.0, -120.0))
+	_spawn_lightning_between_points(from_scr, to_scr, bolt_color)
+	_spawn_radial_burst_at_grid(
+		grid,
+		Color(0.85, 0.98, 1.0, 1.0),
+		Color(0.18, 0.62, 1.0, 0.78),
+		{
+			"ring_width": 0.06,
+			"ray_count": 18.0,
+			"ray_strength": 0.78,
+			"core_strength": 0.24,
+			"squash": 0.58,
+		},
+		0.3
+	)
+	queue_redraw()
+
+
+func play_lightning_strike_task(grid: Vector2i, bolt_color: Color = Color(0.58, 0.9, 1.0)) -> void:
+	play_lightning_strike(grid, bolt_color)
+	if is_inside_tree():
+		await get_tree().create_timer(_scaled_duration(lightning_fx_duration)).timeout
+
+
+func play_fire_burst(grid: Vector2i) -> void:
+	_spawn_radial_burst_at_grid(
+		grid,
+		Color(1.0, 0.78, 0.28, 1.0),
+		Color(1.0, 0.16, 0.04, 0.82),
+		{
+			"ring_width": 0.11,
+			"ray_count": 13.0,
+			"ray_strength": 0.58,
+			"core_strength": 0.33,
+			"squash": 0.7,
+		},
+		radial_fx_duration
+	)
+	play_gem_flash(grid, Color(1.0, 0.45, 0.1))
+
+
+func play_frost_pulse(grid: Vector2i) -> void:
+	_spawn_radial_burst_at_grid(
+		grid,
+		Color(0.82, 1.0, 1.0, 1.0),
+		Color(0.18, 0.78, 1.0, 0.72),
+		{
+			"ring_width": 0.055,
+			"ray_count": 20.0,
+			"ray_strength": 0.45,
+			"core_strength": 0.16,
+			"squash": 0.58,
+		},
+		radial_fx_duration
+	)
+	play_gem_flash(grid, Color(0.45, 0.9, 1.0))
+
+
+func _spawn_lightning_between_points(from_scr: Vector2, to_scr: Vector2, bolt_color: Color) -> void:
+	var delta := to_scr - from_scr
+	var length := delta.length()
+	if length < 1.0:
+		return
+	var center := (from_scr + to_scr) * 0.5
+	var rect_size := Vector2(length + IsoCoordinates.visual(42.0), IsoCoordinates.visual(104.0))
+	var core := Color.WHITE.lerp(bolt_color, 0.46)
+	var glow := Color(0.12, 0.42, 1.0).lerp(bolt_color, 0.55)
+	_spawn_shader_rect_fx(
+		FxLightningShader,
+		center,
+		rect_size,
+		lightning_fx_duration,
+		{
+			"core_color": core,
+			"glow_color": glow,
+			"jitter": 0.15,
+			"thickness": 0.022,
+			"branch_strength": 0.68,
+		},
+		delta.angle()
+	)
+
+
+func _spawn_radial_burst_at_grid(
+	grid: Vector2i,
+	inner_color: Color,
+	outer_color: Color,
+	params: Dictionary = {},
+	duration: float = -1.0
+) -> void:
+	var center := grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -18.0))
+	var size := Vector2(IsoCoordinates.visual(128.0), IsoCoordinates.visual(112.0))
+	var fx_params := params.duplicate(true)
+	fx_params["inner_color"] = inner_color
+	fx_params["outer_color"] = outer_color
+	_spawn_shader_rect_fx(
+		FxRadialBurstShader,
+		center,
+		size,
+		radial_fx_duration if duration <= 0.0 else duration,
+		fx_params
+	)
+
+
+func _spawn_cloud_pulse_at_grid(
+	grid: Vector2i,
+	cloud_color: Color,
+	rim_color: Color,
+	duration: float = -1.0
+) -> void:
+	var center := grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -10.0))
+	var size := Vector2(IsoCoordinates.visual(118.0), IsoCoordinates.visual(88.0))
+	_spawn_shader_rect_fx(
+		FxCloudPulseShader,
+		center,
+		size,
+		cloud_fx_duration if duration <= 0.0 else duration,
+		{
+			"cloud_color": cloud_color,
+			"rim_color": rim_color,
+			"density": 1.12,
+			"squash": 0.62,
+		}
+	)
+
+
 func play_damage_effect(grid: Vector2i, damage: int, is_crit: bool) -> void:
 	var hit_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_SMALL_HIT)
 	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -16.0))
@@ -2464,6 +2714,12 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int, pattern: String = "")
 	var puff_vfx: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_PUFF)
 	for cell in cells:
 		var base: Vector2 = grid_to_screen(cell) + IsoCoordinates.visual_vec(Vector2(0, -10))
+		_spawn_cloud_pulse_at_grid(
+			cell,
+			Color(0.18, 0.78, 0.28, 0.62),
+			Color(0.62, 1.0, 0.42, 0.44),
+			cloud_fx_duration
+		)
 		var placed_pack := false
 		if _Vpf.is_pack_available() and not puff_vfx.is_empty():
 			placed_pack = _push_sprite_sequence({
@@ -2498,6 +2754,19 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int, pattern: String = "")
 func play_explosion(grid: Vector2i) -> void:
 	var exp_paths: PackedStringArray = _Vpf.frame_paths(_Vpf.EFFECT_EXPLOSION)
 	var center_scr: Vector2 = grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0.0, -24.0))
+	_spawn_radial_burst_at_grid(
+		grid,
+		Color(1.0, 0.9, 0.45, 1.0),
+		Color(1.0, 0.22, 0.04, 0.78),
+		{
+			"ring_width": 0.12,
+			"ray_count": 16.0,
+			"ray_strength": 0.66,
+			"core_strength": 0.36,
+			"squash": 0.72,
+		},
+		0.42
+	)
 	var ok := false
 	if _Vpf.is_pack_available() and not exp_paths.is_empty():
 		ok = _push_sprite_sequence({
@@ -2547,6 +2816,16 @@ func play_explosion(grid: Vector2i) -> void:
 			"type": "ring"
 		})
 	queue_redraw()
+
+
+func play_explosion_batch(events: Array) -> Dictionary:
+	for event in events:
+		play_explosion(event.get("pos", Vector2i.ZERO))
+	var duration := _scaled_duration(explosion_presentation_duration)
+	return {
+		"duration": duration,
+		"impact_time": duration * explosion_impact_ratio,
+	}
 
 
 ## 绘制所有粒子
@@ -2685,19 +2964,46 @@ func play_light_beam_task(
 	beam_width: float = 1.0,
 	fx: Dictionary = {}
 ) -> void:
-	var beam := _create_light_beam_node(from_grid, to_grid, beam_color, beam_width, fx)
-	if beam == null:
-		return
-	var mat := beam.material as ShaderMaterial
-	var tween := create_tween()
-	tween.set_parallel(true)
+	await play_light_beams_task([{
+		"from": from_grid,
+		"to": to_grid,
+		"color": beam_color,
+		"width": beam_width,
+		"fx": fx,
+	}])
+
+
+func play_light_beams(beams: Array) -> float:
 	var duration := _scaled_duration(light_beam_duration)
-	tween.tween_property(beam, "modulate:a", 0.0, duration * 0.72).set_delay(duration * 0.28)
-	if mat != null:
-		tween.tween_method(func(v: float) -> void:
-			mat.set_shader_parameter("pulse", v)
-		, 0.0, 1.0, duration)
-	await tween.finished
+	for spec in beams:
+		var beam := _create_light_beam_node(
+			spec.get("from", Vector2i.ZERO),
+			spec.get("to", Vector2i.ZERO),
+			spec.get("color", Color(1.0, 0.96, 0.58)),
+			float(spec.get("width", 1.0)),
+			spec.get("fx", spec)
+		)
+		if beam == null:
+			continue
+		var mat := beam.material as ShaderMaterial
+		var tween := create_tween()
+		tween.set_parallel(true)
+		tween.tween_property(beam, "modulate:a", 0.0, duration * 0.72).set_delay(duration * 0.28)
+		if mat != null:
+			tween.tween_method(func(v: float) -> void:
+				mat.set_shader_parameter("pulse", v)
+			, 0.0, 1.0, duration)
+		tween.finished.connect(_finish_light_beam.bind(beam), CONNECT_ONE_SHOT)
+	return duration
+
+
+func play_light_beams_task(beams: Array) -> void:
+	var duration := play_light_beams(beams)
+	if duration > 0.0 and is_inside_tree():
+		await get_tree().create_timer(duration).timeout
+
+
+func _finish_light_beam(beam: Node2D) -> void:
 	if is_instance_valid(beam):
 		beam.queue_free()
 	_light_beam_nodes.erase(beam)

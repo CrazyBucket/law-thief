@@ -9,6 +9,11 @@ func _run_test() -> void:
 	print("=== UI Overlay Contract Test ===")
 	_test_move_hover_route()
 	_test_enemy_intent_route()
+	_test_relic_bar_layout_compacts_before_scroll()
+	await _test_battle_scene_click_inspect()
+	await _test_battle_scene_consumes_queued_battle_end()
+	await _test_rich_tooltip_has_body_height()
+	_test_battle_end_queue_take()
 	print("UI_OVERLAY_CONTRACT_TEST_PASS")
 	quit()
 
@@ -59,11 +64,142 @@ func _test_enemy_intent_route() -> void:
 	print("  [OK] selected enemy intent route overlay")
 
 
+func _test_relic_bar_layout_compacts_before_scroll() -> void:
+	var presenter := BattleHudPresenter.new()
+	var medium := presenter._relic_bar_layout(5, 320.0)
+	var medium_viewport: Vector2 = medium.get("viewport_size", Vector2.ZERO)
+	assert(int(medium.get("columns", 0)) == 1, "medium relic count should stay vertical")
+	assert(float(medium.get("icon_size", 0.0)) == 30.0, "readable relics should retain normal icon size")
+	assert(medium_viewport.y <= 320.0, "medium relic layout should fit available rail height")
+	var many := presenter._relic_bar_layout(8, 320.0)
+	var many_viewport: Vector2 = many.get("viewport_size", Vector2.ZERO)
+	assert(int(many.get("columns", 0)) == 1, "eight relics should stay vertical when screen height permits")
+	assert(float(many.get("icon_size", 0.0)) >= 24.0, "relic icons must never collapse below readable size")
+	assert(not bool(many.get("scroll", true)), "eight relics should fit without scrollbar at normal battle height")
+	assert(many_viewport.y <= 320.0, "many relic layout should fit available rail height")
+	var constrained := presenter._relic_bar_layout(8, 144.0)
+	assert(int(constrained.get("columns", 0)) == 2, "short viewports should use multiple readable columns")
+	assert(float(constrained.get("icon_size", 0.0)) == 24.0, "short viewports should stop shrinking at readable minimum")
+	var constrained_content: Vector2 = constrained.get("content_size", Vector2.ZERO)
+	assert(constrained_content.x >= 72.0, "multiple relic columns need enough separation to remain distinct")
+	var overflow := presenter._relic_bar_layout(40, 144.0)
+	assert(bool(overflow.get("scroll", false)), "scrolling should begin only after minimum-size columns overflow")
+	var badge := presenter._create_relic_badge("relic_prism", 24.0)
+	var icon: TextureRect = badge.get_node("RelicIcon")
+	assert(icon.stretch_mode == TextureRect.STRETCH_SCALE, "relic textures must scale inside their fixed cell instead of overflowing")
+	badge.free()
+	print("  [OK] relic bar compacts before scroll")
+
+
+func _test_battle_scene_click_inspect() -> void:
+	var packed := load("res://scenes/battle/battle_scene.tscn") as PackedScene
+	assert(packed != null, "battle scene should load")
+	var scene := packed.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var ctrl: BattleController = scene.get("_controller")
+	assert(ctrl != null and ctrl.state != null, "battle scene should start a controller")
+	var guard := _find_unit_by_def(ctrl.state, "unit_patrol_guard")
+	assert(guard != null, "guard should exist for click inspect")
+	scene.call("_on_cell_clicked", guard.pos)
+	await process_frame
+	assert(str(scene.get("_inspect_uid")) == guard.uid, "clicking a unit should inspect that unit")
+	var entity_cell := _first_empty_cell(ctrl.state)
+	assert(entity_cell.x >= 0, "empty cell should exist for entity inspect")
+	ctrl.state.add_entity(EntityState.create("ui_click_entity", Constants.ENTITY_BARREL, entity_cell))
+	scene.call("_on_cell_clicked", entity_cell)
+	await process_frame
+	assert(str(scene.get("_inspect_uid")).is_empty(), "clicking an entity cell should clear unit inspect")
+	assert(scene.get("_inspect_cell") == entity_cell, "clicking an entity cell should inspect the cell")
+	var status_panel: Control = scene.get("_status_panel")
+	var toggle_button: Control = scene.get("_toggle_panel_btn")
+	var relic_root: Control = scene.get("_relic_bar_root")
+	scene.set("_panel_visible", false)
+	status_panel.visible = false
+	scene.call("_layout_editor_ui")
+	assert(
+		relic_root.position.y >= toggle_button.position.y + toggle_button.size.y + 5.0,
+		"folded status toggle must not overlap relic rail"
+	)
+	scene.queue_free()
+	await process_frame
+	print("  [OK] battle scene click inspect")
+
+
+func _test_battle_scene_consumes_queued_battle_end() -> void:
+	var adventure_service: Node = root.get_node("AdventureService")
+	var run_service: Node = root.get_node("RunService")
+	var game_service: Node = root.get_node("GameService")
+	adventure_service.start_new_run(20260617)
+	adventure_service.pending_room_type = "NORMAL_COMBAT"
+	game_service.pending_encounter_id = "tutorial_001"
+	game_service.pending_room_id = "ui_battle_end_room"
+	game_service.adventure_return = true
+	game_service.pending_battle_mode = "normal"
+	var packed := load("res://scenes/battle/battle_scene.tscn") as PackedScene
+	var scene := packed.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	scene.set("_enemy_phase_running", true)
+	scene.call("_on_battle_ended", "win")
+	assert(not bool(scene.get("_battle_end_applied")), "battle end should wait while enemy phase is running")
+	scene.set("_enemy_phase_running", false)
+	assert(bool(scene.call("_consume_pending_battle_end_if_any")), "queued battle end should be consumed after enemy phase")
+	assert(bool(scene.get("_battle_end_applied")), "queued battle end should enter settlement")
+	scene.queue_free()
+	await process_frame
+	run_service.end_run()
+	game_service.reset_session_state()
+	print("  [OK] battle scene consumes queued battle end")
+
+
+func _test_rich_tooltip_has_body_height() -> void:
+	var owner := Control.new()
+	root.add_child(owner)
+	var tooltip := RichTooltip.new()
+	root.add_child(tooltip)
+	await process_frame
+	tooltip.show_for_control(owner, {
+		"title": "行动",
+		"subtitle": "回合资源",
+		"sections": [{"title": "状态", "body": "本回合是否还能攻击、拔取或嵌入。"}],
+	})
+	await process_frame
+	await process_frame
+	var panel := tooltip.get_child(0) as PanelContainer
+	var scroll := panel.get_child(0) as ScrollContainer
+	assert(panel != null and panel.size.y > 40.0, "rich tooltip panel should not collapse to an empty frame")
+	assert(scroll != null and scroll.custom_minimum_size.y > 0.0, "rich tooltip scroll should reserve content height")
+	tooltip.queue_free()
+	owner.queue_free()
+	await process_frame
+	print("  [OK] rich tooltip reserves body height")
+
+
+func _test_battle_end_queue_take() -> void:
+	var event_player := BattleEventPlayer.new()
+	event_player.queue_battle_end("win")
+	assert(event_player.take_pending_battle_end() == "win", "queued battle end should be consumable")
+	assert(event_player.take_pending_battle_end().is_empty(), "queued battle end should be consumed only once")
+	print("  [OK] battle end queue is consumable")
+
+
 func _first_cell_after(cells: Array, origin: Vector2i) -> Vector2i:
 	for raw_cell in cells:
 		var cell: Vector2i = raw_cell
 		if cell != origin:
 			return cell
+	return Vector2i(-1, -1)
+
+
+func _first_empty_cell(state: GameState) -> Vector2i:
+	for y in range(state.board_size.y):
+		for x in range(state.board_size.x):
+			var cell := Vector2i(x, y)
+			if state.get_unit_at(cell) == null and state.get_entity_at(cell) == null:
+				return cell
 	return Vector2i(-1, -1)
 
 

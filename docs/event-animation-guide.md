@@ -202,6 +202,31 @@ BattleScene
 
 ## 新的时序原则
 
+### 原则零：先规划，后播放
+
+规则事件不能再直接驱动 renderer。`BattlePresentationPlanner` 必须先把完整事件流编译为 beat；
+每个 beat 都包含：
+
+- `kind`：投射物、爆炸、电弧、位移等演出家族
+- `mode`：`serial` 或 `parallel`
+- `visuals`：起手、弹道、扩散等视觉阶段
+- `impacts`：展示态伤害和命中反馈
+- `aftermath`：击退、地块变化、分裂生成等后续阶段
+
+任何新事件类型都必须先登记 presentation policy。未登记类型会同时被
+`EventValidator` 和 `BattlePresentationPlanner` 拒绝，不能进入播放阶段。
+
+禁止新增“在 `BattleEventPlayer` 主循环里看到事件后临时决定怎么 await”的分支。
+并发关系必须在 renderer 启动任何动画之前由 planner 决定。
+
+### 命中时序约束
+
+- 投射物：同一 volley 的弹道并发；弹道完成后才应用该 volley 的 impact。
+- 爆炸：先启动爆炸视觉，在冲击帧应用范围伤害，再播放余波和位移。
+- 电弧：同一跳的电弧并发；电弧抵达后应用该跳伤害；下一跳随后开始。
+- 光束：同一轮光束并发；伤害绑定光束 impact，不允许先扣展示态生命。
+- 纯伤害：只有不存在前置视觉时，才允许作为独立 damage beat 播放。
+
 ### 原则一：任何时刻只能有一个主 presentation 在播放
 
 “主 presentation”指一次玩家动作、一次敌方动作、一次 reward 前的收尾、一次 battle end 收尾。
@@ -222,15 +247,16 @@ BattleScene
 - 某段事件还没播完，外层先切回真实 state
 - `set_battle_state()` 导致 renderer 清空临时动画缓存而出现跳变
 
-### 原则三：批处理仍然保留，但只属于 `BattleEventPlayer`
+### 原则三：批处理由 planner 决定，播放只属于 `BattleEventPlayer`
 
 文档原本强调的 `damage` / `move_step` / `projectile` 批处理逻辑仍然保留；
 但它不应再作为 `battle_scene.gd` 的内部技巧，而应成为 `BattleEventPlayer` 的职责。
 
 也就是说：
 
-- 规则层继续负责产出**顺序正确、同类连续**的事件流
-- `BattleEventPlayer` 负责识别批次并选择串行或并行播放
+- 规则层负责产出因果顺序正确的事件流
+- `BattlePresentationPlanner` 在播放前识别 beat 并选择串行或并行
+- `BattleEventPlayer` 只执行已经规划完成的 beat，并在 impact 推进展示态
 - `BoardRenderer` 只负责执行底层表现
 
 ### 原则四：等待语义要从“全局 finished”改成“明确的播放任务”

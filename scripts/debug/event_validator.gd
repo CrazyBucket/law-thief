@@ -1,6 +1,8 @@
 class_name EventValidator
 extends RefCounted
 
+const _PresentationPlanner = preload("res://scripts/ui/battle_presentation_planner.gd")
+
 ## 事件流基础校验器
 ## 规则层产出 events 数组后，可用 validate_events 对整批事件做结构检查。
 ## 所有校验只在调试/测试路径中被主动调用，不影响正常游戏性能。
@@ -9,7 +11,7 @@ extends RefCounted
 ## 凡是这里列出的字段，出现在对应类型事件中时必须非空/非 null。
 const _REQUIRED_FIELDS: Dictionary = {
 	"move_step": ["uid", "from", "to"],
-	"damage":    ["pos", "damage", "is_crit"],
+	"damage":    ["uid", "victim_uid", "pos", "damage", "is_crit"],
 	"explode":   ["pos"],
 	"projectile": ["from", "to"],
 	"projectile_deflect": ["from", "to"],
@@ -35,6 +37,11 @@ static func validate_events(events: Array) -> Array[String]:
 		if ev_type.is_empty():
 			violations.append("[%d] event missing 'type' field: %s" % [i, str(ev)])
 			continue
+		if not _PresentationPlanner.has_policy(ev_type):
+			violations.append(
+				"[%d] event type '%s' has no presentation policy; choose serial or parallel playback before adding it"
+				% [i, ev_type]
+			)
 		_check_required_fields(ev, ev_type, i, violations)
 		_check_type_specific(ev, ev_type, i, violations)
 	return violations

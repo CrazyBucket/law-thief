@@ -7,6 +7,7 @@ const _InvariantChecker = preload("res://scripts/debug/battle_invariant_checker.
 
 var state: GameState = null
 var events: Array[Dictionary] = []
+var _bound_event_sink: bool = false
 
 
 static func begin(battle_state: GameState, existing_events: Array[Dictionary] = []) -> CombatTransaction:
@@ -14,6 +15,22 @@ static func begin(battle_state: GameState, existing_events: Array[Dictionary] = 
 	tx.state = battle_state
 	tx.events = existing_events
 	return tx
+
+
+static func begin_from_state(battle_state: GameState) -> CombatTransaction:
+	if battle_state != null and battle_state.has_combat_event_sink():
+		return begin(battle_state, battle_state.get_combat_event_sink())
+	return begin(battle_state)
+
+
+func bind_event_sink() -> CombatTransaction:
+	if state == null or _bound_event_sink:
+		return self
+	if state.has_combat_event_sink():
+		return self
+	state.bind_combat_events(events)
+	_bound_event_sink = true
+	return self
 
 
 func move_unit(unit: UnitState, to_pos: Vector2i, opts: Dictionary = {}) -> void:
@@ -27,7 +44,8 @@ func move_unit(unit: UnitState, to_pos: Vector2i, opts: Dictionary = {}) -> void
 	state.move_unit(unit, to_pos)
 	if bool(opts.get("emit_signal", true)):
 		state.on_unit_move.emit(unit.uid, from_pos, to_pos)
-	append_event(_EventBuilder.move_step(unit.uid, from_pos, to_pos, opts))
+	if bool(opts.get("emit_event", true)):
+		append_event(_EventBuilder.move_step(unit.uid, from_pos, to_pos, opts))
 
 
 func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: String, opts: Dictionary = {}) -> int:
@@ -79,6 +97,9 @@ func finish(context: String = "") -> Array[Dictionary]:
 		_EventValidator.assert_valid(events, context)
 		if state != null:
 			_InvariantChecker.assert_valid(state, context)
+	if _bound_event_sink and state != null:
+		state.unbind_combat_events()
+		_bound_event_sink = false
 	return events
 
 

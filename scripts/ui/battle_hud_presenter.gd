@@ -6,6 +6,13 @@ const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 const _STATUS_PANEL_WIDTH := 320.0
+const _RELIC_ICON_MAX := 30.0
+const _RELIC_ICON_MIN := 24.0
+const _RELIC_ROW_GAP := 6.0
+const _RELIC_COLUMN_GAP := 12.0
+const _RELIC_ICON_PAD := 3.0
+const _RELIC_BAR_FALLBACK_H := 320.0
+const _RELIC_BAR_MAX_COLUMNS := 3
 
 var _controller: BattleController = null
 var _board = null
@@ -48,13 +55,86 @@ var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: Container = null
 var _relic_bar_root: Control = null
 var _show_relic_detail_cb: Callable = Callable()
+var _tooltip: Control = null
 
 var _select_unit_cb: Callable = Callable()
 var _set_timeline_hover_cb: Callable = Callable()
 var _clear_timeline_hover_cb: Callable = Callable()
 
 var _relic_bar_ids: Array[String] = []
+var _relic_bar_layout_key := ""
+var _relic_hover_texture_cache: Dictionary = {}
 var _intent_label: Label = null
+
+
+func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("DataRegistry")
+
+
+func _run_service() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("RunService")
+
+
+func _unit_looks() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("UnitLooks")
+
+
+func _gem_display_name(gem_ref: Variant) -> String:
+	var registry := _data_registry()
+	if registry != null:
+		return registry.get_gem_display_name(gem_ref)
+	if gem_ref is GemState:
+		return (gem_ref as GemState).gem_id
+	return str(gem_ref)
+
+
+func _unit_display_name(unit_def_id: String) -> String:
+	var registry := _data_registry()
+	if registry != null:
+		return registry.get_unit_display_name(unit_def_id)
+	return unit_def_id
+
+
+func _relic_rarity(relic_id: String) -> String:
+	var registry := _data_registry()
+	if registry != null:
+		return registry.get_relic_rarity(relic_id)
+	return "common"
+
+
+func _gem_texture(gem_ref: Variant) -> Texture2D:
+	var looks := _unit_looks()
+	return looks.get_gem_texture(gem_ref) if looks != null else null
+
+
+func _gem_sprite_modulate(gem_ref: Variant) -> Color:
+	var looks := _unit_looks()
+	return looks.gem_sprite_modulate(gem_ref) if looks != null else Color.WHITE
+
+
+func _gem_color(gem_ref: Variant) -> Color:
+	var looks := _unit_looks()
+	return looks.gem_color(gem_ref) if looks != null else BattleUiTheme.TEXT
+
+
+func _slot_color(slot_type: String) -> Color:
+	var looks := _unit_looks()
+	return looks.slot_color(slot_type) if looks != null else BattleUiTheme.BORDER
+
+
+func _unit_texture(unit_def_id: String) -> Texture2D:
+	var looks := _unit_looks()
+	return looks.get_unit_texture(unit_def_id) if looks != null else null
+
+
+func _unit_sprite_modulate(team: String, unit_def_id: String) -> Color:
+	var looks := _unit_looks()
+	return looks.sprite_modulate_for_unit(team, unit_def_id) if looks != null else Color.WHITE
+
+
+func _relic_texture(relic_id: String) -> Texture2D:
+	var looks := _unit_looks()
+	return looks.get_relic_texture(relic_id) if looks != null else null
 
 
 func setup(deps: Dictionary) -> void:
@@ -98,6 +178,7 @@ func setup(deps: Dictionary) -> void:
 	_relic_bar_vbox = deps.get("relic_bar_vbox", null)
 	_relic_bar_root = deps.get("relic_bar_root", null)
 	_show_relic_detail_cb = deps.get("show_relic_detail_cb", Callable())
+	_tooltip = deps.get("tooltip", null)
 	_select_unit_cb = deps.get("select_unit_cb", Callable())
 	_set_timeline_hover_cb = deps.get("set_timeline_hover_cb", Callable())
 	_clear_timeline_hover_cb = deps.get("clear_timeline_hover_cb", Callable())
@@ -106,6 +187,7 @@ func setup(deps: Dictionary) -> void:
 func refresh(context: Dictionary) -> Dictionary:
 	var state: GameState = context.get("state", null)
 	var inspect_uid: String = str(context.get("inspect_uid", ""))
+	var inspect_cell: Vector2i = context.get("inspect_cell", Vector2i(-1, -1))
 	var tracked_player_uid: String = str(context.get("tracked_player_uid", ""))
 	var timeline_hover_uid: String = str(context.get("timeline_hover_uid", ""))
 	var enemy_phase_running: bool = bool(context.get("enemy_phase_running", false))
@@ -114,6 +196,7 @@ func refresh(context: Dictionary) -> Dictionary:
 	if state == null:
 		return {
 			"inspect_uid": inspect_uid,
+			"inspect_cell": inspect_cell,
 			"tracked_player_uid": tracked_player_uid,
 			"active_turn_uid": "",
 		}
@@ -121,6 +204,8 @@ func refresh(context: Dictionary) -> Dictionary:
 	var sync_result := _sync_controlled_player_inspect(state, inspect_uid, tracked_player_uid)
 	inspect_uid = str(sync_result.get("inspect_uid", inspect_uid))
 	tracked_player_uid = str(sync_result.get("tracked_player_uid", tracked_player_uid))
+	if not inspect_uid.is_empty():
+		inspect_cell = Vector2i(-1, -1)
 
 	_turn_label.text = "T%d" % state.turn_index
 	refresh_economy_chips(state)
@@ -151,13 +236,13 @@ func refresh(context: Dictionary) -> Dictionary:
 
 	var held := _controller.get_held_gem()
 	if held != null:
-		var gem_name: String = DataRegistry.get_gem_display_name(held)
+		var gem_name: String = _gem_display_name(held)
 		if _held_gem_icon != null:
-			_held_gem_icon.texture = UnitLooks.get_gem_texture(held)
-			_held_gem_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
+			_held_gem_icon.texture = _gem_texture(held)
+			_held_gem_icon.self_modulate = _gem_sprite_modulate(held)
 			_held_gem_icon.visible = true
 		_held_label.text = "手持 %s" % gem_name
-		_held_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.15))
+		_held_label.add_theme_color_override("font_color", _gem_color(held).lightened(0.15))
 	else:
 		if _held_gem_icon != null:
 			_held_gem_icon.visible = false
@@ -177,13 +262,14 @@ func refresh(context: Dictionary) -> Dictionary:
 
 	var active_turn_uid := _get_active_turn_uid(state, enemy_phase_running, enemy_turn_queue)
 	_refresh_turn_queue(state, active_turn_uid, timeline_hover_uid, enemy_phase_running)
-	_refresh_inspect(state, inspect_uid)
+	_refresh_inspect(state, inspect_uid, inspect_cell)
 	_apply_editor_compact_layout(editor_compact)
 	_refresh_action_buttons(enemy_phase_running)
-	_refresh_relic_bar()
+	_refresh_relic_bar(float(context.get("relic_bar_available_height", _RELIC_BAR_FALLBACK_H)))
 
 	return {
 		"inspect_uid": inspect_uid,
+		"inspect_cell": inspect_cell,
 		"tracked_player_uid": tracked_player_uid,
 		"active_turn_uid": active_turn_uid,
 	}
@@ -199,10 +285,30 @@ func refresh_economy_chips(state: GameState) -> void:
 	if _overload_chip != null:
 		_overload_chip.text = "过载 %d+%d" % [active_count, pending_count] if pending_count > 0 else "过载 %d" % active_count
 		_style_chip(_overload_chip, state.overload_pending, BattleUiTheme.TEXT_GOLD)
-	_move_chip.tooltip_text = "本回合还能否移动"
-	_act_chip.tooltip_text = "本回合还能否行动"
+	_set_tooltip(_move_chip, "本回合还能否移动", {
+		"title": "移动",
+		"subtitle": "回合资源",
+		"accent": BattleUiTheme.PHASE_PLAYER,
+		"sections": [{"title": "状态", "body": "本回合是否还能执行移动。"}],
+	})
+	_set_tooltip(_act_chip, "本回合还能否行动", {
+		"title": "行动",
+		"subtitle": "回合资源",
+		"accent": BattleUiTheme.TEXT_GOLD,
+		"sections": [{"title": "状态", "body": "本回合是否还能攻击、拔取或嵌入。"}],
+	})
 	if _overload_chip != null:
-		_overload_chip.tooltip_text = "场上过载槽宝石 %d 颗%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
+		var overload_tip := "场上过载槽宝石 %d 颗%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
+		_set_tooltip(_overload_chip, overload_tip, {
+			"title": "过载",
+			"subtitle": "战场状态",
+			"accent": BattleUiTheme.TEXT_GOLD,
+			"stats": [
+				{"label": "已生效", "value": str(active_count)},
+				{"label": "待生效", "value": str(pending_count)},
+			],
+			"sections": [{"title": "效果", "body": overload_tip}],
+		})
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
 	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
 
@@ -239,8 +345,16 @@ func fit_status_panel_height() -> void:
 
 
 func sync_toggle_btn_x(panel_visible: bool) -> void:
+	if _toggle_panel_btn == null or _status_panel == null:
+		return
+	var button_size := Vector2(40.0, 40.0)
+	_toggle_panel_btn.custom_minimum_size = button_size
+	_toggle_panel_btn.size = button_size
+	var button_y := _status_panel.position.y + 8.0
 	if panel_visible:
-		_toggle_panel_btn.position.x = _status_panel.position.x + _status_panel.size.x + 8.0
+		_toggle_panel_btn.position = Vector2(_status_panel.position.x + _status_panel.size.x + 8.0, button_y)
+	else:
+		_toggle_panel_btn.position = Vector2(_status_panel.position.x + 8.0, button_y)
 
 
 func _sync_controlled_player_inspect(state: GameState, inspect_uid: String, tracked_player_uid: String) -> Dictionary:
@@ -284,10 +398,13 @@ func _status_panel_content_margins() -> Vector2:
 	)
 
 
-func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
+func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vector2i) -> void:
 	for child in _slot_box.get_children():
 		child.queue_free()
 	if inspect_uid.is_empty():
+		if _is_valid_inspect_cell(inspect_cell):
+			_refresh_cell_inspect(state, inspect_cell)
+			return
 		_clear_inspect_header("单位详情")
 		_inspect_stats.text = "点击时间轴或棋盘"
 		return
@@ -296,9 +413,9 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 		_clear_inspect_header("已阵亡")
 		_inspect_stats.text = ""
 		return
-	var unit_name: String = DataRegistry.get_unit_display_name(unit.unit_def_id)
-	_portrait.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
-	_portrait.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
+	var unit_name: String = _unit_display_name(unit.unit_def_id)
+	_portrait.texture = _unit_texture(unit.unit_def_id)
+	_portrait.self_modulate = _unit_sprite_modulate(unit.team, unit.unit_def_id)
 	_inspect_name.text = unit_name
 	_hp_bar.max_value = unit.max_hp
 	_hp_bar.value = unit.hp
@@ -309,7 +426,7 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	)
 	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
 	_refresh_inspect_shield(state, unit)
-	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR])
+	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR], _tooltip)
 	var attack_value := CombatRules.attack_damage(state, unit)
 	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
 	var stack_lines := _status_stack_lines(unit)
@@ -319,6 +436,141 @@ func _refresh_inspect(state: GameState, inspect_uid: String) -> void:
 	_refresh_intent_row(unit)
 	for slot_index in range(unit.slots.size()):
 		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index))
+
+
+func _refresh_cell_inspect(state: GameState, cell: Vector2i) -> void:
+	var tile := state.get_tile(cell)
+	var entity := state.get_entity_at(cell)
+	var title := _cell_title(tile, entity)
+	_clear_inspect_header(title)
+	var lines: Array[String] = []
+	if entity != null:
+		lines.append(_entity_summary(entity))
+		if entity.max_hp > 0:
+			lines.append("耐久 %d / %d" % [entity.hp, entity.max_hp])
+	if tile != null:
+		if entity == null:
+			lines.append(_tile_display_name(tile))
+		if not tile.modifiers.is_empty():
+			lines.append("地面：%s" % _overlay_summary(tile.modifiers))
+		var traits := _ground_trait_summary(tile)
+		if not traits.is_empty():
+			lines.append("属性：%s" % traits)
+		if tile.has_slots():
+			lines.append("槽位：%s" % _tile_slot_summary(state, tile))
+	if lines.is_empty():
+		lines.append("无特殊状态")
+	_inspect_stats.text = "\n".join(lines)
+
+
+func _cell_title(tile: TileState, entity: EntityState) -> String:
+	if entity != null:
+		return _entity_display_name(entity)
+	if tile != null and not tile.modifiers.is_empty():
+		var first: Dictionary = tile.modifiers[0]
+		return _overlay_display_name(str(first.get("type", "")))
+	if tile != null:
+		return _tile_display_name(tile)
+	return "地块"
+
+
+func _entity_display_name(entity: EntityState) -> String:
+	match entity.entity_id:
+		Constants.ENTITY_ROCK:
+			return "石块"
+		Constants.ENTITY_PROP:
+			return "障碍物"
+		Constants.ENTITY_SPIKE:
+			return "地刺"
+		Constants.ENTITY_BARREL:
+			return "油桶"
+	return "实体"
+
+
+func _entity_summary(entity: EntityState) -> String:
+	match entity.entity_id:
+		Constants.ENTITY_ROCK, Constants.ENTITY_PROP:
+			return "阻挡移动与射击"
+		Constants.ENTITY_SPIKE:
+			return "经过时受伤"
+		Constants.ENTITY_BARREL:
+			return "可被摧毁，引燃后爆炸"
+	return _entity_display_name(entity)
+
+
+func _tile_display_name(tile: TileState) -> String:
+	match tile.tile_id:
+		Constants.TILE_WATER:
+			return "水面"
+		Constants.TILE_ICE:
+			return "冰面"
+		Constants.TILE_GRASS:
+			return "草地"
+		Constants.TILE_BUSH:
+			return "灌木"
+		Constants.TILE_PILLAR:
+			return "机关柱"
+	return "地面"
+
+
+func _overlay_summary(modifiers: Array) -> String:
+	var parts: Array[String] = []
+	for raw_modifier in modifiers:
+		if not raw_modifier is Dictionary:
+			continue
+		var modifier: Dictionary = raw_modifier
+		var label := _overlay_display_name(str(modifier.get("type", "")))
+		var duration := int(modifier.get("duration", 0))
+		if duration > 0:
+			label += " %d回合" % duration
+		parts.append(label)
+	return " · ".join(parts)
+
+
+func _overlay_display_name(overlay_id: String) -> String:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			return "毒雾"
+		Constants.TILE_MOD_FIRE:
+			return "火焰"
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			return "毒烟"
+		Constants.TILE_MOD_POISON_PUDDLE:
+			return "毒水"
+	return "地面状态"
+
+
+func _ground_trait_summary(tile: TileState) -> String:
+	var parts: Array[String] = []
+	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+		parts.append("水域")
+	if tile.has_ground_tag(Constants.GROUND_TAG_ICE):
+		parts.append("冰")
+	if tile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
+		parts.append("可燃")
+	return " · ".join(parts)
+
+
+func _tile_slot_summary(state: GameState, tile: TileState) -> String:
+	var parts: Array[String] = []
+	for i in range(tile.slots.size()):
+		var slot: SlotState = tile.slots[i]
+		if slot == null:
+			continue
+		var label := "%s槽" % _slot_display_name(slot.slot_type)
+		if slot.lock_type == Constants.LOCK_OVERLOAD_SLOT:
+			label = "过载" + label
+		if slot.gem_uid.is_empty():
+			label += " 空"
+		else:
+			var gem: GemState = state.gems.get(slot.gem_uid, null)
+			label += " %s" % (_gem_display_name(gem) if gem != null else "宝石")
+		parts.append(label)
+	return " · ".join(parts)
+
+
+func _is_valid_inspect_cell(cell: Vector2i) -> bool:
+	return cell.x >= 0 and cell.y >= 0
 
 
 func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
@@ -332,7 +584,18 @@ func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
 	_shield_bar.max_value = float(shield_max)
 	_shield_bar.value = float(shield_value)
 	_shield_text.text = str(shield_value)
-	_shield_row.tooltip_text = "护盾 %d" % shield_value
+	_set_tooltip(_shield_row, "护盾 %d" % shield_value, {
+		"title": "护盾",
+		"subtitle": "增益状态",
+		"icon": StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR).get("icon", null),
+		"accent": UiPalette.ARMOR_STEEL,
+		"stats": [{"label": "数值", "value": str(shield_value), "color": UiPalette.ARMOR_STEEL.lightened(0.25)}],
+		"sections": [{"title": "效果", "body": "先抵挡普通伤害；真实伤害会直接扣除生命。"}],
+		"terms": [
+			StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR),
+			StatusUi.glossary_term_for_key("true_damage"),
+		],
+	})
 
 
 func _refresh_intent_row(unit: UnitState) -> void:
@@ -352,7 +615,12 @@ func _refresh_intent_row(unit: UnitState) -> void:
 	_intent_label.visible = true
 	_intent_label.text = "%s %s" % [IntentState.intent_icon(unit.intent.type), unit.intent.preview_text]
 	_intent_label.add_theme_color_override("font_color", intent_col.lightened(0.2))
-	_intent_label.tooltip_text = "敌人下回合意图"
+	_set_tooltip(_intent_label, "敌人下回合意图", {
+		"title": "意图",
+		"subtitle": "敌方行动",
+		"accent": intent_col,
+		"sections": [{"title": "预告", "body": unit.intent.preview_text}],
+	})
 
 
 func _clear_inspect_header(title: String) -> void:
@@ -373,12 +641,12 @@ func _clear_inspect_header(title: String) -> void:
 
 func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_index: int) -> Control:
 	var chip := PanelContainer.new()
-	var color := UnitLooks.slot_color(slot.slot_type)
+	var color := _slot_color(slot.slot_type)
 	var gem: GemState = null
 	if not slot.gem_uid.is_empty():
 		gem = state.gems.get(slot.gem_uid, null)
 		if gem != null:
-			color = UnitLooks.gem_color(gem)
+			color = _gem_color(gem)
 	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(color))
 	chip.custom_minimum_size = Vector2(0, 24)
 	var row := HBoxContainer.new()
@@ -391,26 +659,26 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_
 	var slot_prefix := "#%d %s" % [slot_index + 1, display_name]
 	if slot.is_split_disabled():
 		label.text = "%s ×" % slot_prefix
-		chip.tooltip_text = "%s槽：分裂已失效" % display_name
+		_set_tooltip(chip, "%s槽：分裂已失效" % display_name, _slot_state_tooltip_spec(display_name, "分裂已失效", color))
 	elif slot.locked:
 		label.text = "%s 🔒" % slot_prefix
-		chip.tooltip_text = "%s槽：锁定" % display_name
+		_set_tooltip(chip, "%s槽：锁定" % display_name, _slot_state_tooltip_spec(display_name, "槽位已锁定", color))
 	elif slot.gem_uid.is_empty():
 		label.text = "%s 空" % slot_prefix
 		var tip := "%s槽：空" % display_name
 		if is_dual:
 			tip += "（双色槽，可嵌入%s或%s宝石）" % [slot_name, dual_name]
-		chip.tooltip_text = tip
+		_set_tooltip(chip, tip, _slot_state_tooltip_spec(display_name, tip, color))
 	else:
 		if gem == null:
 			label.text = "%s ?" % slot_prefix
-			chip.tooltip_text = "%s槽：无宝石数据" % display_name
+			_set_tooltip(chip, "%s槽：无宝石数据" % display_name, _slot_state_tooltip_spec(display_name, "宝石数据缺失", color))
 		else:
 			var gem_icon := _make_gem_icon(gem, 14)
 			if gem_icon != null:
 				row.add_child(gem_icon)
-			label.text = "%s %s" % [slot_prefix, DataRegistry.get_gem_display_name(gem)]
-			chip.tooltip_text = _slot_chip_tooltip(gem, slot, unit, state)
+			label.text = "%s %s" % [slot_prefix, _gem_display_name(gem)]
+			_set_tooltip(chip, _slot_chip_tooltip(gem, slot, unit, state), _slot_chip_tooltip_spec(gem, slot, unit, state))
 	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	row.add_child(label)
@@ -419,7 +687,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_
 
 
 func _make_gem_icon(gem: GemState, size_px: int) -> TextureRect:
-	var tex := UnitLooks.get_gem_texture(gem)
+	var tex := _gem_texture(gem)
 	if tex == null:
 		return null
 	var icon := TextureRect.new()
@@ -428,7 +696,7 @@ func _make_gem_icon(gem: GemState, size_px: int) -> TextureRect:
 	icon.custom_minimum_size = Vector2(size_px, size_px)
 	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.self_modulate = UnitLooks.gem_sprite_modulate(gem)
+	icon.self_modulate = _gem_sprite_modulate(gem)
 	return icon
 
 
@@ -448,8 +716,41 @@ func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
 
 
 func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> String:
-	var gem_name: String = DataRegistry.get_gem_display_name(gem)
+	var gem_name: String = _gem_display_name(gem)
 	var lines: Array[String] = [gem_name]
+	lines.append_array(_slot_chip_detail_lines(gem, slot, unit, state))
+	return "\n".join(lines)
+
+
+func _slot_chip_tooltip_spec(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> Dictionary:
+	var display_name := _slot_display_name(slot.slot_type)
+	if not slot.dual_type.is_empty():
+		display_name = "%s/%s" % [display_name, _slot_display_name(slot.dual_type)]
+	var details := _slot_chip_detail_lines(gem, slot, unit, state)
+	var detail_text := "\n".join(details)
+	return {
+		"title": _gem_display_name(gem),
+		"subtitle": "%s槽" % display_name,
+		"icon": _gem_texture(gem),
+		"icon_tint": _gem_sprite_modulate(gem),
+		"accent": _gem_color(gem).lightened(0.15),
+		"stats": [{"label": "槽位", "value": display_name, "color": _slot_color(slot.slot_type).lightened(0.2)}],
+		"sections": [{"title": "效果", "body": detail_text}] if not detail_text.is_empty() else [],
+		"terms": StatusUi.terms_for_text(detail_text),
+	}
+
+
+func _slot_state_tooltip_spec(display_name: String, body: String, color: Color) -> Dictionary:
+	return {
+		"title": "%s槽" % display_name,
+		"subtitle": "槽位",
+		"accent": color.lightened(0.15),
+		"sections": [{"title": "状态", "body": body}],
+	}
+
+
+func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> Array[String]:
+	var lines: Array[String] = []
 	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
 	if not effect.is_empty():
 		lines.append(effect)
@@ -484,7 +785,7 @@ func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState, state: 
 					combo_parts.append("%s Lv%d" % [combo_label, lvl])
 			if not combo_parts.is_empty():
 				lines.append("组合：%s" % " · ".join(combo_parts))
-	return "\n".join(lines)
+	return lines
 
 
 func _refresh_action_buttons(enemy_phase_running: bool) -> void:
@@ -513,7 +814,7 @@ func _refresh_turn_queue(state: GameState, active_uid: String, timeline_hover_ui
 	var focus_uid := timeline_hover_uid if not timeline_hover_uid.is_empty() else active_uid
 	var active_unit: UnitState = state.units.get(active_uid, null)
 	if active_unit != null:
-		var active_name: String = DataRegistry.get_unit_display_name(active_unit.unit_def_id)
+		var active_name: String = _unit_display_name(active_unit.unit_def_id)
 		_queue_hint.text = "当前 %s · 速 %d" % [active_name, active_unit.speed]
 	else:
 		_queue_hint.text = "当前 —"
@@ -561,8 +862,6 @@ func _build_turn_timeline_uids(state: GameState, active_uid: String, _enemy_phas
 func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool) -> Control:
 	var root := Control.new()
 	root.custom_minimum_size = Vector2(46, 52)
-	var unit_name: String = DataRegistry.get_unit_display_name(unit.unit_def_id)
-	root.tooltip_text = "%s\nHP %d/%d · 速 %d" % [unit_name, unit.hp, unit.max_hp, unit.speed]
 	var stack := VBoxContainer.new()
 	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -583,8 +882,8 @@ func _create_timeline_avatar(unit: UnitState, is_active: bool, is_hovered: bool)
 	icon.custom_minimum_size = Vector2(30, 30)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = UnitLooks.get_unit_texture(unit.unit_def_id)
-	icon.self_modulate = UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
+	icon.texture = _unit_texture(unit.unit_def_id)
+	icon.self_modulate = _unit_sprite_modulate(unit.team, unit.unit_def_id)
 	frame.add_child(icon)
 	if is_active:
 		var arrow := Label.new()
@@ -628,31 +927,94 @@ func _apply_editor_compact_layout(compact: bool) -> void:
 		_held_label.visible = not _held_label.text.is_empty()
 
 
-func _refresh_relic_bar() -> void:
+func _refresh_relic_bar(available_height: float = _RELIC_BAR_FALLBACK_H) -> void:
 	if _relic_bar_vbox == null or _relic_bar_scroll == null:
 		return
 	var owned: Array[String] = []
-	if RunService.is_run_active():
-		owned = _string_array_from(RunService.get_owned_relics())
-	var ids_changed := owned != _relic_bar_ids
-	if ids_changed:
-		_relic_bar_ids = owned.duplicate()
-		for child in _relic_bar_vbox.get_children():
-			child.queue_free()
-		for relic_id in owned:
-			_relic_bar_vbox.add_child(_create_relic_badge(relic_id))
+	var run_service := _run_service()
+	if run_service != null and run_service.is_run_active():
+		owned = _string_array_from(run_service.get_owned_relics())
 	var has_relics := not owned.is_empty()
 	if _relic_bar_root != null:
 		_relic_bar_root.visible = has_relics
 	_relic_bar_scroll.visible = has_relics
 	if not has_relics:
+		_relic_bar_ids = owned.duplicate()
+		_relic_bar_layout_key = ""
+		for child in _relic_bar_vbox.get_children():
+			child.queue_free()
 		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
 		return
-	var item_h := 36.0
-	var gap := 4.0
-	var content_h := owned.size() * item_h + maxi(owned.size() - 1, 0) * gap
-	var max_h := 180.0
-	_relic_bar_scroll.custom_minimum_size = Vector2(_STATUS_PANEL_WIDTH - 8.0, minf(content_h, max_h))
+
+	var layout := _relic_bar_layout(owned.size(), available_height)
+	var icon_size := float(layout.get("icon_size", _RELIC_ICON_MAX))
+	var columns := int(layout.get("columns", 1))
+	var content_size: Vector2 = layout.get("content_size", Vector2.ZERO)
+	var viewport_size: Vector2 = layout.get("viewport_size", Vector2.ZERO)
+	var allow_scroll := bool(layout.get("scroll", false))
+	var layout_key := "%d:%d:%0.1f:%d" % [owned.size(), columns, icon_size, int(allow_scroll)]
+	var ids_changed := owned != _relic_bar_ids
+	if ids_changed or layout_key != _relic_bar_layout_key:
+		_relic_bar_ids = owned.duplicate()
+		_relic_bar_layout_key = layout_key
+		for child in _relic_bar_vbox.get_children():
+			child.queue_free()
+		if _relic_bar_vbox is GridContainer:
+			(_relic_bar_vbox as GridContainer).columns = columns
+		_relic_bar_vbox.add_theme_constant_override("h_separation", int(_RELIC_COLUMN_GAP))
+		_relic_bar_vbox.add_theme_constant_override("v_separation", int(_RELIC_ROW_GAP))
+		for relic_id in _relic_ids_for_grid(owned, columns):
+			_relic_bar_vbox.add_child(_create_relic_badge(relic_id, icon_size))
+	_relic_bar_vbox.custom_minimum_size = content_size
+	_relic_bar_scroll.custom_minimum_size = viewport_size
+	_relic_bar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_relic_bar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if allow_scroll else ScrollContainer.SCROLL_MODE_DISABLED
+
+
+func _relic_bar_layout(count: int, available_height: float = _RELIC_BAR_FALLBACK_H) -> Dictionary:
+	var bar_height := maxf(_RELIC_ICON_MIN + _RELIC_ICON_PAD * 2.0, available_height)
+	var padded_max := _RELIC_ICON_MAX + _RELIC_ICON_PAD * 2.0
+	var padded_min := _RELIC_ICON_MIN + _RELIC_ICON_PAD * 2.0
+	var single_col_h := float(count) * padded_max + float(maxi(count - 1, 0)) * _RELIC_ROW_GAP
+	if single_col_h <= bar_height:
+		return _relic_bar_layout_result(1, _RELIC_ICON_MAX, single_col_h, padded_max, false, bar_height)
+
+	var shrink_total_gap := float(maxi(count - 1, 0)) * _RELIC_ROW_GAP
+	var shrink_icon := floorf((bar_height - shrink_total_gap) / float(count)) - _RELIC_ICON_PAD * 2.0
+	if shrink_icon >= _RELIC_ICON_MIN:
+		var padded_icon := shrink_icon + _RELIC_ICON_PAD * 2.0
+		return _relic_bar_layout_result(1, shrink_icon, bar_height, padded_icon, false, bar_height)
+
+	var rows_at_min := maxi(1, int(floorf((bar_height + _RELIC_ROW_GAP) / (padded_min + _RELIC_ROW_GAP))))
+	var columns := mini(_RELIC_BAR_MAX_COLUMNS, maxi(1, int(ceili(float(count) / float(rows_at_min)))))
+	var rows := int(ceili(float(count) / float(columns)))
+	var content_h := float(rows) * padded_min + float(maxi(rows - 1, 0)) * _RELIC_ROW_GAP
+	var content_w := float(columns) * padded_min + float(maxi(columns - 1, 0)) * _RELIC_COLUMN_GAP
+	return _relic_bar_layout_result(columns, _RELIC_ICON_MIN, content_h, content_w, content_h > bar_height, bar_height)
+
+
+func _relic_bar_layout_result(columns: int, icon_size: float, content_h: float, content_w: float, scroll: bool, max_height: float) -> Dictionary:
+	var viewport_w := content_w + (12.0 if scroll else 0.0)
+	return {
+		"columns": columns,
+		"icon_size": icon_size,
+		"content_size": Vector2(content_w, content_h),
+		"viewport_size": Vector2(viewport_w, minf(content_h, max_height)),
+		"scroll": scroll,
+	}
+
+
+func _relic_ids_for_grid(ids: Array[String], columns: int) -> Array[String]:
+	if columns <= 1:
+		return ids.duplicate()
+	var ordered: Array[String] = []
+	var rows := int(ceili(float(ids.size()) / float(columns)))
+	for row in range(rows):
+		for col in range(columns):
+			var idx := col * rows + row
+			if idx < ids.size():
+				ordered.append(ids[idx])
+	return ordered
 
 
 func _string_array_from(values: Variant) -> Array[String]:
@@ -663,40 +1025,112 @@ func _string_array_from(values: Variant) -> Array[String]:
 	return result
 
 
-func _create_relic_badge(relic_id: String) -> Control:
-	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
-	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
-	var rarity_col := rarity_color(rarity)
-	var root := HBoxContainer.new()
-	root.custom_minimum_size = Vector2(_STATUS_PANEL_WIDTH - 16.0, 36.0)
-	root.add_theme_constant_override("separation", 8)
-	var icon_tex := UnitLooks.get_relic_texture(relic_id)
+func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
+	var item_size := Vector2(icon_size + _RELIC_ICON_PAD * 2.0, icon_size + _RELIC_ICON_PAD * 2.0)
+	var root := Control.new()
+	root.custom_minimum_size = item_size
+	root.mouse_filter = Control.MOUSE_FILTER_PASS
+	root.clip_contents = false
+
+	var icon_tex := _relic_texture(relic_id)
 	if icon_tex != null:
 		var icon := TextureRect.new()
+		icon.name = "RelicIcon"
 		icon.texture = icon_tex
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(32, 32)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.self_modulate = rarity_col
+		icon.position = Vector2(_RELIC_ICON_PAD, _RELIC_ICON_PAD)
+		icon.size = Vector2(icon_size, icon_size)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_SCALE
+		icon.self_modulate = Color.WHITE
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		root.add_child(icon)
-	var name_lbl := Label.new()
-	name_lbl.text = str(def.get("name", relic_id))
-	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.add_theme_font_size_override("font_size", 12)
-	name_lbl.add_theme_color_override("font_color", rarity_col)
-	root.add_child(name_lbl)
+
+		var outline := TextureRect.new()
+		outline.name = "HoverTextureOutline"
+		outline.visible = false
+		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		outline.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		outline.texture = _outlined_relic_texture(icon_tex, icon_size)
+		outline.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		outline.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		outline.stretch_mode = TextureRect.STRETCH_SCALE
+		root.add_child(outline)
+		root.mouse_entered.connect(func() -> void:
+			outline.visible = true
+			icon.visible = false
+		)
+		root.mouse_exited.connect(func() -> void:
+			outline.visible = false
+			icon.visible = true
+		)
+
 	var click_btn := Button.new()
 	click_btn.flat = true
 	click_btn.focus_mode = Control.FOCUS_NONE
 	click_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	click_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	click_btn.mouse_entered.connect(func() -> void:
+		var outline := root.get_node_or_null("HoverTextureOutline")
+		var icon := root.get_node_or_null("RelicIcon")
+		if outline != null:
+			outline.visible = true
+		if icon != null:
+			icon.visible = false
+	)
+	click_btn.mouse_exited.connect(func() -> void:
+		var outline := root.get_node_or_null("HoverTextureOutline")
+		var icon := root.get_node_or_null("RelicIcon")
+		if outline != null:
+			outline.visible = false
+		if icon != null:
+			icon.visible = true
+	)
 	if _show_relic_detail_cb.is_valid():
 		click_btn.pressed.connect(_show_relic_detail_cb.bind(relic_id))
 	root.add_child(click_btn)
-	var badge_tooltip: String = str(def.get("name", relic_id)) + "\n" + relic_desc_text(def)
-	root.tooltip_text = badge_tooltip
 	return root
+
+
+func _outlined_relic_texture(source_texture: Texture2D, icon_size: float) -> Texture2D:
+	var cache_key := "%s:%d" % [source_texture.resource_path, int(icon_size)]
+	if _relic_hover_texture_cache.has(cache_key):
+		return _relic_hover_texture_cache[cache_key]
+	var source := source_texture.get_image()
+	if source == null or source.is_empty():
+		return source_texture
+	source.convert(Image.FORMAT_RGBA8)
+	var source_pad := maxi(3, int(roundf(float(source.get_width()) * _RELIC_ICON_PAD / icon_size)))
+	var outline_radius := maxi(2, int(ceilf(float(source.get_width()) * 1.5 / icon_size)))
+	var outlined := Image.create(
+		source.get_width() + source_pad * 2,
+		source.get_height() + source_pad * 2,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	outlined.fill(Color.TRANSPARENT)
+	for y in range(source.get_height()):
+		for x in range(source.get_width()):
+			if source.get_pixel(x, y).a <= 0.01:
+				continue
+			for oy in range(-outline_radius, outline_radius + 1):
+				for ox in range(-outline_radius, outline_radius + 1):
+					outlined.set_pixel(x + source_pad + ox, y + source_pad + oy, Color.WHITE)
+	outlined.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i(source_pad, source_pad))
+	var texture := ImageTexture.create_from_image(outlined)
+	_relic_hover_texture_cache[cache_key] = texture
+	return texture
+
+
+func _set_tooltip(control: Control, fallback_text: String, spec: Dictionary) -> void:
+	if control == null:
+		return
+	if _tooltip != null and _tooltip.has_method("attach"):
+		control.tooltip_text = ""
+		control.mouse_filter = Control.MOUSE_FILTER_STOP
+		_tooltip.call("attach", control, spec)
+	else:
+		control.tooltip_text = fallback_text
 
 
 func relic_desc_text(def: Dictionary) -> String:

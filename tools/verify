@@ -9,6 +9,9 @@ mkdir -p "$REPORT_DIR"
 
 FAST_TESTS=(
   combat_transaction_test
+  battle_presentation_planner_test
+  battle_event_player_cluster_test
+  battle_renderer_timing_test
   testkit_snapshot_test
   gem_semantic_contract_test
   full_run_contract_test

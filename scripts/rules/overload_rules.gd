@@ -1,6 +1,8 @@
 class_name OverloadRules
 extends RefCounted
 
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+
 const MUTATIONS: Array[String] = [
 	Constants.OVERLOAD_LAWLESS_ANY_EXTRACT,
 	Constants.OVERLOAD_GEM_OP_DAMAGE,
@@ -135,31 +137,32 @@ static func leave_extract_echo(state: GameState, slot: SlotState, gem: GemState,
 	state.log("过载残响：%s 的回声暂留原槽" % registry.get_gem_display_name(gem))
 
 
-static func apply_gem_operation_backlash(state: GameState) -> void:
+static func apply_gem_operation_backlash(state: GameState, out_events: Array[Dictionary] = []) -> void:
 	if not is_active(state, Constants.OVERLOAD_GEM_OP_DAMAGE):
 		return
 	var player := state.get_player()
 	if player == null or not player.alive:
 		return
-	CombatRules.apply_true_damage(
-		state,
-		player,
-		Constants.OVERLOAD_GEM_OP_DAMAGE_AMOUNT,
-		player.uid,
-		"overload_gem_operation"
-	)
-
-
-static func tick_turn_start(state: GameState) -> void:
-	if state == null:
+	var damage := mini(Constants.OVERLOAD_GEM_OP_DAMAGE_AMOUNT, maxi(player.hp - 1, 0))
+	if damage <= 0:
 		return
+	var tx := _CombatTransaction.begin(state, out_events)
+	tx.true_damage_unit(player, damage, player.uid, "overload_gem_operation")
+	tx.finish("OverloadRules.apply_gem_operation_backlash")
+
+
+static func tick_turn_start(state: GameState) -> Dictionary:
+	if state == null:
+		return {"events": [] as Array[Dictionary], "action": ""}
+	var result := {"events": [] as Array[Dictionary], "action": ""}
 	sync_active_mutations_to_overload_slots(state, true)
 	_clear_expired_echoes(state)
 	if is_active(state, Constants.OVERLOAD_RANDOM_ENEMY_GEMS):
 		fill_random_enemy_gem(state)
 	if is_active(state, Constants.OVERLOAD_AI_CONTROL):
-		_try_ai_control_player(state)
+		result = _try_ai_control_player(state)
 	IntentSystem.refresh_all_intents(state)
+	return result
 
 
 static func fill_random_enemy_gem(state: GameState) -> void:
@@ -243,6 +246,13 @@ static func ai_control_probability(state: GameState) -> float:
 	return clampf(percent / 100.0, 0.0, 0.95)
 
 
+static func blocks_player_manual_actions(state: GameState) -> bool:
+	if state == null or state.phase != Constants.PHASE_PLAYER:
+		return false
+	var player := state.get_player()
+	return player != null and player.alive and player.has_status(Constants.STATUS_OVERLOAD_AI_CONTROL)
+
+
 static func mutation_label(mutation: String) -> String:
 	match mutation:
 		Constants.OVERLOAD_LAWLESS_ANY_EXTRACT:
@@ -263,16 +273,12 @@ static func mutation_label(mutation: String) -> String:
 
 
 static func _pick_next_mutation(state: GameState) -> String:
-	var candidates: Array[String] = []
+	if state == null:
+		return ""
 	for mutation in MUTATIONS:
 		if mutation not in state.overload_active_mutations:
-			candidates.append(mutation)
-	if candidates.is_empty():
-		candidates = MUTATIONS.duplicate()
-	var rng: Node = _rng_service()
-	if rng == null:
-		return candidates[0] if not candidates.is_empty() else ""
-	return str(rng.pick("overload_mutation_%d_%d" % [state.turn_index, state.overload_active_mutations.size()], candidates))
+			return mutation
+	return ""
 
 
 static func _count_overload_slot_gems(slots: Array) -> int:
@@ -308,21 +314,182 @@ static func _remove_echo_gem(state: GameState, gem_uid: String) -> void:
 	state.log("过载残响消散")
 
 
-static func _try_ai_control_player(state: GameState) -> void:
+static func _try_ai_control_player(state: GameState) -> Dictionary:
+	var out_events: Array[Dictionary] = []
 	if state.battle_temp_flags.get("overload_ai_turn", 0) == state.turn_index:
-		return
+		return {"events": out_events, "action": ""}
 	state.battle_temp_flags["overload_ai_turn"] = state.turn_index
 	var probability := ai_control_probability(state)
 	var rng: Node = _rng_service()
 	if rng == null or not rng.chance("overload_ai_control_%d" % state.turn_index, probability):
-		return
+		return {"events": out_events, "action": ""}
 	var player := state.get_player()
 	if player == null or not player.alive:
-		return
+		return {"events": out_events, "action": ""}
 	StatusRegistry.apply_to_unit(player, StatusInstance.create(Constants.STATUS_OVERLOAD_AI_CONTROL, 1, 1))
-	state.player_moved = true
-	state.player_acted = true
-	state.log("过载异变：AI 接管本回合（概率 %.0f%%），玩家行动被消耗" % (probability * 100.0))
+	var result := _execute_player_ai_control(state, player, out_events)
+	if result.is_empty():
+		state.log("过载异变：AI 接管本回合（概率 %.0f%%），但没有可执行行动" % (probability * 100.0))
+	else:
+		state.log("过载异变：AI 接管本回合（概率 %.0f%%），自动%s" % [
+			probability * 100.0,
+			result,
+		])
+	return {"events": out_events, "action": result}
+
+
+static func _execute_player_ai_control(state: GameState, player: UnitState, out_events: Array[Dictionary]) -> String:
+	var actions: Array[String] = []
+	if not state.held_gem_uid.is_empty():
+		var insert_result := _try_player_ai_insert(state, player, out_events)
+		if not insert_result.is_empty():
+			actions.append(insert_result)
+	if state.held_gem_uid.is_empty():
+		var extract_result := _try_player_ai_extract(state, player, out_events)
+		if not extract_result.is_empty():
+			actions.append(extract_result)
+	if player.alive and not state.player_moved and StatusRules.can_move(player):
+		var moved := _move_player_toward_nearest_enemy(state, player, out_events)
+		if moved:
+			state.player_moved = true
+			actions.append("移动")
+	if player.alive and not state.player_acted:
+		var attack_target := _nearest_attackable_enemy(state, player)
+		if attack_target != null:
+			var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+			var attack_result := CombatRules.ranged_attack(
+				state,
+				player,
+				attack_target.pos,
+				max_range,
+				{"aim_cell": attack_target.pos}
+			)
+			if attack_result.get("ok", false):
+				out_events.append_array(attack_result.get("events", [] as Array[Dictionary]))
+				state.player_acted = true
+				var registry := _data_registry()
+				var target_name := attack_target.unit_def_id
+				if registry != null:
+					target_name = registry.get_unit_display_name(attack_target.unit_def_id)
+				actions.append("攻击 %s" % target_name)
+	return "、".join(actions)
+
+
+static func _try_player_ai_insert(state: GameState, player: UnitState, out_events: Array[Dictionary]) -> String:
+	for unit in _sorted_units_by_distance(state, player):
+		for slot in unit.slots:
+			if slot == null or not slot.gem_uid.is_empty():
+				continue
+			var check := GemRules.can_insert(state, player, unit, slot)
+			if not check.get("ok", false):
+				continue
+			var held_gem: GemState = state.gems.get(state.held_gem_uid, null)
+			var result := GemRules.insert(state, player, unit, slot)
+			if not result.get("ok", false):
+				continue
+			record_insert(state, bool(result.get("overload_forced", false)))
+			out_events.append({
+				"type": "gem_flash",
+				"pos": unit.pos,
+				"color": _data_registry().get_gem_color(held_gem) if held_gem != null else Color.WHITE,
+			})
+			apply_gem_operation_backlash(state, out_events)
+			return "嵌入 %s" % _unit_label(unit)
+	return ""
+
+
+static func _try_player_ai_extract(state: GameState, player: UnitState, out_events: Array[Dictionary]) -> String:
+	for unit in _sorted_units_by_distance(state, player):
+		for slot in unit.slots:
+			if slot == null or slot.gem_uid.is_empty():
+				continue
+			var check := GemRules.can_extract(state, player, unit, slot)
+			if not check.get("ok", false):
+				continue
+			var result := GemRules.extract(state, player, unit, slot)
+			if not result.get("ok", false):
+				continue
+			record_non_insert_action(state, Constants.ACTION_EXTRACT)
+			out_events.append({"type": "gem_flash", "pos": unit.pos, "color": Color(1.0, 0.85, 0.3)})
+			apply_gem_operation_backlash(state, out_events)
+			return "拔取 %s" % _unit_label(unit)
+	return ""
+
+
+static func _nearest_attackable_enemy(state: GameState, player: UnitState) -> UnitState:
+	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+	var best: UnitState = null
+	var best_dist := 999999
+	for enemy in state.get_alive_enemies():
+		if enemy == null or not enemy.alive:
+			continue
+		if not BoardUtils.can_unit_attack_cell(player, state, enemy.pos, max_range):
+			continue
+		var dist := BoardUtils.distance_between_units(player, enemy)
+		if best == null or dist < best_dist:
+			best = enemy
+			best_dist = dist
+	return best
+
+
+static func _sorted_units_by_distance(state: GameState, player: UnitState) -> Array:
+	var units: Array = []
+	for unit in state.units.values():
+		if unit != null and unit.alive:
+			units.append(unit)
+	units.sort_custom(func(a: UnitState, b: UnitState) -> bool:
+		var da := BoardUtils.distance_between_units(player, a)
+		var db := BoardUtils.distance_between_units(player, b)
+		if da == db:
+			return a.uid < b.uid
+		return da < db
+	)
+	return units
+
+
+static func _unit_label(unit: UnitState) -> String:
+	var registry := _data_registry()
+	if registry != null:
+		return registry.get_unit_display_name(unit.unit_def_id)
+	return unit.unit_def_id
+
+
+static func _move_player_toward_nearest_enemy(state: GameState, player: UnitState, out_events: Array[Dictionary]) -> bool:
+	var target := _nearest_enemy(state, player)
+	if target == null:
+		return false
+	var move_budget := StatusRules.effective_move_points(player, player.move_points)
+	if move_budget <= 0:
+		return false
+	var path := BoardUtils.astar_path(state, player.pos, target.pos, move_budget, player.uid, {}, {}, player)
+	if path.is_empty():
+		return false
+	var previous := player.pos
+	var tx := _CombatTransaction.begin(state, out_events).bind_event_sink()
+	for step in path:
+		if not BoardUtils.unit_footprint_passable(state, player, step, player.uid):
+			break
+		tx.move_unit(player, step, {"reason": "overload_ai_control"})
+		TileRules.on_unit_moved_through(state, player, step)
+		if not player.alive:
+			break
+	if player.alive:
+		TileRules.finish_voluntary_move(state, player, previous)
+	tx.finish("OverloadRules._move_player_toward_nearest_enemy")
+	return player.pos != previous
+
+
+static func _nearest_enemy(state: GameState, player: UnitState) -> UnitState:
+	var best: UnitState = null
+	var best_dist := 999999
+	for enemy in state.get_alive_enemies():
+		if enemy == null or not enemy.alive:
+			continue
+		var dist := BoardUtils.distance_between_units(player, enemy)
+		if best == null or dist < best_dist:
+			best = enemy
+			best_dist = dist
+	return best
 
 
 static func _player_gem_count(state: GameState) -> int:

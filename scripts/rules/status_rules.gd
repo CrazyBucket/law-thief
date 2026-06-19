@@ -3,6 +3,7 @@ extends RefCounted
 
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 
@@ -457,9 +458,21 @@ static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInsta
 	match status.status_id:
 		Constants.STATUS_POISON:
 			var poison_dmg := status.stacks * CombatConfig.poison_fog_damage()
-			CombatRules.apply_true_damage(state, unit, poison_dmg, status.source_uid, "poison")
+			_apply_tick_damage(state, unit, poison_dmg, status.source_uid, "poison")
 		Constants.STATUS_BURNING:
-			CombatRules.apply_true_damage(state, unit, status.stacks, status.source_uid, "burning")
+			_apply_tick_damage(state, unit, status.stacks, status.source_uid, "burning")
+
+
+static func _apply_tick_damage(
+	state: GameState,
+	unit: UnitState,
+	amount: int,
+	source_uid: String,
+	reason: String
+) -> void:
+	var tx := _CombatTransaction.begin_from_state(state)
+	tx.true_damage_unit(unit, amount, source_uid, reason)
+	tx.finish("StatusRules.%s_tick" % reason)
 
 
 ## 草地随机生长为草丛

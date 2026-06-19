@@ -104,6 +104,7 @@ static func _push_directional(
 	var start_pos := unit.pos
 	var remaining := steps
 	var i := 0
+	var tx := _CombatTransaction.begin(state, events).bind_event_sink()
 
 	while i < remaining:
 		var step_vec := _step_vector(unit.pos, reference_pos, dir)
@@ -140,8 +141,7 @@ static func _push_directional(
 
 		# ─── 正常移动一格 ───────────────────────────────────────────────────
 		var from_pos := unit.pos
-		unit.facing = UnitState.facing_from_step(from_pos, next)
-		state.move_unit(unit, next)
+		tx.move_unit(unit, next, {"emit_signal": false, "emit_event": false})
 		TileRules.on_unit_moved_through(state, unit, next)
 		state.on_unit_move.emit(unit.uid, from_pos, next)
 		events.append(_EventBuilder.move_step(unit.uid, from_pos, next, {
@@ -165,6 +165,7 @@ static func _push_directional(
 		state.on_forced_displacement.emit(unit.uid, start_pos, unit.pos, source_uid)
 		if not skip_gem_hooks:
 			GemEffects.on_forced_displacement(state, unit, events)
+	tx.finish("Displacement._push_directional")
 
 
 ## 星状震飞落位：将 unit 从当前位置强制迁移到最近的合法空格（践踏 / 空间挤压共用）
@@ -180,6 +181,7 @@ static func star_relocate(
 ) -> void:
 	if not unit.alive:
 		return
+	var tx := _CombatTransaction.begin(state, events).bind_event_sink()
 	# 先施加技能本身的伤害（践踏伤害 + 1 点碰撞保底）
 	if skill_damage > 0:
 		_deal_unit_collision_damage(state, unit, source_uid, skill_damage, "trample", events)
@@ -188,7 +190,7 @@ static func star_relocate(
 	if result.get("found", false):
 		var landing: Vector2i = result.get("pos", origin)
 		var from_pos := unit.pos
-		state.move_unit(unit, landing)
+		tx.move_unit(unit, landing, {"emit_signal": false, "emit_event": false})
 		state.on_unit_move.emit(unit.uid, from_pos, landing)
 		events.append(_EventBuilder.move_step(unit.uid, from_pos, landing, {
 			"forced": true,
@@ -205,6 +207,7 @@ static func star_relocate(
 		var squeeze_dmg := 2
 		_deal_unit_collision_damage(state, unit, source_uid, squeeze_dmg, "space_squeeze", events)
 		state.log("%s 被挤压，无法逃离！" % unit.uid)
+	tx.finish("Displacement.star_relocate")
 
 
 ## 计算碰撞伤害：-1 表示按实际步数自动算，0 表示无伤，>0 表示固定值

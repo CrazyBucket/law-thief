@@ -32,6 +32,20 @@ func _test_arc_hits_all_enemies_in_range() -> void:
 	var far := _spawn_enemy(state, Vector2i(9, 3), "far")
 	var events: Array[Dictionary] = []
 	GemEffects.apply_arc_bounce_from_victim(state, victim, attacker, 10, events)
+	if events.size() < 4 \
+			or str(events[0].get("type", "")) != "arc" \
+			or str(events[1].get("type", "")) != "arc" \
+			or str(events[2].get("type", "")) != "damage" \
+			or str(events[3].get("type", "")) != "damage":
+		_fail("same-hop arc events must be visuals first, then impact damage: %s" % [events])
+		return
+	for index in range(2):
+		if events[index].get("from", Vector2i.ZERO) != victim.pos:
+			_fail("arc visual must preserve its source anchor")
+			return
+		if not events[index].has("target_pos"):
+			_fail("arc visual must preserve its target position")
+			return
 	var arc_hits := 0
 	for ev in events:
 		if str(ev.get("type", "")) != "arc":

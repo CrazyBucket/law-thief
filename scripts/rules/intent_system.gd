@@ -318,7 +318,7 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 	if not StatusRules.can_move(unit):
 		return events
 	var previous := unit.pos
-	var tx := _CombatTransaction.begin(state, events)
+	var tx := _CombatTransaction.begin(state, events).bind_event_sink()
 	for step in intent.path:
 		if not BoardUtils.unit_footprint_passable(state, unit, step, unit.uid):
 			state.log("%s 移动受阻：%s 无法落脚" % [unit.uid, step])

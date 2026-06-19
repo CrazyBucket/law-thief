@@ -197,6 +197,8 @@ func can_use_action(action: String) -> bool:
 		return false
 	if editor_unlimited_actions_enabled() and action in [Constants.ACTION_MOVE, Constants.ACTION_ATTACK]:
 		return true
+	if OverloadRules.blocks_player_manual_actions(state) and action != Constants.ACTION_END_TURN:
+		return false
 	match action:
 		Constants.ACTION_MOVE:
 			return not state.player_moved
@@ -231,9 +233,9 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	return _turn_svc.execute_single_enemy(enemy)
 
 
-func finish_enemy_phase() -> void:
+func finish_enemy_phase() -> Dictionary:
 	_ensure_services()
-	_turn_svc.finish_enemy_phase()
+	return _turn_svc.finish_enemy_phase()
 
 
 func get_sorted_enemies() -> Array:

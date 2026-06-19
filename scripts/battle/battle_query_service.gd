@@ -6,6 +6,7 @@ const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 var _ctrl: BattleController
 
@@ -45,6 +46,9 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 		return result
 	var action: String = ctrl.selected_action
 	var unlimited := ctrl.editor_unlimited_actions_enabled()
+	var manual_blocked := OverloadRules.blocks_player_manual_actions(state) and not unlimited
+	if manual_blocked:
+		action = ""
 	var move_budget := ctrl.player_move_budget(player)
 	if action == Constants.ACTION_MOVE and (unlimited or (not state.player_moved and StatusRules.can_move(player))):
 		var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
@@ -316,7 +320,7 @@ func _unit_has_gem_slot_target(ctrl, state: GameState, player: UnitState, unit: 
 
 
 func _is_viewable_gem_slot(state: GameState, player: UnitState, unit: UnitState, slot: SlotState, action: String) -> bool:
-	if slot.gem_uid.is_empty() or slot.is_split_disabled():
+	if slot.gem_uid.is_empty():
 		return false
 	var max_range := Constants.EXTRACT_RANGE
 	match action:

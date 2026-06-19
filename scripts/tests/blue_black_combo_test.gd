@@ -147,7 +147,7 @@ func _run_black_death_case(profiles: Array) -> void:
 	var poison_level := _profile_stack_level(profiles, "poison")
 	if poison_level > 0:
 		StatusRules.apply_slowed(state, victim, 2, "test_poison_payload")
-	var fog_before := _count_poison_fog(state)
+	var poison_overlay_before := _count_poison_overlays(state)
 	var unit_count_before := state.units.size()
 	var events := _kill_and_collect_events(state, victim)
 	if profiles.has("explosion"):
@@ -163,8 +163,8 @@ func _run_black_death_case(profiles: Array) -> void:
 			if _count_events(events, "poison_burst") < 1:
 				_fail("[%s] expected poison_burst on death" % label)
 				return
-			if _count_poison_fog(state) <= fog_before:
-				_fail("[%s] expected poison fog on death" % label)
+			if _count_poison_overlays(state) <= poison_overlay_before:
+				_fail("[%s] expected poison overlay on death" % label)
 				return
 		elif _count_events(events, "poison_burst") > 0:
 			_fail("[%s] level 1 poison death should not emit poison_burst without combo" % label)
@@ -280,13 +280,13 @@ func _test_black_poison_level_two_emits_fog() -> void:
 	_ensure_black_slots(victim, 2)
 	_mount_on_slots(state, victim, Constants.SLOT_BLACK, ["poison", "poison"])
 	StatusRules.apply_slowed(state, victim, 2, "test_poison_payload")
-	var fog_before := _count_poison_fog(state)
+	var poison_overlay_before := _count_poison_overlays(state)
 	var events := _kill_and_collect_events(state, victim)
 	if _count_events(events, "poison_burst") < 1:
 		_fail("[black_poison_level_two] expected poison_burst")
 		return
-	if _count_poison_fog(state) <= fog_before:
-		_fail("[black_poison_level_two] expected poison fog")
+	if _count_poison_overlays(state) <= poison_overlay_before:
+		_fail("[black_poison_level_two] expected poison overlay")
 		return
 	print("  [OK] black_poison_level_two_emits_fog")
 
@@ -477,10 +477,12 @@ func _count_events(events: Array, event_type: String) -> int:
 	return n
 
 
-func _count_poison_fog(state: GameState) -> int:
+func _count_poison_overlays(state: GameState) -> int:
 	var n := 0
 	for tile in state.tiles.values():
-		if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+		if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) \
+			or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE) \
+			or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 			n += 1
 	return n
 

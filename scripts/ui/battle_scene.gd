@@ -10,6 +10,7 @@ const BattleEventPlayerScript = preload("res://scripts/ui/battle_event_player.gd
 const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
 const BattleHudPresenterScript = preload("res://scripts/ui/battle_hud_presenter.gd")
 const BattleEditorPanelScript = preload("res://scripts/ui/battle_editor_panel.gd")
+const RichTooltip = preload("res://scripts/ui/rich_tooltip.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
@@ -67,11 +68,13 @@ var _hud_presenter = BattleHudPresenterScript.new()
 var _encounter_id: String = "tutorial_001"
 
 var _inspect_uid: String = ""
+var _inspect_cell: Vector2i = Vector2i(-1, -1)
 var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _timeline_hover_uid: String = ""
 var _panel_visible: bool = true
 var _enemy_phase_running: bool = false
 var _player_animating: bool = false
+var _battle_end_applied: bool = false
 var _animation_speed_scale: float = 1.0
 var _enemy_turn_queue: Array[String] = []
 var _slot_popup: Control = null
@@ -90,6 +93,7 @@ var _overload_chip: Label = null
 var _relic_bar_root: Control = null
 var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: Container = null
+var _rich_tooltip: RichTooltip = null
 var _tracked_player_uid: String = ""
 var _editor_mode: bool = false
 var _editor_tool: Dictionary = {}
@@ -162,6 +166,7 @@ func _ready() -> void:
 	_apply_ui_theme()
 	_preview_panel.visible = false
 	_preview_panel.modulate.a = 0.0
+	_clear_preview_panel_content()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
 	call_deferred("_setup_held_gem_row")
@@ -180,6 +185,7 @@ func _ready() -> void:
 		Callable(self , "_scaled_anim_time")
 	)
 	_setup_relic_bar()
+	_create_rich_tooltip()
 	_hud_presenter.setup({
 		"controller": _controller,
 		"board": _board,
@@ -220,6 +226,7 @@ func _ready() -> void:
 		"relic_bar_root": _relic_bar_root,
 		"relic_bar_scroll": _relic_bar_scroll,
 		"relic_bar_vbox": _relic_bar_vbox,
+		"tooltip": _rich_tooltip,
 		"show_relic_detail_cb": Callable(self , "_show_relic_detail_popup"),
 		"select_unit_cb": Callable(self , "_select_unit"),
 		"set_timeline_hover_cb": Callable(self , "_set_timeline_hover"),
@@ -291,6 +298,14 @@ func _create_slot_popup() -> void:
 func _create_damage_text_manager() -> void:
 	_dmg_text = DamageTextManagerScript.new()
 	get_tree().root.add_child.call_deferred(_dmg_text)
+
+
+func _create_rich_tooltip() -> void:
+	if _rich_tooltip != null:
+		return
+	_rich_tooltip = RichTooltip.new()
+	_rich_tooltip.name = "RichTooltip"
+	$HudLayer.add_child(_rich_tooltip)
 
 
 func _create_level_console() -> void:
@@ -472,7 +487,9 @@ func setup(encounter_id: String) -> void:
 
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
+	_battle_end_applied = false
 	_board.clear_gem_visuals()
+	_hide_preview_panel(true)
 	_tracked_player_uid = ""
 	_editor_dummy_stats.clear()
 	_editor_bound_state = null
@@ -480,6 +497,7 @@ func _start_battle(encounter_id: String) -> void:
 	_bind_editor_state_signals()
 	_mark_visible_enemies_seen()
 	_inspect_uid = _controller.selected_unit_uid
+	_inspect_cell = Vector2i(-1, -1)
 	_controller.select_action("")
 	_refresh()
 	_board.init_unit_orientations()
@@ -516,17 +534,13 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 	var unit := state.get_unit_at(cell)
 	var action := _controller.selected_action
 	if action.is_empty():
-		if unit != null and unit.alive:
-			_select_unit(unit.uid)
-		else:
-			_dismiss_popup()
-			_refresh()
+		_dismiss_popup()
+		_set_inspect_target(cell)
+		_refresh()
 		return
 	if _enemy_phase_running or state.phase != Constants.PHASE_PLAYER:
-		if unit != null and unit.alive:
-			_select_unit(unit.uid)
-		else:
-			_refresh()
+		_set_inspect_target(cell)
+		_refresh()
 		return
 	match action:
 		Constants.ACTION_MOVE:
@@ -544,10 +558,11 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				_player_animating = false
 			else:
 				_show_result(move_result)
+				_set_inspect_target(cell)
 		Constants.ACTION_ATTACK:
 			_dismiss_popup()
 			if unit != null:
-				_inspect_uid = unit.uid
+				_set_inspect_target(cell)
 			_player_animating = true
 			var atk_res := _controller.try_attack_cell(cell)
 			_show_result(atk_res)
@@ -573,20 +588,23 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				_player_animating = false
 			else:
 				_player_animating = false
+				_set_inspect_target(cell)
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
 				if unit != null and unit.alive:
-					_inspect_uid = unit.uid
+					_set_inspect_target(cell)
 					_sync_unit_slot_panels()
 				else:
 					var tile: TileState = _controller.state.get_tile(cell)
+					_set_inspect_target(cell)
 					if tile != null and tile.has_slots():
 						_show_tile_slot_popup(tile, cell)
 					else:
 						_dismiss_popup()
 			else:
 				_dismiss_popup()
+				_set_inspect_target(cell)
 	_refresh()
 
 
@@ -600,7 +618,7 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 			_board.clear_editor_preview()
 			_sync_editor_hover("", "")
 			_refresh_editor_focus()
-			_hide_preview_panel()
+			_hide_preview_panel(true)
 			return
 		_board.set_hover(cell)
 		var preview := _editor_preview_for_cell(cell)
@@ -612,7 +630,7 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		_show_preview_panel(get_viewport().get_mouse_position())
 		return
 	if not valid:
-		_hide_preview_panel()
+		_hide_preview_panel(true)
 		_board.set_hover(Vector2i(-1, -1))
 		if _timeline_hover_uid.is_empty():
 			_board.set_timeline_hover_unit("")
@@ -625,34 +643,41 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		var hovered_state := _view_state()
 		var hovered_unit := hovered_state.get_unit_at(cell) if hovered_state != null else null
 		_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
-	var preview: Dictionary = _controller.get_cell_preview(cell)
-	_preview_title.text = preview.get("title", "")
-	_preview_body.text = _format_preview_body(preview.get("body", ""))
-	var mouse: Vector2 = get_viewport().get_mouse_position()
-	_show_preview_panel(mouse)
+	_hide_preview_panel(true)
 	_refresh_editor_focus()
 
 
 func _show_preview_panel(mouse: Vector2) -> void:
+	if _preview_title.text.strip_edges().is_empty() and _preview_body.text.strip_edges().is_empty():
+		_hide_preview_panel(true)
+		return
 	_preview_panel.position = mouse + Vector2(18, 18)
 	_clamp_preview_panel()
 	_set_preview_panel_visible(true)
 
 
-func _hide_preview_panel() -> void:
-	_set_preview_panel_visible(false)
+func _hide_preview_panel(immediate: bool = false) -> void:
+	_clear_preview_panel_content()
+	_set_preview_panel_visible(false, immediate)
 
 
-func _set_preview_panel_visible(shown: bool) -> void:
+func _set_preview_panel_visible(shown: bool, immediate: bool = false) -> void:
 	if _preview_visible_target == shown:
 		if shown and not _preview_panel.visible:
 			_preview_panel.visible = true
+		elif not shown and immediate:
+			_preview_panel.visible = false
+			_preview_panel.modulate.a = 0.0
 		return
 	_preview_visible_target = shown
 	_preview_fade_serial += 1
 	var fade_serial := _preview_fade_serial
 	if _preview_panel_tween != null:
 		_preview_panel_tween.kill()
+	if immediate and not shown:
+		_preview_panel.visible = false
+		_preview_panel.modulate.a = 0.0
+		return
 	_preview_panel_tween = create_tween()
 	_preview_panel_tween.set_trans(Tween.TRANS_QUAD)
 	_preview_panel_tween.set_ease(Tween.EASE_OUT)
@@ -668,6 +693,14 @@ func _finalize_preview_panel_hide(fade_serial: int) -> void:
 	if fade_serial != _preview_fade_serial or _preview_visible_target:
 		return
 	_preview_panel.visible = false
+	_clear_preview_panel_content()
+
+
+func _clear_preview_panel_content() -> void:
+	if _preview_title != null:
+		_preview_title.text = ""
+	if _preview_body != null:
+		_preview_body.text = ""
 
 
 func _format_preview_body(body: String) -> String:
@@ -874,13 +907,21 @@ func _run_enemy_phase_async() -> void:
 		await _await_scene_timer(0.35)
 		if not is_inside_tree():
 			break
-		_consume_enemy_turn(enemy.uid)
-		_refresh()
+			_consume_enemy_turn(enemy.uid)
+			_refresh()
 	if is_inside_tree() and _controller.state != null and _controller.state.phase != Constants.PHASE_ENDED:
-		_controller.finish_enemy_phase()
+		var turn_start_execution: Dictionary = _controller.finish_enemy_phase()
+		var turn_start_events: Array = turn_start_execution.get("events", [])
+		if not turn_start_events.is_empty():
+			await _play_presentation_sequence(
+				turn_start_execution.get("presentation_state", _controller.state.clone()),
+				turn_start_events
+			)
 	_enemy_phase_running = false
 	_enemy_turn_queue.clear()
 	if not is_inside_tree():
+		return
+	if _consume_pending_battle_end_if_any():
 		return
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
@@ -910,6 +951,8 @@ func _on_back_pressed() -> void:
 
 
 func _on_battle_ended(result: String) -> void:
+	if _battle_end_applied:
+		return
 	if _event_player.is_playing() or _player_animating or _enemy_phase_running:
 		_event_player.queue_battle_end(result)
 		return
@@ -988,6 +1031,9 @@ func _refresh_economy_chips() -> void:
 
 
 func _apply_battle_end(result: String) -> void:
+	if _battle_end_applied:
+		return
+	_battle_end_applied = true
 	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
 	_hint_label.text = ""
 	var end_turn := _controller.state.turn_index if _controller.state != null else 0
@@ -1010,6 +1056,18 @@ func _apply_battle_end(result: String) -> void:
 			_show_relic_reward(relic_offer, result)
 			return
 	_finish_battle_and_navigate(result)
+
+
+func _consume_pending_battle_end_if_any() -> bool:
+	if _battle_end_applied:
+		return false
+	var pending_battle_end := _event_player.take_pending_battle_end()
+	if pending_battle_end.is_empty() and _controller.state != null and _controller.state.phase == Constants.PHASE_ENDED:
+		pending_battle_end = _controller.state.result
+	if pending_battle_end.is_empty():
+		return false
+	_apply_battle_end(pending_battle_end)
+	return true
 
 
 func _grant_combat_gold_once() -> void:
@@ -1749,6 +1807,7 @@ func _on_toggle_panel() -> void:
 	_status_panel.visible = _panel_visible
 	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
 	_hud_presenter.sync_toggle_btn_x(_panel_visible)
+	_hud_presenter._refresh_relic_bar(_relic_bar_available_height())
 	_editor_panel_user_positioned = false
 	_layout_editor_ui()
 
@@ -1770,13 +1829,16 @@ func _refresh() -> void:
 	var hud_state := _hud_presenter.refresh({
 		"state": state,
 		"inspect_uid": _inspect_uid,
+		"inspect_cell": _inspect_cell,
 		"tracked_player_uid": _tracked_player_uid,
 		"timeline_hover_uid": _timeline_hover_uid,
 		"enemy_phase_running": _enemy_phase_running,
 		"enemy_turn_queue": _enemy_turn_queue,
 		"editor_compact": _editor_available() and _editor_mode,
+		"relic_bar_available_height": _relic_bar_available_height(),
 	})
 	_inspect_uid = str(hud_state.get("inspect_uid", _inspect_uid))
+	_inspect_cell = hud_state.get("inspect_cell", _inspect_cell)
 	_tracked_player_uid = str(hud_state.get("tracked_player_uid", _tracked_player_uid))
 	if _relic_bar_root != null and _relic_bar_scroll != null:
 		_relic_bar_root.visible = _relic_bar_scroll.visible
@@ -1798,6 +1860,18 @@ func _refresh() -> void:
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
 	call_deferred("_layout_editor_ui")
+
+
+func _relic_bar_available_height() -> float:
+	var top := 8.0
+	if _status_panel != null and _status_panel.visible:
+		top = _status_panel.position.y + _status_panel.size.y + 4.0
+	elif _toggle_panel_btn != null:
+		top = _toggle_panel_btn.position.y + maxf(_toggle_panel_btn.size.y, 40.0) + 6.0
+	var bottom := get_viewport_rect().size.y - 12.0
+	if _bottom_dock != null and _bottom_dock.visible:
+		bottom -= _bottom_dock.size.y + 8.0
+	return maxf(64.0, bottom - top)
 
 
 func _fit_status_panel() -> void:
@@ -2474,8 +2548,24 @@ func _on_editor_unlimited_actions_pressed() -> void:
 
 func _select_unit(uid: String) -> void:
 	_inspect_uid = uid
+	_inspect_cell = Vector2i(-1, -1)
 	_controller.selected_unit_uid = uid
 	_refresh()
+
+
+func _set_inspect_target(cell: Vector2i) -> void:
+	var state := _controller.state
+	if state == null:
+		return
+	var unit := state.get_unit_at(cell)
+	if unit != null and unit.alive:
+		_inspect_uid = unit.uid
+		_inspect_cell = Vector2i(-1, -1)
+		_controller.selected_unit_uid = unit.uid
+		return
+	_inspect_uid = ""
+	_inspect_cell = cell
+	_controller.selected_unit_uid = ""
 
 
 func _set_timeline_hover(uid: String) -> void:
@@ -2737,7 +2827,15 @@ func _consume_enemy_turn(enemy_uid: String) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
-		call_deferred("_layout_editor_ui")
+		call_deferred("_refresh_relic_bar_after_resize")
+
+
+func _refresh_relic_bar_after_resize() -> void:
+	if not is_node_ready():
+		return
+	if _hud_presenter != null:
+		_hud_presenter._refresh_relic_bar(_relic_bar_available_height())
+	_layout_editor_ui()
 
 
 func _wire_hover_interactions() -> void:
@@ -2759,17 +2857,19 @@ func _setup_relic_bar() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.name = "RelicBarScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	scroll.visible = false
 	_relic_bar_root.add_child(scroll)
 
-	var relic_vbox := VBoxContainer.new()
-	relic_vbox.name = "RelicBarVBox"
-	relic_vbox.add_theme_constant_override("separation", 4)
-	scroll.add_child(relic_vbox)
+	var relic_grid := GridContainer.new()
+	relic_grid.name = "RelicBarGrid"
+	relic_grid.columns = 1
+	relic_grid.add_theme_constant_override("h_separation", 4)
+	relic_grid.add_theme_constant_override("v_separation", 4)
+	scroll.add_child(relic_grid)
 	_relic_bar_scroll = scroll
-	_relic_bar_vbox = relic_vbox
+	_relic_bar_vbox = relic_grid
 
 
 func _layout_editor_ui() -> void:
@@ -2778,12 +2878,17 @@ func _layout_editor_ui() -> void:
 	var viewport_size := get_viewport_rect().size
 	var left := 8.0
 	var top := 8.0
+	if _hud_presenter != null:
+		_hud_presenter.sync_toggle_btn_x(_panel_visible)
 	if _status_panel.visible:
 		top = _status_panel.position.y + _status_panel.size.y + 4.0
+	elif _toggle_panel_btn != null:
+		top = _toggle_panel_btn.position.y + maxf(_toggle_panel_btn.size.y, 40.0) + 6.0
 	if _relic_bar_root != null and _relic_bar_scroll != null:
-		var relic_width := _status_panel.size.x if _status_panel.visible else minf(420.0, maxf(viewport_size.x - 16.0, 260.0))
+		var relic_width := maxf(_relic_bar_scroll.custom_minimum_size.x, 0.0)
 		var relic_h := maxf(_relic_bar_scroll.custom_minimum_size.y, 0.0)
-		_relic_bar_root.position = Vector2(left, top)
+		var relic_left := left + 12.0
+		_relic_bar_root.position = Vector2(relic_left, top)
 		_relic_bar_root.size = Vector2(relic_width, relic_h)
 		_relic_bar_scroll.size = Vector2(relic_width, relic_h)
 		if _relic_bar_root.visible and relic_h > 0.0:

@@ -502,10 +502,42 @@ static func _evaluate_move_only(
 	if current_dist < 0:
 		return results
 
+	var added_targets: Dictionary = {}
+	var path_profile := _build_path_cost_profile(profile)
+	var planned_path := BoardUtils.path_toward(
+		state,
+		enemy.pos,
+		player.pos,
+		enemy.move_points,
+		enemy.uid,
+		path_profile,
+		cell_blockers,
+		enemy
+	)
+	if not planned_path.is_empty():
+		var planned_pos: Vector2i = planned_path[planned_path.size() - 1]
+		if planned_pos != enemy.pos and not _is_blocked_destination(state, planned_pos, enemy, cell_blockers):
+			var planned_dist := BoardUtils.path_distance_to_cell(
+				state, planned_pos, player.pos, enemy.uid, cell_blockers, enemy
+			)
+			if planned_dist >= 0:
+				var candidate := ActionCandidate.new()
+				candidate.type = ActionType.MOVE
+				candidate.move_target = planned_pos
+				var progress := maxf(0.25, float(current_dist - planned_dist))
+				var score := progress * _w(profile, "w_approach", 5.0)
+				score += _evaluate_tile_safety(state, planned_pos, profile)
+				candidate.score = score
+				candidate.description = "移动到%s" % str(planned_pos)
+				results.append(candidate)
+				added_targets[planned_pos] = true
+
 	var best_pos := enemy.pos
 	var best_dist := current_dist
 	for pos in reachable:
 		if pos == enemy.pos:
+			continue
+		if added_targets.has(pos):
 			continue
 		if _is_blocked_destination(state, pos, enemy, cell_blockers):
 			continue
@@ -566,7 +598,7 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 	return {
 		"base_step_cost": _w(profile, "path_base_step_cost", 1.0),
 		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
-		"poison_damage_weight": _w(profile, "path_poison_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
+		"poison_damage_weight": _w(profile, "path_poison_damage_weight", 0.35),
 		"water_cost_bias": _w(profile, "path_water_cost_bias", 0.0),
 		"allow_partial_path": profile.get("allow_partial_path", true),
 	}

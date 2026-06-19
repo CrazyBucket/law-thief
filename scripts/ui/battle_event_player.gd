@@ -2,6 +2,12 @@ class_name BattleEventPlayer
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const PresentationPlanner = preload("res://scripts/ui/battle_presentation_planner.gd")
+
+const BLAST_IMPACT_DELAY := 0.12
+const BLAST_RECOVERY_DELAY := 0.63
+const ELECTRICAL_IMPACT_DELAY := 0.14
+const ELECTRICAL_RECOVERY_DELAY := 0.20
 
 var _host: Node = null
 var _board = null
@@ -58,6 +64,12 @@ func queue_battle_end(result: String) -> void:
 	_pending_battle_end = result
 
 
+func take_pending_battle_end() -> String:
+	var result := _pending_battle_end
+	_pending_battle_end = ""
+	return result
+
+
 func play_sequence(
 	state_before: GameState,
 	inspect_uid: String,
@@ -80,6 +92,12 @@ func _await_anim_delay(seconds: float) -> void:
 	await _host.get_tree().create_timer(_scaled_anim_time(seconds)).timeout
 
 
+func _await_real_delay(seconds: float) -> void:
+	if not _host_ready() or seconds <= 0.0:
+		return
+	await _host.get_tree().create_timer(seconds).timeout
+
+
 func play_prefire_projectile(from_pos: Vector2i, to_pos: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
 	await _board.play_projectile_task(from_pos, to_pos, proj_color)
 	await _await_anim_delay(0.08)
@@ -88,131 +106,160 @@ func play_prefire_projectile(from_pos: Vector2i, to_pos: Vector2i, proj_color: C
 func play_events(events: Array) -> void:
 	if OS.is_debug_build():
 		EventValidator.assert_valid(events, "BattleEventPlayer.play_events")
-	var i := 0
-	while i < events.size():
+	var plan := PresentationPlanner.build(events)
+	var violations: Array = plan.get("violations", [])
+	if not violations.is_empty():
+		for violation in violations:
+			push_error("[BattlePresentationPlanner] %s" % str(violation))
+		assert(false, "Battle presentation contains events without an explicit playback policy")
+	for beat in plan.get("beats", []):
 		if not _host_ready():
 			break
-		var ev: Dictionary = events[i]
-		var ev_type := str(ev.get("type", ""))
-		if ev_type in ["projectile", "projectile_deflect"]:
-			var projectile_batch := _collect_consecutive_events(events, i, ["projectile", "projectile_deflect"])
-			i += projectile_batch.size()
-			await _play_projectile_volley(projectile_batch)
-			continue
-		if ev_type == "explode":
-			var blast_cluster := _collect_blast_cluster(events, i)
-			i = int(blast_cluster.get("next_index", i))
-			await _play_blast_cluster(blast_cluster)
-			await _await_anim_delay(0.75)
-			_board.queue_redraw()
-			continue
-		if ev_type == "damage":
-			var damage_events := _collect_consecutive_events(events, i, ["damage"])
-			i += damage_events.size()
-			_play_damage_batch(damage_events)
-			await _await_anim_delay(0.34)
-			_board.queue_redraw()
-			continue
-		if ev_type == "light_beam":
-			_prime_event_state(ev)
-			await _board.play_light_beam_task(
-				ev.get("from", Vector2i.ZERO),
-				ev.get("to", Vector2i.ZERO),
-				ev.get("color", Color(1.0, 0.96, 0.58)),
-				float(ev.get("width", 1.0)),
-				ev
-			)
-			_apply_event_state(ev)
-			i += 1
-			_board.queue_redraw()
-			continue
-		if ev_type == "move_step":
-			var move_events := _collect_consecutive_events(events, i, ["move_step"])
-			i += move_events.size()
-			if _move_batch_is_parallel(move_events):
-				await _play_parallel_move_batch(move_events)
-			else:
-				await _play_move_path_batch(move_events)
-			_board.queue_redraw()
-			continue
-		if ev_type in ["poison_burst", "fire_burst", "frost_pulse"]:
-			var fx_batch := _collect_consecutive_events(events, i, [ev_type])
-			i += fx_batch.size()
-			_play_area_fx_batch(fx_batch)
-			await _await_anim_delay(0.42)
-			_board.queue_redraw()
-			continue
-		if ev_type == "split_spawn":
-			_apply_event_state(ev)
-			i += 1
-			_board.queue_redraw()
-			continue
-		_prime_event_state(ev)
-		await _play_anim_event(ev)
-		_apply_event_state(ev)
-		i += 1
+		await _play_beat(beat)
 		_board.queue_redraw()
 
 
-func _collect_consecutive_events(events: Array, start: int, types: Array) -> Array:
-	var batch: Array = []
-	var i := start
-	while i < events.size() and str(events[i].get("type", "")) in types:
-		batch.append(events[i])
-		i += 1
-	return batch
+func _play_beat(beat: Dictionary) -> void:
+	var kind := str(beat.get("kind", "single"))
+	var visuals: Array = beat.get("visuals", [])
+	var impacts: Array = beat.get("impacts", [])
+	match kind:
+		"projectile":
+			await _play_projectile_volley(visuals)
+			if not impacts.is_empty():
+				_play_damage_batch(impacts)
+				await _await_anim_delay(0.12)
+		"blast":
+			await _play_blast_cluster(beat)
+		"light_beam":
+			await _play_light_beam_cluster({"beams": visuals, "damage": impacts})
+		"electrical":
+			await _play_electrical_beat(visuals, impacts)
+		"damage":
+			_play_damage_batch(impacts)
+			await _await_anim_delay(0.34)
+		"move":
+			if str(beat.get("mode", PresentationPlanner.MODE_SERIAL)) == PresentationPlanner.MODE_PARALLEL:
+				await _play_parallel_move_batch(visuals)
+			else:
+				await _play_move_path_batch(visuals)
+		"area_fx":
+			_play_area_fx_batch(visuals)
+			await _await_anim_delay(0.42)
+		"split_spawn":
+			_play_split_spawn_batch(visuals)
+		_:
+			for event in visuals:
+				_prime_event_state(event)
+				await _play_anim_event(event)
+				_apply_event_state(event)
 
 
-func _collect_blast_cluster(events: Array, start: int) -> Dictionary:
-	var explode_batch: Array = []
-	var damage_batch: Array = []
-	var move_batch: Array = []
-	var fx_batch: Array = []
-	var split_spawn_batch: Array = []
-	var i := start
-	while i < events.size():
-		var tail_type := str(events[i].get("type", ""))
-		if tail_type == "explode":
-			explode_batch.append(events[i])
-		elif tail_type == "damage":
-			damage_batch.append(events[i])
-		elif tail_type == "move_step":
-			move_batch.append(events[i])
-		elif tail_type in ["poison_burst", "fire_burst", "frost_pulse"]:
-			fx_batch.append(events[i])
-		elif tail_type == "split_spawn":
-			split_spawn_batch.append(events[i])
-		else:
-			break
-		i += 1
-	return {
-		"explode": explode_batch,
-		"damage": damage_batch,
-		"move_step": move_batch,
-		"area_fx": fx_batch,
-		"split_spawn": split_spawn_batch,
-		"next_index": i,
-	}
+func _play_light_beam_cluster(cluster: Dictionary) -> void:
+	var beams: Array = cluster.get("beams", [])
+	var damages: Array = cluster.get("damage", [])
+	if beams.is_empty():
+		return
+	for beam_event in beams:
+		_prime_event_state(beam_event)
+	var specs: Array = []
+	for beam_event in beams:
+		specs.append({
+			"from": beam_event.get("from", Vector2i.ZERO),
+			"to": beam_event.get("to", Vector2i.ZERO),
+			"color": beam_event.get("color", Color(1.0, 0.96, 0.58)),
+			"width": float(beam_event.get("width", 1.0)),
+			"fx": beam_event,
+		})
+	var duration := 0.0
+	if _board.has_method("play_light_beams"):
+		duration = float(_board.play_light_beams(specs))
+	else:
+		for spec in specs:
+			await _board.play_light_beam_task(
+				spec.get("from", Vector2i.ZERO),
+				spec.get("to", Vector2i.ZERO),
+				spec.get("color", Color(1.0, 0.96, 0.58)),
+				float(spec.get("width", 1.0)),
+				spec.get("fx", {})
+			)
+	if duration > 0.0:
+		await _await_real_delay(duration * 0.28)
+	if not damages.is_empty():
+		_play_damage_batch(damages)
+		_board.queue_redraw()
+	if duration > 0.0:
+		await _await_real_delay(duration * 0.72)
+	for beam_event in beams:
+		_apply_event_state(beam_event)
 
 
 func _play_blast_cluster(cluster: Dictionary) -> void:
-	var explode_batch: Array = cluster.get("explode", [])
-	var damage_batch: Array = cluster.get("damage", [])
-	var move_batch: Array = cluster.get("move_step", [])
-	var fx_batch: Array = cluster.get("area_fx", [])
-	var split_spawn_batch: Array = cluster.get("split_spawn", [])
+	var explode_batch: Array = cluster.get("visuals", [])
+	var damage_batch: Array = cluster.get("impacts", [])
+	var aftermath: Array = cluster.get("aftermath", [])
+	var move_batch: Array = []
+	var fx_batch: Array = []
+	var split_spawn_batch: Array = []
+	for event in aftermath:
+		match str(event.get("type", "")):
+			"move_step":
+				move_batch.append(event)
+			"poison_burst", "fire_burst", "frost_pulse":
+				fx_batch.append(event)
+			"split_spawn":
+				split_spawn_batch.append(event)
 	for explode_event in explode_batch:
 		_prime_event_state(explode_event)
-	for explode_event in explode_batch:
-		_board.play_explosion(explode_event.get("pos", Vector2i.ZERO))
-	_apply_area_events_for_blast(fx_batch)
-	_play_split_spawn_batch(split_spawn_batch)
+	var timing: Dictionary = {}
+	if _board.has_method("play_explosion_batch"):
+		timing = _board.play_explosion_batch(explode_batch)
+	else:
+		for explode_event in explode_batch:
+			_board.play_explosion(explode_event.get("pos", Vector2i.ZERO))
 	_board.queue_redraw()
+	if timing.is_empty():
+		await _await_anim_delay(BLAST_IMPACT_DELAY)
+	else:
+		await _await_real_delay(float(timing.get("impact_time", 0.0)))
 	for explode_event in explode_batch:
 		_apply_event_state(explode_event)
 	_play_damage_batch(damage_batch)
+	_apply_area_events_for_blast(fx_batch)
+	_play_split_spawn_batch(split_spawn_batch)
+	if timing.is_empty():
+		await _await_anim_delay(BLAST_RECOVERY_DELAY)
+	else:
+		var recovery := maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
+		await _await_real_delay(recovery)
 	if not move_batch.is_empty():
 		await _play_parallel_move_batch(move_batch)
+
+
+func _play_electrical_beat(visuals: Array, impacts: Array) -> void:
+	var timing: Dictionary = {}
+	if _board.has_method("play_electrical_batch"):
+		timing = _board.play_electrical_batch(visuals)
+	else:
+		for event in visuals:
+			var from_cell: Vector2i = event.get("from", event.get("pos", Vector2i.ZERO))
+			var target_cell: Vector2i = event.get("target_pos", event.get("pos", from_cell))
+			if target_cell != from_cell and _board.has_method("play_lightning_bolt"):
+				_board.play_lightning_bolt(from_cell, target_cell)
+			elif _board.has_method("play_lightning_strike"):
+				_board.play_lightning_strike(target_cell)
+	if timing.is_empty():
+		await _await_anim_delay(ELECTRICAL_IMPACT_DELAY)
+	else:
+		await _await_real_delay(float(timing.get("impact_time", 0.0)))
+	if not impacts.is_empty():
+		_play_damage_batch(impacts)
+		_board.queue_redraw()
+	if timing.is_empty():
+		await _await_anim_delay(ELECTRICAL_RECOVERY_DELAY)
+	else:
+		var recovery := maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
+		await _await_real_delay(recovery)
 
 
 func _play_damage_batch(batch: Array) -> void:
@@ -241,10 +288,9 @@ func _play_area_fx_batch(batch: Array) -> void:
 					str(fx_event.get("pattern", ""))
 				)
 			"fire_burst":
-				_board.play_explosion(fx_event.get("pos", Vector2i.ZERO))
-				_board.play_gem_flash(fx_event.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
+				_board.play_fire_burst(fx_event.get("pos", Vector2i.ZERO))
 			"frost_pulse":
-				_board.play_heal_effect(fx_event.get("pos", Vector2i.ZERO))
+				_board.play_frost_pulse(fx_event.get("pos", Vector2i.ZERO))
 	for fx_event in batch:
 		_apply_event_state(fx_event)
 
@@ -311,16 +357,6 @@ func _play_projectile_volley(batch: Array) -> void:
 	await _await_anim_delay(0.08)
 
 
-func _move_batch_is_parallel(batch: Array) -> bool:
-	if batch.size() <= 1:
-		return false
-	var first_uid := str(batch[0].get("uid", ""))
-	for event in batch:
-		if str(event.get("uid", "")) != first_uid:
-			return true
-	return false
-
-
 func _play_anim_event(ev: Dictionary) -> void:
 	match str(ev.get("type", "")):
 		"move_step":
@@ -368,14 +404,17 @@ func _play_anim_event(ev: Dictionary) -> void:
 				ev
 			)
 		"lightning", "arc":
-			_board.play_damage_effect(ev.get("pos", Vector2i.ZERO), 1, true)
-			await _await_anim_delay(0.22)
+			var from_cell: Vector2i = ev.get("pos", Vector2i.ZERO)
+			var target_cell: Vector2i = ev.get("target_pos", from_cell)
+			if target_cell != from_cell:
+				await _board.play_lightning_bolt_task(from_cell, target_cell)
+			else:
+				await _board.play_lightning_strike_task(from_cell)
 		"frost_pulse":
-			_board.play_heal_effect(ev.get("pos", Vector2i.ZERO))
+			_board.play_frost_pulse(ev.get("pos", Vector2i.ZERO))
 			await _await_anim_delay(0.28)
 		"fire_burst":
-			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
-			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(1.0, 0.45, 0.1))
+			_board.play_fire_burst(ev.get("pos", Vector2i.ZERO))
 			await _await_anim_delay(0.4)
 		"miss":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.7, 0.7, 0.7, 0.6))
@@ -443,6 +482,12 @@ func _apply_event_state(ev: Dictionary) -> void:
 			var clone_uid := str(ev.get("uid", ""))
 			var clone: UnitState = _controller.state.units.get(clone_uid, null)
 			if clone != null and clone.alive:
+				for slot in clone.slots:
+					if slot == null or slot.gem_uid.is_empty():
+						continue
+					var gem: GemState = _controller.state.gems.get(slot.gem_uid, null)
+					if gem != null:
+						_display_state.gems[gem.uid] = gem.clone()
 				_display_state.register_unit(clone.clone())
 				_display_state.rebuild_occupancy()
 

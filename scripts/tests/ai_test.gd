@@ -11,6 +11,7 @@ func _run_test() -> void:
 	_test_bomb_rat_ai()
 	_test_patrol_guard_ai()
 	_test_patrol_guard_detours_around_prop()
+	_test_patrol_guard_crosses_poison_fog_to_attack()
 	_test_stone_bow_ai()
 	_test_enemy_turn_execution()
 	_test_multi_enemy_coordination()
@@ -71,6 +72,37 @@ func _test_patrol_guard_detours_around_prop() -> void:
 	var after := BoardUtils.path_distance_to_cell(state, after_pos, player.pos, guard.uid, {}, guard)
 	assert(after >= 0 and after < before, "guard should reduce full path distance around prop (%d -> %d)" % [before, after])
 	print("  [OK] patrol guard detours around prop")
+
+
+func _test_patrol_guard_crosses_poison_fog_to_attack() -> void:
+	print("--- Test: Patrol Guard Crosses Poison Fog ---")
+	var controller := BattleController.new()
+	controller.start_encounter("template_a", 42)
+	var state := controller.state
+	var guard := _find_unit_by_def(state, "unit_patrol_guard")
+	var player := state.get_player()
+	assert(guard != null and player != null, "guard/player should exist")
+	state.move_unit(guard, Vector2i(1, 2))
+	state.move_unit(player, Vector2i(1, 4))
+	TileRules.create_poison_fog(state, Vector2i(1, 3), 2)
+	var blockers := {}
+	for cell in [
+		Vector2i(0, 2),
+		Vector2i(2, 2),
+		Vector2i(0, 3),
+		Vector2i(2, 3),
+		Vector2i(0, 4),
+		Vector2i(2, 4),
+	]:
+		blockers[state.tile_key(cell)] = "test_blocker"
+	var decision: Dictionary = EnemyAI.decide(state, guard, blockers)
+	var action: EnemyAI.ActionCandidate = decision.get("action", null)
+	var path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
+	assert(action != null, "guard should choose an action through poison fog")
+	assert(action.action_target_uid == player.uid, "guard should attack the player after crossing poison fog")
+	assert(action.type != EnemyAI.ActionType.WAIT and action.type != EnemyAI.ActionType.MOVE, "guard should not only move or wait after crossing poison fog")
+	assert(not path.is_empty() and path[0] == Vector2i(1, 3), "guard should path through poison fog to attack")
+	print("  [OK] patrol guard crosses poison fog to attack")
 
 
 func _test_enemy_turn_execution() -> void:

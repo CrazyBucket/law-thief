@@ -242,6 +242,14 @@ func _test_red_split_level_two_four_shots() -> void:
 	if not result.get("ok", false):
 		_fail("level 2 split attack should succeed")
 		return
+	var events: Array = result.get("events", [])
+	if events.size() < 4:
+		_fail("level 2 split should emit four projectile visuals")
+		return
+	for i in range(4):
+		if str(events[i].get("type", "")) != "projectile":
+			_fail("all split projectile visuals must be contiguous before impact events")
+			return
 	for target in targets:
 		if target.hp != target.max_hp - 5:
 			_fail("level 2 split target %s should take 5, hp=%d" % [target.uid, target.hp])

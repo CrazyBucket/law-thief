@@ -12,12 +12,14 @@ static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary 
 	var source_uid: String = opts.get("source_uid", "")
 	match entity.entity_id:
 		Constants.ENTITY_SPIKE:
+			var tx := _CombatTransaction.begin_from_state(state)
 			if forced:
-				CombatRules.apply_damage(state, unit, Constants.SPIKE_COLLISION_DAMAGE, source_uid, "spike_collision")
+				tx.damage_unit(unit, Constants.SPIKE_COLLISION_DAMAGE, source_uid, "spike_collision")
 				StatusRules.apply_vulnerable(state, unit, 1, source_uid)
 			else:
-				CombatRules.apply_damage(state, unit, Constants.SPIKE_DAMAGE, "", "spike_enter")
+				tx.damage_unit(unit, Constants.SPIKE_DAMAGE, "", "spike_enter")
 			_unlock_armor_locks(state, unit)
+			tx.finish("EntityRules.on_unit_entered")
 
 
 ## 单位被强制位移撞上阻挡实体（石块、油桶等）

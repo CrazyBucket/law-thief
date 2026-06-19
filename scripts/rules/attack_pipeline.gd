@@ -150,10 +150,11 @@ static func execute_aimed(
 	_phase_prepare(ctx)
 	if target != null and not ctx.target.alive:
 		return _finish_execute(state, ctx, _ok(ctx.events))
-	if ctx.has_tag(TAG_RANGED) and ctx.target != null:
+	# 光束不是可偏转投射物；它只受墙和边界截断。
+	if ctx.has_tag(TAG_RANGED) and ctx.target != null and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_try_deflect(ctx)
 	if ctx.has_tag(TAG_DEFLECT_DONE):
-		if ctx.has_tag(TAG_SPLIT_SHOT):
+		if ctx.has_tag(TAG_SPLIT_SHOT) and not ctx.has_tag(TAG_LIGHT_BEAM):
 			_apply_split_wings(ctx)
 			_reorder_split_shot_events(ctx)
 		return _finish_execute(state, ctx, _ok(ctx.events))
@@ -267,19 +268,19 @@ static func _phase_hit(ctx: AttackContext) -> void:
 static func _phase_post_attack(ctx: AttackContext) -> void:
 	var killed := ctx.target != null and not ctx.target.alive
 
-	if ctx.has_tag(TAG_SPLIT_SHOT):
+	if ctx.has_tag(TAG_SPLIT_SHOT) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_split_wings(ctx)
 
-	if ctx.has_tag(TAG_GRAVITY_AURA):
+	if ctx.has_tag(TAG_GRAVITY_AURA) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_gravity_aura(ctx)
 
-	if ctx.has_tag(TAG_SLOW_SELF):
+	if ctx.has_tag(TAG_SLOW_SELF) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_ice_self_slow(ctx)
 
-	if ctx.has_tag(TAG_COUNTER):
+	if ctx.has_tag(TAG_COUNTER) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_red_counter(ctx)
 
-	if ctx.has_tag(TAG_ECHO):
+	if ctx.has_tag(TAG_ECHO) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_red_echo_followup(ctx)
 
 	if killed and not ctx.has_tag(TAG_NO_KILL_PROC):
@@ -493,7 +494,19 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "light"))
 	var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
-	var cells := _light_beam_cells(ctx.state, from_cell, ctx.aim_cell, level >= 3)
+	for aim_cell in _light_beam_aim_cells(ctx, from_cell):
+		_apply_single_light_beam(ctx, reason, gem_ctx, level, from_cell, aim_cell)
+
+
+static func _apply_single_light_beam(
+	ctx: AttackContext,
+	reason: String,
+	gem_ctx: Dictionary,
+	level: int,
+	from_cell: Vector2i,
+	aim_cell: Vector2i
+) -> void:
+	var cells := _light_beam_cells(ctx.state, from_cell, aim_cell, level >= 3)
 	if cells.is_empty():
 		return
 	var hit_effects: Array[Dictionary] = []
@@ -527,6 +540,7 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 		}
 	)
 	ctx.push_event(beam_event)
+	var beam_hit_event_start := ctx.events.size()
 	var damage_ratio := 0.5
 	if level >= 3:
 		damage_ratio = 1.0
@@ -557,6 +571,10 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 			ctx.events,
 			ctx.base_damage
 		)
+	for event_index in range(beam_hit_event_start, ctx.events.size()):
+		var hit_event: Dictionary = ctx.events[event_index]
+		if str(hit_event.get("type", "")) == "damage":
+			hit_event["visual_group"] = "light_beam"
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
 		var end_cell: Vector2i = cells[cells.size() - 1]
 		var blast := GemEffects.explode_cross_at(ctx.state, end_cell, ctx.attacker.uid, {
@@ -564,6 +582,39 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 			"gem_tag_context": gem_ctx,
 		})
 		ctx.events.append_array(blast)
+
+
+static func _light_beam_aim_cells(ctx: AttackContext, from_cell: Vector2i) -> Array[Vector2i]:
+	if not ctx.has_tag(TAG_SPLIT_SHOT):
+		return [ctx.aim_cell] as Array[Vector2i]
+	var forward := SplitShotRules.forward_step(from_cell, ctx.aim_cell)
+	var aim_cells: Array[Vector2i] = []
+	for direction in _light_split_directions(forward, _split_level(ctx)):
+		var aim_cell := from_cell + direction
+		if not BoardUtils.in_bounds(ctx.state, aim_cell):
+			continue
+		aim_cells.append(aim_cell)
+	if aim_cells.is_empty():
+		aim_cells.append(ctx.aim_cell)
+	return aim_cells
+
+
+static func _light_split_directions(forward: Vector2i, split_level: int) -> Array[Vector2i]:
+	var directions: Array[Vector2i] = []
+	var dir_index := SplitShotRules.DIR8.find(forward)
+	if dir_index < 0:
+		return [forward] as Array[Vector2i]
+	var offsets: Array[int] = [0, -1, 1]
+	if split_level >= 2:
+		offsets.append(-2)
+	if split_level >= 3:
+		offsets.append(2)
+	for offset in offsets:
+		var idx := (dir_index + offset + SplitShotRules.DIR8.size()) % SplitShotRules.DIR8.size()
+		var direction: Vector2i = SplitShotRules.DIR8[idx]
+		if direction not in directions:
+			directions.append(direction)
+	return directions
 
 
 static func _light_beam_cells(state: GameState, from_cell: Vector2i, aim_cell: Vector2i, pierce_blockers: bool) -> Array[Vector2i]:
@@ -879,21 +930,38 @@ static func _finish_execute(state: GameState, ctx: AttackContext, result: Dictio
 static func _reorder_split_shot_events(ctx: AttackContext) -> void:
 	if not ctx.has_tag(TAG_SPLIT_SHOT):
 		return
+	if ctx.has_tag(TAG_LIGHT_BEAM):
+		var beams: Array[Dictionary] = []
+		var beam_damages: Array[Dictionary] = []
+		var beam_other: Array[Dictionary] = []
+		for ev in ctx.events:
+			match str(ev.get("type", "")):
+				"light_beam":
+					beams.append(ev)
+				"damage":
+					if str(ev.get("visual_group", "")) == "light_beam":
+						beam_damages.append(ev)
+					else:
+						beam_other.append(ev)
+				_:
+					beam_other.append(ev)
+		ctx.events.clear()
+		ctx.events.append_array(beams)
+		ctx.events.append_array(beam_damages)
+		ctx.events.append_array(beam_other)
+		return
 	var projs: Array[Dictionary] = []
-	var damages: Array[Dictionary] = []
-	var other: Array[Dictionary] = []
+	var resolution: Array[Dictionary] = []
 	for ev in ctx.events:
 		match str(ev.get("type", "")):
 			"projectile", "projectile_deflect":
 				projs.append(ev)
-			"damage":
-				damages.append(ev)
 			_:
-				other.append(ev)
+				resolution.append(ev)
 	ctx.events.clear()
 	ctx.events.append_array(projs)
-	ctx.events.append_array(damages)
-	ctx.events.append_array(other)
+	# 只把弹道提升为同一轮齐射；命中后的爆炸、电弧和伤害必须保留原始因果顺序。
+	ctx.events.append_array(resolution)
 
 
 static func _ok(events: Array[Dictionary]) -> Dictionary:

@@ -68,7 +68,9 @@ static func execute_black_suicide(state: GameState, unit: UnitState) -> Array[Di
 		black.gem_uid = ""
 	StatusRules.clear_bomb_rat_plunder(unit)
 	if unit.hp > 0:
-		CombatRules.apply_damage(state, unit, unit.hp, unit.uid, "black_suicide")
+		var tx := _CombatTransaction.begin(state, events)
+		tx.damage_unit(unit, unit.hp, unit.uid, "black_suicide")
+		tx.finish("BombRatRules.execute_black_suicide")
 	return events
 
 

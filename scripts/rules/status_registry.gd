@@ -145,7 +145,7 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_LAWLESS:
 			return "失律：追逐被窃走的宝石"
 		Constants.STATUS_OVERLOAD_AI_CONTROL:
-			return "AI接管：本回合移动与行动已被过载消耗"
+			return "AI接管：过载正在自动操作角色"
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:

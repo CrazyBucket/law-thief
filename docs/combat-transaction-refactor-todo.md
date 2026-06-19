@@ -232,11 +232,13 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 - [x] `BattleEventPlayer` 对连续爆炸 cluster 批量播放 `explode`、`damage`、`move_step`、`split_spawn` 与范围特效，避免同一结算链在表现层排队。
 - [x] `BoardUtils` 增加无副作用位置辅助，用于 AI/意图计算“站在某格时”的 footprint、距离和射击原点。
 - [x] `enemy_ai.gd`、`stone_bow_guard_rules.gd`、`fission_slime_rules.gd`、`intent_system.gd` 已迁出临时 `unit.pos` 评分模式。
+- [x] `CombatTransaction` 增加显式事件 sink 绑定，玩家移动、AI 移动和强制位移期间的地形/宝石连锁伤害会进入同一事件流。
+- [x] 规则层剩余直接 `CombatRules.apply_damage()` / `apply_true_damage()` 入口已收口到事务伤害入口，事务内部除外。
+- [x] `EventValidator` 已将 `damage.uid` / `damage.victim_uid` 升级为强制字段，并补充事务契约测试。
 
 仍建议后续继续深化的项：
 
 - [ ] 将 `CombatTransaction.damage_unit()` 扩展到死亡、状态、生成、tile enter hooks。
-- [ ] 将 `EventValidator` 的 `damage.uid` 从兼容字段升级为强制字段。
 - [ ] 增加显示态移动后 `_cell_occupancy` 一致性的专门测试。
 - [ ] 继续清理剩余非战斗构造场景之外的直接 `unit.pos = ...`。
 
@@ -280,7 +282,7 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 - [ ] 迁移 `GemEffects` 中裸 `damage` 事件。
 - [ ] 迁移 `EnemyBehavior`、`EntityRules`、`BombRatRules` 中裸 `damage` 事件。
 - [ ] 所有 `damage` 事件补齐 `uid` / `victim_uid`。
-- [ ] `EventValidator` 将 `damage` 的必填字段升级为 `uid`、`pos`、`damage`、`is_crit`。
+- [x] `EventValidator` 将 `damage` 的必填字段升级为 `uid`、`victim_uid`、`pos`、`damage`、`is_crit`。
 - [ ] 更新受影响测试断言。
 
 ### P5 - 清理 AI 临时改位

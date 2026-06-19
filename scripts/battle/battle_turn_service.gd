@@ -88,16 +88,16 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	}
 
 
-func finish_enemy_phase() -> void:
+func finish_enemy_phase() -> Dictionary:
 	var ctrl = _c()
 	if ctrl == null:
 		push_error("BattleTurnService: _ctrl is null in finish_enemy_phase")
-		return
+		return {"events": [] as Array[Dictionary], "presentation_state": null}
 	if ctrl.state == null:
-		return
+		return {"events": [] as Array[Dictionary], "presentation_state": null}
 	StatusRules.tick_turn_end(ctrl.state)
 	if ctrl.state.phase == Constants.PHASE_ENDED:
-		return
+		return {"events": [] as Array[Dictionary], "presentation_state": ctrl.state.clone()}
 	ctrl.state.turn_index += 1
 	StatusRules.tick_turn_start(ctrl.state)
 	GemEffects.tick_turn_start(ctrl.state)
@@ -109,12 +109,18 @@ func finish_enemy_phase() -> void:
 	if ctrl.state.get_player() != null:
 		ctrl.selected_unit_uid = ctrl.state.player_uid
 	_apply_move_bonus(ctrl.state)
-	OverloadRules.tick_turn_start(ctrl.state)
+	var presentation_state: GameState = ctrl.state.clone()
+	var overload_result: Dictionary = OverloadRules.tick_turn_start(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)
 	ctrl._check_battle_end()
 	ctrl._emit_changed()
+	return {
+		"events": overload_result.get("events", [] as Array[Dictionary]),
+		"presentation_state": presentation_state,
+		"action": str(overload_result.get("action", "")),
+	}
 
 
 func get_sorted_enemies() -> Array:
