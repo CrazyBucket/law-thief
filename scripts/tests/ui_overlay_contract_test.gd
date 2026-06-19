@@ -86,7 +86,10 @@ func _test_relic_bar_layout_compacts_before_scroll() -> void:
 	assert(bool(overflow.get("scroll", false)), "scrolling should begin only after minimum-size columns overflow")
 	var badge := presenter._create_relic_badge("relic_prism", 24.0)
 	var icon: TextureRect = badge.get_node("RelicIcon")
+	var hover_icon: TextureRect = badge.get_node("HoverTextureOutline")
 	assert(icon.stretch_mode == TextureRect.STRETCH_SCALE, "relic textures must scale inside their fixed cell instead of overflowing")
+	assert(icon.texture.get_size() == hover_icon.texture.get_size(), "normal and hovered relics must use the same padded canvas")
+	assert(icon.position == hover_icon.position and icon.size == hover_icon.size, "normal and hovered relics must occupy the same rect")
 	badge.free()
 	print("  [OK] relic bar compacts before scroll")
 

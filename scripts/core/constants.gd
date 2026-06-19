@@ -103,6 +103,7 @@ const STATUS_OVERLOAD_AI_CONTROL := "overload_ai_control"
 const STATUS_BOMB_RAT_PLUNDER := "bomb_rat_plunder"  # 炸弹鼠无律掠夺阶段
 const STATUS_SLUGGISH := "sluggish"  # 冰冻黑槽：下回合行动顺序垫底
 const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被强制位移踩入地刺时附加
+const STATUS_WEAK := "weak"  # 虚弱：普通攻击伤害变为原先的 75%
 const STATUS_LIGHT_EXPOSED := "light_exposed"
 const STATUS_BLINDED := "blinded"
 

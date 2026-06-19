@@ -111,6 +111,7 @@ static func terms_for_text(text: String) -> Array[Dictionary]:
 		Constants.STATUS_LIGHT_EXPOSED: ["曝光"],
 		Constants.STATUS_BLINDED: ["致盲"],
 		Constants.STATUS_VULNERABLE: ["易伤"],
+		Constants.STATUS_WEAK: ["虚弱"],
 	}
 	for status_id in checks.keys():
 		for keyword in checks[status_id]:
@@ -208,6 +209,8 @@ static func _status_glossary_body(status_id: String) -> String:
 			return "黑槽为空，准备夺取宝石。"
 		Constants.STATUS_VULNERABLE:
 			return "受到的普通伤害提高。"
+		Constants.STATUS_WEAK:
+			return "普通攻击伤害降低到原先的 75%。"
 	return _StatusRegistry.display_name(status_id)
 
 

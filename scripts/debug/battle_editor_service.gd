@@ -350,6 +350,8 @@ func _apply_unit_status(payload: Dictionary) -> Dictionary:
 			StatusRules.apply_rooted(ctrl.state, unit, 2, "editor")
 		Constants.STATUS_VULNERABLE:
 			StatusRules.apply_vulnerable(ctrl.state, unit, 1, "editor")
+		Constants.STATUS_WEAK:
+			StatusRules.apply_weak(ctrl.state, unit, 1, "editor")
 		Constants.STATUS_LIGHT_EXPOSED:
 			StatusRules.apply_light_exposed(ctrl.state, unit, 1, "editor")
 		Constants.STATUS_BLINDED:

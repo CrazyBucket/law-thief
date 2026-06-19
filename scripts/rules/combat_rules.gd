@@ -243,7 +243,10 @@ static func attack_damage(state: GameState, attacker: UnitState) -> int:
 	if registry != null:
 		mult = float(registry.query_modifier("attack_damage_mult", state))
 		bonus = int(registry.query_modifier("attack_damage_bonus", state))
-	return maxi(0, int(float(base) * mult) + bonus)
+	var result := int(float(base) * mult) + bonus
+	if StatusRules.is_weak(attacker):
+		result = int(float(result) * 0.75)
+	return maxi(0, result)
 
 
 static func current_shield(_state: GameState, unit: UnitState) -> int:

@@ -11,8 +11,8 @@ extends Node
 ##   before_damage_taken  受伤前（payload: unit_uid, amount, reason）
 ##   after_damage_taken   受伤后（payload: unit_uid, amount, reason）
 ##   unit_die             击杀后（payload: unit_uid, killer_uid, reason, kill_reason）
-##   after_extract        拔出宝石后（payload: unit_uid, gem_id, slot_type, from_uid, to_uid）
-##   after_insert         嵌入宝石后（payload: unit_uid, gem_id, slot_type, from_uid）
+##   after_extract        拔出宝石后（payload: unit_uid, gem_id, slot_type, from_uid）
+##   after_insert         嵌入宝石后（payload: unit_uid, gem_id, slot_type, from_uid, actor_uid）
 ##   blue_gem_triggered   蓝色宝石效果触发后（payload: actor_uid）
 ##   move_step            走一步（payload: unit_uid, from, to）
 ##   battle_win           战斗胜利（payload: encounter_id）
@@ -414,8 +414,8 @@ func _action_apply_weak_on_insert_target(relic_id: String, effect: Dictionary, s
 		var from_unit: UnitState = state.units.get(from_uid, null)
 		if from_unit == null or from_unit.team != Constants.TEAM_ENEMY:
 			return
-	StatusRules.apply_vulnerable(state, state.units.get(str(payload.get("unit_uid", "")), null), 1, relic_id)
-	state.log("[Relic] %s -> 嫁祸：对 %s 施加易伤" % [relic_id, payload.get("unit_uid", "?")])
+	StatusRules.apply_weak(state, state.units.get(str(payload.get("unit_uid", "")), null), 1, relic_id)
+	state.log("[Relic] %s -> 嫁祸：对 %s 施加虚弱" % [relic_id, payload.get("unit_uid", "?")])
 
 
 ## random_gem_transform_one：每回合开始时随机将场上一颗宝石变为另一颗（包含地块宝石）

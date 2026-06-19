@@ -598,7 +598,6 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 	return {
 		"base_step_cost": _w(profile, "path_base_step_cost", 1.0),
 		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
-		"poison_damage_weight": _w(profile, "path_poison_damage_weight", 0.35),
 		"water_cost_bias": _w(profile, "path_water_cost_bias", 0.0),
 		"allow_partial_path": profile.get("allow_partial_path", true),
 	}

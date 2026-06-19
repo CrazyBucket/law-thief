@@ -97,7 +97,7 @@
   },
   "relic_frame_up": {
     "name": "嫁祸",
-    "desc": "将敌人身上的宝石嵌入另一名敌人时，对被嵌入者施加易伤。",
+    "desc": "将敌人身上的宝石嵌入另一名敌人时，对被嵌入者施加虚弱。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,

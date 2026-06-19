@@ -63,7 +63,7 @@ var _clear_timeline_hover_cb: Callable = Callable()
 
 var _relic_bar_ids: Array[String] = []
 var _relic_bar_layout_key := ""
-var _relic_hover_texture_cache: Dictionary = {}
+var _relic_render_texture_cache: Dictionary = {}
 var _intent_label: Label = null
 
 
@@ -1036,10 +1036,9 @@ func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
 	if icon_tex != null:
 		var icon := TextureRect.new()
 		icon.name = "RelicIcon"
-		icon.texture = icon_tex
+		icon.texture = _render_relic_texture(icon_tex, icon_size, false)
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.position = Vector2(_RELIC_ICON_PAD, _RELIC_ICON_PAD)
-		icon.size = Vector2(icon_size, icon_size)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_SCALE
 		icon.self_modulate = Color.WHITE
@@ -1051,7 +1050,7 @@ func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
 		outline.visible = false
 		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		outline.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		outline.texture = _outlined_relic_texture(icon_tex, icon_size)
+		outline.texture = _render_relic_texture(icon_tex, icon_size, true)
 		outline.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		outline.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		outline.stretch_mode = TextureRect.STRETCH_SCALE
@@ -1092,33 +1091,34 @@ func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
 	return root
 
 
-func _outlined_relic_texture(source_texture: Texture2D, icon_size: float) -> Texture2D:
-	var cache_key := "%s:%d" % [source_texture.resource_path, int(icon_size)]
-	if _relic_hover_texture_cache.has(cache_key):
-		return _relic_hover_texture_cache[cache_key]
+func _render_relic_texture(source_texture: Texture2D, icon_size: float, with_outline: bool) -> Texture2D:
+	var cache_key := "%s:%d:%d" % [source_texture.resource_path, int(icon_size), int(with_outline)]
+	if _relic_render_texture_cache.has(cache_key):
+		return _relic_render_texture_cache[cache_key]
 	var source := source_texture.get_image()
 	if source == null or source.is_empty():
 		return source_texture
 	source.convert(Image.FORMAT_RGBA8)
 	var source_pad := maxi(3, int(roundf(float(source.get_width()) * _RELIC_ICON_PAD / icon_size)))
 	var outline_radius := maxi(2, int(ceilf(float(source.get_width()) * 1.5 / icon_size)))
-	var outlined := Image.create(
+	var rendered := Image.create(
 		source.get_width() + source_pad * 2,
 		source.get_height() + source_pad * 2,
 		false,
 		Image.FORMAT_RGBA8
 	)
-	outlined.fill(Color.TRANSPARENT)
-	for y in range(source.get_height()):
-		for x in range(source.get_width()):
-			if source.get_pixel(x, y).a <= 0.01:
-				continue
-			for oy in range(-outline_radius, outline_radius + 1):
-				for ox in range(-outline_radius, outline_radius + 1):
-					outlined.set_pixel(x + source_pad + ox, y + source_pad + oy, Color.WHITE)
-	outlined.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i(source_pad, source_pad))
-	var texture := ImageTexture.create_from_image(outlined)
-	_relic_hover_texture_cache[cache_key] = texture
+	rendered.fill(Color.TRANSPARENT)
+	if with_outline:
+		for y in range(source.get_height()):
+			for x in range(source.get_width()):
+				if source.get_pixel(x, y).a <= 0.01:
+					continue
+				for oy in range(-outline_radius, outline_radius + 1):
+					for ox in range(-outline_radius, outline_radius + 1):
+						rendered.set_pixel(x + source_pad + ox, y + source_pad + oy, Color.WHITE)
+	rendered.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i(source_pad, source_pad))
+	var texture := ImageTexture.create_from_image(rendered)
+	_relic_render_texture_cache[cache_key] = texture
 	return texture
 
 

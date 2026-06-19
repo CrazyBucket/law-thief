@@ -103,6 +103,8 @@ static func short_label(status: StatusInstance) -> String:
 			return "掠"
 		Constants.STATUS_VULNERABLE:
 			return "易伤"
+		Constants.STATUS_WEAK:
+			return "虚弱"
 	return display_name(status.status_id)
 
 
@@ -111,7 +113,7 @@ static func icon_badge(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED, Constants.STATUS_LIGHT_EXPOSED:
 			return str(status.stacks)
-		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED, Constants.STATUS_BLINDED:
+		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED, Constants.STATUS_BLINDED, Constants.STATUS_WEAK:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
@@ -150,6 +152,8 @@ static func tooltip(status: StatusInstance) -> String:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:
 			return "易伤：受到伤害 +50%%，剩余 %d 回合" % status.duration
+		Constants.STATUS_WEAK:
+			return "虚弱：普通攻击伤害变为 75%%，剩余 %d 回合" % status.duration
 	return display_name(status.status_id)
 
 
@@ -294,6 +298,14 @@ static var _DEFS: Dictionary = {
 	},
 	Constants.STATUS_VULNERABLE: {
 		"display_name": "易伤",
+		"type": TYPE_DEBUFF,
+		"color": UiPalette.VULNERABLE_RED,
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_TURN_END,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_WEAK: {
+		"display_name": "虚弱",
 		"type": TYPE_DEBUFF,
 		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_REPLACE,

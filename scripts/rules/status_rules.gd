@@ -248,6 +248,22 @@ static func is_vulnerable(unit: UnitState) -> bool:
 	return unit.has_status(Constants.STATUS_VULNERABLE)
 
 
+static func apply_weak(
+	state: GameState,
+	unit: UnitState,
+	duration: int = 1,
+	source_uid: String = ""
+) -> void:
+	_apply(state, unit, Constants.STATUS_WEAK, {
+		"duration": duration,
+		"source_uid": source_uid,
+	})
+
+
+static func is_weak(unit: UnitState) -> bool:
+	return unit.has_status(Constants.STATUS_WEAK)
+
+
 static func apply_light_exposed(
 	state: GameState,
 	unit: UnitState,

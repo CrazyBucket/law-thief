@@ -146,6 +146,7 @@ const _EDITOR_STATUS_IDS: Array[String] = [
 	Constants.STATUS_WET,
 	Constants.STATUS_ROOTED,
 	Constants.STATUS_VULNERABLE,
+	Constants.STATUS_WEAK,
 	Constants.STATUS_LIGHT_EXPOSED,
 	Constants.STATUS_BLINDED,
 	Constants.STATUS_ARMOR,

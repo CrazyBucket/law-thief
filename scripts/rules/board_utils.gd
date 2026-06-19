@@ -1,14 +1,11 @@
 class_name BoardUtils
 extends RefCounted
 
-const CombatConfig = preload("res://scripts/core/combat_config.gd")
-
-const _MIN_STEP_COST: float = 0.05
+const _MIN_STEP_COST: float = 1.0
 const _FULL_PATH_BUDGET_FACTOR: float = 8.0
 const _DEFAULT_PATH_COST_PROFILE := {
 	"base_step_cost": 1.0,
 	"spike_damage_weight": 0.4,
-	"poison_damage_weight": 0.35,
 	"water_cost_bias": 0.0,
 	"allow_partial_path": true,
 }
@@ -145,17 +142,14 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "water"}))
 			water_cost = maxf(0.0, water_cost - float(reduce))
 		cost += water_cost
-	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-		var fog_cost := float(CombatConfig.poison_fog_damage()) * float(profile.get("poison_damage_weight", 2.0))
-		if tile_immune:
-			fog_cost = 0.0
-		elif registry != null:
-			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "poison_fog"}))
-			fog_cost = maxf(0.0, fog_cost - float(reduce))
-		cost += fog_cost
-	if tile.has_modifier(Constants.TILE_MOD_FIRE) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG) \
+	or tile.has_modifier(Constants.TILE_MOD_FIRE) \
+	or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		if registry != null:
-			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "fire"}))
+			var overlay_type := "poison_fog"
+			if tile.has_modifier(Constants.TILE_MOD_FIRE):
+				overlay_type = "fire"
+			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": overlay_type}))
 			cost = maxf(base_step, cost - float(reduce))
 	return maxf(cost, _MIN_STEP_COST)
 
