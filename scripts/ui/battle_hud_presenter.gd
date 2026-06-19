@@ -28,10 +28,9 @@ var _portrait: TextureRect = null
 var _inspect_name: Label = null
 var _inspect_stats: Label = null
 var _inspect_status_row: HBoxContainer = null
-var _shield_row: HBoxContainer = null
-var _shield_bar: ProgressBar = null
-var _shield_text: Label = null
-var _hp_bar: ProgressBar = null
+var _hp_bar_row: HBoxContainer = null
+var _shield_icon: TextureRect = null
+var _combined_hp_bar: CombinedHpBar = null
 var _hp_text: Label = null
 var _turn_label: Label = null
 var _move_chip: Label = null
@@ -65,6 +64,7 @@ var _relic_bar_ids: Array[String] = []
 var _relic_bar_layout_key := ""
 var _relic_render_texture_cache: Dictionary = {}
 var _intent_label: Label = null
+var _overload_detail_label: Label = null
 
 
 func _data_registry() -> Node:
@@ -151,10 +151,9 @@ func setup(deps: Dictionary) -> void:
 	_inspect_name = deps.get("inspect_name", null)
 	_inspect_stats = deps.get("inspect_stats", null)
 	_inspect_status_row = deps.get("inspect_status_row", null)
-	_shield_row = deps.get("shield_row", null)
-	_shield_bar = deps.get("shield_bar", null)
-	_shield_text = deps.get("shield_text", null)
-	_hp_bar = deps.get("hp_bar", null)
+	_hp_bar_row = deps.get("hp_bar_row", null)
+	_shield_icon = deps.get("shield_icon", null)
+	_combined_hp_bar = deps.get("combined_hp_bar", null)
 	_hp_text = deps.get("hp_text", null)
 	_turn_label = deps.get("turn_label", null)
 	_move_chip = deps.get("move_chip", null)
@@ -251,14 +250,13 @@ func refresh(context: Dictionary) -> Dictionary:
 
 	var tutorial_hint: String = _controller.get_tutorial_hint()
 	var action_hint: String = _controller.get_action_hint()
-	var overload_summary := _overload_summary_text(state)
 	_hint_label.text = tutorial_hint if not tutorial_hint.is_empty() else action_hint
-	if not overload_summary.is_empty():
-		_hint_label.text += "\n" + overload_summary
 	if not tutorial_hint.is_empty():
 		_message_label.text = tutorial_hint.split("\n")[0]
 	elif _message_label.text.is_empty():
 		_message_label.text = action_hint
+
+	_refresh_overload_detail(state)
 
 	var active_turn_uid := _get_active_turn_uid(state, enemy_phase_running, enemy_turn_queue)
 	_refresh_turn_queue(state, active_turn_uid, timeline_hover_uid, enemy_phase_running)
@@ -298,7 +296,14 @@ func refresh_economy_chips(state: GameState) -> void:
 		"sections": [{"title": "状态", "body": "本回合是否还能攻击、拔取或嵌入。"}],
 	})
 	if _overload_chip != null:
-		var overload_tip := "场上过载槽宝石 %d 颗%s" % [active_count, "，含 1 层待生效" if pending_count > 0 else ""]
+		var detail_lines := OverloadRules.panel_detail_lines(state)
+		var overload_tip := "过载槽宝石 %d 颗%s" % [
+			active_count,
+			"，含 1 层待生效" if pending_count > 0 else "",
+		]
+		var tip_sections: Array = [{"title": "概览", "body": overload_tip}]
+		if not detail_lines.is_empty():
+			tip_sections.append({"title": "当前效果", "body": "\n".join(detail_lines)})
 		_set_tooltip(_overload_chip, overload_tip, {
 			"title": "过载",
 			"subtitle": "战场状态",
@@ -307,7 +312,7 @@ func refresh_economy_chips(state: GameState) -> void:
 				{"label": "已生效", "value": str(active_count)},
 				{"label": "待生效", "value": str(pending_count)},
 			],
-			"sections": [{"title": "效果", "body": overload_tip}],
+			"sections": tip_sections,
 		})
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
 	_style_chip(_act_chip, not state.player_acted and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.TEXT_GOLD)
@@ -320,28 +325,46 @@ func fit_status_panel(panel_visible: bool) -> void:
 	var header_gap := float(_header_row.get_theme_constant("separation", "HBoxContainer"))
 	var info_w := inner_w - _portrait.custom_minimum_size.x - header_gap
 	_info_col.custom_minimum_size.x = info_w
-	_shield_bar.custom_minimum_size.x = maxf(0.0, info_w - 40.0)
-	_hp_bar.custom_minimum_size.x = info_w
+	_hp_bar_row.custom_minimum_size.x = info_w
+	_combined_hp_bar.custom_minimum_size.x = maxf(0.0, info_w - 18.0)
 	_status_clip.custom_minimum_size.x = info_w
 	_inspect_status_row.offset_right = info_w
 	_apply_status_inner_width(inner_w)
-	var panel_h := _status_vbox.get_minimum_size().y + margins.y
-	_status_panel.custom_minimum_size = Vector2(panel_w, panel_h)
-	_status_panel.size = Vector2(panel_w, panel_h)
+	_status_panel.custom_minimum_size.x = panel_w
+	_status_panel.size.x = panel_w
 	_status_panel.offset_right = _status_panel.offset_left + panel_w
+	_apply_status_panel_height(margins)
 	sync_toggle_btn_x(panel_visible)
 
 
 func fit_status_panel_height() -> void:
-	var margins := _status_panel_content_margins()
-	if _slot_box != null and _slot_clip != null:
-		_slot_clip.custom_minimum_size.y = maxf(24.0, float(_slot_box.get_minimum_size().y))
-	var panel_h := _status_vbox.get_minimum_size().y + margins.y
-	if absf(panel_h - _status_panel.size.y) < 0.5:
+	if _status_panel == null or _status_vbox == null:
 		return
+	_apply_status_panel_height(_status_panel_content_margins())
+
+
+func _apply_status_panel_height(margins: Vector2) -> void:
+	_sync_panel_clip_heights()
+	_status_vbox.queue_sort()
+	var panel_h := _status_vbox.get_minimum_size().y + margins.y
 	_status_panel.custom_minimum_size.y = panel_h
 	_status_panel.size.y = panel_h
 	_status_panel.offset_bottom = _status_panel.offset_top + panel_h
+
+
+func _sync_panel_clip_heights() -> void:
+	if _status_clip != null and _inspect_status_row != null:
+		var status_h := 0.0
+		if _inspect_status_row.get_child_count() > 0:
+			status_h = float(_inspect_status_row.get_minimum_size().y)
+		_status_clip.custom_minimum_size.y = status_h
+	if _slot_clip != null and _slot_box != null:
+		var slot_h := 0.0
+		if _slot_box.get_child_count() > 0:
+			slot_h = float(_slot_box.get_minimum_size().y)
+		_slot_clip.custom_minimum_size.y = slot_h
+	if _overload_detail_label != null and not _overload_detail_label.visible:
+		_overload_detail_label.custom_minimum_size.y = 0.0
 
 
 func sync_toggle_btn_x(panel_visible: bool) -> void:
@@ -386,6 +409,8 @@ func _apply_status_inner_width(inner_w: float) -> void:
 	_held_label.custom_minimum_size.x = inner_w
 	_slot_clip.custom_minimum_size.x = inner_w
 	_slot_box.size.x = inner_w
+	if _overload_detail_label != null:
+		_overload_detail_label.custom_minimum_size.x = inner_w
 
 
 func _status_panel_content_margins() -> Vector2:
@@ -417,15 +442,8 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	_portrait.texture = _unit_texture(unit.unit_def_id)
 	_portrait.self_modulate = _unit_sprite_modulate(unit.team, unit.unit_def_id)
 	_inspect_name.text = unit_name
-	_hp_bar.max_value = unit.max_hp
-	_hp_bar.value = unit.hp
-	var ratio := float(unit.hp) / float(maxi(unit.max_hp, 1))
-	_hp_bar.add_theme_stylebox_override(
-		"fill",
-		BattleUiTheme.bar_fill_style(BattleUiTheme.hp_fill_color(ratio))
-	)
+	_refresh_inspect_hp_bar(state, unit)
 	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
-	_refresh_inspect_shield(state, unit)
 	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR], _tooltip)
 	var attack_value := CombatRules.attack_damage(state, unit)
 	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
@@ -573,29 +591,32 @@ func _is_valid_inspect_cell(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.y >= 0
 
 
-func _refresh_inspect_shield(state: GameState, unit: UnitState) -> void:
+func _refresh_inspect_hp_bar(state: GameState, unit: UnitState) -> void:
 	var shield_value := CombatRules.current_shield(state, unit)
-	_shield_row.visible = shield_value > 0
-	if shield_value <= 0:
-		_shield_bar.value = 0.0
-		_shield_text.text = ""
-		return
-	var shield_max := maxi(unit.max_hp, shield_value)
-	_shield_bar.max_value = float(shield_max)
-	_shield_bar.value = float(shield_value)
-	_shield_text.text = str(shield_value)
-	_set_tooltip(_shield_row, "护盾 %d" % shield_value, {
-		"title": "护盾",
-		"subtitle": "增益状态",
-		"icon": StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR).get("icon", null),
-		"accent": UiPalette.ARMOR_STEEL,
-		"stats": [{"label": "数值", "value": str(shield_value), "color": UiPalette.ARMOR_STEEL.lightened(0.25)}],
-		"sections": [{"title": "效果", "body": "先抵挡普通伤害；真实伤害会直接扣除生命。"}],
-		"terms": [
-			StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR),
-			StatusUi.glossary_term_for_key("true_damage"),
-		],
-	})
+	_shield_icon.visible = shield_value > 0
+	_combined_hp_bar.set_values(unit.hp, unit.max_hp, shield_value)
+	if shield_value > 0:
+		_set_tooltip(_hp_bar_row, "生命 %d / %d · 护盾 %d" % [unit.hp, unit.max_hp, shield_value], {
+			"title": "生命与护盾",
+			"subtitle": "当前状态",
+			"icon": StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR).get("icon", null),
+			"accent": UiPalette.ARMOR_STEEL,
+			"stats": [
+				{"label": "生命", "value": "%d / %d" % [unit.hp, unit.max_hp], "color": BattleUiTheme.TEXT},
+				{"label": "护盾", "value": str(shield_value), "color": UiPalette.ARMOR_STEEL.lightened(0.25)},
+			],
+			"sections": [{"title": "护盾", "body": "先抵挡普通伤害；真实伤害会直接扣除生命。"}],
+			"terms": [
+				StatusUi.glossary_term_for_status(Constants.STATUS_ARMOR),
+				StatusUi.glossary_term_for_key("true_damage"),
+			],
+		})
+	else:
+		_set_tooltip(_hp_bar_row, "生命 %d / %d" % [unit.hp, unit.max_hp], {
+			"title": "生命",
+			"subtitle": "当前状态",
+			"stats": [{"label": "生命", "value": "%d / %d" % [unit.hp, unit.max_hp], "color": BattleUiTheme.TEXT}],
+		})
 
 
 func _refresh_intent_row(unit: UnitState) -> void:
@@ -629,12 +650,9 @@ func _clear_inspect_header(title: String) -> void:
 	_portrait.texture = null
 	_portrait.self_modulate = Color.WHITE
 	_inspect_name.text = title
-	_hp_bar.max_value = 1.0
-	_hp_bar.value = 0.0
+	_combined_hp_bar.set_values(0, 1, 0)
 	_hp_text.text = ""
-	_shield_row.visible = false
-	_shield_bar.value = 0.0
-	_shield_text.text = ""
+	_shield_icon.visible = false
 	while _inspect_status_row.get_child_count() > 0:
 		_inspect_status_row.get_child(0).free()
 
@@ -919,6 +937,8 @@ func _style_chip(label: Label, highlight: bool, color: Color) -> void:
 func _apply_editor_compact_layout(compact: bool) -> void:
 	if _hint_label != null:
 		_hint_label.visible = not compact
+	if _overload_detail_label != null:
+		_overload_detail_label.visible = not compact and not _overload_detail_label.text.is_empty()
 	if _inspect_stats != null:
 		_inspect_stats.visible = not compact
 	if _turn_chips != null:
@@ -1143,12 +1163,33 @@ func relic_desc_text(def: Dictionary) -> String:
 func _overload_summary_text(state: GameState) -> String:
 	if state == null:
 		return ""
-	var active_count: int = OverloadRules.overload_gem_count(state)
-	if not state.overload_pending and active_count <= 0:
-		return ""
-	if state.overload_pending:
-		return "过载层数 %d + 待生效 1" % active_count
-	return "过载层数 %d" % active_count
+	var lines := OverloadRules.panel_detail_lines(state)
+	return "\n".join(lines)
+
+
+func _refresh_overload_detail(state: GameState) -> void:
+	_ensure_overload_detail_label()
+	var lines := OverloadRules.panel_detail_lines(state)
+	if lines.is_empty():
+		_overload_detail_label.visible = false
+		_overload_detail_label.text = ""
+		return
+	_overload_detail_label.visible = true
+	_overload_detail_label.text = "\n".join(lines)
+	_overload_detail_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+
+
+func _ensure_overload_detail_label() -> void:
+	if _overload_detail_label != null or _status_vbox == null:
+		return
+	_overload_detail_label = Label.new()
+	_overload_detail_label.name = "OverloadDetail"
+	_overload_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_overload_detail_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_SMALL)
+	_overload_detail_label.visible = false
+	var insert_idx := _turn_chips.get_index() + 1 if _turn_chips != null else 0
+	_status_vbox.add_child(_overload_detail_label)
+	_status_vbox.move_child(_overload_detail_label, insert_idx)
 
 
 func _status_stack_lines(unit: UnitState) -> Array[String]:

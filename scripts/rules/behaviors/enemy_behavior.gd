@@ -163,7 +163,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var poison_target: UnitState = state.units.get(intent.target_uid, null)
 			if poison_target == null or not poison_target.alive:
 				return [] as Array[Dictionary]
-			if BoardUtils.manhattan(unit.pos, poison_target.pos) != 1:
+			if not BoardUtils.are_units_adjacent(unit, poison_target):
 				return [] as Array[Dictionary]
 			var poison_events := _enemy_red_damage_events(
 				state, unit, intent.target_uid, CombatRules.attack_damage(state, unit), "poison_attack"
@@ -348,7 +348,7 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
 	var max_range := GemEffects.gravity_pull_range(state, unit, CombatConfig.enemy_gravity_pull_range())
-	if BoardUtils.manhattan(unit.pos, target.pos) > max_range:
+	if BoardUtils.distance_between_units(unit, target) > max_range:
 		return [] as Array[Dictionary]
 	var pull_steps := maxi(1, GemTagResolver.tag_level(
 		GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE),

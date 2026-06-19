@@ -26,6 +26,7 @@ func _run_test() -> void:
 	_test_clone_footprint_1x1()
 	_test_clone_death_no_resplit()
 	_test_clone_uses_melee_ai()
+	_test_red_gravity_overrides_default_ai()
 	_test_attack_range_uses_nearest_footprint_cell()
 	_test_approach_around_prop()
 	_test_clone_approaches_around_pillar()
@@ -230,6 +231,31 @@ func _test_slam_pushes_adjacent_target() -> void:
 	assert(player.hp < hp_before or player.pos != pos_before, "slam should damage or push player")
 	assert(not events.is_empty(), "slam should emit events")
 	print("  [OK] slam attack hits and displaces")
+
+
+func _test_red_gravity_overrides_default_ai() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 42)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var player := state.get_player()
+	assert(slime != null and player != null, "slime/player should exist")
+	slime.pos = Vector2i(4, 2)
+	player.pos = Vector2i(0, 2)
+	_mount_gem(state, slime, Constants.SLOT_RED, Constants.GEM_GRAVITY)
+	state.rebuild_occupancy()
+	assert(
+		BoardUtils.distance_between_units(slime, player) == CombatConfig.enemy_gravity_pull_range(),
+		"setup should place player exactly at gravity pull range"
+	)
+	assert(not BoardUtils.are_units_adjacent(slime, player), "setup should stay outside slam range")
+	IntentSystem.refresh_unit_intent(state, slime)
+	assert(slime.intent.type == "pull", "gravity red should override slime default AI, got %s" % slime.intent.type)
+	var start_pos := player.pos
+	var events := IntentSystem.execute_intent(state, slime)
+	assert(not events.is_empty(), "gravity pull should execute")
+	assert(player.pos != start_pos, "gravity pull should move the player")
+	print("  [OK] gravity red overrides slime default AI")
 
 
 func _test_split_redirect_skips_without_neighbor() -> void:

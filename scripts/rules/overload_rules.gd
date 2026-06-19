@@ -272,6 +272,27 @@ static func mutation_label(mutation: String) -> String:
 	return mutation
 
 
+static func panel_detail_lines(state: GameState) -> Array[String]:
+	if state == null:
+		return []
+	sync_active_mutations_to_overload_slots(state, false)
+	var active_count := overload_gem_count(state)
+	if active_count <= 0 and not state.overload_pending:
+		return []
+	var lines: Array[String] = []
+	var total_layers := active_count + (1 if state.overload_pending else 0)
+	lines.append("过载 %d 层" % total_layers)
+	for mutation in state.overload_active_mutations:
+		lines.append("· %s" % mutation_label(mutation))
+	if state.overload_pending:
+		var pending_mutation := _pick_next_mutation(state)
+		if not pending_mutation.is_empty():
+			lines.append("· 待生效：%s" % mutation_label(pending_mutation))
+	if is_active(state, Constants.OVERLOAD_AI_CONTROL):
+		lines.append("AI 接管几率 %d%%" % int(roundf(ai_control_probability(state) * 100.0)))
+	return lines
+
+
 static func _pick_next_mutation(state: GameState) -> String:
 	if state == null:
 		return ""

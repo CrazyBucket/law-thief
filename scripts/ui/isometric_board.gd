@@ -1128,11 +1128,7 @@ func _draw_unit(unit: UnitState) -> void:
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))
 	_draw_gem_icons(unit, hp_bar_pos)
 	var shield_value := StatusRules.get_shield(unit)
-	if shield_value > 0:
-		var shield_gap := IsoCoordinates.visual(2.0)
-		var shield_h := IsoCoordinates.visual(5.0)
-		_draw_shield_bar(hp_bar_pos - Vector2(0, shield_h + shield_gap), unit, shield_value)
-	_draw_hp_bar(hp_bar_pos, unit)
+	_draw_hp_bar(hp_bar_pos, unit, shield_value)
 	if unit.intent != null and unit.team == Constants.TEAM_ENEMY:
 		_draw_intent_badge(center + Vector2(0, -sprite_size.y + IsoCoordinates.visual(8.0)) + ground_nudge, unit.intent)
 
@@ -1775,30 +1771,28 @@ func _gem_visual_progress(visual: Dictionary) -> float:
 	return clampf(float(visual.get("elapsed", 0.0)) / duration, 0.0, 1.0)
 
 
-func _draw_shield_bar(origin: Vector2, unit: UnitState, shield_value: int) -> void:
-	var icon_size := IsoCoordinates.visual(8.0)
-	var gap := IsoCoordinates.visual(2.0)
-	var bar_w := IsoCoordinates.visual(28.0)
-	var bar_h := IsoCoordinates.visual(4.0)
-	var bar_x := origin.x + icon_size + gap
-	StatusIcons.draw_icon(self, origin, Constants.STATUS_ARMOR, icon_size)
-	var max_ref := maxi(unit.max_hp, shield_value)
-	var ratio := clampf(float(shield_value) / float(maxi(max_ref, 1)), 0.0, 1.0)
-	BattleUiTheme.draw_pixel_bar(self, Rect2(bar_x, origin.y, bar_w, bar_h), ratio, UiPalette.SHIELD_FILL)
-
-
-func _draw_hp_bar(center: Vector2, unit: UnitState) -> void:
+func _draw_hp_bar(origin: Vector2, unit: UnitState, shield_value: int = 0) -> void:
+	var icon_size := IsoCoordinates.visual(8.0) if shield_value > 0 else 0.0
+	var gap := IsoCoordinates.visual(2.0) if shield_value > 0 else 0.0
 	var width := IsoCoordinates.visual(36.0)
 	var bar_h := IsoCoordinates.visual(5.0)
-	var ratio := clampf(float(unit.hp) / float(maxi(unit.max_hp, 1)), 0.0, 1.0)
-	BattleUiTheme.draw_pixel_bar(self, Rect2(center.x, center.y, width, bar_h), ratio, BattleUiTheme.hp_fill_color(ratio))
+	var bar_x := origin.x + icon_size + gap
+	if shield_value > 0:
+		StatusIcons.draw_icon(self, origin, Constants.STATUS_ARMOR, icon_size)
+	BattleUiTheme.draw_combined_hp_bar(
+		self,
+		Rect2(bar_x, origin.y, width, bar_h),
+		unit.hp,
+		unit.max_hp,
+		shield_value
+	)
 	var font := BattleUiTheme.pixel_font()
 	var font_size := int(IsoCoordinates.visual(7.0))
 	var hp_text := "%d/%d" % [unit.hp, unit.max_hp]
 	var text_size := font.get_string_size(hp_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	_draw_text_with_shadow(
 		font,
-		Vector2(center.x + (width - text_size.x) * 0.5, center.y + bar_h - IsoCoordinates.visual(0.5)),
+		Vector2(bar_x + (width - text_size.x) * 0.5, origin.y + bar_h - IsoCoordinates.visual(0.5)),
 		hp_text,
 		font_size,
 		UiPalette.TEXT_BRIGHT,

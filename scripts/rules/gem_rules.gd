@@ -114,10 +114,8 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
 		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
 		if not gem_slot_type.is_empty() and not slot.accepts_slot_type(gem_slot_type):
-			if not OverloadRules.can_force_insert(state):
+			if not OverloadRules.can_force_insert(state) and slot.gem_uid.is_empty():
 				return _fail("宝石颜色与槽位不兼容")
-	if not slot.gem_uid.is_empty() and not OverloadRules.can_force_insert(state) and target_unit.uid != actor.uid:
-		return _fail("槽位已有宝石")
 	return _ok()
 
 
@@ -131,7 +129,7 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 	var source_uid := str(state.battle_temp_flags.get("held_gem_source_uid", ""))
 	var overload_forced := false
 	var should_create_overload_slot := OverloadRules.can_force_insert(state) \
-		or (not slot.gem_uid.is_empty() and target_unit.uid == actor.uid)
+		or not slot.gem_uid.is_empty()
 	if should_create_overload_slot:
 		overload_forced = true
 		slot = _make_overload_slot(slot)
@@ -248,10 +246,8 @@ static func can_insert_tile(state: GameState, actor: UnitState, tile: TileState,
 		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
 		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
 		if not gem_slot_type.is_empty() and not slot.accepts_slot_type(gem_slot_type):
-			if not OverloadRules.can_force_insert(state):
+			if not OverloadRules.can_force_insert(state) and slot.gem_uid.is_empty():
 				return _fail("宝石颜色与槽位不兼容")
-	if not slot.gem_uid.is_empty() and not OverloadRules.can_force_insert(state):
-		return _fail("槽位已有宝石")
 	return _ok()
 
 
@@ -263,7 +259,7 @@ static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slo
 	if gem == null:
 		return _fail("宝石不存在")
 	var overload_forced := false
-	if OverloadRules.can_force_insert(state):
+	if OverloadRules.can_force_insert(state) or not slot.gem_uid.is_empty():
 		overload_forced = true
 		slot = _make_overload_slot(slot)
 		tile.slots.append(slot)

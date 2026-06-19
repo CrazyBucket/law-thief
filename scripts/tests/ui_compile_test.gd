@@ -102,8 +102,8 @@ func _validate_scene(path: String, node: Node) -> void:
 			_probe_shader_fx_api(board)
 			if _failed:
 				return
-			if not node.has_node("HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"):
-				_fail("battle scene missing ShieldRow")
+			if not node.has_node("HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow"):
+				_fail("battle scene missing HpBarRow")
 				return
 		"res://scenes/map/adventure_map.tscn":
 			if not node.has_node("BoardLayer/IsometricBoard"):

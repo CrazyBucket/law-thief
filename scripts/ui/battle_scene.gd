@@ -24,11 +24,9 @@ var _dmg_text: Node = null
 @onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Portrait
 @onready var _inspect_name: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/Name
 @onready var _info_col: VBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info
-@onready var _shield_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow
-@onready var _shield_icon: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldIcon
-@onready var _shield_bar: ProgressBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldBar
-@onready var _shield_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow/ShieldText
-@onready var _hp_bar: ProgressBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBar
+@onready var _hp_bar_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow
+@onready var _shield_icon: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow/ShieldIcon
+@onready var _combined_hp_bar: CombinedHpBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow/CombinedHpBar
 @onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpText
 @onready var _inspect_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip/StatusRow
 @onready var _inspect_stats: Label = $HudLayer/StatusPanel/VBox/StatsLabel
@@ -201,10 +199,9 @@ func _ready() -> void:
 		"inspect_name": _inspect_name,
 		"inspect_stats": _inspect_stats,
 		"inspect_status_row": _inspect_status_row,
-		"shield_row": _shield_row,
-		"shield_bar": _shield_bar,
-		"shield_text": _shield_text,
-		"hp_bar": _hp_bar,
+		"hp_bar_row": _hp_bar_row,
+		"shield_icon": _shield_icon,
+		"combined_hp_bar": _combined_hp_bar,
 		"hp_text": _hp_text,
 		"turn_label": _turn_label,
 		"move_chip": _move_chip,
@@ -257,12 +254,7 @@ func _apply_ui_theme() -> void:
 	_message_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
 	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	_hp_bar.add_theme_stylebox_override("background", BattleUiTheme.bar_bg_style())
-	var shield_styles := BattleUiTheme.shield_bar_styles()
-	_shield_bar.add_theme_stylebox_override("background", shield_styles.background)
-	_shield_bar.add_theme_stylebox_override("fill", shield_styles.fill)
 	_shield_icon.texture = StatusIcons.get_icon(Constants.STATUS_ARMOR)
-	_shield_text.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
 
 

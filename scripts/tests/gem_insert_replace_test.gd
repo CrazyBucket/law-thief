@@ -9,6 +9,7 @@ func _initialize() -> void:
 
 func _run_test() -> void:
 	print("=== Gem Insert Overload Test ===")
+	_test_enemy_occupied_insert_creates_overload_slot()
 	_test_second_insert_overloads_without_replacing()
 	_test_forced_insert_keeps_held_visual_state_consistent()
 	_test_self_occupied_insert_creates_overload_slot()
@@ -40,14 +41,13 @@ func _test_second_insert_overloads_without_replacing() -> void:
 		return
 	var held_explosion_uid := state.held_gem_uid
 	var player_red := player.get_slot(Constants.SLOT_RED)
-	var enemy_occupied_result := controller.try_insert(rat.uid, rat.slots.find(rat.get_slot(Constants.SLOT_BLACK)))
-	assert(not enemy_occupied_result.get("ok", false), "ordinary insert into an occupied enemy slot should fail instead of replacing")
 	controller.select_action(Constants.ACTION_INSERT)
 	var insert_result := controller.try_insert(player.uid, player.slots.find(player_red))
 	assert(insert_result.get("ok", false), "self occupied insert should overload instead of replacing")
 	assert(bool(insert_result.get("overload_forced", false)), "self occupied insert should report overload_forced")
 	var second_target_slot := player_red
 	var second_target_original_uid := second_target_slot.gem_uid
+	state.held_gem_uid = held_explosion_uid
 	var forced_held_uid := _make_gem(state, Constants.GEM_POISON, player.uid)
 	state.held_gem_uid = forced_held_uid
 
@@ -66,6 +66,33 @@ func _test_second_insert_overloads_without_replacing() -> void:
 	assert(_unit_has_gem(player, held_explosion_uid), "first forced insert should keep held gem on player")
 	assert(player.slots[player.slots.size() - 1].gem_uid == forced_held_uid, "second forced overload insert should place the held gem into the new slot")
 	print("  [OK] second insert creates real overload slot")
+
+
+func _test_enemy_occupied_insert_creates_overload_slot() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 12346)
+	var state := controller.state
+	var player := state.get_player()
+	var rat := _find_unit_by_def(state, "unit_bomb_rat")
+	if player == null or rat == null:
+		push_error("missing units for enemy occupied overload test")
+		quit(1)
+		return
+	_force_gem(state, rat, Constants.SLOT_BLACK, Constants.GEM_GRAVITY)
+	state.held_gem_uid = _make_gem(state, Constants.GEM_FIRE, player.uid)
+	var held_uid := state.held_gem_uid
+	var black_slot := rat.get_slot(Constants.SLOT_BLACK)
+	var black_uid := black_slot.gem_uid
+	var slot_count_before := rat.slots.size()
+	controller.select_action(Constants.ACTION_INSERT)
+	var result := controller.try_insert(rat.uid, rat.slots.find(black_slot))
+	assert(result.get("ok", false), "occupied enemy insert should create overload slot")
+	assert(bool(result.get("overload_forced", false)), "occupied enemy insert should report overload_forced")
+	assert(state.overload_pending, "occupied enemy insert should set overload pending")
+	assert(black_slot.gem_uid == black_uid, "occupied enemy slot should stay unchanged")
+	assert(rat.slots.size() == slot_count_before + 1, "occupied enemy insert should append a slot")
+	assert(rat.slots[rat.slots.size() - 1].gem_uid == held_uid, "new overload slot should hold inserted gem")
+	print("  [OK] occupied enemy insert creates overload slot")
 
 
 func _test_forced_insert_keeps_held_visual_state_consistent() -> void:

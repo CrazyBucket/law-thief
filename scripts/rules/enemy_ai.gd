@@ -254,6 +254,15 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 	return results
 
 
+static func evaluate_red_skill_candidates(
+	state: GameState,
+	enemy: UnitState,
+	from_pos: Vector2i,
+	profile: Dictionary
+) -> Array:
+	return _evaluate_red_skill_from(state, enemy, from_pos, profile)
+
+
 # ─── 爆炸宝石：近战十字溅射（与玩家红槽攻击同源，不自爆）────────────────────
 static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
@@ -311,7 +320,7 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var max_range := GemEffects.gravity_pull_range(state, enemy, CombatConfig.enemy_gravity_pull_range())
-	var dist: int = BoardUtils.manhattan(from_pos, player.pos)
+	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
 	if dist > max_range:
 		return results
 
@@ -340,7 +349,7 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 # ─── 毒攻击评分 ───────────────────────────────────────────────────────────
 static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
 		return results
 
 	var candidate := ActionCandidate.new()
@@ -359,7 +368,7 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 
 static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -380,7 +389,7 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 
 static func _score_fire_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -396,7 +405,7 @@ static func _score_fire_skill(state: GameState, enemy: UnitState, from_pos: Vect
 
 static func _score_ice_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED
@@ -446,7 +455,7 @@ static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vec
 
 static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
+	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.SKILL_RED

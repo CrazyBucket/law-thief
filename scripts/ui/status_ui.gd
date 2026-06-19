@@ -134,7 +134,7 @@ static func terms_for_status(status_id: String) -> Array[Dictionary]:
 
 static func glossary_term_for_status(status_id: String) -> Dictionary:
 	var color := _StatusRegistry.status_color(status_id)
-	return {
+	var term := {
 		"label": _status_term_label(status_id),
 		"title": _status_term_label(status_id),
 		"subtitle": _status_type_label(status_id),
@@ -142,6 +142,9 @@ static func glossary_term_for_status(status_id: String) -> Dictionary:
 		"accent": color,
 		"body": _status_glossary_body(status_id),
 	}
+	if status_id in [Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_ARMOR]:
+		term["terms"] = [glossary_term_for_key("true_damage")]
+	return term
 
 
 static func glossary_term_for_key(term_id: String) -> Dictionary:

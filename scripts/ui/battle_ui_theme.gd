@@ -246,27 +246,55 @@ static func bar_fill_style(fill: Color) -> StyleBoxFlat:
 	return box
 
 
-## 棋盘世界空间的分段像素条；面板内 ProgressBar 走 bar_*_style。
+## 棋盘世界空间的分段像素条；面板内 CombinedHpBar 走 draw_combined_hp_bar。
 static func draw_pixel_bar(canvas: CanvasItem, rect: Rect2, ratio: float, fill: Color) -> void:
 	var clamped: float = clampf(ratio, 0.0, 1.0)
 	canvas.draw_rect(rect.grow(1), UiPalette.EDGE_DARK, true)
 	canvas.draw_rect(rect, UiPalette.BG_INSET, true)
-	var seg_w := 3.0
-	var gap := 1.0
 	var inner := rect.grow(-1)
 	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
 		return
-	var total_segs: int = maxi(1, int(floor((inner.size.x + gap) / (seg_w + gap))))
-	var lit_segs: int = int(round(clamped * float(total_segs)))
-	if clamped > 0.0:
-		lit_segs = maxi(lit_segs, 1)
-	for i in range(lit_segs):
-		var x := inner.position.x + float(i) * (seg_w + gap)
-		var w := minf(seg_w, inner.position.x + inner.size.x - x)
+	var fill_w := inner.size.x * clamped
+	if fill_w > 0.0:
+		_draw_pixel_bar_fill(canvas, Rect2(inner.position.x, inner.position.y, fill_w, inner.size.y), fill)
+
+
+static func draw_combined_hp_bar(canvas: CanvasItem, rect: Rect2, hp: int, max_hp: int, shield: int) -> void:
+	var safe_max_hp := maxi(max_hp, 1)
+	var safe_hp := clampi(hp, 0, safe_max_hp)
+	var safe_shield := maxi(shield, 0)
+	var bar_total := safe_max_hp + safe_shield if safe_shield > 0 else safe_max_hp
+	canvas.draw_rect(rect.grow(1), UiPalette.EDGE_DARK, true)
+	canvas.draw_rect(rect, UiPalette.BG_INSET, true)
+	var inner := rect.grow(-1)
+	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
+		return
+	var hp_w := inner.size.x * float(safe_hp) / float(bar_total)
+	var shield_w := inner.size.x * float(safe_shield) / float(bar_total)
+	if hp_w > 0.0:
+		var hp_color := hp_fill_color(float(safe_hp) / float(safe_max_hp))
+		_draw_pixel_bar_fill(canvas, Rect2(inner.position.x, inner.position.y, hp_w, inner.size.y), hp_color)
+	if shield_w > 0.0:
+		_draw_pixel_bar_fill(
+			canvas,
+			Rect2(inner.position.x + hp_w, inner.position.y, shield_w, inner.size.y),
+			SHIELD_FILL
+		)
+
+
+static func _draw_pixel_bar_fill(canvas: CanvasItem, rect: Rect2, fill: Color) -> void:
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	var seg_w := 3.0
+	var gap := 1.0
+	var total_segs: int = maxi(1, int(floor((rect.size.x + gap) / (seg_w + gap))))
+	for i in range(total_segs):
+		var x := rect.position.x + float(i) * (seg_w + gap)
+		var w := minf(seg_w, rect.position.x + rect.size.x - x)
 		if w <= 0.0:
 			break
-		canvas.draw_rect(Rect2(x, inner.position.y, w, inner.size.y), fill, true)
-	var hi := Rect2(inner.position, Vector2(inner.size.x * clamped, 1))
+		canvas.draw_rect(Rect2(x, rect.position.y, w, rect.size.y), fill, true)
+	var hi := Rect2(rect.position, Vector2(rect.size.x, 1.0))
 	if hi.size.x >= 1.0:
 		canvas.draw_rect(hi, fill.lightened(0.3), true)
 

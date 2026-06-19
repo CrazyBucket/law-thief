@@ -2,6 +2,7 @@ class_name StoneBowGuardRules
 extends RefCounted
 
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
+const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
 
 
 static func is_deployed(_start_pos: Vector2i, move_path: Array) -> bool:
@@ -75,6 +76,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	if player == null or not player.alive:
 		return {"move_path": [] as Array[Vector2i], "action": null}
 
+	var profile: Dictionary = AIProfiles.get_profile(enemy.ai_profile_id)
 	var player_pos: Vector2i = player.pos
 	var turn_start: Vector2i = enemy.pos
 	var current_dist: int = BoardUtils.distance_between_units(enemy, player)
@@ -86,6 +88,22 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			state, enemy.pos, enemy.move_points, enemy.uid, {}, cell_blockers
 		)
 	reachable.append(enemy.pos)
+
+	var red_skill_candidates: Array = []
+	for move_pos in reachable:
+		if _anchor_blocked(state, enemy, move_pos, cell_blockers):
+			continue
+		if move_pos != enemy.pos:
+			var move_path := BoardUtils.path_toward(
+				state, enemy.pos, move_pos, enemy.move_points, enemy.uid, {}, cell_blockers
+			)
+			if move_path.is_empty() or move_path[move_path.size() - 1] != move_pos:
+				continue
+		red_skill_candidates.append_array(
+			_EnemyAI.evaluate_red_skill_candidates(state, enemy, move_pos, profile)
+		)
+	if not red_skill_candidates.is_empty():
+		return _build_decision_from_best_candidate(state, enemy, red_skill_candidates, cell_blockers)
 
 	var max_shoot_range: int = attack_range_for(turn_start, [])
 	var candidates: Array = []
@@ -159,17 +177,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	if candidates.is_empty():
 		return {"move_path": [] as Array[Vector2i], "action": null}
 
-	var best = candidates[0]
-	for c in candidates:
-		if c.score > best.score:
-			best = c
-
-	var result_path: Array[Vector2i] = []
-	if best.move_target != enemy.pos and best.type != _EnemyAI.ActionType.WAIT:
-		result_path = BoardUtils.path_toward(
-			state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, {}, cell_blockers
-		)
-	return {"move_path": result_path, "action": best}
+	return _build_decision_from_best_candidate(state, enemy, candidates, cell_blockers)
 
 
 static func _score_ranged_position(
@@ -320,3 +328,26 @@ static func _anchor_blocked(
 		if cell_blockers.has(key) and str(cell_blockers[key]) != unit.uid:
 			return true
 	return false
+
+
+static func _build_decision_from_best_candidate(
+	state: GameState,
+	enemy: UnitState,
+	candidates: Array,
+	cell_blockers: Dictionary
+) -> Dictionary:
+	if candidates.is_empty():
+		return {"move_path": [] as Array[Vector2i], "action": null}
+	var best = candidates[0]
+	var best_move_dist := BoardUtils.manhattan(enemy.pos, best.move_target)
+	for c in candidates:
+		var move_dist := BoardUtils.manhattan(enemy.pos, c.move_target)
+		if c.score > best.score or (is_equal_approx(c.score, best.score) and move_dist < best_move_dist):
+			best = c
+			best_move_dist = move_dist
+	var result_path: Array[Vector2i] = []
+	if best.move_target != enemy.pos and best.type != _EnemyAI.ActionType.WAIT:
+		result_path = BoardUtils.path_toward(
+			state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, {}, cell_blockers
+		)
+	return {"move_path": result_path, "action": best}

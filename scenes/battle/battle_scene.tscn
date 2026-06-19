@@ -5,6 +5,7 @@
 [ext_resource type="Shader" uid="uid://540nrqv3p687" path="res://scenes/battle/battle_scene.gdshader" id="3_ugm31"]
 [ext_resource type="Texture2D" uid="uid://c2o6gixvb7ktb" path="res://assets/ui/tiles.png" id="4_o3k7m"]
 [ext_resource type="Texture2D" uid="uid://dbhu7wturwbha" path="res://assets/ui/background.png" id="5_o3k7m"]
+[ext_resource type="Script" path="res://scripts/ui/combined_hp_bar.gd" id="6_hpbar"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_lbt8a"]
 shader = ExtResource("3_ugm31")
@@ -185,38 +186,22 @@ theme_override_font_sizes/font_size = 15
 text = "窃律者"
 text_overrun_behavior = 3
 
-[node name="ShieldRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info"]
-visible = false
+[node name="HpBarRow" type="HBoxContainer" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="ShieldIcon" type="TextureRect" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
+[node name="ShieldIcon" type="TextureRect" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow"]
+visible = false
 custom_minimum_size = Vector2(14, 14)
 layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="ShieldBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
-custom_minimum_size = Vector2(0, 12)
-layout_mode = 2
-size_flags_horizontal = 3
-max_value = 1.0
-value = 0.0
-show_percentage = false
-
-[node name="ShieldText" type="Label" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/ShieldRow"]
-custom_minimum_size = Vector2(22, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 10
-text = "0"
-horizontal_alignment = 2
-
-[node name="HpBar" type="ProgressBar" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info" unique_id=881329093]
+[node name="CombinedHpBar" type="Control" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow" unique_id=881329093]
 custom_minimum_size = Vector2(68, 14)
 layout_mode = 2
-max_value = 6.0
-value = 6.0
-show_percentage = false
+size_flags_horizontal = 3
+script = ExtResource("6_hpbar")
 
 [node name="HpText" type="Label" parent="HudLayer/StatusPanel/VBox/HeaderRow/Info" unique_id=1805454101]
 layout_mode = 2

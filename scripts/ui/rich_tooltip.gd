@@ -22,8 +22,13 @@ var _hide_timer: Timer = null
 var _active_owner: Control = null
 var _layout_serial: int = 0
 var _tooltip_mouse_inside: bool = false
+var _owner_mouse_inside: bool = false
+var _pinned: bool = false
 var _last_total_size: Vector2 = Vector2.ZERO
 var _spec_sources: Dictionary = {}
+var _detail_panels: Array[PanelContainer] = []
+var _detail_scrolls: Array[ScrollContainer] = []
+var _detail_contents: Array[VBoxContainer] = []
 
 
 func _ready() -> void:
@@ -36,7 +41,7 @@ func _ready() -> void:
 	_main_panel = PanelContainer.new()
 	_main_panel.custom_minimum_size = Vector2(_MAIN_WIDTH, 0.0)
 	_main_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_main_panel.add_theme_stylebox_override("panel", _tooltip_panel_style(BattleUiTheme.TEXT_GOLD, false))
+	_main_panel.add_theme_stylebox_override("panel", _tooltip_panel_style())
 	add_child(_main_panel)
 
 	_main_scroll = ScrollContainer.new()
@@ -56,7 +61,7 @@ func _ready() -> void:
 	_side_panel.custom_minimum_size = Vector2(_SIDE_WIDTH, 0.0)
 	_side_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_side_panel.visible = false
-	_side_panel.add_theme_stylebox_override("panel", _tooltip_panel_style(BattleUiTheme.TEXT_GOLD, true))
+	_side_panel.add_theme_stylebox_override("panel", _tooltip_panel_style())
 	add_child(_side_panel)
 
 	_side_scroll = ScrollContainer.new()
@@ -71,6 +76,10 @@ func _ready() -> void:
 	_side_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_side_content.add_theme_constant_override("separation", 6)
 	_side_scroll.add_child(_side_content)
+	_detail_panels.append(_side_panel)
+	_detail_scrolls.append(_side_scroll)
+	_detail_contents.append(_side_content)
+	_refresh_panel_styles()
 
 	_hide_timer = Timer.new()
 	_hide_timer.one_shot = true
@@ -100,18 +109,21 @@ func show_for_control(owner: Control, spec: Dictionary) -> void:
 	if owner == null or spec.is_empty():
 		hide_tooltip()
 		return
+	if _pinned and owner != _active_owner:
+		return
 	_active_owner = owner
 	_tooltip_mouse_inside = false
+	_owner_mouse_inside = true
+	_pinned = false
 	_layout_serial += 1
 	if _hide_timer != null:
 		_hide_timer.stop()
 	_clear_container(_main_content)
-	_clear_container(_side_content)
+	_clear_detail_panels()
 	_main_content.custom_minimum_size.x = _content_width(_MAIN_WIDTH)
 	_side_content.custom_minimum_size.x = _content_width(_SIDE_WIDTH)
 	_side_panel.visible = false
-	var accent := _color_from(spec.get("accent", BattleUiTheme.TEXT_GOLD))
-	_main_panel.add_theme_stylebox_override("panel", _tooltip_panel_style(accent, false))
+	_refresh_panel_styles()
 	_build_main_content(spec)
 	visible = true
 	modulate.a = 1.0
@@ -123,17 +135,19 @@ func hide_tooltip() -> void:
 	visible = false
 	_active_owner = null
 	_tooltip_mouse_inside = false
+	_owner_mouse_inside = false
+	_pinned = false
 	_last_total_size = Vector2.ZERO
 	set_process(false)
 	if _hide_timer != null:
 		_hide_timer.stop()
 	_clear_container(_main_content)
-	_clear_container(_side_content)
-	if _side_panel != null:
-		_side_panel.visible = false
+	_clear_detail_panels()
 
 
 func schedule_hide(owner: Control = null) -> void:
+	if _pinned:
+		return
 	if owner != null and _active_owner != null and owner != _active_owner:
 		return
 	if _hide_timer == null:
@@ -145,12 +159,16 @@ func schedule_hide(owner: Control = null) -> void:
 func _on_owner_mouse_entered(owner: Control) -> void:
 	if owner == null or not is_instance_valid(owner):
 		return
+	if _pinned and owner != _active_owner:
+		return
 	var owner_id := owner.get_instance_id()
+	_owner_mouse_inside = true
 	var spec := _resolve_spec(_spec_sources.get(owner_id, {}))
 	show_for_control(owner, spec)
 
 
 func _on_owner_mouse_exited(owner: Control) -> void:
+	_owner_mouse_inside = false
 	schedule_hide(owner)
 
 
@@ -178,9 +196,27 @@ func _on_hide_timer_timeout() -> void:
 
 
 func _process(_delta: float) -> void:
-	if not visible or _last_total_size == Vector2.ZERO or _tooltip_mouse_inside:
+	if not visible or _last_total_size == Vector2.ZERO or _tooltip_mouse_inside or _pinned:
 		return
 	_place_near_mouse(_last_total_size)
+
+
+func _input(event: InputEvent) -> void:
+	if not visible or not event is InputEventKey:
+		return
+	var key_event := event as InputEventKey
+	if key_event.keycode != KEY_SHIFT or key_event.location == KEY_LOCATION_RIGHT:
+		return
+	if not key_event.pressed or key_event.echo:
+		return
+	_pinned = not _pinned
+	_refresh_panel_styles()
+	if _pinned:
+		if _hide_timer != null:
+			_hide_timer.stop()
+	else:
+		if not _owner_mouse_inside and not _tooltip_mouse_inside:
+			hide_tooltip()
 
 
 func _resolve_spec(spec_source: Variant) -> Dictionary:
@@ -191,83 +227,35 @@ func _resolve_spec(spec_source: Variant) -> Dictionary:
 
 
 func _build_main_content(spec: Dictionary) -> void:
-	_add_header(_main_content, spec, _MAIN_WIDTH)
+	var terms: Array = spec.get("terms", [])
 	var summary := str(spec.get("summary", ""))
 	if not summary.is_empty():
-		_add_body_label(_main_content, summary, BattleUiTheme.TEXT, _MAIN_WIDTH)
+		_add_body_label(_main_content, summary, BattleUiTheme.TEXT, _MAIN_WIDTH, terms, 0)
 	var stats: Array = spec.get("stats", [])
 	if not stats.is_empty():
 		_add_stats(_main_content, stats, _MAIN_WIDTH)
 	var components: Array = spec.get("components", [])
 	for component in components:
 		if component is Dictionary:
-			_add_component(_main_content, component, _MAIN_WIDTH)
+			_add_component(_main_content, component, _MAIN_WIDTH, terms, 0)
 	var sections: Array = spec.get("sections", [])
 	for section in sections:
 		if section is Dictionary:
-			_add_section(_main_content, section, _MAIN_WIDTH)
-	var terms: Array = spec.get("terms", [])
-	if not terms.is_empty():
-		_add_terms(_main_content, terms, _MAIN_WIDTH)
+			_add_section(_main_content, section, _MAIN_WIDTH, terms, 0)
 
 
-func _add_component(container: VBoxContainer, component: Dictionary, width: float) -> void:
+func _add_component(container: VBoxContainer, component: Dictionary, width: float, terms: Array = [], depth: int = 0) -> void:
 	match str(component.get("type", "text")):
 		"divider":
 			_add_pixel_rule(container, _color_from(component.get("color", BattleUiTheme.BORDER)), width)
 		"section":
-			_add_section(container, component, width)
+			_add_section(container, component, width, terms, depth)
 		"stats":
 			_add_stats(container, component.get("items", []), width)
 		"text":
-			_add_body_label(container, str(component.get("text", "")), _color_from(component.get("color", BattleUiTheme.TEXT)), width)
+			_add_body_label(container, str(component.get("text", "")), _color_from(component.get("color", BattleUiTheme.TEXT)), width, terms, depth)
 		"terms":
-			_add_terms(container, component.get("items", []), width)
-
-
-func _add_header(container: VBoxContainer, spec: Dictionary, width: float) -> void:
-	var accent := _color_from(spec.get("accent", BattleUiTheme.TEXT_GOLD))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.custom_minimum_size.x = _content_width(width)
-	container.add_child(row)
-
-	var icon: Variant = spec.get("icon", null)
-	if icon is Texture2D:
-		var icon_wrap := Control.new()
-		icon_wrap.custom_minimum_size = Vector2(24, 24)
-		row.add_child(icon_wrap)
-		var icon_rect := TextureRect.new()
-		icon_rect.texture = icon
-		icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon_rect.self_modulate = _color_from(spec.get("icon_tint", Color.WHITE))
-		icon_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		icon_wrap.add_child(icon_rect)
-
-	var title_col := VBoxContainer.new()
-	title_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_col.add_theme_constant_override("separation", 2)
-	row.add_child(title_col)
-
-	var title := Label.new()
-	title.text = str(spec.get("title", ""))
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	title.add_theme_font_size_override("font_size", 13)
-	title.add_theme_color_override("font_color", accent)
-	title_col.add_child(title)
-
-	var subtitle := str(spec.get("subtitle", ""))
-	if not subtitle.is_empty():
-		var sub := Label.new()
-		sub.text = subtitle
-		sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		sub.add_theme_font_size_override("font_size", 11)
-		sub.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-		title_col.add_child(sub)
-	_add_pixel_rule(container, accent, width)
+			pass
 
 
 func _add_stats(container: VBoxContainer, stats: Array, width: float) -> void:
@@ -294,7 +282,7 @@ func _add_stats(container: VBoxContainer, stats: Array, width: float) -> void:
 		grid.add_child(value)
 
 
-func _add_section(container: VBoxContainer, section: Dictionary, width: float) -> void:
+func _add_section(container: VBoxContainer, section: Dictionary, width: float, terms: Array = [], depth: int = 0) -> void:
 	var title := str(section.get("title", ""))
 	if not title.is_empty():
 		var title_label := Label.new()
@@ -302,67 +290,83 @@ func _add_section(container: VBoxContainer, section: Dictionary, width: float) -
 		title_label.add_theme_font_size_override("font_size", 10)
 		title_label.add_theme_color_override("font_color", _color_from(section.get("accent", BattleUiTheme.TEXT_HINT)))
 		container.add_child(title_label)
-	_add_body_label(container, str(section.get("body", "")), _color_from(section.get("color", BattleUiTheme.TEXT)), width)
+	_add_body_label(container, str(section.get("body", "")), _color_from(section.get("color", BattleUiTheme.TEXT)), width, terms, depth)
 
 
-func _add_body_label(container: VBoxContainer, text: String, color: Color, width: float) -> void:
+func _add_body_label(container: VBoxContainer, text: String, color: Color, width: float, terms: Array = [], depth: int = 0) -> void:
 	if text.is_empty():
 		return
-	var label := Label.new()
-	label.text = text
+	var label := RichTextLabel.new()
 	label.custom_minimum_size.x = _content_width(width)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", color)
+	label.fit_content = true
+	label.scroll_active = false
+	label.bbcode_enabled = true
+	label.meta_underlined = true
+	label.mouse_filter = Control.MOUSE_FILTER_STOP if not terms.is_empty() else Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("normal_font_size", 12)
+	label.add_theme_color_override("default_color", color)
+	if not terms.is_empty():
+		label.mouse_entered.connect(_on_term_label_mouse_entered.bind(depth), CONNECT_DEFERRED)
+	label.meta_hover_started.connect(_on_term_hover_started.bind(terms, depth), CONNECT_DEFERRED)
+	label.meta_clicked.connect(_on_term_hover_started.bind(terms, depth), CONNECT_DEFERRED)
 	container.add_child(label)
+	_append_highlighted_text(label, text, terms)
 
 
-func _add_terms(container: VBoxContainer, terms: Array, width: float) -> void:
-	var label := Label.new()
-	label.text = "词条"
-	label.add_theme_font_size_override("font_size", 10)
-	label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-	container.add_child(label)
-	var row := HFlowContainer.new()
-	row.custom_minimum_size.x = _content_width(width)
-	row.add_theme_constant_override("h_separation", 6)
-	row.add_theme_constant_override("v_separation", 5)
-	container.add_child(row)
-	for raw_term in terms:
-		if not raw_term is Dictionary:
-			continue
-		var term: Dictionary = raw_term
-		var btn := Button.new()
-		btn.text = str(term.get("label", term.get("title", "")))
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.custom_minimum_size = Vector2(54, 24)
-		BattleUiTheme.apply_button(btn, "ghost")
-		btn.add_theme_color_override("font_color", _color_from(term.get("accent", BattleUiTheme.TEXT_GOLD)))
-		btn.mouse_entered.connect(_show_term_detail.bind(term), CONNECT_DEFERRED)
-		btn.pressed.connect(_show_term_detail.bind(term), CONNECT_DEFERRED)
-		row.add_child(btn)
+func _append_highlighted_text(label: RichTextLabel, text: String, terms: Array) -> void:
+	var cursor := 0
+	while cursor < text.length():
+		var match_pos := -1
+		var match_index := -1
+		var match_text := ""
+		for index in range(terms.size()):
+			if not terms[index] is Dictionary:
+				continue
+			var candidate := str(terms[index].get("label", terms[index].get("title", "")))
+			if candidate.is_empty():
+				continue
+			var candidate_pos := text.find(candidate, cursor)
+			if candidate_pos >= 0 and (match_pos < 0 or candidate_pos < match_pos or (candidate_pos == match_pos and candidate.length() > match_text.length())):
+				match_pos = candidate_pos
+				match_index = index
+				match_text = candidate
+		if match_index < 0:
+			label.add_text(text.substr(cursor))
+			break
+		if match_pos > cursor:
+			label.add_text(text.substr(cursor, match_pos - cursor))
+		var term: Dictionary = terms[match_index]
+		label.push_meta(match_index)
+		label.push_color(_color_from(term.get("accent", BattleUiTheme.TEXT_GOLD)).lightened(0.18))
+		label.add_text(match_text)
+		label.pop()
+		label.pop()
+		cursor = match_pos + match_text.length()
 
 
-func _show_term_detail(term: Dictionary) -> void:
-	_clear_container(_side_content)
-	var accent := _color_from(term.get("accent", BattleUiTheme.TEXT_GOLD))
-	_side_panel.add_theme_stylebox_override("panel", _tooltip_panel_style(accent, true))
-	_add_header(_side_content, {
-		"title": str(term.get("title", term.get("label", ""))),
-		"subtitle": str(term.get("subtitle", "")),
-		"icon": term.get("icon", null),
-		"icon_tint": term.get("icon_tint", Color.WHITE),
-		"accent": accent,
-	}, _SIDE_WIDTH)
+func _on_term_hover_started(meta: Variant, terms: Array, depth: int) -> void:
+	var index := int(meta)
+	if index < 0 or index >= terms.size() or not terms[index] is Dictionary:
+		return
+	_show_term_detail(terms[index], depth + 1)
+
+
+func _show_term_detail(term: Dictionary, depth: int) -> void:
+	var panel_index := depth - 1
+	_ensure_detail_panel(panel_index)
+	_hide_detail_panels_after(panel_index)
+	var content := _detail_contents[panel_index]
+	_clear_container(content)
+	var nested_terms: Array = term.get("terms", [])
 	var stats: Array = term.get("stats", [])
 	if not stats.is_empty():
-		_add_stats(_side_content, stats, _SIDE_WIDTH)
-	_add_body_label(_side_content, str(term.get("body", "")), BattleUiTheme.TEXT, _SIDE_WIDTH)
+		_add_stats(content, stats, _SIDE_WIDTH)
+	_add_body_label(content, str(term.get("body", "")), BattleUiTheme.TEXT, _SIDE_WIDTH, nested_terms, depth)
 	var sections: Array = term.get("sections", [])
 	for section in sections:
 		if section is Dictionary:
-			_add_section(_side_content, section, _SIDE_WIDTH)
-	_side_panel.visible = true
+			_add_section(content, section, _SIDE_WIDTH, nested_terms, depth)
+	_detail_panels[panel_index].visible = true
 	_layout_serial += 1
 	_layout_after_content.call_deferred(_layout_serial)
 
@@ -383,16 +387,29 @@ func _sync_panel_layout() -> void:
 	_main_panel.position = Vector2.ZERO
 	_main_panel.size = main_size
 
+	var viewport_width := maxf(_MAIN_WIDTH, get_viewport_rect().size.x - _SCREEN_PAD * 2.0)
+	var next_x := main_size.x + _PANEL_GAP
+	var next_y := 0.0
+	var row_height := main_size.y
 	var total_size := main_size
-	if _side_panel.visible:
-		var side_size := _panel_size_for(_side_panel, _side_scroll, _SIDE_WIDTH, max_panel_h)
-		_side_panel.position = Vector2(main_size.x + _PANEL_GAP, 0.0)
-		_side_panel.size = side_size
-		total_size.x = main_size.x + _PANEL_GAP + side_size.x
-		total_size.y = maxf(main_size.y, side_size.y)
+	for index in range(_detail_panels.size()):
+		var panel := _detail_panels[index]
+		if not panel.visible:
+			continue
+		var panel_size := _panel_size_for(panel, _detail_scrolls[index], _SIDE_WIDTH, max_panel_h)
+		if next_x + panel_size.x > viewport_width:
+			next_x = 0.0
+			next_y += row_height + _PANEL_GAP
+			row_height = 0.0
+		panel.position = Vector2(next_x, next_y)
+		panel.size = panel_size
+		next_x += panel_size.x + _PANEL_GAP
+		row_height = maxf(row_height, panel_size.y)
+		total_size.x = maxf(total_size.x, next_x - _PANEL_GAP)
+		total_size.y = maxf(total_size.y, next_y + row_height)
 	size = total_size
 	_last_total_size = total_size
-	if _tooltip_mouse_inside:
+	if _tooltip_mouse_inside or _pinned:
 		global_position = _clamp_position(global_position, total_size)
 	else:
 		_place_near_mouse(total_size)
@@ -451,20 +468,12 @@ func _panel_margins(panel: PanelContainer) -> Vector2:
 	)
 
 
-func _tooltip_panel_style(accent: Color, side: bool) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = UiPalette.BG_PANEL if side else UiPalette.BG_RAISED.darkened(0.08)
-	box.border_color = accent.lightened(0.05)
-	box.set_border_width_all(2)
-	box.set_corner_radius_all(0)
-	box.shadow_color = UiPalette.EDGE_DARK
-	box.shadow_size = 4
-	box.shadow_offset = Vector2(3, 3)
-	box.content_margin_left = 9
-	box.content_margin_right = 9
-	box.content_margin_top = 8
-	box.content_margin_bottom = 8
-	return box
+func _tooltip_panel_style() -> StyleBoxFlat:
+	var style := BattleUiTheme.tooltip_style()
+	if _pinned:
+		style.border_color = BattleUiTheme.BORDER_ACCENT.lightened(0.16)
+		style.shadow_color = BattleUiTheme.BORDER_ACCENT.darkened(0.45)
+	return style
 
 
 func _add_pixel_rule(container: VBoxContainer, color: Color, width: float) -> void:
@@ -484,6 +493,55 @@ func _clear_container(container: Container) -> void:
 	for child in container.get_children():
 		container.remove_child(child)
 		child.queue_free()
+
+
+func _ensure_detail_panel(index: int) -> void:
+	while _detail_panels.size() <= index:
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(_SIDE_WIDTH, 0.0)
+		panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		panel.visible = false
+		panel.add_theme_stylebox_override("panel", _tooltip_panel_style())
+		add_child(panel)
+		var scroll := ScrollContainer.new()
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+		scroll.clip_contents = true
+		panel.add_child(scroll)
+		var content := VBoxContainer.new()
+		content.custom_minimum_size.x = _content_width(_SIDE_WIDTH)
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.add_theme_constant_override("separation", 6)
+		scroll.add_child(content)
+		_detail_panels.append(panel)
+		_detail_scrolls.append(scroll)
+		_detail_contents.append(content)
+	_refresh_panel_styles()
+
+
+func _hide_detail_panels_after(index: int) -> void:
+	for detail_index in range(index + 1, _detail_panels.size()):
+		_clear_container(_detail_contents[detail_index])
+		_detail_panels[detail_index].visible = false
+
+
+func _clear_detail_panels() -> void:
+	for index in range(_detail_panels.size()):
+		_clear_container(_detail_contents[index])
+		_detail_panels[index].visible = false
+
+
+func _on_term_label_mouse_entered(depth: int) -> void:
+	_hide_detail_panels_after(depth - 1)
+
+
+func _refresh_panel_styles() -> void:
+	if _main_panel != null:
+		_main_panel.add_theme_stylebox_override("panel", _tooltip_panel_style())
+	for panel in _detail_panels:
+		if panel != null:
+			panel.add_theme_stylebox_override("panel", _tooltip_panel_style())
 
 
 func _color_from(value: Variant) -> Color:
