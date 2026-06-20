@@ -35,7 +35,7 @@ func _init_from_def() -> void:
 		Constants.ENTITY_BARREL:
 			hp = Constants.BARREL_HP
 			max_hp = Constants.BARREL_HP
-			tags = ["destructible", "explosive", "flammable"]
+			tags = ["blocks_move", "blocks_projectile", "destructible", "explosive", "flammable"]
 
 
 func is_indestructible() -> bool:

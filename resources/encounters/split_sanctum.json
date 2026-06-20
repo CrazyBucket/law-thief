@@ -1,0 +1,18 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_fission_slime", "pos": [5, 2]}
+  ],
+  "random_enemies": [
+    {"pos": [6, 6], "candidates": ["unit_bomb_rat", "unit_stone_bow_guard"]}
+  ],
+  "tiles": [
+    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
+    {"pos": [3, 3], "tile_id": "tile_water"}, {"pos": [4, 3], "tile_id": "tile_water"},
+    {"pos": [3, 4], "tile_id": "tile_water"}, {"pos": [4, 4], "tile_id": "tile_water"}
+  ],
+  "entities": [
+    {"entity_id": "entity_spike", "pos": [5, 1]}, {"entity_id": "entity_spike", "pos": [7, 2]},
+    {"entity_id": "entity_spike", "pos": [5, 4]}, {"entity_id": "entity_spike", "pos": [7, 4]}
+  ]
+}

@@ -11,8 +11,14 @@ const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 const CHAPTER_COUNT := 3
 
 const COMBAT_ENCOUNTERS: Dictionary = {
-	"NORMAL_COMBAT": ["template_a", "template_b", "template_c"],
-	"ELITE_COMBAT": ["template_d", "template_b"],
+	"NORMAL_COMBAT": [
+		"crossfire_courtyard", "rat_run", "flooded_crossing", "spike_corridor",
+		"burning_storehouse", "poison_marsh", "frozen_gallery", "barrel_maze",
+		"shifting_quarry", "split_sanctum",
+	],
+	"ELITE_COMBAT": [
+		"enforcer_gate", "law_beast_arena", "toxic_furnace", "storm_pillars",
+	],
 }
 
 var map_seed: int = 20260525

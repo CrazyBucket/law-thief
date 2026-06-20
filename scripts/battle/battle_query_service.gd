@@ -50,7 +50,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	if manual_blocked:
 		action = ""
 	var move_budget := ctrl.player_move_budget(player)
-	if action == Constants.ACTION_MOVE and (unlimited or (not state.player_moved and StatusRules.can_move(player))):
+	if action == Constants.ACTION_MOVE and (unlimited or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))):
 		var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
 		result["reachable"] = reachable
 		_append_overlay(result, "move", reachable)
@@ -69,7 +69,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 				var route: Array = [player.pos]
 				route.append_array(move_path)
 				_append_route(result, "move", route, {"arrow_reverse": false})
-	elif action == Constants.ACTION_ATTACK and (unlimited or not state.player_acted):
+	elif action == Constants.ACTION_ATTACK and (unlimited or not state.player_acted or StatusRules.has_extra_attack(player)):
 		var attack_range := _attack_target_cells(state, player)
 		result["attack_range"] = attack_range
 		_append_overlay(result, "attack_range", attack_range)
@@ -195,11 +195,11 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 	match ctrl.selected_action:
 		Constants.ACTION_MOVE:
 			var move_budget := ctrl.player_move_budget(player)
-			var can_move_now := ctrl.editor_unlimited_actions_enabled() or (not state.player_moved and StatusRules.can_move(player))
+			var can_move_now := ctrl.editor_unlimited_actions_enabled() or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))
 			if can_move_now and cell in BoardUtils.reachable_cells(state, player.pos, move_budget):
 				lines.append("落点可达")
 		Constants.ACTION_ATTACK:
-			var can_attack_now := ctrl.editor_unlimited_actions_enabled() or not state.player_acted
+			var can_attack_now := ctrl.editor_unlimited_actions_enabled() or not state.player_acted or StatusRules.has_extra_attack(player)
 			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
 				if blocking != null and blocking.is_indestructible() and unit == null:
 					lines.append("射击会被障碍挡下")

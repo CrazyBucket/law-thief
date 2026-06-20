@@ -89,7 +89,7 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	state.units[state.player_uid] = player
 	_apply_run_slot_overrides(player)
 	_restore_run_player_state(state, player)
-	for enemy_data in encounter.get("enemies", []):
+	for enemy_data in _resolve_encounter_enemies(encounter, encounter_id):
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
 		var base_slots: Array = def.get("slots", [])
@@ -162,7 +162,7 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 		_unit_defs["unit_player"]
 	)
 	state.units[state.player_uid] = player
-	for enemy_data in encounter.get("enemies", []):
+	for enemy_data in _resolve_encounter_enemies(encounter, encounter_id):
 		var enemy_uid := _next_uid(str(enemy_data.get("def_id", "enemy")))
 		var def_id := str(enemy_data.get("def_id", "unit_bomb_rat"))
 		var enemy_def: Dictionary = get_unit_def(def_id)
@@ -204,6 +204,69 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 
 func get_encounter_ids() -> Array:
 	return _encounters.keys()
+
+
+## Resolve hand-authored encounter composition after the combat RNG context is active.
+## `enemies` are always included, one weighted `enemy_groups` entry is included as a
+## whole formation, and every `random_enemies` slot rolls one candidate at its preset
+## position. Keeping these rolls here makes reloads deterministic for a run/room seed.
+func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> Array[Dictionary]:
+	var resolved: Array[Dictionary] = []
+	for raw_enemy in encounter.get("enemies", []):
+		if raw_enemy is Dictionary:
+			resolved.append((raw_enemy as Dictionary).duplicate(true))
+
+	var groups: Array = encounter.get("enemy_groups", [])
+	if not groups.is_empty():
+		var valid_groups: Array = []
+		var weights: Array = []
+		for raw_group in groups:
+			if not raw_group is Dictionary:
+				continue
+			var group := raw_group as Dictionary
+			if (group.get("enemies", []) as Array).is_empty():
+				continue
+			valid_groups.append(group)
+			weights.append(maxf(0.0, float(group.get("weight", 1.0))))
+		var selected_group: Variant = RngService.weighted_pick(
+			"encounter_group_%s" % encounter_id,
+			valid_groups,
+			weights
+		)
+		if selected_group is Dictionary:
+			for raw_enemy in (selected_group as Dictionary).get("enemies", []):
+				if raw_enemy is Dictionary:
+					resolved.append((raw_enemy as Dictionary).duplicate(true))
+
+	var random_slots: Array = encounter.get("random_enemies", [])
+	for slot_index in range(random_slots.size()):
+		var raw_slot: Variant = random_slots[slot_index]
+		if not raw_slot is Dictionary:
+			continue
+		var slot := raw_slot as Dictionary
+		var candidates: Array = slot.get("candidates", [])
+		var candidate_defs: Array = []
+		var candidate_weights: Array = []
+		for raw_candidate in candidates:
+			if raw_candidate is String:
+				candidate_defs.append({"def_id": str(raw_candidate)})
+				candidate_weights.append(1.0)
+			elif raw_candidate is Dictionary:
+				var candidate := (raw_candidate as Dictionary).duplicate(true)
+				candidate_defs.append(candidate)
+				candidate_weights.append(maxf(0.0, float(candidate.get("weight", 1.0))))
+		var selected: Variant = RngService.weighted_pick(
+			"encounter_random_enemy_%s_%d" % [encounter_id, slot_index],
+			candidate_defs,
+			candidate_weights
+		)
+		if not selected is Dictionary:
+			continue
+		var enemy := (selected as Dictionary).duplicate(true)
+		enemy.erase("weight")
+		enemy["pos"] = slot.get("pos", Vector2i.ZERO)
+		resolved.append(enemy)
+	return resolved
 
 
 func next_runtime_uid(prefix: String) -> String:
@@ -1468,14 +1531,23 @@ func _parse_encounter_json(raw: Dictionary) -> Dictionary:
 		result["player_spawn"] = Vector2i(int(sp[0]), int(sp[1]))
 	# enemies: pos [x, y] → Vector2i
 	if result.has("enemies"):
-		var enemies: Array = result["enemies"]
-		for i in range(enemies.size()):
-			var e: Dictionary = enemies[i].duplicate(true)
-			if e.has("pos"):
-				var p: Array = e["pos"]
-				e["pos"] = Vector2i(int(p[0]), int(p[1]))
-			enemies[i] = e
-		result["enemies"] = enemies
+		result["enemies"] = _parse_enemy_positions(result["enemies"])
+	if result.has("enemy_groups"):
+		var groups: Array = result["enemy_groups"]
+		for i in range(groups.size()):
+			var group: Dictionary = groups[i].duplicate(true)
+			group["enemies"] = _parse_enemy_positions(group.get("enemies", []))
+			groups[i] = group
+		result["enemy_groups"] = groups
+	if result.has("random_enemies"):
+		var random_enemies: Array = result["random_enemies"]
+		for i in range(random_enemies.size()):
+			var slot: Dictionary = random_enemies[i].duplicate(true)
+			if slot.has("pos"):
+				var p: Array = slot["pos"]
+				slot["pos"] = Vector2i(int(p[0]), int(p[1]))
+			random_enemies[i] = slot
+		result["random_enemies"] = random_enemies
 	# tiles: pos [x, y] → Vector2i
 	if result.has("tiles"):
 		var tiles: Array = result["tiles"]
@@ -1497,6 +1569,17 @@ func _parse_encounter_json(raw: Dictionary) -> Dictionary:
 			entities[i] = entry
 		result["entities"] = entities
 	return result
+
+
+func _parse_enemy_positions(raw_enemies: Array) -> Array:
+	var enemies := raw_enemies.duplicate(true)
+	for i in range(enemies.size()):
+		var enemy: Dictionary = enemies[i].duplicate(true)
+		if enemy.has("pos"):
+			var p: Array = enemy["pos"]
+			enemy["pos"] = Vector2i(int(p[0]), int(p[1]))
+		enemies[i] = enemy
+	return enemies
 
 
 func _resolve_enemy_slot_budget(

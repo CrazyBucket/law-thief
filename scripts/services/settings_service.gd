@@ -7,6 +7,11 @@ const DEFAULTS := {
 	"show_tutorial": true,
 	"music_enabled": true,
 	"sfx_enabled": true,
+	"audio_volumes": {
+		"master": 100,
+		"music": 100,
+		"sfx": 100,
+	},
 	"battle_animation_speed": 1.0,
 }
 
@@ -44,6 +49,37 @@ func toggle_bool(key: String) -> bool:
 	var next_value := not bool(get_value(key))
 	set_value(key, next_value)
 	return next_value
+
+
+func get_track_volume_percent(track_name: String) -> int:
+	var defaults: Dictionary = _default_audio_volumes()
+	var volumes_variant: Variant = get_value("audio_volumes")
+	if not volumes_variant is Dictionary:
+		return int(defaults.get(track_name, 100))
+	var volumes: Dictionary = volumes_variant
+	return int(clampi(int(volumes.get(track_name, defaults.get(track_name, 100))), 0, 100))
+
+
+func set_track_volume_percent(track_name: String, percent: int) -> int:
+	var volumes := _get_audio_volumes()
+	volumes[track_name] = clampi(percent, 0, 100)
+	_settings["audio_volumes"] = volumes
+	save_settings()
+	apply_runtime_settings()
+	return int(volumes[track_name])
+
+
+func set_all_track_volumes_percent(percent: int, track_names: Array = []) -> void:
+	var volumes := _get_audio_volumes()
+	var target_tracks := track_names
+	if target_tracks.is_empty():
+		target_tracks = ["master", "music", "sfx"]
+	var clamped := clampi(percent, 0, 100)
+	for track_name in target_tracks:
+		volumes[str(track_name)] = clamped
+	_settings["audio_volumes"] = volumes
+	save_settings()
+	apply_runtime_settings()
 
 
 func get_animation_speed_scale() -> float:
@@ -87,6 +123,7 @@ func load_settings() -> void:
 	if payload is Dictionary:
 		for key in (payload as Dictionary).keys():
 			_settings[key] = (payload as Dictionary)[key]
+	_settings["audio_volumes"] = _get_audio_volumes()
 
 
 func save_settings() -> void:
@@ -106,3 +143,22 @@ func apply_runtime_settings() -> void:
 	DisplayServer.window_set_mode(
 		DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
 	)
+	var root: Window = Engine.get_main_loop().root
+	if root == null:
+		return
+	var audio_service := root.get_node_or_null("AudioService")
+	if audio_service != null and audio_service.has_method("apply_settings"):
+		audio_service.apply_settings()
+
+
+func _default_audio_volumes() -> Dictionary:
+	return (DEFAULTS.get("audio_volumes", {}) as Dictionary).duplicate(true)
+
+
+func _get_audio_volumes() -> Dictionary:
+	var volumes := _default_audio_volumes()
+	var current: Variant = _settings.get("audio_volumes", {})
+	if current is Dictionary:
+		for key in (current as Dictionary).keys():
+			volumes[str(key)] = clampi(int((current as Dictionary)[key]), 0, 100)
+	return volumes

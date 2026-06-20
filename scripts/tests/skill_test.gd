@@ -1,6 +1,8 @@
 extends SceneTree
 ## 红槽宝石攻击触发测试：验证玩家装备红槽宝石后，攻击命中时附带效果正确触发
 
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -17,6 +19,10 @@ func _run_tests() -> void:
 	_test_fire_gem_burns_target_not_attacker()
 	_test_light_beam_hits_line_targets()
 	_test_counter_red_triggers_followup()
+	_test_counter_red_preempts_incoming_attack()
+	_test_counter_red_level_three_enemy_grants_extra_action()
+	_test_extra_attack_status_consumed_after_action()
+	_test_extra_move_status_consumed_after_action()
 	_test_gravity_red_range_extends_attack()
 	_test_gravity_red_pulls_attack_target()
 	_test_gravity_red_collision_when_adjacent()
@@ -262,12 +268,95 @@ func _test_counter_red_triggers_followup() -> void:
 			guard = unit
 			break
 	assert(guard != null, "guard should exist")
-	state.battle_temp_flags["damaged_by:%s:%s:%d" % [player.uid, guard.uid, state.turn_index]] = true
-	var hp_before := guard.hp
+	var guard_hp_before := guard.hp
+	var player_hp_before := player.hp
 	var result := ctrl.try_attack_cell(guard.pos)
 	assert(result.get("ok", false), "counter attack should succeed")
-	assert(hp_before - guard.hp >= CombatRules.attack_damage(state, player) * 2, "counter follow-up should add another full hit")
+	assert(guard.has_status(Constants.STATUS_COUNTER_MARK), "counter attack should mark the target")
+	CombatRules.apply_damage(state, player, 3, guard.uid, "ranged_attack")
+	assert(player.hp == player_hp_before - 3, "player should still take incoming damage")
+	assert(guard_hp_before - guard.hp >= CombatRules.attack_damage(state, player) * 2, "counter mark should retaliate after the target hits back")
+	assert(not guard.has_status(Constants.STATUS_COUNTER_MARK), "counter mark should be consumed after triggering")
 	print("  [OK] counter red triggers follow-up")
+
+
+func _test_counter_red_preempts_incoming_attack() -> void:
+	print("--- Test: Counter red resolves before incoming attack damage ---")
+	var builder := ScenarioBuilder.new("fission_slime_test", 9910, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(2, 2))
+	builder.set_stats(player, {"hp": 8, "max_hp": 8, "base_attack": 10})
+	var enemy := builder.add_unit("counter_preempt_enemy", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 2), {
+		"hp": 8,
+		"max_hp": 8,
+		"base_attack": 4,
+	})
+	builder.clear_slots(enemy)
+	var state := builder.finish()
+	StatusRules.apply_counter_mark(state, enemy, player.uid, 1, player.uid)
+	var hp_before := player.hp
+	CombatRules.apply_damage(state, player, 4, enemy.uid, "ranged_attack")
+	assert(not enemy.alive, "enemy should be killed by preemptive counter")
+	assert(player.hp == hp_before, "incoming damage should be canceled when source dies first")
+	print("  [OK] counter red preempts incoming attack")
+
+
+func _test_counter_red_level_three_enemy_grants_extra_action() -> void:
+	print("--- Test: Counter red level 3 grants enemy extra action after lethal retaliate ---")
+	var builder := ScenarioBuilder.new("fission_slime_test", 9911, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(2, 2))
+	builder.set_stats(player, {"hp": 4, "max_hp": 4})
+	var enemy := builder.add_unit("counter_refresh_enemy", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 2), {
+		"hp": 20,
+		"max_hp": 20,
+		"base_attack": 4,
+	})
+	builder.clear_slots(enemy)
+	var state := builder.finish()
+	StatusRules.apply_counter_mark(state, player, enemy.uid, 3, enemy.uid)
+	CombatRules.apply_damage(state, enemy, 1, player.uid, "ranged_attack")
+	assert(not player.alive, "level 3 counter retaliate should kill the player in this setup")
+	assert(StatusRules.has_extra_attack(enemy), "enemy should gain one extra attack status")
+	print("  [OK] counter red level 3 grants enemy extra action")
+
+
+func _test_extra_attack_status_consumed_after_action() -> void:
+	print("--- Test: Extra attack status is consumed after bonus attack ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	var guard: UnitState = null
+	for unit in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard":
+			guard = unit
+			break
+	assert(guard != null, "guard should exist")
+	state.player_acted = true
+	StatusRules.grant_extra_attack(state, player, 1, player.uid)
+	var result := ctrl.try_attack_cell(guard.pos)
+	assert(result.get("ok", false), "bonus attack should succeed")
+	assert(not StatusRules.has_extra_attack(player), "extra attack should be consumed")
+	print("  [OK] extra attack status consumed")
+
+
+func _test_extra_move_status_consumed_after_action() -> void:
+	print("--- Test: Extra move status is consumed after bonus move ---")
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001")
+	var state := ctrl.state
+	var player := state.get_player()
+	state.player_moved = true
+	StatusRules.grant_extra_move(state, player, 1, player.uid)
+	var target := player.pos + Vector2i(1, 0)
+	var result := ctrl.try_move(target)
+	assert(result.get("ok", false), "bonus move should succeed")
+	assert(player.pos == target, "player should complete bonus move")
+	assert(not StatusRules.has_extra_move(player), "extra move should be consumed")
+	print("  [OK] extra move status consumed")
 
 
 func _test_gravity_red_range_extends_attack() -> void:

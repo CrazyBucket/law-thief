@@ -106,6 +106,9 @@ const STATUS_VULNERABLE := "vulnerable"  # 易伤：受到伤害 +50%，被强�
 const STATUS_WEAK := "weak"  # 虚弱：普通攻击伤害变为原先的 75%
 const STATUS_LIGHT_EXPOSED := "light_exposed"
 const STATUS_BLINDED := "blinded"
+const STATUS_COUNTER_MARK := "counter_mark"
+const STATUS_EXTRA_ATTACK := "extra_attack"
+const STATUS_EXTRA_MOVE := "extra_move"
 
 const TILE_MOD_POISON_FOG := "poison_fog"
 const TILE_MOD_FIRE := "fire"

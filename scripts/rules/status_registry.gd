@@ -105,6 +105,12 @@ static func short_label(status: StatusInstance) -> String:
 			return "易伤"
 		Constants.STATUS_WEAK:
 			return "虚弱"
+		Constants.STATUS_COUNTER_MARK:
+			return "截"
+		Constants.STATUS_EXTRA_ATTACK:
+			return "攻"
+		Constants.STATUS_EXTRA_MOVE:
+			return "移"
 	return display_name(status.status_id)
 
 
@@ -117,6 +123,8 @@ static func icon_badge(status: StatusInstance) -> String:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
+		Constants.STATUS_EXTRA_ATTACK, Constants.STATUS_EXTRA_MOVE:
+			return str(status.stacks)
 	return ""
 
 
@@ -154,6 +162,12 @@ static func tooltip(status: StatusInstance) -> String:
 			return "易伤：受到伤害 +50%%，剩余 %d 回合" % status.duration
 		Constants.STATUS_WEAK:
 			return "虚弱：普通攻击伤害变为 75%%，剩余 %d 回合" % status.duration
+		Constants.STATUS_COUNTER_MARK:
+			return "截击：若该单位在本轮结束前伤害标记者，会立刻吃一次追击"
+		Constants.STATUS_EXTRA_ATTACK:
+			return "额外攻击：本回合已攻击后，仍可再攻击 %d 次" % status.stacks
+		Constants.STATUS_EXTRA_MOVE:
+			return "额外移动：本回合已移动后，仍可再移动 %d 次" % status.stacks
 	return display_name(status.status_id)
 
 
@@ -310,6 +324,30 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_COUNTER_MARK: {
+		"display_name": "截击",
+		"type": TYPE_SYSTEM,
+		"color": UiPalette.DISORDER_RED,
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_TURN_END,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_EXTRA_ATTACK: {
+		"display_name": "额外攻击",
+		"type": TYPE_BUFF,
+		"color": UiPalette.EXPOSE_YELLOW,
+		"stack_rule": STACK_VALUE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_EXTRA_MOVE: {
+		"display_name": "额外移动",
+		"type": TYPE_BUFF,
+		"color": UiPalette.WET_BLUE,
+		"stack_rule": STACK_VALUE,
+		"tick_phase": TICK_NONE,
 		"blocks_movement": false,
 	},
 }

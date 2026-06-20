@@ -4,49 +4,68 @@ extends RefCounted
 
 const ATLAS_JSON := "res://data/status_icon_atlas.json"
 const SHEET_PATH := "res://assets/ui/status_icons.png"
+const EXTERNAL_ICON_DIR := "res://assets/ui/status_icons_generated"
 const HFRAMES := 7
 const VFRAMES := 5
 
 static var _sheet: Texture2D = null
 static var _atlas_cache: Dictionary = {}
 static var _frame_map: Dictionary = {}
+static var _icon_cache: Dictionary = {}
+static var _missing_external: Dictionary = {}
 
 
-static func get_icon(status_id: String) -> AtlasTexture:
+static func get_icon(status_id: String) -> Texture2D:
+	if _icon_cache.has(status_id):
+		return _icon_cache[status_id]
 	_ensure_loaded()
-	if not _frame_map.has(status_id):
-		return null
-	var coords: Vector2i = _frame_map[status_id]
-	if _atlas_cache.has(coords):
-		return _atlas_cache[coords]
-	var sheet := _get_sheet()
-	if sheet == null:
-		return null
-	var region := _frame_region(sheet, coords.x, coords.y)
-	var atlas := AtlasTexture.new()
-	atlas.atlas = sheet
-	atlas.region = region
-	_atlas_cache[coords] = atlas
-	return atlas
+	if _frame_map.has(status_id):
+		var coords: Vector2i = _frame_map[status_id]
+		if _atlas_cache.has(coords):
+			var cached_atlas: AtlasTexture = _atlas_cache[coords]
+			_icon_cache[status_id] = cached_atlas
+			return cached_atlas
+		var sheet := _get_sheet()
+		if sheet == null:
+			return _load_external_icon(status_id)
+		var region := _frame_region(sheet, coords.x, coords.y)
+		var atlas := AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = region
+		_atlas_cache[coords] = atlas
+		_icon_cache[status_id] = atlas
+		return atlas
+	return _load_external_icon(status_id)
 
 
 static func has_icon(status_id: String) -> bool:
-	_ensure_loaded()
-	return _frame_map.has(status_id)
+	return get_icon(status_id) != null
 
 
 static func draw_icon(canvas: CanvasItem, pos: Vector2, status_id: String, size: float = 14.0) -> bool:
 	var tex := get_icon(status_id)
-	if tex == null or tex.atlas == null:
-		return false
-	var src := tex.region
-	if src.size.x <= 0.0 or src.size.y <= 0.0:
+	if tex == null:
 		return false
 	var box := Vector2(size, size)
-	var scale := minf(box.x / src.size.x, box.y / src.size.y)
-	var draw_sz := Vector2(src.size.x * scale, src.size.y * scale)
+	if tex is AtlasTexture:
+		var atlas_tex := tex as AtlasTexture
+		if atlas_tex.atlas == null:
+			return false
+		var src := atlas_tex.region
+		if src.size.x <= 0.0 or src.size.y <= 0.0:
+			return false
+		var scale := minf(box.x / src.size.x, box.y / src.size.y)
+		var draw_sz := Vector2(src.size.x * scale, src.size.y * scale)
+		var offset := (box - draw_sz) * 0.5
+		canvas.draw_texture_rect_region(atlas_tex.atlas, Rect2(pos + offset, draw_sz), src)
+		return true
+	var tex_size := tex.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return false
+	var scale := minf(box.x / tex_size.x, box.y / tex_size.y)
+	var draw_sz := tex_size * scale
 	var offset := (box - draw_sz) * 0.5
-	canvas.draw_texture_rect_region(tex.atlas, Rect2(pos + offset, draw_sz), src)
+	canvas.draw_texture_rect(tex, Rect2(pos + offset, draw_sz), false)
 	return true
 
 
@@ -100,4 +119,20 @@ static func _get_sheet() -> Texture2D:
 	if loaded is Texture2D:
 		_sheet = loaded as Texture2D
 		return _sheet
+	return null
+
+
+static func _load_external_icon(status_id: String) -> Texture2D:
+	if _missing_external.has(status_id):
+		return null
+	var icon_path := "%s/%s.png" % [EXTERNAL_ICON_DIR, status_id]
+	if not ResourceLoader.exists(icon_path):
+		_missing_external[status_id] = true
+		return null
+	var loaded: Resource = load(icon_path)
+	if loaded is Texture2D:
+		var tex := loaded as Texture2D
+		_icon_cache[status_id] = tex
+		return tex
+	_missing_external[status_id] = true
 	return null

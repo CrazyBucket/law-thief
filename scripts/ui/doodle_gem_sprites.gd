@@ -1,31 +1,33 @@
 extends RefCounted
 
-## Doodle RPG Pickups：Loot_0~4 宝石贴图，与 Knight 共用加载回退策略。
+## Gem sprites: prefer project-specific generated gem textures, keep Loot_* only as relic fallback.
 
 const LOOT_ROOT := "res://assets/demo/doodle-rpg/ALL SPRITES/Pickups and Items/"
+const GEM_ROOT := "res://assets/ui/gem_icons_generated/"
 
-const _GEM_LOOT_INDEX: Dictionary = {
-	Constants.GEM_EXPLOSION: 1,
-	Constants.GEM_POISON: 3,
-	Constants.GEM_GRAVITY: 4,
-	Constants.GEM_CONDUCTIVE: 0,
-	Constants.GEM_FIRE: 2,
-	Constants.GEM_ICE: 4,
-	Constants.GEM_SPLIT: 0,
-}
-
-const _GEM_MODULATE: Dictionary = {
-	Constants.GEM_CONDUCTIVE: Color(1.12, 1.08, 0.52),
-	Constants.GEM_ICE: Color(0.62, 1.05, 1.18),
-	Constants.GEM_SPLIT: Color(0.92, 0.88, 1.05),
+const _GEM_TEXTURE_PATHS: Dictionary = {
+	Constants.GEM_EXPLOSION: "%sgem_explosion.png" % GEM_ROOT,
+	Constants.GEM_POISON: "%sgem_poison.png" % GEM_ROOT,
+	Constants.GEM_GRAVITY: "%sgem_gravity.png" % GEM_ROOT,
+	Constants.GEM_CONDUCTIVE: "%sgem_conductive.png" % GEM_ROOT,
+	Constants.GEM_FIRE: "%sgem_fire.png" % GEM_ROOT,
+	Constants.GEM_ICE: "%sgem_ice.png" % GEM_ROOT,
+	Constants.GEM_SPLIT: "%sgem_split.png" % GEM_ROOT,
+	Constants.GEM_LIGHT: "%sgem_light.png" % GEM_ROOT,
+	Constants.GEM_COUNTER: "%sgem_counter.png" % GEM_ROOT,
+	Constants.GEM_ECHO: "%sgem_echo.png" % GEM_ROOT,
 }
 
 var _texture_cache: Dictionary = {}
 
 
 func texture_for_gem_id(gem_id: String) -> Texture2D:
-	var loot_idx: int = int(_GEM_LOOT_INDEX.get(gem_id, 0))
-	return _ensure_texture("%sLoot_%d.png" % [LOOT_ROOT, loot_idx])
+	var tex_path: String = str(_GEM_TEXTURE_PATHS.get(gem_id, ""))
+	if not tex_path.is_empty():
+		var custom_tex := _ensure_texture(tex_path)
+		if custom_tex != null:
+			return custom_tex
+	return _ensure_texture("%sLoot_%d.png" % [LOOT_ROOT, 0])
 
 
 func texture_for_relic_id(relic_id: String) -> Texture2D:
@@ -34,7 +36,7 @@ func texture_for_relic_id(relic_id: String) -> Texture2D:
 
 
 func modulate_for_gem_id(gem_id: String) -> Color:
-	return _GEM_MODULATE.get(gem_id, Color.WHITE)
+	return Color.WHITE
 
 
 func _ensure_texture(abs_path: String) -> Texture2D:

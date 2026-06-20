@@ -462,9 +462,7 @@ static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: V
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	var counter_key := "damaged_by:%s:%s:%d" % [enemy.uid, player.uid, state.turn_index]
-	if bool(state.battle_temp_flags.get(counter_key, false)):
-		score += float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
+	score += _w(profile, "w_status", 6.0)
 	candidate.score = score
 	candidate.description = "反击"
 	results.append(candidate)

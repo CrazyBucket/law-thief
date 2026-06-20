@@ -2,9 +2,11 @@ class_name GemEffects
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const EntityRules = preload("res://scripts/rules/entity_rules.gd")
 const GemEchoRules = preload("res://scripts/rules/gem_echo_rules.gd")
 const GemComboResolver = preload("res://scripts/rules/gem_combo_resolver.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
+const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
@@ -509,6 +511,9 @@ static func _explode_at(state: GameState, center: Vector2i, damage: int, source_
 	for cell in BoardUtils.cells_in_radius(center, Constants.EXPLOSION_RADIUS):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
+		var hit_entity := state.get_entity_at(cell)
+		if hit_entity != null and hit_entity.alive and hit_entity.max_hp > 0:
+			EntityRules.damage_entity(state, hit_entity, damage, source_uid, events)
 		var hit_unit := state.get_unit_at(cell)
 		if hit_unit == null or not hit_unit.alive:
 			continue
@@ -876,14 +881,31 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 			return true
 		"counter":
 			if source != null and source.alive and damage > 0:
-				_damage_unit_event(
-					state,
-					source,
-					CombatRules.attack_damage(state, owner),
-					owner.uid,
-					"counter_blue",
-					_events_from_ctx(ctx)
-				)
+				var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
+				if gem_ctx.is_empty():
+					gem_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_OWNER_DAMAGED, _slot)
+				var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "counter"))
+				if level >= 2:
+					var result := AttackPipeline.execute_aimed(
+						state,
+						owner,
+						source.pos,
+						[AttackPipeline.TAG_RANGED],
+						{"damage_reason": "counter_blue"},
+						Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
+					)
+					_events_from_ctx(ctx).append_array(result.get("events", []))
+					if level >= 3 and not source.alive and owner.uid == state.player_uid:
+						StatusRules.grant_extra_move(state, owner, 1, owner.uid)
+				else:
+					_damage_unit_event(
+						state,
+						source,
+						CombatRules.attack_damage(state, owner),
+						owner.uid,
+						"counter_blue",
+						_events_from_ctx(ctx)
+					)
 			return true
 		"echo":
 			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})

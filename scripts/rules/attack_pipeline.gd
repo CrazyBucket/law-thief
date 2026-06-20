@@ -3,6 +3,7 @@ extends RefCounted
 
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
+const EntityRules = preload("res://scripts/rules/entity_rules.gd")
 const GemEchoRules = preload("res://scripts/rules/gem_echo_rules.gd")
 const GemComboResolver = preload("res://scripts/rules/gem_combo_resolver.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
@@ -257,12 +258,16 @@ static func _phase_hit(ctx: AttackContext) -> void:
 		_apply_light_beam(ctx, reason)
 		return
 
+	var hit_cell := ctx.aim_cell
 	if ctx.has_tag(TAG_RANGED):
 		var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
-		_push_projectile_event(ctx, from_cell, ctx.aim_cell)
-	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, ctx.aim_cell)
+		if not ctx.has_tag(TAG_SPLIT_SHOT):
+			hit_cell = BoardUtils.resolve_projectile_impact(ctx.state, from_cell, ctx.aim_cell)
+		_push_projectile_event(ctx, from_cell, hit_cell)
+		ctx.target = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
+	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, hit_cell)
 
-	_apply_tags_at_cell(ctx, ctx.aim_cell, ctx.target, reason)
+	_apply_tags_at_cell(ctx, hit_cell, ctx.target, reason)
 
 
 static func _phase_post_attack(ctx: AttackContext) -> void:
@@ -318,6 +323,10 @@ static func _apply_tags_at_cell(
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			_apply_direct_hit_extras(ctx, target)
+	elif not ctx.has_tag(TAG_EXPLOSIVE):
+		var entity := ctx.state.get_entity_at(hit_cell)
+		if entity != null and entity.alive and entity.max_hp > 0:
+			EntityRules.damage_entity(ctx.state, entity, ctx.base_damage, ctx.attacker.uid, ctx.events)
 
 	var hit_unit := _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
 	var had_burning_before := hit_unit != null and hit_unit.has_status(Constants.STATUS_BURNING)
@@ -636,14 +645,9 @@ static func _light_beam_cells(state: GameState, from_cell: Vector2i, aim_cell: V
 static func _apply_red_counter(ctx: AttackContext) -> void:
 	if ctx.target == null or not ctx.target.alive:
 		return
-	var key := "damaged_by:%s:%s:%d" % [ctx.attacker.uid, ctx.target.uid, ctx.state.turn_index]
-	if not bool(ctx.state.battle_temp_flags.get(key, false)):
-		return
-	var once_key := "counter_red_used:%s:%s:%d" % [ctx.attacker.uid, ctx.target.uid, ctx.state.turn_index]
-	if bool(ctx.state.battle_temp_flags.get(once_key, false)):
-		return
-	ctx.state.battle_temp_flags[once_key] = true
-	ctx.damage_unit(ctx.target, ctx.base_damage, "counter_red")
+	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
+	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "counter"))
+	StatusRules.apply_counter_mark(ctx.state, ctx.target, ctx.attacker.uid, level, ctx.attacker.uid)
 
 
 static func _apply_red_echo_followup(ctx: AttackContext) -> void:

@@ -1,0 +1,19 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_stone_bow_guard", "pos": [6, 1]},
+    {"def_id": "unit_stone_bow_guard", "pos": [6, 6]}
+  ],
+  "random_enemies": [
+    {"pos": [5, 5], "candidates": [
+      {"def_id": "unit_bomb_rat", "weight": 3},
+      {"def_id": "unit_patrol_guard", "weight": 2}
+    ]}
+  ],
+  "entities": [
+    {"entity_id": "entity_prop", "pos": [3, 2], "prop_sprite": "Post1_0"},
+    {"entity_id": "entity_prop", "pos": [3, 5], "prop_sprite": "Post2_0"},
+    {"entity_id": "entity_spike", "pos": [4, 3]},
+    {"entity_id": "entity_spike", "pos": [4, 4]}
+  ]
+}

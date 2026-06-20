@@ -58,6 +58,16 @@ static func damage_barrel(
 	_damage_barrel(state, entity, amount, source_uid, events)
 
 
+static func damage_entity(
+	state: GameState,
+	entity: EntityState,
+	amount: int,
+	source_uid: String,
+	events: Array[Dictionary]
+) -> void:
+	_damage_entity(state, entity, amount, source_uid, events)
+
+
 ## 有血量实体通用伤害派发（碰撞伤结算入口）
 static func _damage_entity(
 	state: GameState,

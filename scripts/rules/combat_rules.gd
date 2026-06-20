@@ -18,6 +18,8 @@ static var _active_death_chain_id: int = 0
 static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	if _try_resolve_counter_mark_before_hit(state, unit, source_uid):
+		return 0
 	var incoming := amount
 	if unit.uid == state.player_uid:
 		var registry := _relic_effect_registry()
@@ -128,6 +130,59 @@ static func _record_damage_pair(state: GameState, victim_uid: String, source_uid
 		return
 	state.battle_temp_flags["damaged_by:%s:%s:%d" % [victim_uid, source_uid, state.turn_index]] = true
 	state.battle_temp_flags["last_damage_taken:%s" % victim_uid] = amount
+
+
+static func _try_resolve_counter_mark_before_hit(state: GameState, victim: UnitState, source_uid: String) -> bool:
+	if state == null or victim == null or source_uid.is_empty():
+		return false
+	var source: UnitState = state.units.get(source_uid, null)
+	if source == null or not source.alive:
+		return false
+	var mark: StatusInstance = source.get_status(Constants.STATUS_COUNTER_MARK)
+	if mark == null:
+		return false
+	var watchers: Array = mark.payload.get("watchers", [])
+	if watchers.is_empty():
+		source.remove_status(Constants.STATUS_COUNTER_MARK)
+		return false
+	var matched := false
+	var matched_level := 1
+	var next_watchers: Array = []
+	for watcher_data in watchers:
+		var watcher: Dictionary = watcher_data
+		if str(watcher.get("uid", "")) == victim.uid and not matched:
+			matched = true
+			matched_level = maxi(1, int(watcher.get("level", 1)))
+			continue
+		next_watchers.append(watcher)
+	if not matched:
+		return false
+	if next_watchers.is_empty():
+		source.remove_status(Constants.STATUS_COUNTER_MARK)
+	else:
+		mark.payload["watchers"] = next_watchers
+	if matched_level >= 2:
+		var result := AttackPipeline.execute_aimed(state, victim, source.pos, [AttackPipeline.TAG_RANGED], {
+			"damage_reason": "counter_red",
+		})
+		var sink := state.get_combat_event_sink()
+		for event in result.get("events", []):
+			if sink != null:
+				sink.append(event)
+		if matched_level >= 3 and not source.alive:
+			_grant_counter_kill_refresh(state, victim)
+		return not source.alive
+	var tx := CombatTransaction.begin_from_state(state)
+	tx.damage_unit(source, attack_damage(state, victim), victim.uid, "counter_red", {"pos": source.pos})
+	if matched_level >= 3 and not source.alive:
+		_grant_counter_kill_refresh(state, victim)
+	return not source.alive
+
+
+static func _grant_counter_kill_refresh(state: GameState, unit: UnitState) -> void:
+	if state == null or unit == null or not unit.alive:
+		return
+	StatusRules.grant_extra_attack(state, unit, 1, unit.uid)
 
 
 static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> void:

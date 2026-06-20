@@ -14,6 +14,8 @@ var preview_text: String = ""
 static func intent_icon(intent_type: String) -> String:
 	match intent_type:
 		"melee_attack":  return "⚔"
+		"split_attack":  return "⚔"
+		"trample":       return "🦶"
 		"slam_attack":   return "🔨"
 		"ranged_attack": return "🏹"
 		"explosion_attack": return "💥"

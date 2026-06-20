@@ -118,7 +118,7 @@ static func rarity_color(rarity: String) -> Color:
 
 static func intent_color(intent_type: String) -> Color:
 	match intent_type:
-		"melee_attack":
+		"melee_attack", "split_attack", "trample":
 			return INTENT_ATTACK
 		"slam_attack":
 			return HEAL_GREEN
@@ -130,7 +130,7 @@ static func intent_color(intent_type: String) -> Color:
 			return BIND_VIOLET
 		"poison_attack":
 			return POISON_GREEN
-		"arc_attack":
+		"arc_attack", "light_beam":
 			return PARALYZE_YELLOW
 		"ice_attack":
 			return STAGNATE_ICE

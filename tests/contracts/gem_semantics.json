@@ -3,6 +3,17 @@
   "source": "/Users/jinhuiwu/code/learning-notes/game/design/law-thief/详细设计/宝石/宝石_v1.md",
   "cases": [
     {
+      "id": "counter/red/1_mark_then_retaliate",
+      "covers": ["gem_counter:red:1"],
+      "gems": ["gem_counter"],
+      "post_steps": [
+        {"type": "apply_damage", "target": "player", "source": "contract_target", "amount": 3, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "unit_damages": {"contract_target": 20, "player": 3}
+      }
+    },
+    {
       "id": "fire/red/1",
       "covers": ["gem_fire:red:1"],
       "gems": ["gem_fire"],

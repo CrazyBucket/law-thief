@@ -291,7 +291,6 @@ func _test_light_counter_does_not_followup() -> void:
 	builder.mount_gems(player, Constants.SLOT_RED, [Constants.GEM_LIGHT, Constants.GEM_COUNTER])
 	var target := builder.add_unit("light_counter_target", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 1), {"hp": 100, "max_hp": 100})
 	var state := builder.finish()
-	state.battle_temp_flags["damaged_by:%s:%s:%d" % [player.uid, target.uid, state.turn_index]] = true
 	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
 	var events: Array = result.get("events", [])
 	_check(result.get("ok", false), "light+counter attack should still fire as a light beam")

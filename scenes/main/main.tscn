@@ -1,6 +1,17 @@
-[gd_scene load_steps=2 format=3 uid="uid://c8lawthiefmain01"]
+[gd_scene load_steps=9 format=3 uid="uid://c8lawthiefmain01"]
 
 [ext_resource type="Script" path="res://scripts/main/main_root.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://assets/ui/main_menu_bg.png" id="2_bg"]
+[ext_resource type="Texture2D" path="res://assets/ui/main_title_v2.png" id="3_title"]
+[ext_resource type="Shader" path="res://scenes/main/main_menu_background.gdshader" id="4_bg_shader"]
+[ext_resource type="Shader" path="res://scenes/main/main_menu_title.gdshader" id="5_title_shader"]
+[ext_resource type="AudioStream" path="res://assets/audio/menu_bgm_lawthief.ogg" id="6_menu_bgm"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
+shader = ExtResource("4_bg_shader")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_title"]
+shader = ExtResource("5_title_shader")
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -11,14 +22,33 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="TextureRect" parent="."]
+material = SubResource("ShaderMaterial_bg")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.04, 0.04, 0.08, 1)
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="MenuMusic" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_menu_bgm")
+volume_db = 0.0
+bus = &"Music"
+autoplay = true
+
+[node name="BackgroundTint" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01, 0.02, 0.03, 0.28)
 
 [node name="ParticleCanvas" type="Control" parent="."]
 layout_mode = 1
@@ -37,122 +67,134 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0, 0, 0, 0.22)
+color = Color(0, 0, 0, 0.18)
 
-[node name="CenterWrap" type="CenterContainer" parent="."]
+[node name="ContentMargin" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 40.0
+offset_right = -48.0
+offset_bottom = -40.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/margin_left = 0
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 0
+theme_override_constants/margin_bottom = 0
 
-[node name="MenuPanel" type="PanelContainer" parent="CenterWrap"]
-custom_minimum_size = Vector2(520, 0)
+[node name="CenterWrap" type="CenterContainer" parent="ContentMargin"]
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 
-[node name="VBox" type="VBoxContainer" parent="CenterWrap/MenuPanel"]
+[node name="MainStack" type="VBoxContainer" parent="ContentMargin/CenterWrap"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 40
+alignment = 1
 
-[node name="Title" type="Label" parent="CenterWrap/MenuPanel/VBox"]
+[node name="TitleArt" type="TextureRect" parent="ContentMargin/CenterWrap/MainStack"]
+material = SubResource("ShaderMaterial_title")
+custom_minimum_size = Vector2(420, 241)
 layout_mode = 2
-theme_override_font_sizes/font_size = 56
-text = "窃 律 者"
-horizontal_alignment = 1
+size_flags_horizontal = 4
+texture = ExtResource("3_title")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="Subtitle" type="Label" parent="CenterWrap/MenuPanel/VBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "LAW THIEF"
-horizontal_alignment = 1
-
-[node name="BadgePanel" type="PanelContainer" parent="CenterWrap/MenuPanel/VBox"]
+[node name="MenuPanel" type="PanelContainer" parent="ContentMargin/CenterWrap/MainStack"]
+custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 
-[node name="SlotBadge" type="Label" parent="CenterWrap/MenuPanel/VBox/BadgePanel"]
+[node name="VBox" type="VBoxContainer" parent="ContentMargin/CenterWrap/MainStack/MenuPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Buttons" type="VBoxContainer" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="NewRunBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "开始游戏"
+
+[node name="ContinueBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "继续游戏"
+
+[node name="SettingsBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+text = "设置"
+
+[node name="CodexBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+text = "图鉴"
+
+[node name="ExitBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+text = "退出游戏"
+
+[node name="EditorBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox"]
+custom_minimum_size = Vector2(0, 40)
+visible = false
+layout_mode = 2
+text = "测试编辑场景"
+
+[node name="HiddenMeta" type="Control" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="Subtitle" type="Label" parent="HiddenMeta"]
+layout_mode = 0
+theme_override_font_sizes/font_size = 34
+text = "窃 律 者"
+
+[node name="BadgePanel" type="PanelContainer" parent="HiddenMeta"]
+layout_mode = 0
+
+[node name="SlotBadge" type="Label" parent="HiddenMeta/BadgePanel"]
 layout_mode = 2
 text = "档案 1"
 horizontal_alignment = 1
 
-[node name="SummaryPanel" type="PanelContainer" parent="CenterWrap/MenuPanel/VBox"]
-custom_minimum_size = Vector2(0, 110)
-layout_mode = 2
+[node name="SummaryPanel" type="PanelContainer" parent="HiddenMeta"]
+custom_minimum_size = Vector2(0, 118)
+layout_mode = 0
 
-[node name="Summary" type="Label" parent="CenterWrap/MenuPanel/VBox/SummaryPanel"]
+[node name="Summary" type="Label" parent="HiddenMeta/SummaryPanel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 15
 text = "空白档案"
 autowrap_mode = 2
 vertical_alignment = 1
 
-[node name="Buttons" type="VBoxContainer" parent="CenterWrap/MenuPanel/VBox"]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="ContinueBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 56)
-layout_mode = 2
-text = "继续游戏"
-
-[node name="NewRunBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 56)
-layout_mode = 2
-text = "开始新游戏"
-
-[node name="EditorBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "测试编辑场景"
-
-[node name="SaveBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "存档切换"
-
-[node name="AchievementBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "成就"
-
-[node name="CodexBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "图鉴"
-
-[node name="SettingsBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
-layout_mode = 2
-text = "设置"
-
-[node name="ExitBtn" type="Button" parent="CenterWrap/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 44)
-layout_mode = 2
-text = "退出游戏"
-
-[node name="FooterHint" type="Label" parent="CenterWrap/MenuPanel/VBox"]
-layout_mode = 2
+[node name="FooterHint" type="Label" parent="HiddenMeta"]
+layout_mode = 0
 theme_override_font_sizes/font_size = 12
 text = "开始/继续会切换到流程场景；其他入口通过弹窗查看。"
 autowrap_mode = 2
-horizontal_alignment = 1
 
 [node name="BottomInfo" type="Label" parent="."]
+visible = false
 layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
+anchors_preset = 12
 anchor_top = 1.0
-anchor_right = 0.5
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -360.0
+offset_left = 56.0
 offset_top = -34.0
-offset_right = 360.0
-grow_horizontal = 2
+offset_right = -56.0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 11
 text = "档案 1"
-horizontal_alignment = 1
 
 [node name="ModalLayer" type="Control" parent="."]
 visible = false
@@ -165,6 +207,7 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="Backdrop" type="ColorRect" parent="ModalLayer"]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -172,57 +215,62 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
-color = Color(0, 0, 0, 0.58)
+color = Color(0, 0, 0, 0)
 
-[node name="Dialog" type="PanelContainer" parent="ModalLayer"]
+[node name="PageMargin" type="MarginContainer" parent="ModalLayer"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -420.0
-offset_top = -280.0
-offset_right = 420.0
-offset_bottom = 280.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 92.0
+offset_top = 48.0
+offset_right = -92.0
+offset_bottom = -48.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="ModalLayer/Dialog"]
+[node name="PageFrame" type="PanelContainer" parent="ModalLayer/PageMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame"]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 12
+theme_override_constants/separation = 18
 
-[node name="Header" type="VBoxContainer" parent="ModalLayer/Dialog/VBox"]
+[node name="Header" type="HBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 20
+alignment = 1
 
-[node name="Title" type="Label" parent="ModalLayer/Dialog/VBox/Header"]
+[node name="HeaderText" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="ModalLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "弹窗标题"
 
-[node name="Subtitle" type="Label" parent="ModalLayer/Dialog/VBox/Header"]
+[node name="Subtitle" type="Label" parent="ModalLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "弹窗说明"
 autowrap_mode = 2
 
-[node name="Scroll" type="ScrollContainer" parent="ModalLayer/Dialog/VBox"]
+[node name="CloseBtn" type="Button" parent="ModalLayer/PageMargin/PageFrame/VBox/Header"]
+custom_minimum_size = Vector2(132, 44)
+layout_mode = 2
+text = "返回"
+
+[node name="Scroll" type="ScrollContainer" parent="ModalLayer/PageMargin/PageFrame/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="Content" type="VBoxContainer" parent="ModalLayer/Dialog/VBox/Scroll"]
+[node name="Content" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 12
-
-[node name="Footer" type="HBoxContainer" parent="ModalLayer/Dialog/VBox"]
-layout_mode = 2
-alignment = 2
-
-[node name="CloseBtn" type="Button" parent="ModalLayer/Dialog/VBox/Footer"]
-custom_minimum_size = Vector2(140, 42)
-layout_mode = 2
-text = "关闭"
+theme_override_constants/separation = 16

@@ -1,0 +1,16 @@
+{
+  "player_spawn": [0, 7],
+  "enemies": [
+    {"def_id": "unit_bomb_rat", "pos": [7, 0]}
+  ],
+  "random_enemies": [
+    {"pos": [7, 4], "candidates": ["unit_patrol_guard", "unit_stone_bow_guard"]},
+    {"pos": [4, 1], "candidates": ["unit_bomb_rat", "unit_patrol_guard"]}
+  ],
+  "entities": [
+    {"entity_id": "entity_barrel", "pos": [2, 1]}, {"entity_id": "entity_barrel", "pos": [2, 3]},
+    {"entity_id": "entity_barrel", "pos": [2, 5]}, {"entity_id": "entity_barrel", "pos": [4, 2]},
+    {"entity_id": "entity_barrel", "pos": [4, 4]}, {"entity_id": "entity_barrel", "pos": [4, 6]},
+    {"entity_id": "entity_barrel", "pos": [6, 1]}, {"entity_id": "entity_barrel", "pos": [6, 5]}
+  ]
+}

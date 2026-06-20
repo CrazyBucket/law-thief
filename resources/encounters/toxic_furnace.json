@@ -1,0 +1,21 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_fission_slime", "pos": [5, 1]},
+    {"def_id": "unit_patrol_guard", "pos": [6, 5]}
+  ],
+  "random_enemies": [
+    {"pos": [3, 2], "candidates": ["unit_bomb_rat", "unit_stone_bow_guard"]}
+  ],
+  "tiles": [
+    {"pos": [3, 3], "tile_id": "tile_grass", "overlays": [{"type": "fire", "duration": 3}]},
+    {"pos": [4, 3], "tile_id": "tile_grass", "overlays": [{"type": "toxic_smoke", "duration": 3}]},
+    {"pos": [3, 4], "tile_id": "tile_water", "overlays": [{"type": "poison_puddle", "duration": 4}]},
+    {"pos": [4, 4], "tile_id": "tile_water", "overlays": [{"type": "poison_fog", "duration": 3}]}
+  ],
+  "entities": [
+    {"entity_id": "entity_barrel", "pos": [2, 3]}, {"entity_id": "entity_barrel", "pos": [5, 4]},
+    {"entity_id": "entity_rock", "pos": [2, 5]}, {"entity_id": "entity_rock", "pos": [5, 6]},
+    {"entity_id": "entity_spike", "pos": [6, 4]}
+  ]
+}

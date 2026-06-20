@@ -15,6 +15,7 @@ const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
+const IntentIcons := preload("res://scripts/ui/intent_icons.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
 const FxLightningShader := preload("res://scenes/battle/fx_lightning_bolt.gdshader")
@@ -1984,15 +1985,19 @@ func _get_soft_gradient_texture() -> Texture2D:
 
 
 func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
+	var center := Vector2(pos.x, pos.y)
+	var icon_size_px := IsoCoordinates.visual(18.0)
+	_draw_soft_backdrop(center, IsoCoordinates.visual(11.0), IsoCoordinates.visual(10.0), Color(0.0, 0.0, 0.0, 0.38))
+	var draw_pos := center - Vector2(icon_size_px, icon_size_px) * 0.5
+	if IntentIcons.draw_icon(self, draw_pos, intent.type, icon_size_px):
+		return
 	var icon: String = IntentState.intent_icon(intent.type)
 	var font := ThemeDB.fallback_font
 	var font_size := int(IsoCoordinates.visual(14.0))
-	var icon_size := font.get_string_size(icon, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var center := Vector2(pos.x, pos.y)
-	_draw_soft_backdrop(center, maxf(icon_size.x * 0.6, IsoCoordinates.visual(9.0)), IsoCoordinates.visual(10.0), Color(0.0, 0.0, 0.0, 0.38))
+	var text_size := font.get_string_size(icon, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	_draw_text_with_shadow(
 		font,
-		Vector2(center.x - icon_size.x * 0.5, center.y + font_size * 0.35),
+		Vector2(center.x - text_size.x * 0.5, center.y + font_size * 0.35),
 		icon,
 		font_size,
 		_intent_badge_color(intent.type).lightened(0.25),

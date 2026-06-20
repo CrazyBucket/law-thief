@@ -289,6 +289,96 @@ static func apply_blinded(
 	})
 
 
+static func apply_counter_mark(
+	state: GameState,
+	unit: UnitState,
+	watcher_uid: String,
+	level: int = 1,
+	source_uid: String = ""
+) -> void:
+	if watcher_uid.is_empty():
+		return
+	var existing: StatusInstance = unit.get_status(Constants.STATUS_COUNTER_MARK)
+	if existing == null:
+		_apply(state, unit, Constants.STATUS_COUNTER_MARK, {
+			"duration": 1,
+			"source_uid": source_uid,
+			"payload": {
+				"watchers": [{"uid": watcher_uid, "level": maxi(1, level)}],
+			},
+		})
+		return
+	var watchers: Array = existing.payload.get("watchers", [])
+	var replaced := false
+	for i in range(watchers.size()):
+		var watcher: Dictionary = watchers[i]
+		if str(watcher.get("uid", "")) != watcher_uid:
+			continue
+		watchers[i] = {
+			"uid": watcher_uid,
+			"level": maxi(int(watcher.get("level", 1)), maxi(1, level)),
+		}
+		replaced = true
+		break
+	if not replaced:
+		watchers.append({"uid": watcher_uid, "level": maxi(1, level)})
+	existing.duration = 1
+	existing.source_uid = source_uid
+	existing.payload["watchers"] = watchers
+	state.log("%s 获得状态 %s" % [unit.uid, _StatusRegistry.display_name(Constants.STATUS_COUNTER_MARK)])
+
+
+static func grant_extra_attack(state: GameState, unit: UnitState, amount: int = 1, source_uid: String = "") -> void:
+	if amount <= 0:
+		return
+	_apply(state, unit, Constants.STATUS_EXTRA_ATTACK, {
+		"stacks": amount,
+		"source_uid": source_uid,
+	})
+
+
+static func grant_extra_move(state: GameState, unit: UnitState, amount: int = 1, source_uid: String = "") -> void:
+	if amount <= 0:
+		return
+	_apply(state, unit, Constants.STATUS_EXTRA_MOVE, {
+		"stacks": amount,
+		"source_uid": source_uid,
+	})
+
+
+static func has_extra_attack(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	var status: StatusInstance = unit.get_status(Constants.STATUS_EXTRA_ATTACK)
+	return status != null and status.stacks > 0
+
+
+static func has_extra_move(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	var status: StatusInstance = unit.get_status(Constants.STATUS_EXTRA_MOVE)
+	return status != null and status.stacks > 0
+
+
+static func consume_extra_attack(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	return _consume_stack_status(unit, Constants.STATUS_EXTRA_ATTACK)
+
+
+static func consume_extra_move(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	return _consume_stack_status(unit, Constants.STATUS_EXTRA_MOVE)
+
+
+static func clear_extra_action_statuses(unit: UnitState) -> void:
+	if unit == null:
+		return
+	unit.remove_status(Constants.STATUS_EXTRA_ATTACK)
+	unit.remove_status(Constants.STATUS_EXTRA_MOVE)
+
+
 ## 返回缓速扣减后的实际移动力（最低1）
 static func effective_move_points(unit: UnitState, base: int) -> int:
 	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
@@ -468,6 +558,16 @@ static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
 	slot.locked = true
 	slot.lock_type = lock_type
 	slot.unlock_until_turn = -1
+
+
+static func _consume_stack_status(unit: UnitState, status_id: String) -> bool:
+	var status: StatusInstance = unit.get_status(status_id)
+	if status == null or status.stacks <= 0:
+		return false
+	status.stacks -= 1
+	if status.stacks <= 0:
+		unit.remove_status(status_id)
+	return true
 
 
 static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInstance) -> void:

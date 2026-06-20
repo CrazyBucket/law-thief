@@ -2,6 +2,7 @@ class_name BattleHudPresenter
 extends RefCounted
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const IntentIcons = preload("res://scripts/ui/intent_icons.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
@@ -63,6 +64,9 @@ var _clear_timeline_hover_cb: Callable = Callable()
 var _relic_bar_ids: Array[String] = []
 var _relic_bar_layout_key := ""
 var _relic_render_texture_cache: Dictionary = {}
+var _intent_row: HBoxContainer = null
+var _intent_icon_wrap: Control = null
+var _intent_icon: TextureRect = null
 var _intent_label: Label = null
 var _overload_detail_label: Label = null
 
@@ -622,31 +626,51 @@ func _refresh_inspect_hp_bar(state: GameState, unit: UnitState) -> void:
 func _refresh_intent_row(unit: UnitState) -> void:
 	var show := unit.intent != null and unit.team == Constants.TEAM_ENEMY
 	if not show:
-		if _intent_label != null:
-			_intent_label.visible = false
+		if _intent_row != null:
+			_intent_row.visible = false
 		return
-	if _intent_label == null:
+	if _intent_row == null:
+		_intent_row = HBoxContainer.new()
+		_intent_row.add_theme_constant_override("separation", 6)
+		_intent_row.mouse_filter = Control.MOUSE_FILTER_STOP
+		_intent_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_intent_icon_wrap = Control.new()
+		_intent_icon_wrap.custom_minimum_size = Vector2(18, 18)
+		_intent_icon_wrap.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_intent_row.add_child(_intent_icon_wrap)
+		_intent_icon = TextureRect.new()
+		_intent_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_intent_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_intent_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_intent_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_intent_icon_wrap.add_child(_intent_icon)
 		_intent_label = Label.new()
 		_intent_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_intent_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_SMALL)
+		_intent_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_intent_row.add_child(_intent_label)
 		var parent := _inspect_stats.get_parent()
-		parent.add_child(_intent_label)
-		parent.move_child(_intent_label, _inspect_stats.get_index() + 1)
+		parent.add_child(_intent_row)
+		parent.move_child(_intent_row, _inspect_stats.get_index() + 1)
 	var intent_col := UiPalette.intent_color(unit.intent.type)
-	_intent_label.visible = true
-	_intent_label.text = "%s %s" % [IntentState.intent_icon(unit.intent.type), unit.intent.preview_text]
+	_intent_row.visible = true
+	var icon_tex := IntentIcons.get_icon(unit.intent.type)
+	_intent_icon.texture = icon_tex
+	_intent_icon.visible = icon_tex != null
+	_intent_label.text = unit.intent.preview_text if icon_tex != null else "%s %s" % [IntentState.intent_icon(unit.intent.type), unit.intent.preview_text]
 	_intent_label.add_theme_color_override("font_color", intent_col.lightened(0.2))
-	_set_tooltip(_intent_label, "敌人下回合意图", {
+	_set_tooltip(_intent_row, "敌人下回合意图", {
 		"title": "意图",
 		"subtitle": "敌方行动",
+		"icon": icon_tex,
 		"accent": intent_col,
 		"sections": [{"title": "预告", "body": unit.intent.preview_text}],
 	})
 
 
 func _clear_inspect_header(title: String) -> void:
-	if _intent_label != null:
-		_intent_label.visible = false
+	if _intent_row != null:
+		_intent_row.visible = false
 	_portrait.texture = null
 	_portrait.self_modulate = Color.WHITE
 	_inspect_name.text = title

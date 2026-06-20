@@ -1,6 +1,8 @@
 extends SceneTree
 ## AI 系统测试
 
+const Builder = preload("res://scripts/testkit/scenario_builder.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_test")
@@ -15,6 +17,7 @@ func _run_test() -> void:
 	_test_stone_bow_ai()
 	_test_enemy_turn_execution()
 	_test_multi_enemy_coordination()
+	_test_enemy_extra_action_consumes_bonus()
 	print("AI_TEST_PASS")
 	quit()
 
@@ -147,8 +150,44 @@ func _test_multi_enemy_coordination() -> void:
 	print("  [OK] %d enemies completed turn" % enemies.size())
 
 
+func _test_enemy_extra_action_consumes_bonus() -> void:
+	print("--- Test: Enemy Extra Action Consumption ---")
+	var builder := Builder.new("fission_slime_test", 9912, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(2, 2))
+	builder.set_stats(player, {"hp": 20, "max_hp": 20})
+	var enemy := builder.add_unit("extra_action_enemy", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 2), {
+		"hp": 20,
+		"max_hp": 20,
+		"base_attack": 4,
+	})
+	builder.clear_slots(enemy)
+	var state := builder.finish()
+	state.battle_temp_flags["enemy_extra_actions:%s" % enemy.uid] = 1
+	var controller := BattleController.new()
+	controller.state = state
+	controller.begin_enemy_phase()
+	var hp_before := player.hp
+	var result := controller.execute_single_enemy(enemy)
+	var events: Array = result.get("events", [])
+	assert(player.hp == hp_before - 8, "enemy with one bonus action should deal damage twice")
+	assert(_count_damage_events_to(events, player.uid) >= 2, "enemy bonus action should emit two damage events")
+	assert(int(state.battle_temp_flags.get("enemy_extra_actions:%s" % enemy.uid, 0)) == 0, "bonus action charge should be consumed")
+	print("  [OK] enemy extra action consumed")
+
+
 func _find_unit_by_def(state: GameState, unit_def_id: String) -> UnitState:
 	for unit in state.units.values():
 		if unit.unit_def_id == unit_def_id:
 			return unit
 	return null
+
+
+func _count_damage_events_to(events: Array, victim_uid: String) -> int:
+	var count := 0
+	for raw_event in events:
+		var event: Dictionary = raw_event
+		if str(event.get("type", "")) == "damage" and str(event.get("uid", "")) == victim_uid:
+			count += 1
+	return count

@@ -35,11 +35,14 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var unlimited := ctrl.editor_unlimited_actions_enabled()
 	if not unlimited and OverloadRules.blocks_player_manual_actions(state):
 		return _fail("AI 已接管本回合")
-	if not unlimited and state.player_moved:
-		return _fail("本回合已移动")
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	var consume_bonus_move := false
+	if not unlimited and state.player_moved:
+		if not StatusRules.has_extra_move(player):
+			return _fail("本回合已移动")
+		consume_bonus_move = true
 	if not unlimited and not StatusRules.can_move(player):
 		var block_reason := StatusRules.move_block_reason(player)
 		return _fail(block_reason if not block_reason.is_empty() else "无法移动")
@@ -69,6 +72,8 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 		state.battle_temp_flags.erase("pressure_valve_temp_move")
 		player.move_points = maxi(0, player.move_points - temp_move)
 	if not unlimited:
+		if consume_bonus_move:
+			StatusRules.consume_extra_move(player)
 		state.player_moved = true
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
 	state.log("玩家移动到 %s" % target_pos)
@@ -98,8 +103,6 @@ func try_attack(target_uid: String) -> Dictionary:
 		return _fail("不是玩家回合")
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
-	if not ctrl.editor_unlimited_actions_enabled() and ctrl.state.player_acted:
-		return _fail("本回合已行动")
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return _fail("目标无效")
@@ -117,11 +120,14 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	var unlimited := ctrl.editor_unlimited_actions_enabled()
 	if not unlimited and OverloadRules.blocks_player_manual_actions(state):
 		return _fail("AI 已接管本回合")
-	if not unlimited and state.player_acted:
-		return _fail("本回合已行动")
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	var consume_bonus_attack := false
+	if not unlimited and state.player_acted:
+		if not StatusRules.has_extra_attack(player):
+			return _fail("本回合已行动")
+		consume_bonus_attack = true
 	if target_pos == player.pos:
 		return _fail("不能攻击自己")
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
@@ -140,6 +146,8 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail(atk_result.get("reason", "无法攻击"))
 	attack_events.append_array(atk_result.get("events", [] as Array[Dictionary]))
 	if not unlimited:
+		if consume_bonus_attack:
+			StatusRules.consume_extra_attack(player)
 		state.player_acted = true
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
 	ctrl._check_battle_end()

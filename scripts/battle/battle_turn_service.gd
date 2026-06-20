@@ -34,6 +34,7 @@ func begin_enemy_phase() -> void:
 	if _try_activate_next_controllable(ctrl):
 		return
 	var player: UnitState = ctrl.state.get_player()
+	StatusRules.clear_extra_action_statuses(player)
 	if player != null and player.has_status(Constants.STATUS_PARALYZED):
 		player.remove_status(Constants.STATUS_PARALYZED)
 	GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, player.uid if player != null else "")
@@ -77,10 +78,18 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 			"events": [] as Array[Dictionary],
 			"presentation_state": presentation_state,
 		}
-	IntentSystem.refresh_unit_intent(ctrl.state, enemy)
-	var events := IntentSystem.execute_intent(ctrl.state, enemy)
-	GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, enemy.uid)
-	ctrl._check_battle_end()
+	var events: Array[Dictionary] = []
+	var first_action := true
+	while enemy.alive and ctrl.state.phase != Constants.PHASE_ENDED:
+		if not first_action and not StatusRules.consume_extra_attack(enemy):
+			break
+		IntentSystem.refresh_unit_intent(ctrl.state, enemy)
+		events.append_array(IntentSystem.execute_intent(ctrl.state, enemy))
+		GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, enemy.uid)
+		ctrl._check_battle_end()
+		if ctrl.state.phase == Constants.PHASE_ENDED or not enemy.alive:
+			break
+		first_action = false
 	ctrl._emit_changed()
 	return {
 		"events": events,
@@ -105,6 +114,9 @@ func finish_enemy_phase() -> Dictionary:
 	ctrl.state.bootstrap_split_controllable_turn()
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	for unit in ctrl.state.units.values():
+		if unit.team == Constants.TEAM_ENEMY:
+			StatusRules.clear_extra_action_statuses(unit)
 	ctrl.selected_action = ""
 	if ctrl.state.get_player() != null:
 		ctrl.selected_unit_uid = ctrl.state.player_uid

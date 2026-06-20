@@ -55,6 +55,7 @@ func _run_tests() -> void:
 	_test_blue_poison_turn_end_spread_uses_level_context()
 	_test_blue_light_reflects_ranged_attack()
 	_test_blue_counter_reflects_damage()
+	_test_blue_counter_level_two_carries_tags()
 	_test_black_poison_level_two_emits_fog()
 	_test_black_poison_level_three_spreads_to_two_targets()
 	_test_black_light_judges_exposed_targets()
@@ -271,6 +272,21 @@ func _test_blue_counter_reflects_damage() -> void:
 		_fail("[blue_counter] attacker should take reflected damage")
 		return
 	print("  [OK] blue_counter_reflects_damage")
+
+
+func _test_blue_counter_level_two_carries_tags() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var attacker := _spawn_unit(state, "counter_blue_l2_attacker", ATTACKER_POS, Constants.TEAM_PLAYER, 40)
+	var victim := _spawn_unit(state, "counter_blue_l2_victim", VICTIM_POS, Constants.TEAM_ENEMY, 40)
+	_ensure_blue_slots(victim, 2)
+	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["counter", "counter"])
+	_mount_on_slots(state, victim, Constants.SLOT_RED, ["fire_gem"])
+	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	if not attacker.has_status(Constants.STATUS_BURNING):
+		_fail("[blue_counter_l2] attacker should be burning from carried tag")
+		return
+	print("  [OK] blue_counter_level_two_carries_tags")
 
 
 func _test_black_poison_level_two_emits_fog() -> void:

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
+const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CONTRACT_PATH := "res://tests/contracts/gem_semantics.json"
 
 var _failed := false
@@ -44,6 +45,8 @@ func _run_case(contract: Dictionary) -> void:
 	var tracked_units: Dictionary = {
 		target.uid: target,
 		player.uid: player,
+		"player": player,
+		"contract_target": target,
 	}
 	for raw_unit in contract.get("extra_units", []):
 		var unit_def_id := str(raw_unit.get("unit_def_id", "unit_patrol_guard"))
@@ -85,6 +88,8 @@ func _run_case(contract: Dictionary) -> void:
 	var aim_cell := _vector_from_variant(contract.get("aim_cell", target.pos))
 	var result := AttackPipeline.execute_aimed(state, player, aim_cell, action_tags)
 	var events: Array = result.get("events", [])
+	for raw_step in contract.get("post_steps", []):
+		_run_post_step(state, tracked_units, events, raw_step)
 	var expect: Dictionary = contract.get("expect", {})
 	var label := str(contract.get("id", "unnamed"))
 	var failure_before_case := _failed
@@ -228,6 +233,25 @@ func _apply_setup_statuses(state: GameState, unit: UnitState, source: UnitState,
 				StatusRules.apply_paralyzed(state, unit, int(raw_status.get("duration", 1)), source.uid)
 			Constants.STATUS_WET:
 				StatusRules.apply_wet(state, unit, int(raw_status.get("duration", 2)), source.uid)
+
+
+func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, raw_step: Dictionary) -> void:
+	match str(raw_step.get("type", "")):
+		"apply_damage":
+			var target: UnitState = tracked_units.get(str(raw_step.get("target", "")), null)
+			var source: UnitState = tracked_units.get(str(raw_step.get("source", "")), null)
+			_check(target != null, "post_step", "missing damage target %s" % str(raw_step.get("target", "")))
+			_check(source != null, "post_step", "missing damage source %s" % str(raw_step.get("source", "")))
+			if target == null or source == null:
+				return
+			var tx := CombatTransaction.begin(state, events)
+			tx.damage_unit(
+				target,
+				int(raw_step.get("amount", 0)),
+				source.uid,
+				str(raw_step.get("reason", "attack")),
+				{"pos": target.pos}
+			)
 
 
 func _vector_from_variant(raw: Variant) -> Vector2i:

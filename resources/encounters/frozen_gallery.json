@@ -1,0 +1,21 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_stone_bow_guard", "pos": [7, 1]}
+  ],
+  "random_enemies": [
+    {"pos": [5, 3], "candidates": ["unit_patrol_guard", "unit_bomb_rat"]},
+    {"pos": [6, 6], "candidates": ["unit_stone_bow_guard", "unit_bomb_rat"]}
+  ],
+  "tiles": [
+    {"pos": [2, 2], "tile_id": "tile_ice"}, {"pos": [3, 2], "tile_id": "tile_ice"},
+    {"pos": [4, 2], "tile_id": "tile_ice"}, {"pos": [2, 3], "tile_id": "tile_ice"},
+    {"pos": [3, 3], "tile_id": "tile_ice"}, {"pos": [4, 3], "tile_id": "tile_ice"},
+    {"pos": [2, 4], "tile_id": "tile_ice"}, {"pos": [3, 4], "tile_id": "tile_ice"},
+    {"pos": [4, 4], "tile_id": "tile_ice"}
+  ],
+  "entities": [
+    {"entity_id": "entity_spike", "pos": [5, 2]}, {"entity_id": "entity_spike", "pos": [5, 4]},
+    {"entity_id": "entity_prop", "pos": [6, 3], "prop_sprite": "Statue1_0"}
+  ]
+}
