@@ -169,13 +169,23 @@ func _rebuild_catalog() -> void:
 			"kind": "entity",
 		}
 	)
-	_catalog["overlays"] = _registry.get_overlay_ids().map(func(overlay_id: String) -> Dictionary:
-		return {
+	var overlay_entries: Array = []
+	for raw_surface_entry in _registry.get_surface_overlay_catalog():
+		var surface_entry: Dictionary = raw_surface_entry
+		overlay_entries.append({
+			"id": str(surface_entry.get("id", "")),
+			"label": str(surface_entry.get("label", surface_entry.get("id", ""))),
+			"kind": "surface_overlay",
+			"tile_id": str(surface_entry.get("tile_id", "")),
+			"surface_variant": str(surface_entry.get("surface_variant", "")),
+		})
+	for overlay_id in _registry.get_overlay_ids():
+		overlay_entries.append({
 			"id": overlay_id,
 			"label": _registry.get_overlay_display_name(overlay_id),
 			"kind": "overlay",
-		}
-	)
+		})
+	_catalog["overlays"] = overlay_entries
 	_catalog["gems"] = _registry.get_gem_ids().map(func(gem_id: String) -> Dictionary:
 		return {
 			"id": gem_id,

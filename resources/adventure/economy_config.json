@@ -2,6 +2,7 @@
   "starting_gold": 0,
   "normal_combat_gold": 10,
   "elite_combat_gold": 20,
+  "boss_combat_gold": 40,
   "gem_base_price": 15,
   "relic_base_price": 30,
   "shop_offer_count": 3

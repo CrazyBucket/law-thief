@@ -13,6 +13,7 @@ const BattleEditorPanelScript = preload("res://scripts/ui/battle_editor_panel.gd
 const RichTooltip = preload("res://scripts/ui/rich_tooltip.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const CoinIconTexture = preload("res://assets/ui/coin_gold.png")
 
 var _dmg_text: Node = null
 
@@ -86,6 +87,20 @@ var _preview_visible_target: bool = false
 var _preview_fade_serial: int = 0
 var _relic_reward_overlay: Node = null
 var _relic_detail_overlay: Node = null
+var _settlement_overlay: Node = null
+var _settlement_rows_box: VBoxContainer = null
+var _settlement_result: String = ""
+var _settlement_relic_offer: Array[String] = []
+var _settlement_dropped_gems: Array[Dictionary] = []
+var _settlement_relic_pending: bool = false
+var _settlement_gem_pending: bool = false
+var _settlement_gold_amount: int = 0
+var _settlement_is_boss: bool = false
+var _settlement_root_ctrl: Control = null
+var _settlement_gold_chip_label: Label = null
+var _settlement_gold_displayed: int = 0
+var _settlement_gold_claimed: bool = false
+var _run_result_overlay: Node = null
 var _held_gem_icon: TextureRect = null
 var _overload_chip: Label = null
 var _relic_bar_root: Control = null
@@ -133,6 +148,7 @@ const _EDITOR_KIND_LABELS := {
 	"tile": "地块",
 	"entity": "实体",
 	"overlay": "Overlay",
+	"surface_overlay": "Overlay",
 	"gem": "宝石",
 	"relic": "遗物",
 }
@@ -1033,7 +1049,7 @@ func _apply_battle_end(result: String) -> void:
 	_phase_badge.text = "结束 · 第%d回合" % end_turn
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 	if result == "win" and RunService.is_run_active():
-		_grant_combat_gold_once()
+		_settlement_gold_amount = _grant_combat_gold_once()
 		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
 			AdventureService.pending_room_type.to_upper(), "normal_chest"
 		))
@@ -1042,12 +1058,21 @@ func _apply_battle_end(result: String) -> void:
 		var has_relics := not relic_offer.is_empty() and not relic_offer.all(
 			func(rid: String) -> bool: return rid == "relic_placeholder"
 		)
-		if _has_pending_dropped_gem_reward():
-			_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, result)
-			return
+		_settlement_result = result
+		_settlement_is_boss = AdventureService.pending_room_type.to_upper() == "END"
+		_settlement_relic_offer = []
 		if has_relics:
-			_show_relic_reward(relic_offer, result)
-			return
+			_settlement_relic_offer = relic_offer
+		_settlement_relic_pending = has_relics
+		_settlement_dropped_gems = []
+		if _has_pending_dropped_gem_reward():
+			_settlement_dropped_gems = _dropped_gem_offer()
+		_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
+		_open_battle_settlement()
+		return
+	if result != "win" and RunService.is_run_active() and GameService.adventure_return:
+		_show_run_result_overlay("lose")
+		return
 	_finish_battle_and_navigate(result)
 
 
@@ -1063,12 +1088,12 @@ func _consume_pending_battle_end_if_any() -> bool:
 	return true
 
 
-func _grant_combat_gold_once() -> void:
+func _grant_combat_gold_once() -> int:
 	if not GameService.adventure_return:
-		return
+		return 0
 	var room_id := GameService.pending_room_id
 	if room_id.is_empty():
-		return
+		return 0
 	var transaction_id := "%s:battle_gold" % room_id
 	var reward := EconomyService.get_combat_reward(AdventureService.pending_room_type)
 	var grant_result := EconomyService.grant("gold", reward, "combat_reward", {
@@ -1077,11 +1102,519 @@ func _grant_combat_gold_once() -> void:
 		"room_type": AdventureService.pending_room_type,
 	})
 	if not bool(grant_result.get("ok", false)):
-		return
+		return 0
 	var entry: Dictionary = grant_result.get("entry", {})
 	if entry.is_empty():
-		return
+		return 0
 	_message_label.text = "战斗结束 — 胜利 · %s" % EconomyService.format_entry(entry)
+	return int(entry.get("final_amount", reward))
+
+
+func _open_battle_settlement() -> void:
+	_mark_battle_reward_pending("settlement", _settlement_result, _settlement_relic_pending)
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_overlay.queue_free()
+	_settlement_gold_claimed = false
+	_settlement_gold_displayed = maxi(0, RunService.get_balance("gold") - _settlement_gold_amount)
+	_settlement_overlay = _build_settlement_overlay()
+	add_child(_settlement_overlay)
+
+
+func _build_settlement_overlay() -> Node:
+	var canvas := CanvasLayer.new()
+	canvas.layer = 78
+
+	var root_ctrl := Control.new()
+	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.theme = BattleUiTheme.build_theme()
+	canvas.add_child(root_ctrl)
+	_settlement_root_ctrl = root_ctrl
+
+	var bg := ColorRect.new()
+	bg.color = Color(UiPalette.BG_DEEP, 0.9)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(bg)
+
+	root_ctrl.add_child(_build_gold_chip())
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.TEXT_GOLD))
+	panel.custom_minimum_size = Vector2(480, 0)
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_%s" % side, 28)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "首领已伏诛" if _settlement_is_boss else "战斗胜利"
+	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
+	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "战利品结算"
+	subtitle.add_theme_font_size_override("font_size", 13)
+	subtitle.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(subtitle)
+
+	var sep := HSeparator.new()
+	vbox.add_child(sep)
+
+	_settlement_rows_box = VBoxContainer.new()
+	_settlement_rows_box.add_theme_constant_override("separation", 10)
+	vbox.add_child(_settlement_rows_box)
+
+	var continue_btn := Button.new()
+	continue_btn.text = _settlement_continue_label()
+	continue_btn.custom_minimum_size = Vector2(0, 46)
+	BattleUiTheme.apply_button(continue_btn, "end")
+	continue_btn.pressed.connect(_on_settlement_continue)
+	vbox.add_child(continue_btn)
+
+	_refresh_settlement_rows()
+	_animate_panel_in(panel)
+	return canvas
+
+
+## 结算页左上角的金币总额 chip，作为金币飞行落点。
+func _build_gold_chip() -> Control:
+	var chip := PanelContainer.new()
+	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(BattleUiTheme.TEXT_GOLD))
+	chip.position = Vector2(18, 16)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 6)
+	chip.add_child(hbox)
+
+	var icon := TextureRect.new()
+	icon.texture = CoinIconTexture
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.custom_minimum_size = Vector2(22, 22)
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hbox.add_child(icon)
+
+	_settlement_gold_chip_label = Label.new()
+	_settlement_gold_chip_label.text = str(_settlement_gold_displayed)
+	_settlement_gold_chip_label.add_theme_font_size_override("font_size", 18)
+	_settlement_gold_chip_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	_settlement_gold_chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hbox.add_child(_settlement_gold_chip_label)
+
+	return chip
+
+
+## 面板整体入场保持轻量，避免奖励领取流程反复抢戏。
+func _animate_panel_in(panel: Control) -> void:
+	panel.modulate.a = 0.0
+	panel.pivot_offset = panel.custom_minimum_size * 0.5
+	panel.scale = Vector2(0.97, 0.97)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(panel, "modulate:a", 1.0, 0.14)
+	tween.tween_property(panel, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _settlement_continue_label() -> String:
+	if _settlement_is_boss:
+		var chapter := AdventureService.get_current_chapter()
+		if chapter < AdventureService.get_chapter_count():
+			return "进入第 %d 关" % (chapter + 1)
+		return "凯旋 · 通关"
+	return "返回路线"
+
+
+func _refresh_settlement_rows(play_intro: bool = true) -> void:
+	if _settlement_rows_box == null or not is_instance_valid(_settlement_rows_box):
+		return
+	for child in _settlement_rows_box.get_children():
+		child.queue_free()
+	var rows: Array[Control] = []
+	if _settlement_gold_amount > 0:
+		if _settlement_gold_claimed:
+			rows.append(_build_settlement_row(
+				"金币", "+%d" % _settlement_gold_amount, "", BattleUiTheme.TEXT_MUTED, Callable(), CoinIconTexture
+			))
+		else:
+			rows.append(_build_settlement_row(
+				"金币", "+%d" % _settlement_gold_amount, "领取", BattleUiTheme.TEXT_GOLD, Callable(self, "_on_settlement_claim_gold"), CoinIconTexture
+			))
+	if not _settlement_relic_offer.is_empty():
+		if _settlement_relic_pending:
+			rows.append(_build_settlement_row(
+				"遗物", "三选一", "领取", BattleUiTheme.TEXT_GOLD, Callable(self, "_open_settlement_relic"), null
+			))
+		else:
+			rows.append(_build_settlement_row(
+				"遗物", "已领取", "", BattleUiTheme.TEXT_MUTED, Callable(), null
+			))
+	if not _settlement_dropped_gems.is_empty():
+		if _settlement_gem_pending:
+			rows.append(_build_settlement_row(
+				"掉落宝石", "%d 颗" % _settlement_dropped_gems.size(), "拾取", BattleUiTheme.TEXT_GOLD, Callable(self, "_open_settlement_gem"), null
+			))
+		else:
+			rows.append(_build_settlement_row(
+				"掉落宝石", "已处理", "", BattleUiTheme.TEXT_MUTED, Callable(), null
+			))
+	for row in rows:
+		_settlement_rows_box.add_child(row)
+	if rows.is_empty():
+		var empty := Label.new()
+		empty.text = "无额外战利品"
+		empty.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_settlement_rows_box.add_child(empty)
+	elif play_intro:
+		_animate_cards_in(rows, {"stagger": 0.035, "from": Vector2(32.0, 4.0), "tilt": 0.0})
+
+
+func _build_settlement_row(label_text: String, value_text: String, action_text: String, value_color: Color, action_cb: Callable, icon_tex: Texture2D) -> Control:
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
+	row.custom_minimum_size = Vector2(420, 54)
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 10)
+	row.add_child(hbox)
+
+	if icon_tex != null:
+		var icon := TextureRect.new()
+		icon.texture = icon_tex
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.custom_minimum_size = Vector2(28, 28)
+		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(icon)
+
+	var name_lbl := Label.new()
+	name_lbl.text = label_text
+	name_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hbox.add_child(name_lbl)
+
+	var value_lbl := Label.new()
+	value_lbl.text = value_text
+	value_lbl.add_theme_font_size_override("font_size", 16)
+	value_lbl.add_theme_color_override("font_color", value_color)
+	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hbox.add_child(value_lbl)
+
+	if not action_text.is_empty() and action_cb.is_valid():
+		var btn := Button.new()
+		btn.text = action_text
+		btn.custom_minimum_size = Vector2(96, 40)
+		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		BattleUiTheme.apply_button(btn, "end")
+		btn.pressed.connect(action_cb)
+		hbox.add_child(btn)
+	else:
+		var spacer := Control.new()
+		spacer.custom_minimum_size = Vector2(14, 0)
+		hbox.add_child(spacer)
+
+	return row
+
+
+## 卡片/行入场在包裹节点内做位移，避开 HBox/VBox 对 position 的接管。
+## 可选键：stagger、hover、from、tilt。
+func _animate_cards_in(cards: Array, config: Dictionary = {}) -> void:
+	var stagger := float(config.get("stagger", 0.045))
+	var hover := bool(config.get("hover", false))
+	var from_offset: Vector2 = config.get("from", Vector2(54.0, 10.0))
+	var tilt := float(config.get("tilt", 0.035))
+	for i in range(cards.size()):
+		var card := cards[i] as Control
+		if card == null:
+			continue
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		var start := Vector2(from_offset.x * dir, from_offset.y)
+		_deal_card_in(card, i, stagger, start, tilt * dir)
+		if hover:
+			card.mouse_entered.connect(_on_card_hover.bind(card, true))
+			card.mouse_exited.connect(_on_card_hover.bind(card, false))
+
+
+func _deal_card_in(card: Control, index: int, stagger: float, start_offset: Vector2, tilt: float) -> void:
+	var parent := card.get_parent()
+	if parent == null:
+		return
+	var slot_index := card.get_index()
+	var wrapper := Control.new()
+	wrapper.custom_minimum_size = card.custom_minimum_size
+	wrapper.size_flags_horizontal = card.size_flags_horizontal
+	wrapper.size_flags_vertical = card.size_flags_vertical
+	parent.add_child(wrapper)
+	parent.move_child(wrapper, slot_index)
+	parent.remove_child(card)
+	wrapper.add_child(card)
+	# 普通 Control 不会替子节点定尺寸，需显式给定，否则卡片会塌成 0×0。
+	var card_size := card.custom_minimum_size
+	if card_size.x <= 0.0 or card_size.y <= 0.0:
+		card_size = card.get_combined_minimum_size()
+	card.size = card_size
+	wrapper.custom_minimum_size = card_size
+	card.pivot_offset = card_size * 0.5
+	card.position = start_offset
+	card.scale = Vector2(0.94, 0.94)
+	card.rotation = tilt
+	card.modulate.a = 0.0
+	var delay := float(index) * stagger
+	var move := create_tween().set_parallel(true)
+	move.tween_property(card, "position", Vector2.ZERO, 0.22).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	move.tween_property(card, "scale", Vector2.ONE, 0.2).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	move.tween_property(card, "rotation", 0.0, 0.18).set_delay(delay).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	move.tween_property(card, "modulate:a", 1.0, 0.12).set_delay(delay)
+
+
+func _on_card_hover(card: Control, entered: bool) -> void:
+	if not is_instance_valid(card):
+		return
+	card.pivot_offset = card.size * 0.5
+	var target := Vector2(1.06, 1.06) if entered else Vector2.ONE
+	var lift := -6.0 if entered else 0.0
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(card, "scale", target, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(card, "position:y", lift, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _on_settlement_claim_gold() -> void:
+	if _settlement_gold_claimed:
+		return
+	_settlement_gold_claimed = true
+	var from_global := _settlement_rows_box.get_global_rect().get_center() if _settlement_rows_box != null else get_viewport_rect().get_center()
+	var to_global := Vector2(40, 28)
+	if _settlement_gold_chip_label != null and is_instance_valid(_settlement_gold_chip_label):
+		to_global = _settlement_gold_chip_label.get_global_rect().get_center()
+	_spawn_coin_burst(from_global, to_global, 12)
+	_refresh_settlement_rows(false)
+
+
+## 金币迸发动画：从奖励行向左上角金币 chip 抛出若干金币精灵，逐枚到达时累加显示数值。
+func _spawn_coin_burst(from_global: Vector2, to_global: Vector2, count: int) -> void:
+	if _settlement_root_ctrl == null or not is_instance_valid(_settlement_root_ctrl):
+		_settlement_gold_displayed += _settlement_gold_amount
+		_update_gold_chip_label()
+		return
+	var per_coin: int = maxi(1, int(round(float(_settlement_gold_amount) / float(count))))
+	var remaining := _settlement_gold_amount
+	for i in range(count):
+		var coin := TextureRect.new()
+		coin.texture = CoinIconTexture
+		coin.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		coin.size = Vector2(24, 24)
+		coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var scatter := Vector2(randf_range(-60.0, 60.0), randf_range(-40.0, 20.0))
+		coin.global_position = from_global - coin.size * 0.5 + scatter
+		_settlement_root_ctrl.add_child(coin)
+		var add_amount: int = remaining if i == count - 1 else per_coin
+		remaining -= add_amount
+		var target := to_global - coin.size * 0.5
+		var delay := float(i) * 0.04
+		var dur := randf_range(0.42, 0.58)
+		var tween := create_tween()
+		tween.tween_interval(delay)
+		tween.tween_property(coin, "global_position", target, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.parallel().tween_property(coin, "scale", Vector2(0.6, 0.6), dur)
+		tween.tween_callback(_on_coin_arrived.bind(add_amount))
+		tween.tween_callback(coin.queue_free)
+
+
+func _on_coin_arrived(add_amount: int) -> void:
+	_settlement_gold_displayed += add_amount
+	_update_gold_chip_label()
+
+
+func _update_gold_chip_label() -> void:
+	if _settlement_gold_chip_label != null and is_instance_valid(_settlement_gold_chip_label):
+		_settlement_gold_chip_label.text = str(_settlement_gold_displayed)
+		var pop := create_tween()
+		_settlement_gold_chip_label.pivot_offset = _settlement_gold_chip_label.size * 0.5
+		pop.tween_property(_settlement_gold_chip_label, "scale", Vector2(1.25, 1.25), 0.06)
+		pop.tween_property(_settlement_gold_chip_label, "scale", Vector2.ONE, 0.1)
+
+
+func _open_settlement_relic() -> void:
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_overlay.visible = false
+	var overlay := _build_relic_overlay(_settlement_relic_offer, _settlement_result)
+	_relic_reward_overlay = overlay
+	add_child(overlay)
+
+
+func _open_settlement_gem() -> void:
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_overlay.visible = false
+	var empty_relics: Array[String] = []
+	var overlay := _build_dropped_gem_overlay(_settlement_dropped_gems, empty_relics, _settlement_result)
+	_relic_reward_overlay = overlay
+	add_child(overlay)
+
+
+func _return_to_settlement() -> void:
+	_mark_battle_reward_pending("settlement", _settlement_result, _settlement_relic_pending)
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_overlay.visible = true
+		_refresh_settlement_rows(false)
+	else:
+		_open_battle_settlement()
+
+
+func _on_settlement_continue() -> void:
+	var is_final_boss := _settlement_is_boss and AdventureService.get_current_chapter() >= AdventureService.get_chapter_count()
+	if is_final_boss:
+		if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+			_settlement_overlay.queue_free()
+		_settlement_overlay = null
+		_show_run_result_overlay("win")
+		return
+	_finalize_settlement_navigation()
+
+
+func _finalize_settlement_navigation() -> void:
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_overlay.queue_free()
+	_settlement_overlay = null
+	var battle_result := _settlement_result
+	if GameService.adventure_return and RunService.is_run_active():
+		RunService.mark_room_resolved(GameService.pending_room_id, {
+			"room_id": GameService.pending_room_id,
+			"room_type": AdventureService.pending_room_type,
+			"battle_result": battle_result,
+			"summary": "战斗房间已结算。",
+		})
+	RunService.clear_pending_decision()
+	RunService.set_run_phase("MAP")
+	_finish_battle_and_navigate(battle_result)
+
+
+## 整局胜利/战败的独立结算页。kind: "win"（通关）/ "lose"（战败）。
+func _show_run_result_overlay(kind: String) -> void:
+	if _run_result_overlay != null and is_instance_valid(_run_result_overlay):
+		return
+	var is_win := kind == "win"
+	var accent: Color = BattleUiTheme.TEXT_GOLD if is_win else UiPalette.HP_LOW
+
+	var canvas := CanvasLayer.new()
+	canvas.layer = 90
+	var root_ctrl := Control.new()
+	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.theme = BattleUiTheme.build_theme()
+	canvas.add_child(root_ctrl)
+
+	var bg := ColorRect.new()
+	bg.color = Color(UiPalette.BG_DEEP, 0.95)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(bg)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
+	panel.custom_minimum_size = Vector2(440, 0)
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_%s" % side, 30)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 16)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "凯旋归来" if is_win else "战败"
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", accent)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "三关线路全部打通，本局胜利。" if is_win else "你在第 %d 关倒下了。" % AdventureService.get_current_chapter()
+	subtitle.add_theme_font_size_override("font_size", 13)
+	subtitle.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(subtitle)
+
+	vbox.add_child(HSeparator.new())
+
+	var stats_box := VBoxContainer.new()
+	stats_box.add_theme_constant_override("separation", 8)
+	for stat in _run_result_stats():
+		stats_box.add_child(_build_run_result_stat_row(str(stat[0]), str(stat[1])))
+	vbox.add_child(stats_box)
+
+	var back_btn := Button.new()
+	back_btn.text = "返回主菜单"
+	back_btn.custom_minimum_size = Vector2(0, 48)
+	BattleUiTheme.apply_button(back_btn, "end" if is_win else "ghost")
+	back_btn.pressed.connect(func() -> void:
+		if _run_result_overlay != null and is_instance_valid(_run_result_overlay):
+			_run_result_overlay.queue_free()
+		_run_result_overlay = null
+		if is_win:
+			_finalize_settlement_navigation()
+		else:
+			_finish_battle_and_navigate("lose")
+	)
+	vbox.add_child(back_btn)
+
+	_run_result_overlay = canvas
+	add_child(canvas)
+	_animate_panel_in(panel)
+
+
+func _run_result_stats() -> Array:
+	var gold := RunService.get_balance("gold")
+	var relic_count := 0
+	var run := RunService.get_run()
+	if run != null:
+		relic_count = run.owned_relics.size()
+	var turns := _controller.state.turn_index if _controller != null and _controller.state != null else 0
+	return [
+		["到达章节", "%d / %d" % [AdventureService.get_current_chapter(), AdventureService.get_chapter_count()]],
+		["累计金币", str(gold)],
+		["持有遗物", str(relic_count)],
+		["坚持回合", str(turns)],
+	]
+
+
+func _build_run_result_stat_row(label_text: String, value_text: String) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var name_lbl := Label.new()
+	name_lbl.text = label_text
+	name_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_lbl)
+	var value_lbl := Label.new()
+	value_lbl.text = value_text
+	value_lbl.add_theme_font_size_override("font_size", 16)
+	value_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT)
+	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(value_lbl)
+	return row
 
 
 func _placeholder_relic_offer() -> Array[String]:
@@ -1166,9 +1699,12 @@ func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Ar
 	cards_row.add_theme_constant_override("separation", 20)
 	vbox.add_child(cards_row)
 
+	var cards: Array[Control] = []
 	for drop in dropped_gems:
 		var card := _build_dropped_gem_card(drop, battle_result, relic_offer, canvas)
 		cards_row.add_child(card)
+		cards.append(card)
+	_animate_cards_in(cards, {"hover": true})
 
 	var skip_btn := Button.new()
 	skip_btn.text = "不嵌入"
@@ -1396,11 +1932,13 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 	cards_row.add_theme_constant_override("separation", 20)
 	vbox.add_child(cards_row)
 
+	var cards: Array[Control] = []
 	for gem_id in gem_offer:
 		if gem_id.is_empty():
 			continue
 		var card := _build_gem_card(gem_id, battle_result, relic_offer, canvas)
 		cards_row.add_child(card)
+		cards.append(card)
 
 	var skip_btn := Button.new()
 	skip_btn.text = "跳过"
@@ -1411,6 +1949,7 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 	)
 	vbox.add_child(skip_btn)
 
+	_animate_cards_in(cards, {"hover": true})
 	return canvas
 
 
@@ -1543,6 +2082,10 @@ func _on_dropped_gem_insert_skipped(battle_result: String, relic_offer: Array[St
 
 
 func _continue_after_dropped_gem_embed(battle_result: String, relic_offer: Array[String]) -> void:
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_settlement_gem_pending = false
+		_return_to_settlement()
+		return
 	var has_relics := not relic_offer.is_empty() and not relic_offer.all(
 		func(rid: String) -> bool: return rid == "relic_placeholder"
 	)
@@ -1599,11 +2142,13 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 	cards_row.add_theme_constant_override("separation", 20)
 	vbox.add_child(cards_row)
 
+	var cards: Array[Control] = []
 	for relic_id in offer:
 		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
 		var rarity: String = DataRegistry.get_relic_rarity(relic_id)
 		var card := _build_relic_card(relic_id, def, rarity, battle_result)
 		cards_row.add_child(card)
+		cards.append(card)
 
 	var skip_btn := Button.new()
 	skip_btn.text = "跳过"
@@ -1614,6 +2159,7 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 	)
 	vbox.add_child(skip_btn)
 
+	_animate_cards_in(cards, {"hover": true})
 	return canvas
 
 
@@ -1686,6 +2232,15 @@ func _rarity_display_name(rarity: String) -> String:
 
 
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		if not relic_id.is_empty():
+			RunService.acquire_relic(relic_id)
+		if _relic_reward_overlay != null:
+			_relic_reward_overlay.queue_free()
+			_relic_reward_overlay = null
+		_settlement_relic_pending = false
+		_return_to_settlement()
+		return
 	if _has_pending_dropped_gem_reward():
 		if _relic_reward_overlay != null:
 			_relic_reward_overlay.queue_free()
@@ -1727,9 +2282,13 @@ func _finish_battle_and_navigate(result: String) -> void:
 		RunService.end_run()
 	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
 	if GameService.adventure_return:
+		var was_boss_room := AdventureService.pending_room_type.to_upper() == "END"
 		GameService.adventure_return = false
 		if result == "win" and RunService.is_run_active():
-			AdventureService.finish_room_and_return()
+			if was_boss_room:
+				AdventureService.advance_after_boss_room()
+			else:
+				AdventureService.finish_room_and_return()
 		else:
 			AdventureService.reset_local_state()
 			get_tree().change_scene_to_file("res://scenes/main/main.tscn")
@@ -1767,6 +2326,23 @@ func _restore_battle_reward_if_needed() -> void:
 	))
 	var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
 	match str(pending.get("reward_kind", "")):
+		"settlement":
+			var has_relics := not relic_offer.is_empty() and not relic_offer.all(
+				func(rid: String) -> bool: return rid == "relic_placeholder"
+			)
+			_settlement_result = battle_result
+			_settlement_is_boss = AdventureService.pending_room_type.to_upper() == "END"
+			_settlement_relic_offer = []
+			if has_relics:
+				_settlement_relic_offer = relic_offer
+			_settlement_relic_pending = has_relics
+			_settlement_dropped_gems = []
+			if _has_pending_dropped_gem_reward():
+				_settlement_dropped_gems = _dropped_gem_offer()
+			_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
+			_settlement_gold_amount = EconomyService.get_combat_reward(AdventureService.pending_room_type)
+			if _settlement_overlay == null:
+				_open_battle_settlement()
 		"dropped_gem":
 			var dropped_gems := _dropped_gem_offer()
 			if not dropped_gems.is_empty():
@@ -1949,6 +2525,7 @@ func _editor_preview_for_cell(cell: Vector2i) -> Dictionary:
 		return {"valid": false, "cells": [], "message": "未选择资源"}
 	var kind := str(_editor_tool.get("kind", ""))
 	var resource_id := str(_editor_tool.get("id", ""))
+	var tile_resource_id := str(_editor_tool.get("tile_id", resource_id))
 	match kind:
 		"relic":
 			return {"valid": false, "cells": [], "message": "遗物无需落板，点击左侧条目即可获取"}
@@ -1976,6 +2553,12 @@ func _editor_preview_for_cell(cell: Vector2i) -> Dictionary:
 				"valid": BoardUtils.in_bounds(state, cell),
 				"cells": [cell],
 				"message": "替换地块为 %s" % resource_id,
+			}
+		"surface_overlay":
+			return {
+				"valid": BoardUtils.in_bounds(state, cell),
+				"cells": [cell],
+				"message": "松手添加 %s" % resource_id,
 			}
 		"entity":
 			var occupied_entity := state.get_entity_at(cell)
@@ -2007,6 +2590,7 @@ func _try_editor_place(cell: Vector2i) -> void:
 		return
 	var kind := str(_editor_tool.get("kind", ""))
 	var resource_id := str(_editor_tool.get("id", ""))
+	var tile_resource_id := str(_editor_tool.get("tile_id", resource_id))
 	var result := {}
 	match kind:
 		"unit":
@@ -2017,6 +2601,12 @@ func _try_editor_place(cell: Vector2i) -> void:
 			})
 		"tile":
 			result = _controller.run_editor_action("set_tile", {"tile_id": resource_id, "pos": cell})
+		"surface_overlay":
+			result = _controller.run_editor_action("set_tile", {
+				"tile_id": tile_resource_id,
+				"pos": cell,
+				"surface_variant": str(_editor_tool.get("surface_variant", "")),
+			})
 		"entity":
 			result = _controller.run_editor_action("spawn_entity", {"entity_id": resource_id, "pos": cell})
 		"overlay":

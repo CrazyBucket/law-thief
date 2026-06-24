@@ -138,6 +138,54 @@ gem.level.arc.2,导电 Lv2：弹射 2 次，13.2% 麻痹,Conductive Lv2: arc 2 b
 gem.level.arc.3,导电 Lv3：弹射 3 次，死亡落雷,Conductive Lv3: arc 3 bounces, death lightning
 gem.level.gravity.1,引力 Lv1：攻击范围不变，命中后拉扯 1 步,Gravity Lv1: base range, pull 1 step on hit
 gem.level.gravity.2,引力 Lv2：攻击范围 +1，命中后拉扯 2 步并施加减速,Gravity Lv2: range +1, pull 2 steps and slow on hit
+map.screen.title,路线图,Route Map
+map.screen.empty_preview,选择前方房间，确认下一段旅程。,Choose a room ahead to plan the next stretch of the journey.
+map.screen.current_route,当前路线,Current Route
+map.screen.selected_route,已选去向,Selected Destination
+map.screen.hover_probe,悬停情报,Hover Intel
+map.screen.route_outlook,后续去向,Route Outlook
+map.screen.route_legend,路线标记,Route Legend
+map.screen.legend.current,当前位置,Current Position
+map.screen.legend.choice,可前往房间,Reachable Room
+map.screen.legend.selected,悬停路线,Hovered Route
+map.screen.legend.resolved,已探索房间,Explored Room
+map.screen.confirm_default,选择一条前路,Pick a path
+map.screen.confirm_enter,前往 {room},Travel to {room}
+map.screen.progress,当前位置：{room}  ·  前方 {count} 个选择,Current position: {room}  ·  {count} choices ahead
+map.screen.chapter_progress,第 {chapter} / {total} 关,Chapter {chapter} / {total}
+map.screen.status.current,当前：{room},Current: {room}
+map.screen.status.selected,已选：{room},Selected: {room}
+map.screen.status.hovering,悬停：{room},Hovering: {room}
+map.screen.status.none,尚未选定前路,No route selected yet
+map.screen.room.layer,路标：第 {layer} 层,Marker: Layer {layer}
+map.screen.room.state,状态：{state},State: {state}
+map.screen.room.effect,预期：{effect},Expected: {effect}
+map.screen.room.followup,后续：{followup},Follow-up: {followup}
+map.screen.room.rules,全局规则：{rules},Global Rules: {rules}
+map.screen.room.here,你在这里,You are here
+map.screen.room.connected,路线已连通,Route connected
+map.screen.room.blocked,尚未连通,Not connected yet
+map.screen.room.resolved,已探索,Explored
+map.screen.room.unresolved,未探索,Unexplored
+map.screen.followup.none,前方暂无新的分叉,No further branch ahead
+map.screen.followup.exit,抵达后将进入下一关,Advancing there will move on to the next chapter
+map.screen.followup.final,抵达后将迎来终局战,Advancing there will trigger the final battle
+map.screen.followup.options,可接：{rooms},Leads to: {rooms}
+map.screen.resource.gold,金币 {value},Gold {value}
+map.screen.resource.hp,HP {current}/{max},HP {current}/{max}
+map.screen.resource.relics,遗物 {value},Relics {value}
+map.screen.resource.carried,手持 {value},Carried {value}
+map.screen.resource.gold.short,G {value},G {value}
+map.screen.resource.hp.short,HP {current}/{max},HP {current}/{max}
+map.screen.resource.relics.short,R {value},R {value}
+map.screen.resource.carried.short,手 {value},Held {value}
+map.screen.summary.start,旅程起点,Journey start
+map.screen.summary.end,本章出口或终局挑战,Chapter exit or final encounter
+map.screen.summary.normal,常规战斗，获得基础奖励,Standard battle with baseline rewards
+map.screen.summary.elite,强敌战斗，风险与奖励更高,Elite battle with higher risk and reward
+map.screen.summary.rest,休整与恢复,Rest and recover
+map.screen.summary.shop,补给、交易与构筑调整,Supplies, trade, and deck tuning
+map.screen.summary.event,特殊事件，结果未明,Uncertain event with unknown outcome
 gem.level.gravity.3,引力 Lv3：攻击范围 +2，命中后拉扯 3 步并施加定身,Gravity Lv3: range +2, pull 3 steps and root on hit
 gem.level.fire.1,烈焰 Lv1：目标格点火，周围单位施加着火,Fire Lv1: ignite target cell, set nearby units ablaze
 gem.level.fire.2,烈焰 Lv2：目标格点火并扩散 1 格,Fire Lv2: ignite and spread 1 cell

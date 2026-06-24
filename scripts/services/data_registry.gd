@@ -360,8 +360,34 @@ func get_overlay_ids() -> Array[String]:
 	]
 
 
+func get_surface_overlay_ids() -> Array[String]:
+	return [
+		"tile_grass_sprouts",
+		"tile_grass_patch",
+		"tile_grass_tall",
+		"tile_grass_thicket",
+		"tile_bush_tall",
+		"tile_bush_thicket",
+	]
+
+
+func get_surface_overlay_catalog() -> Array[Dictionary]:
+	return [
+		{"id": "tile_grass_sprouts", "tile_id": Constants.TILE_GRASS, "surface_variant": "sprouts", "label": "Grass Sprouts"},
+		{"id": "tile_grass_patch", "tile_id": Constants.TILE_GRASS, "surface_variant": "patch", "label": "Grass Patch"},
+		{"id": "tile_grass_tall", "tile_id": Constants.TILE_GRASS, "surface_variant": "tall", "label": "Tall Grass"},
+		{"id": "tile_grass_thicket", "tile_id": Constants.TILE_GRASS, "surface_variant": "thicket", "label": "Grass Thicket"},
+		{"id": "tile_bush_tall", "tile_id": Constants.TILE_BUSH, "surface_variant": "tall", "label": "Bush Tall"},
+		{"id": "tile_bush_thicket", "tile_id": Constants.TILE_BUSH, "surface_variant": "thicket", "label": "Bush Thicket"},
+	]
+
+
 func has_overlay_id(overlay_id: String) -> bool:
 	return overlay_id in get_overlay_ids()
+
+
+func has_surface_overlay_id(surface_overlay_id: String) -> bool:
+	return surface_overlay_id in get_surface_overlay_ids()
 
 
 func get_overlay_display_name(overlay_id: String) -> String:
@@ -375,6 +401,13 @@ func get_overlay_display_name(overlay_id: String) -> String:
 		Constants.TILE_MOD_POISON_PUDDLE:
 			return "Poison Puddle"
 	return overlay_id
+
+
+func get_surface_overlay_display_name(surface_overlay_id: String) -> String:
+	for entry in get_surface_overlay_catalog():
+		if str(entry.get("id", "")) == surface_overlay_id:
+			return str(entry.get("label", surface_overlay_id))
+	return get_tile_display_name(surface_overlay_id)
 
 
 func get_overlay_default_duration(overlay_id: String) -> int:

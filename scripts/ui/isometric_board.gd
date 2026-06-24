@@ -2,6 +2,7 @@ extends Control
 
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
+const AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const WaterLayerClass = preload("res://scripts/map/water_layer.gd")
 const WaterAutotileClass = preload("res://scripts/map/water_autotile.gd")
 
@@ -21,6 +22,7 @@ const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
 const FxLightningShader := preload("res://scenes/battle/fx_lightning_bolt.gdshader")
 const FxRadialBurstShader := preload("res://scenes/battle/fx_radial_burst.gdshader")
 const FxCloudPulseShader := preload("res://scenes/battle/fx_cloud_pulse.gdshader")
+const OverlayDriftShader := preload("res://scenes/battle/overlay_drift.gdshader")
 const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
 const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
 const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
@@ -107,6 +109,7 @@ var _board_texture_region: Rect2 = Rect2()
 var _water_fill_layer: Node2D = null
 var _water_edge_layer: Node2D = null
 var _water_visual_signature: int = -1
+var _overlay_shader_viewports: Array[SubViewport] = []
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
 var _anim := BoardAnimationHostState.new()
@@ -275,6 +278,7 @@ func _process(delta: float) -> void:
 		_anim.walk_phase[mv_uid] = _anim.walk_phase.get(mv_uid, 0.0) + scaled_dt
 		visuals_dirty = true
 	if state != null:
+		_update_overlay_shader_activity()
 		if _has_animated_tile_overlays():
 			visuals_dirty = true
 		for unit: UnitState in state.units.values():
@@ -320,9 +324,117 @@ func _process(delta: float) -> void:
 
 func _has_animated_tile_overlays() -> bool:
 	for tile: TileState in state.tiles.values():
-		if tile != null and not tile.modifiers.is_empty():
+		if tile != null and (
+			not tile.modifiers.is_empty()
+			or tile.tile_id == Constants.TILE_GRASS
+			or tile.tile_id == Constants.TILE_BUSH
+		):
 			return true
 	return false
+
+
+func _ensure_overlay_shader_textures() -> void:
+	if not _overlay_shader_viewports.is_empty():
+		return
+	var specs := [
+		{"path": TileRenderer.GRASS_SPROUTS_PATH, "sway": 20.0, "vertical": 0.0, "speed": 1.42, "tip_bias": 1.0, "tip_power": 1.7},
+		{"path": TileRenderer.GRASS_PATCH_PATH, "sway": 19.0, "vertical": 0.0, "speed": 1.34, "tip_bias": 1.0, "tip_power": 1.65},
+		{"path": TileRenderer.GRASS_TALL_PATH, "sway": 22.0, "vertical": 0.0, "speed": 1.28, "tip_bias": 1.0, "tip_power": 1.8},
+		{"path": TileRenderer.GRASS_THICKET_PATH, "sway": 17.0, "vertical": 0.0, "speed": 1.18, "tip_bias": 1.0, "tip_power": 1.9},
+		{
+			"path": TileRenderer.POISON_FOG_BODY_PATH,
+			"sway": 22.0,
+			"vertical": 8.0,
+			"speed": 0.68,
+			"tip_bias": 0.24,
+			"tip_power": 0.78,
+			"tint": Color(0.64, 1.0, 0.34, 1.0),
+			"alpha_boost": 1.45,
+			"saturation_boost": 1.22,
+			"alpha_breathe": 0.08,
+		},
+		{
+			"path": TileRenderer.TOXIC_SMOKE_BODY_PATH,
+			"sway": 15.0,
+			"vertical": 4.5,
+			"speed": 0.46,
+			"tip_bias": 0.34,
+			"tip_power": 1.0,
+			"tint": Color(0.66, 0.86, 0.36, 1.0),
+			"alpha_boost": 1.18,
+			"saturation_boost": 1.05,
+			"alpha_breathe": 0.05,
+		},
+	]
+	for index in range(specs.size()):
+		var spec: Dictionary = specs[index]
+		var source := load(str(spec["path"])) as Texture2D
+		if source == null:
+			continue
+		var viewport := SubViewport.new()
+		viewport.name = "OverlayShaderViewport%d" % index
+		viewport.disable_3d = true
+		viewport.transparent_bg = true
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		viewport.size = Vector2i(source.get_width() + 64, source.get_height() + 64)
+		viewport.set_meta("overlay_path", str(spec["path"]))
+		var sprite := Sprite2D.new()
+		sprite.texture = source
+		sprite.position = Vector2(viewport.size) * 0.5
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		var material := ShaderMaterial.new()
+		material.shader = OverlayDriftShader
+		material.set_shader_parameter("sway_px", float(spec["sway"]))
+		material.set_shader_parameter("vertical_px", float(spec["vertical"]))
+		material.set_shader_parameter("speed", float(spec["speed"]))
+		material.set_shader_parameter("phase", float(index) * 1.37)
+		material.set_shader_parameter("tip_bias", float(spec["tip_bias"]))
+		material.set_shader_parameter("tip_power", float(spec["tip_power"]))
+		material.set_shader_parameter("tint", spec.get("tint", Color.WHITE))
+		material.set_shader_parameter("alpha_boost", float(spec.get("alpha_boost", 1.0)))
+		material.set_shader_parameter("saturation_boost", float(spec.get("saturation_boost", 1.0)))
+		material.set_shader_parameter("alpha_breathe", float(spec.get("alpha_breathe", 0.0)))
+		sprite.material = material
+		viewport.add_child(sprite)
+		add_child(viewport)
+		_overlay_shader_viewports.append(viewport)
+		var source_rect: Rect2 = TileRenderer._overlay_texture_content_rect(source)
+		var source_offset := (Vector2(viewport.size) - source.get_size()) * 0.5
+		TileRenderer.register_animated_overlay_texture(
+			str(spec["path"]),
+			viewport.get_texture(),
+			Rect2(source_offset + source_rect.position, source_rect.size)
+		)
+
+
+func _update_overlay_shader_activity() -> void:
+	var active_paths := _active_overlay_shader_paths()
+	if not active_paths.is_empty():
+		_ensure_overlay_shader_textures()
+	for viewport in _overlay_shader_viewports:
+		var path := str(viewport.get_meta("overlay_path", ""))
+		viewport.render_target_update_mode = (
+			SubViewport.UPDATE_ALWAYS if active_paths.has(path) else SubViewport.UPDATE_DISABLED
+		)
+
+
+func _active_overlay_shader_paths() -> Dictionary:
+	var active := {}
+	if state == null:
+		return active
+	for tile: TileState in state.tiles.values():
+		if tile == null:
+			continue
+		if tile.tile_id == Constants.TILE_GRASS or tile.tile_id == Constants.TILE_BUSH:
+			active[TileRenderer.GRASS_SPROUTS_PATH] = true
+			active[TileRenderer.GRASS_PATCH_PATH] = true
+			active[TileRenderer.GRASS_TALL_PATH] = true
+			active[TileRenderer.GRASS_THICKET_PATH] = true
+		if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
+			active[TileRenderer.POISON_FOG_BODY_PATH] = true
+		if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+			active[TileRenderer.TOXIC_SMOKE_BODY_PATH] = true
+	return active
 
 
 func _update_overlay_fades(delta: float) -> bool:
@@ -495,6 +607,8 @@ func _draw() -> void:
 	_draw_editor_preview()
 	for grid in _sorted_cells():
 		_draw_entity_at_grid(grid, drawn_entities)
+		if state.get_unit_at(grid) == null and state.get_entity_at(grid) != null:
+			_draw_front_tile_overlay_at(grid, true)
 		_draw_dropped_gems_at_grid(grid)
 		if hover_cell == grid:
 			var hover_unit := state.get_unit_at(hover_cell)
@@ -508,7 +622,15 @@ func _draw() -> void:
 		var unit := state.get_unit_at(grid)
 		if unit != null and unit.alive and not drawn_units.has(unit.uid):
 			drawn_units[unit.uid] = true
-			_draw_unit(unit)
+			_draw_unit_body(unit)
+		if unit != null and unit.alive:
+			_draw_front_tile_overlay_at(grid, true)
+	var drawn_unit_ui: Dictionary = {}
+	for grid in _sorted_cells():
+		var unit := state.get_unit_at(grid)
+		if unit != null and unit.alive and not drawn_unit_ui.has(unit.uid):
+			drawn_unit_ui[unit.uid] = true
+			_draw_unit_ui(unit)
 	if not _has_unified_overlays():
 		_draw_highlight_outlines()
 	_draw_anim_particles()
@@ -873,6 +995,58 @@ func _draw_unified_overlay_outlines() -> void:
 			_draw_cell_outline(cell, color, width)
 
 
+func _draw_map_room_nameplates() -> void:
+	if state == null or state.encounter_id != "adventure_map":
+		return
+	var cells: Dictionary = {}
+	var overlays: Array = highlights.get("overlays", [])
+	for raw_overlay in overlays:
+		if not raw_overlay is Dictionary:
+			continue
+		var overlay: Dictionary = raw_overlay
+		var kind := str(overlay.get("kind", ""))
+		if kind not in ["map_current", "map_choice", "map_focus"]:
+			continue
+		var priority := 2 if kind == "map_current" else (1 if kind == "map_focus" else 0)
+		for raw_cell in overlay.get("cells", []):
+			var cell: Vector2i = raw_cell
+			cells[cell] = maxi(int(cells.get(cell, -1)), priority)
+	if state.get_tile(hover_cell) != null:
+		cells[hover_cell] = 3
+	for cell in cells.keys():
+		var tile := state.get_tile(cell)
+		if tile == null or not AdventureRoomDisplay.is_room_tile(tile.tile_id):
+			continue
+		var display: Dictionary = AdventureRoomDisplay.get_display(
+			AdventureRoomDisplay.room_type_from_tile(tile.tile_id),
+			AdventureService.get_current_chapter(),
+			AdventureService.get_chapter_count()
+		)
+		var color: Color = display.get("color", UiPalette.ROOM_UNKNOWN)
+		_draw_map_room_nameplate(cell, str(display.get("label", "")), color, int(cells[cell]))
+
+
+func _draw_map_room_nameplate(cell: Vector2i, label: String, color: Color, priority: int) -> void:
+	if label.is_empty():
+		return
+	var font := BattleUiTheme.pixel_font()
+	var font_size := 11 if priority < 2 else 12
+	var center := grid_to_screen(cell)
+	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var pad := IsoCoordinates.visual_vec(Vector2(5.0, 3.0))
+	var rect := Rect2(
+		center.x - text_size.x * 0.5 - pad.x,
+		center.y + IsoCoordinates.visual(7.0),
+		text_size.x + pad.x * 2.0,
+		text_size.y + pad.y * 2.0
+	)
+	var bg_alpha := 0.72 if priority < 2 else 0.86
+	draw_rect(rect, Color(UiPalette.BG_INSET, bg_alpha), true)
+	draw_rect(rect, Color(color.lightened(0.08), 0.55 + float(priority) * 0.08), false, IsoCoordinates.visual(1.0))
+	var text_pos := Vector2(rect.position.x + pad.x, rect.position.y + text_size.y + pad.y * 0.3)
+	_draw_text_with_shadow(font, text_pos, label, font_size, UiPalette.TEXT_BRIGHT, UiPalette.TEXT_OUTLINE)
+
+
 func _draw_overlay_routes() -> void:
 	var routes: Array = highlights.get("routes", [])
 	if routes.is_empty():
@@ -924,7 +1098,29 @@ func _draw_tile(grid: Vector2i) -> void:
 	var tile := state.get_tile(grid)
 	var highlight := _tile_highlight(grid)
 	# 地砖底由 Grids 贴图统一绘制，这里只叠加高亮与特殊地块（水/柱/毒/火等）
-	TileRenderer.draw_tile_overlays(self , center, tile, highlight)
+	TileRenderer.draw_tile_overlays(self, center, tile, highlight, TileRenderer.PASS_BACK, false)
+
+
+func _draw_front_tile_overlay_at(grid: Vector2i, occupied: bool = false) -> void:
+	if not occupied:
+		var unit := state.get_unit_at(grid)
+		if unit != null and unit.alive:
+			occupied = true
+		elif state.get_entity_at(grid) != null:
+			occupied = true
+	if not occupied:
+		return
+	var tile := state.get_tile(grid)
+	if tile == null:
+		return
+	TileRenderer.draw_tile_overlays(
+		self,
+		grid_to_screen(grid),
+		tile,
+		Color.TRANSPARENT,
+		TileRenderer.PASS_FRONT,
+		true
+	)
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
@@ -991,10 +1187,14 @@ func _overlay_priority(kind: String) -> int:
 			return 80
 		"target":
 			return 70
+		"map_focus":
+			return 68
 		"map_current":
 			return 66
 		"map_choice":
 			return 60
+		"map_future":
+			return 24
 		"intent_path":
 			return 50
 		"attack_range":
@@ -1020,10 +1220,14 @@ func _overlay_base_color(kind: String) -> Color:
 			return UiPalette.FIRE_ORANGE
 		"intent_path":
 			return UiPalette.INTENT_MOVE
+		"map_focus":
+			return UiPalette.TEXT_GOLD
 		"map_current":
 			return UiPalette.ROOM_START
 		"map_choice":
 			return UiPalette.ROOM_EXIT
+		"map_future":
+			return UiPalette.EDGE_BRIGHT
 		"map_resolved":
 			return UiPalette.EDGE_LIGHT
 	return UiPalette.TEXT_BRIGHT
@@ -1037,10 +1241,14 @@ func _overlay_fill_alpha(kind: String, pulse: float) -> float:
 			return 0.32 + pulse * 0.16
 		"target":
 			return 0.32 + pulse * 0.18
+		"map_focus":
+			return 0.30 + pulse * 0.16
 		"map_current":
 			return 0.36 + pulse * 0.16
 		"map_choice":
 			return 0.26 + pulse * 0.14
+		"map_future":
+			return 0.14 + pulse * 0.06
 		"intent_path":
 			return 0.18 + pulse * 0.12
 		"attack_range":
@@ -1060,19 +1268,23 @@ func _overlay_outline_color(kind: String, pulse: float) -> Color:
 			alpha = 0.58 + pulse * 0.18
 		"attack_range", "intent_path":
 			alpha = 0.48 + pulse * 0.18
+		"map_future":
+			alpha = 0.26 + pulse * 0.08
 		"map_resolved":
 			alpha = 0.28
-		"map_current", "map_choice", "target", "danger", "effect":
+		"map_current", "map_choice", "map_focus", "target", "danger", "effect":
 			alpha = 0.72 + pulse * 0.22
 	return Color(base, alpha)
 
 
 func _overlay_line_width(kind: String) -> float:
 	match kind:
-		"target", "danger", "effect", "map_current":
+		"target", "danger", "effect", "map_current", "map_focus":
 			return IsoCoordinates.visual(2.0)
 		"map_choice":
 			return IsoCoordinates.visual(1.8)
+		"map_future":
+			return IsoCoordinates.visual(1.2)
 		"move", "attack_range", "intent_path":
 			return IsoCoordinates.visual(1.45)
 	return IsoCoordinates.visual(1.3)
@@ -1084,12 +1296,16 @@ func _route_color(kind: String) -> Color:
 			return Color(0.72, 0.96, 1.0, 0.82)
 		"intent":
 			return Color(UiPalette.INTENT_ATTACK.lightened(0.08), 0.36)
+		"map_focus":
+			return Color(UiPalette.TEXT_GOLD.lightened(0.06), 0.82)
 		"map_choice":
 			return Color(UiPalette.ROOM_EXIT.lightened(0.14), 0.32)
+		"map_future":
+			return Color(UiPalette.EDGE_BRIGHT, 0.22)
 	return Color(UiPalette.TEXT_BRIGHT, 0.34)
 
 
-func _draw_unit(unit: UnitState) -> void:
+func _unit_draw_context(unit: UnitState) -> Dictionary:
 	# 坑2：多格单位的视觉中心（及 Y-Sort 锚点）必须是 footprint 右下角格的屏幕坐标
 	# 而非左上角锚点，否则站在大单位右下方的小单位会被错误遮挡
 	var fp := unit.footprint_size
@@ -1107,8 +1323,26 @@ func _draw_unit(unit: UnitState) -> void:
 	var pose_tex: Texture2D = pose.get("texture", null)
 	var sprite_size: Vector2 = pose.get("sprite_size", Vector2.ZERO)
 	var layout := _unit_sprite_layout(unit, center, sprite_size)
-	var top_left: Vector2 = layout["top_left"]
-	var ground_nudge: Vector2 = layout["ground_nudge"]
+	return {
+		"center": center,
+		"offset": offset,
+		"tint": tint,
+		"pose_tex": pose_tex,
+		"sprite_size": sprite_size,
+		"top_left": layout["top_left"],
+		"ground_nudge": layout["ground_nudge"],
+	}
+
+
+func _draw_unit_body(unit: UnitState) -> void:
+	var ctx := _unit_draw_context(unit)
+	var center: Vector2 = ctx["center"]
+	var offset: Vector2 = ctx["offset"]
+	var tint: Color = ctx["tint"]
+	var pose_tex: Texture2D = ctx["pose_tex"]
+	var sprite_size: Vector2 = ctx["sprite_size"]
+	var top_left: Vector2 = ctx["top_left"]
+	var ground_nudge: Vector2 = ctx["ground_nudge"]
 	_draw_unit_shadow(unit, center, ground_nudge, sprite_size)
 
 	var aura_alpha := float(_active_aura_alpha_by_uid.get(unit.uid, 0.0))
@@ -1124,6 +1358,15 @@ func _draw_unit(unit: UnitState) -> void:
 		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
 	elif hover_alpha > 0.01:
 		_draw_unit_focus_outline(unit, Color(UiPalette.TEXT_BRIGHT, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, hover_alpha)
+
+
+func _draw_unit_ui(unit: UnitState) -> void:
+	var ctx := _unit_draw_context(unit)
+	var center: Vector2 = ctx["center"]
+	var sprite_size: Vector2 = ctx["sprite_size"]
+	var ground_nudge: Vector2 = ctx["ground_nudge"]
+	var hp_bar_pos := center + IsoCoordinates.visual_vec(Vector2(-18, 6))
+	var name_alpha := float(_nameplate_alpha_by_uid.get(unit.uid, 0.0))
 	if name_alpha > 0.01:
 		_draw_unit_nameplate(unit, Vector2(hp_bar_pos.x + IsoCoordinates.visual(18.0), hp_bar_pos.y - IsoCoordinates.visual(4.0)), name_alpha)
 	_draw_unit_statuses(unit, hp_bar_pos + Vector2(0, IsoCoordinates.visual(8.0)))

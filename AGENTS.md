@@ -81,6 +81,11 @@ The result is `artifacts/verify/snapshot.json`. It contains:
 - Code comments should explain design intent, invariants, ordering constraints, or non-obvious tradeoffs. Do not add comments that merely restate what the next line of code does.
 - When touching UI, check visual hierarchy, color semantics, overlap, and whether debug-only details are leaking into the normal player experience.
 
+## Overlay And Texture Visual Spec
+
+- Only when the task directly involves overlay art, board-surface textures, or overlay/tile shader visuals, read `docs/ui-overlay-art-spec.md`.
+- Do not read that spec for unrelated combat logic, economy, localization, or general scripting tasks.
+
 ## Battle State Mutation Rules
 
 - Do not add new direct `unit.pos = ...` writes in battle rules, AI, or presentation code except constructors, clones, import/deserialization, or documented no-side-effect planning helpers.

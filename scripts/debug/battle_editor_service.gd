@@ -153,9 +153,11 @@ func _set_tile(payload: Dictionary) -> Dictionary:
 	var existing: TileState = ctrl.state.get_tile(pos)
 	_clear_tile_gems(existing)
 	var tile: TileState = TileState.create(pos, tile_id)
+	tile.surface_variant = str(payload.get("surface_variant", ""))
 	var slot_defs := _default_tile_slot_defs(tile_id)
 	if not slot_defs.is_empty():
 		tile = TileState.create_with_slots(pos, tile_id, slot_defs)
+		tile.surface_variant = str(payload.get("surface_variant", ""))
 	ctrl.state.tiles[ctrl.state.tile_key(pos)] = tile
 	return _finalize_mutation("set tile at %s to %s" % [pos, tile_id], true)
 

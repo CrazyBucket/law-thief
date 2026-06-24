@@ -42,6 +42,14 @@ func _run() -> void:
 	controller.run_editor_action("spawn_overlay", {"overlay_id": Constants.TILE_MOD_FIRE, "pos": Vector2i(0, 1)})
 	controller.run_editor_action("spawn_overlay", {"overlay_id": Constants.TILE_MOD_POISON_FOG, "pos": Vector2i(1, 1)})
 	controller.run_editor_action("spawn_overlay", {"overlay_id": Constants.TILE_MOD_TOXIC_SMOKE, "pos": Vector2i(2, 1)})
+	controller.run_editor_action("set_tile", {"tile_id": Constants.TILE_WATER, "pos": Vector2i(3, 1)})
+	controller.run_editor_action("spawn_overlay", {"overlay_id": Constants.TILE_MOD_POISON_PUDDLE, "pos": Vector2i(3, 1)})
+	controller.run_editor_action("set_tile", {"tile_id": Constants.TILE_GRASS, "pos": Vector2i(0, 2)})
+	controller.run_editor_action("set_tile", {"tile_id": Constants.TILE_BUSH, "pos": Vector2i(1, 2)})
+	controller.run_editor_action("spawn_overlay", {"overlay_id": Constants.TILE_MOD_FIRE, "pos": Vector2i(0, 2)})
+	var player := controller.state.get_player()
+	if player != null:
+		controller.run_editor_action("set_tile", {"tile_id": Constants.TILE_GRASS, "pos": player.pos})
 	scene.call("_refresh")
 	await create_timer(0.4).timeout
 	var image := root.get_viewport().get_texture().get_image()

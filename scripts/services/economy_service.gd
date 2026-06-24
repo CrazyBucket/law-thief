@@ -26,6 +26,8 @@ func get_combat_reward(room_type: String) -> int:
 	match room_type:
 		"ELITE_COMBAT":
 			return int(_config.get("elite_combat_gold", 20))
+		"END":
+			return int(_config.get("boss_combat_gold", 40))
 		_:
 			return int(_config.get("normal_combat_gold", 10))
 

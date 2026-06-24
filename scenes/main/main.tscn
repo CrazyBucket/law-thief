@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://c8lawthiefmain01"]
+[gd_scene load_steps=11 format=3 uid="uid://c8lawthiefmain01"]
 
 [ext_resource type="Script" path="res://scripts/main/main_root.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/ui/main_menu_bg.png" id="2_bg"]
@@ -6,6 +6,8 @@
 [ext_resource type="Shader" path="res://scenes/main/main_menu_background.gdshader" id="4_bg_shader"]
 [ext_resource type="Shader" path="res://scenes/main/main_menu_title.gdshader" id="5_title_shader"]
 [ext_resource type="AudioStream" path="res://assets/audio/menu_bgm_lawthief.ogg" id="6_menu_bgm"]
+[ext_resource type="Script" path="res://scripts/ui/pixel_menu_button.gd" id="7_pixel_button"]
+[ext_resource type="Texture2D" path="res://assets/ui/menu_btn_edge.png" id="8_button_edge"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bg"]
 shader = ExtResource("4_bg_shader")
@@ -105,7 +107,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="MenuPanel" type="PanelContainer" parent="ContentMargin/CenterWrap/MainStack"]
-custom_minimum_size = Vector2(320, 0)
+custom_minimum_size = Vector2(480, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 
@@ -118,29 +120,40 @@ layout_mode = 2
 theme_override_constants/separation = 10
 
 [node name="NewRunBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 52)
+custom_minimum_size = Vector2(480, 72)
 layout_mode = 2
 text = "开始游戏"
+script = ExtResource("7_pixel_button")
+ornament_texture = ExtResource("8_button_edge")
+prominent = true
 
 [node name="ContinueBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 48)
+custom_minimum_size = Vector2(480, 66)
 layout_mode = 2
 text = "继续游戏"
+script = ExtResource("7_pixel_button")
+ornament_texture = ExtResource("8_button_edge")
 
 [node name="SettingsBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 46)
+custom_minimum_size = Vector2(480, 64)
 layout_mode = 2
 text = "设置"
+script = ExtResource("7_pixel_button")
+ornament_texture = ExtResource("8_button_edge")
 
 [node name="CodexBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 46)
+custom_minimum_size = Vector2(480, 64)
 layout_mode = 2
 text = "图鉴"
+script = ExtResource("7_pixel_button")
+ornament_texture = ExtResource("8_button_edge")
 
 [node name="ExitBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(0, 46)
+custom_minimum_size = Vector2(480, 64)
 layout_mode = 2
 text = "退出游戏"
+script = ExtResource("7_pixel_button")
+ornament_texture = ExtResource("8_button_edge")
 
 [node name="EditorBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox"]
 custom_minimum_size = Vector2(0, 40)

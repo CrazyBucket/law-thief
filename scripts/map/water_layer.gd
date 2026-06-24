@@ -42,7 +42,7 @@ static func compose_fill_image(sheet_top: Image, sheet_right: Image, states: Vec
 	var left := _fill_mask_frame(sheet_right, states.w)
 	left.flip_x()
 	frames.append(left)
-	return _intersect_masks(frames)
+	return _apply_diamond_alpha(_intersect_masks(frames))
 
 
 static func compose_edge_image(sheet_top: Image, sheet_right: Image, states: Vector4i) -> Image:
@@ -59,7 +59,7 @@ static func compose_edge_image(sheet_top: Image, sheet_right: Image, states: Vec
 	var left := _frame(sheet_right, states.w & WaterAutotile.INNER_CORNER)
 	left.flip_x()
 	_blit_opaque(composed, left)
-	return composed
+	return _apply_diamond_alpha(composed)
 
 
 static func _compose_frame_image(sheet_top: Image, sheet_right: Image, states: Vector4i) -> Image:
@@ -109,6 +109,25 @@ static func _intersect_masks(frames: Array[Image]) -> Image:
 			if alpha > 0.01:
 				composed.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
 	return composed
+
+
+static func _apply_diamond_alpha(image: Image) -> Image:
+	var half_w := float(FRAME_SIZE.x) * 0.5
+	var half_h := float(FRAME_SIZE.y) * 0.5
+	var center := Vector2(half_w - 0.5, half_h - 0.5)
+	for y in range(FRAME_SIZE.y):
+		for x in range(FRAME_SIZE.x):
+			var p := Vector2(float(x), float(y))
+			var distance := absf(p.x - center.x) / half_w + absf(p.y - center.y) / half_h
+			if distance <= 0.98:
+				continue
+			var color := image.get_pixel(x, y)
+			if color.a <= 0.0:
+				continue
+			var edge_alpha := clampf((1.02 - distance) / 0.04, 0.0, 1.0)
+			color.a *= edge_alpha
+			image.set_pixel(x, y, color)
+	return image
 
 
 func _draw_fill_cell(canvas: CanvasItem, cell: Dictionary) -> void:

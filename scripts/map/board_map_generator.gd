@@ -34,6 +34,7 @@ static func build(state: GameState, encounter: Dictionary) -> void:
 			placed.tile_id = tile_id
 			placed._init_ground_tags()
 		var tile: TileState = state.tiles[state.tile_key(pos)]
+		tile.surface_variant = str(tile_data.get("surface_variant", ""))
 		for overlay_data in tile_data.get("overlays", []):
 			if not overlay_data is Dictionary:
 				continue

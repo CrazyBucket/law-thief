@@ -131,32 +131,10 @@ func _style_menu_buttons() -> void:
 
 
 func _style_menu_button(button: Button, primary: bool) -> void:
-	var base := Color(0.08, 0.11, 0.16, 0.88)
-	if primary:
-		base = Color(0.08, 0.22, 0.16, 0.92)
 	for state in ["normal", "hover", "pressed", "disabled"]:
-		var style := StyleBoxFlat.new()
-		style.set_corner_radius_all(0)
-		style.set_border_width_all(0)
-		style.shadow_size = 0
-		style.content_margin_left = 18
-		style.content_margin_right = 18
-		style.content_margin_top = 14
-		style.content_margin_bottom = 14
-		if state == "hover" and not button.disabled:
-			style.bg_color = base.lightened(0.08)
-		elif state == "pressed" and not button.disabled:
-			style.bg_color = base.darkened(0.08)
-		elif state == "disabled":
-			style.bg_color = Color(0.08, 0.09, 0.12, 0.72)
-		else:
-			style.bg_color = base
-		button.add_theme_stylebox_override(state, style)
+		button.add_theme_stylebox_override(state, StyleBoxEmpty.new())
 	button.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	button.add_theme_font_size_override("font_size", 17 if primary else 15)
-	button.add_theme_color_override("font_color", Color("#f3f5f7") if not button.disabled else Color("#68707d"))
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_font_size_override("font_size", 26 if primary else 22)
 
 
 func _refresh_all() -> void:

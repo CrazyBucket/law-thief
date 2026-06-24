@@ -1,0 +1,23 @@
+{
+  "player_spawn": [1, 6],
+  "enemies": [
+    {"def_id": "unit_law_beast", "pos": [5, 3]}
+  ],
+  "enemy_groups": [
+    {"weight": 1, "enemies": [
+      {"def_id": "unit_patrol_guard", "pos": [4, 1]},
+      {"def_id": "unit_patrol_guard", "pos": [4, 6]}
+    ]},
+    {"weight": 1, "enemies": [
+      {"def_id": "unit_patrol_guard", "pos": [4, 1]},
+      {"def_id": "unit_stone_bow_guard", "pos": [7, 6]}
+    ]}
+  ],
+  "tiles": [
+    {"pos": [3, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
+    {"pos": [3, 5], "tile_id": "tile_pillar", "slots": [{"slot_type": "red"}]}
+  ],
+  "entities": [
+    {"entity_id": "entity_rock", "pos": [2, 3]}, {"entity_id": "entity_rock", "pos": [2, 4]}
+  ]
+}

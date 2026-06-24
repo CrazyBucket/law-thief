@@ -1,7 +1,15 @@
-[gd_scene load_steps=3 format=3 uid="uid://c8lawthiefmap01"]
+[gd_scene load_steps=6 format=3 uid="uid://c8lawthiefmap01"]
 
 [ext_resource type="Script" path="res://scripts/ui/adventure_map_scene.gd" id="1_map"]
 [ext_resource type="Script" path="res://scripts/ui/isometric_board.gd" id="2_board"]
+[ext_resource type="Shader" path="res://scenes/battle/battle_scene.gdshader" id="3_grid_shader"]
+[ext_resource type="Texture2D" path="res://assets/ui/tiles.png" id="4_grid_texture"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_map_grid"]
+shader = ExtResource("3_grid_shader")
+shader_parameter/blend_intensity = 0.82
+shader_parameter/grid_contrast = 1.35
+shader_parameter/tint_color = Color(0.46, 0.50, 0.58, 1)
 
 [node name="AdventureMap" type="Control"]
 layout_mode = 3
@@ -20,6 +28,18 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.035, 0.04, 0.065, 1)
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.8)
 
 [node name="Vignette" type="ColorRect" parent="."]
 layout_mode = 1
@@ -49,6 +69,11 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_board")
 
+[node name="Grids" type="Sprite2D" parent="BoardLayer/IsometricBoard"]
+show_behind_parent = true
+material = SubResource("ShaderMaterial_map_grid")
+texture = ExtResource("4_grid_texture")
+
 [node name="HudLayer" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
@@ -60,80 +85,163 @@ mouse_filter = 2
 
 [node name="TopBar" type="PanelContainer" parent="HudLayer"]
 layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_bottom = 96.0
-grow_horizontal = 2
+anchors_preset = 0
+offset_left = 20.0
+offset_top = 18.0
+offset_right = 300.0
+offset_bottom = 72.0
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/TopBar"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
-[node name="HBox" type="HBoxContainer" parent="HudLayer/TopBar/VBox"]
+[node name="HeaderRow" type="HBoxContainer" parent="HudLayer/TopBar/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Title" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "冒险地图"
-
-[node name="Hint" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
+[node name="HeaderVBox" type="VBoxContainer" parent="HudLayer/TopBar/VBox/HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 14
-text = "当前位置 · 前方选择"
+theme_override_constants/separation = 2
 
-[node name="SeedLabel" type="Label" parent="HudLayer/TopBar/VBox/HBox"]
+[node name="Title" type="Label" parent="HudLayer/TopBar/VBox/HeaderRow/HeaderVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "冒险地图"
+
+[node name="Hint" type="Label" parent="HudLayer/TopBar/VBox/HeaderRow/HeaderVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "当前位置 · 前方选择"
+visible = false
+
+[node name="RouteState" type="Label" parent="HudLayer/TopBar/VBox/HeaderRow/HeaderVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "当前：起点"
+visible = false
+
+[node name="SummaryRow" type="HBoxContainer" parent="HudLayer/TopBar/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="GoldChip" type="Label" parent="HudLayer/TopBar/VBox/SummaryRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "金币 0"
+
+[node name="HpChip" type="Label" parent="HudLayer/TopBar/VBox/SummaryRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "HP 0/0"
+
+[node name="RelicsChip" type="Label" parent="HudLayer/TopBar/VBox/SummaryRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "遗物 0"
+
+[node name="CarriedChip" type="Label" parent="HudLayer/TopBar/VBox/SummaryRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "手持 无"
+
+[node name="ActionPanel" type="PanelContainer" parent="HudLayer"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -338.0
+offset_top = 18.0
+offset_right = -20.0
+offset_bottom = 72.0
+grow_horizontal = 0
+
+[node name="ActionRow" type="HBoxContainer" parent="HudLayer/ActionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="SeedLabel" type="Label" parent="HudLayer/ActionPanel/ActionRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "调试种子 0"
 
-[node name="RegenBtn" type="Button" parent="HudLayer/TopBar/VBox/HBox"]
-custom_minimum_size = Vector2(76, 36)
+[node name="RegenBtn" type="Button" parent="HudLayer/ActionPanel/ActionRow"]
+custom_minimum_size = Vector2(68, 34)
 layout_mode = 2
 text = "重掷"
 
-[node name="BackBtn" type="Button" parent="HudLayer/TopBar/VBox/HBox"]
-custom_minimum_size = Vector2(88, 36)
+[node name="BackBtn" type="Button" parent="HudLayer/ActionPanel/ActionRow"]
+custom_minimum_size = Vector2(82, 34)
 layout_mode = 2
 text = "主菜单"
 
-[node name="RunSummary" type="Label" parent="HudLayer/TopBar/VBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 13
-text = "HP 0/0  ·  遗物 0  ·  手持 无"
-
 [node name="PreviewPanel" type="PanelContainer" parent="HudLayer"]
 layout_mode = 1
-anchors_preset = 3
+anchors_preset = 1
 anchor_left = 1.0
-anchor_top = 1.0
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -332.0
-offset_top = -232.0
-offset_right = -16.0
-offset_bottom = -16.0
+offset_left = -336.0
+offset_top = 92.0
+offset_right = -20.0
+offset_bottom = 308.0
 grow_horizontal = 0
-grow_vertical = 0
+visible = false
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/PreviewPanel"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
+[node name="Eyebrow" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "当前路线"
+
+[node name="SelectionState" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "当前：起点"
+
 [node name="Title" type="Label" parent="HudLayer/PreviewPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "路线图"
+theme_override_font_sizes/font_size = 18
+text = "已选去向"
 
 [node name="Body" type="RichTextLabel" parent="HudLayer/PreviewPanel/VBox"]
-custom_minimum_size = Vector2(292, 144)
+custom_minimum_size = Vector2(276, 86)
 layout_mode = 2
 bbcode_enabled = true
 text = "选择前方房间，确认下一段旅程。"
 fit_content = true
 scroll_active = false
 
-[connection signal="pressed" from="HudLayer/TopBar/VBox/HBox/BackBtn" to="." method="_on_back_pressed"]
-[connection signal="pressed" from="HudLayer/TopBar/VBox/HBox/RegenBtn" to="." method="_on_regen_pressed"]
+[node name="OutlookTitle" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "后续去向"
+
+[node name="OutlookBody" type="RichTextLabel" parent="HudLayer/PreviewPanel/VBox"]
+custom_minimum_size = Vector2(276, 44)
+layout_mode = 2
+bbcode_enabled = true
+text = "选择前方房间，确认下一段旅程。"
+fit_content = true
+scroll_active = false
+
+[node name="LegendTitle" type="Label" parent="HudLayer/PreviewPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "路线标记"
+visible = false
+
+[node name="LegendBody" type="RichTextLabel" parent="HudLayer/PreviewPanel/VBox"]
+custom_minimum_size = Vector2(276, 0)
+layout_mode = 2
+bbcode_enabled = true
+text = "当前位置 / 可前往房间 / 悬停路线 / 已探索房间"
+fit_content = true
+scroll_active = false
+visible = false
+
+[connection signal="pressed" from="HudLayer/ActionPanel/ActionRow/BackBtn" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="HudLayer/ActionPanel/ActionRow/RegenBtn" to="." method="_on_regen_pressed"]

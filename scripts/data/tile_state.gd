@@ -7,6 +7,7 @@ var modifiers: Array = []
 var edge_mask: int = 0
 var edge_variant: String = ""
 var floor_variant: int = 0
+var surface_variant: String = ""
 var slots: Array = []  # Array[SlotState] — 地块槽位（机关柱等特殊地块才有）
 
 ## 地面固有属性标签（由 tile_id 决定，运行时不可变）

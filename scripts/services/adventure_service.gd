@@ -21,6 +21,11 @@ const COMBAT_ENCOUNTERS: Dictionary = {
 	],
 }
 
+# 每章 END 节点对应的 Boss 遭遇；最后一章是终局 Boss。
+const BOSS_ENCOUNTERS: Array[String] = [
+	"boss_chapter_1", "boss_chapter_2", "boss_chapter_3",
+]
+
 var map_seed: int = 20260525
 var map_matrix: Array = []
 var current_pos: Vector2i = Vector2i.ZERO
@@ -95,16 +100,16 @@ func enter_cell(cell: Vector2i) -> void:
 		return
 	pending_room_type = node.room_type
 	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type, get_current_chapter(), CHAPTER_COUNT)
-	pending_room_label = "%s %s" % [display["glyph"], display["label"]]
+	pending_room_label = _AdventureRoomDisplay.display_name(display)
 	_sync_run_progress()
 	_navigate_to_room(node.room_type)
 
 
 func get_room_scene_path(room_type: String) -> String:
 	match room_type:
-		"NORMAL_COMBAT", "ELITE_COMBAT":
+		"NORMAL_COMBAT", "ELITE_COMBAT", "END":
 			return BATTLE_SCENE
-		"REST_SITE", "SHOP", "EVENT", "END":
+		"REST_SITE", "SHOP", "EVENT":
 			return PLACEHOLDER_SCENE
 		_:
 			return PLACEHOLDER_SCENE
@@ -235,9 +240,34 @@ func _navigate_to_room(room_type: String) -> void:
 			GameService.start_battle(pool[idx])
 			RunService.save_run()
 			get_tree().change_scene_to_file(BATTLE_SCENE)
+		"END":
+			GameService.adventure_return = true
+			GameService.start_battle(_boss_encounter_for_chapter(get_current_chapter()))
+			RunService.save_run()
+			get_tree().change_scene_to_file(BATTLE_SCENE)
 		_:
 			RunService.save_run()
 			get_tree().change_scene_to_file(PLACEHOLDER_SCENE)
+
+
+func _boss_encounter_for_chapter(chapter: int) -> String:
+	if BOSS_ENCOUNTERS.is_empty():
+		return "tutorial_001"
+	var idx := clampi(chapter - 1, 0, BOSS_ENCOUNTERS.size() - 1)
+	return BOSS_ENCOUNTERS[idx]
+
+
+## Boss 战胜利后调用：非最终章直接进入下一关地图，最终章则通关回主菜单。
+## 与原 END 占位房间不同，这里不再走 room_placeholder 的确认步骤。
+func advance_after_boss_room() -> void:
+	if get_current_chapter() < CHAPTER_COUNT:
+		_advance_to_next_chapter()
+		get_tree().change_scene_to_file(MAP_SCENE)
+		return
+	RunService.complete_run("win")
+	RunService.end_run()
+	reset_local_state()
+	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
 
 func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
@@ -252,7 +282,7 @@ func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
 			var display: Dictionary = _AdventureRoomDisplay.get_display(
 				current_node.room_type, get_current_chapter(), CHAPTER_COUNT
 			)
-			pending_room_label = "%s %s" % [display["glyph"], display["label"]]
+			pending_room_label = _AdventureRoomDisplay.display_name(display)
 
 
 func _serialize_map_matrix() -> Array:
@@ -338,7 +368,7 @@ func _begin_chapter_map(chapter: int, base_seed: int) -> void:
 	run_active = true
 	pending_room_type = "START"
 	var display: Dictionary = _AdventureRoomDisplay.get_display("START", chapter, CHAPTER_COUNT)
-	pending_room_label = "%s %s" % [display["glyph"], display["label"]]
+	pending_room_label = _AdventureRoomDisplay.display_name(display)
 	_sync_run_progress()
 
 
