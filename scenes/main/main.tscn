@@ -119,18 +119,18 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="NewRunBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+[node name="ContinueBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
 custom_minimum_size = Vector2(480, 72)
 layout_mode = 2
-text = "开始游戏"
+text = "继续游戏"
 script = ExtResource("7_pixel_button")
 ornament_texture = ExtResource("8_button_edge")
 prominent = true
 
-[node name="ContinueBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
-custom_minimum_size = Vector2(480, 66)
+[node name="NewRunBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
+custom_minimum_size = Vector2(480, 72)
 layout_mode = 2
-text = "继续游戏"
+text = "开始游戏"
 script = ExtResource("7_pixel_button")
 ornament_texture = ExtResource("8_button_edge")
 

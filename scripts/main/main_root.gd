@@ -1,6 +1,7 @@
 extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 const MetaConsoleCli = preload("res://scripts/debug/meta_console_cli.gd")
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
@@ -39,7 +40,7 @@ var _navigating: bool = false
 var _console_layer: CanvasLayer = null
 var _console: Control = null
 var _meta_cli: MetaConsoleCli = null
-var _exit_confirm_dialog: ConfirmationDialog = null
+var _exit_confirm_dialog: GameConfirmDialog = null
 
 
 func _ready() -> void:
@@ -122,20 +123,22 @@ func _apply_theme() -> void:
 func _style_menu_buttons() -> void:
 	var has_run := RunService.has_saved_run()
 	_continue_btn.disabled = not has_run
+	_continue_btn.prominent = has_run
+	_new_run_btn.prominent = not has_run
 	_editor_btn.visible = OS.is_debug_build() and bool(SettingsService.get_value("battle_editor_enabled"))
+	_style_menu_button(_continue_btn, true)
 	_style_menu_button(_new_run_btn, true)
-	_style_menu_button(_continue_btn, false)
 	_style_menu_button(_settings_btn, false)
 	_style_menu_button(_codex_btn, false)
 	_style_menu_button(_exit_btn, false)
 	_style_menu_button(_editor_btn, false)
 
 
-func _style_menu_button(button: Button, primary: bool) -> void:
+func _style_menu_button(button: Button, large: bool) -> void:
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		button.add_theme_stylebox_override(state, StyleBoxEmpty.new())
 	button.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	button.add_theme_font_size_override("font_size", 26 if primary else 22)
+	button.add_theme_font_size_override("font_size", 26 if large else 22)
 
 
 func _refresh_all() -> void:
@@ -657,11 +660,13 @@ func _on_exit_pressed() -> void:
 func _create_exit_confirm_dialog() -> void:
 	if _exit_confirm_dialog != null:
 		return
-	_exit_confirm_dialog = ConfirmationDialog.new()
-	_exit_confirm_dialog.title = tr("menu.exit.confirm.title")
-	_exit_confirm_dialog.dialog_text = tr("menu.exit.confirm.body")
-	_exit_confirm_dialog.ok_button_text = tr("menu.exit.confirm.ok")
-	_exit_confirm_dialog.get_cancel_button().text = tr("menu.exit.confirm.cancel")
+	_exit_confirm_dialog = GameConfirmDialog.new()
+	_exit_confirm_dialog.configure(
+		tr("menu.exit.confirm.title"),
+		tr("menu.exit.confirm.body"),
+		tr("menu.exit.confirm.ok"),
+		tr("menu.exit.confirm.cancel")
+	)
 	_exit_confirm_dialog.confirmed.connect(_confirm_exit_game)
 	add_child(_exit_confirm_dialog)
 

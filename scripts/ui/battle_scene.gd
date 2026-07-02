@@ -2,6 +2,7 @@ extends Control
 
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const StatusIcons = preload("res://scripts/ui/status_icons.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
@@ -136,7 +137,7 @@ var _editor_panel_toggle_btn: Button = null
 var _editor_inspector_toggle_btn: Button = null
 var _editor_inspector_body: VBoxContainer = null
 var _editor_panel_user_positioned: bool = false
-var _leave_confirm_dialog: ConfirmationDialog = null
+var _leave_confirm_dialog: GameConfirmDialog = null
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
@@ -962,11 +963,13 @@ func _on_back_pressed() -> void:
 func _create_leave_confirm_dialog() -> void:
 	if _leave_confirm_dialog != null:
 		return
-	_leave_confirm_dialog = ConfirmationDialog.new()
-	_leave_confirm_dialog.title = tr("battle.leave.confirm.title")
-	_leave_confirm_dialog.dialog_text = tr("battle.leave.confirm.body")
-	_leave_confirm_dialog.ok_button_text = tr("battle.leave.confirm.ok")
-	_leave_confirm_dialog.get_cancel_button().text = tr("battle.leave.confirm.cancel")
+	_leave_confirm_dialog = GameConfirmDialog.new()
+	_leave_confirm_dialog.configure(
+		tr("battle.leave.confirm.title"),
+		tr("battle.leave.confirm.body"),
+		tr("battle.leave.confirm.ok"),
+		tr("battle.leave.confirm.cancel")
+	)
 	_leave_confirm_dialog.confirmed.connect(_confirm_leave_battle)
 	add_child(_leave_confirm_dialog)
 

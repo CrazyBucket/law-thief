@@ -1,6 +1,7 @@
 extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
@@ -32,7 +33,7 @@ const BACKDROP_PATH := "res://assets/ui/adventure_map_sky_ruins.png"
 var _map_state: GameState = null
 var _board_input = BoardInputAdapterScript.new()
 var _hover_cell: Vector2i = INVALID_CELL
-var _leave_confirm_dialog: ConfirmationDialog = null
+var _leave_confirm_dialog: GameConfirmDialog = null
 
 
 func _ready() -> void:
@@ -154,11 +155,13 @@ func _on_back_pressed() -> void:
 func _create_leave_confirm_dialog() -> void:
 	if _leave_confirm_dialog != null:
 		return
-	_leave_confirm_dialog = ConfirmationDialog.new()
-	_leave_confirm_dialog.title = tr("map.leave.confirm.title")
-	_leave_confirm_dialog.dialog_text = tr("map.leave.confirm.body")
-	_leave_confirm_dialog.ok_button_text = tr("map.leave.confirm.ok")
-	_leave_confirm_dialog.get_cancel_button().text = tr("map.leave.confirm.cancel")
+	_leave_confirm_dialog = GameConfirmDialog.new()
+	_leave_confirm_dialog.configure(
+		tr("map.leave.confirm.title"),
+		tr("map.leave.confirm.body"),
+		tr("map.leave.confirm.ok"),
+		tr("map.leave.confirm.cancel")
+	)
 	_leave_confirm_dialog.confirmed.connect(_confirm_leave_map)
 	add_child(_leave_confirm_dialog)
 
