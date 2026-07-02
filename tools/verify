@@ -2,10 +2,17 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/opt/homebrew/bin/godot}"
+source "$ROOT/tools/lib/godot.sh"
+GODOT="$(resolve_godot)"
 MODE="${1:-fast}"
 REPORT_DIR="$ROOT/artifacts/verify"
 mkdir -p "$REPORT_DIR"
+LOCK_DIR="$REPORT_DIR/.verify.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "VERIFY_BUSY another verify run is active: $LOCK_DIR" >&2
+  exit 3
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 FAST_TESTS=(
   combat_transaction_test
@@ -79,16 +86,21 @@ passed=0
 failed=0
 start="$(date +%s)"
 : > "$REPORT_DIR/verify.log"
+echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
 
 for test_name in "${TESTS[@]}"; do
-  echo "VERIFY_RUN $test_name"
+  echo "VERIFY_RUN $test_name" | tee -a "$REPORT_DIR/verify.log"
   local_path="res://scripts/tests/${test_name}.gd"
   log_name="${test_name//\//__}"
-  if "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$REPORT_DIR/${log_name}.log" 2>&1; then
-    echo "VERIFY_PASS $test_name"
+  user_root="$REPORT_DIR/userdata/$log_name"
+  rm -rf "$user_root"
+  mkdir -p "$user_root"
+  save_root="$(godot_host_path "$user_root/save")"
+  if WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" LAW_THIEF_SAVE_ROOT="$save_root" "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$REPORT_DIR/${log_name}.log" 2>&1; then
+    echo "VERIFY_PASS $test_name" | tee -a "$REPORT_DIR/verify.log"
     passed=$((passed + 1))
   else
-    echo "VERIFY_FAIL $test_name (see artifacts/verify/${log_name}.log)"
+    echo "VERIFY_FAIL $test_name (see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
     tail -40 "$REPORT_DIR/${log_name}.log"
     failed=$((failed + 1))
   fi

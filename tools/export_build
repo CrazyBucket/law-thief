@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/opt/homebrew/bin/godot}"
+source "$ROOT/tools/lib/godot.sh"
+GODOT="$(resolve_godot)"
 PRESET="${1:-Linux}"
 OUT_DIR="$ROOT/build"
 

@@ -32,6 +32,7 @@ const BACKDROP_PATH := "res://assets/ui/adventure_map_sky_ruins.png"
 var _map_state: GameState = null
 var _board_input = BoardInputAdapterScript.new()
 var _hover_cell: Vector2i = INVALID_CELL
+var _leave_confirm_dialog: ConfirmationDialog = null
 
 
 func _ready() -> void:
@@ -46,6 +47,7 @@ func _ready() -> void:
 	_rebuild_board()
 	_refresh_hud()
 	_refresh_preview()
+	_create_leave_confirm_dialog()
 
 
 func _apply_theme() -> void:
@@ -143,10 +145,26 @@ func _on_cell_hovered(cell: Vector2i, has_cell: bool) -> void:
 
 
 func _on_back_pressed() -> void:
-	if RunService.is_run_active():
-		RunService.save_run()
-	AdventureService.run_active = false
-	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+	if _leave_confirm_dialog == null:
+		_confirm_leave_map()
+		return
+	_leave_confirm_dialog.popup_centered(Vector2i(420, 180))
+
+
+func _create_leave_confirm_dialog() -> void:
+	if _leave_confirm_dialog != null:
+		return
+	_leave_confirm_dialog = ConfirmationDialog.new()
+	_leave_confirm_dialog.title = tr("map.leave.confirm.title")
+	_leave_confirm_dialog.dialog_text = tr("map.leave.confirm.body")
+	_leave_confirm_dialog.ok_button_text = tr("map.leave.confirm.ok")
+	_leave_confirm_dialog.get_cancel_button().text = tr("map.leave.confirm.cancel")
+	_leave_confirm_dialog.confirmed.connect(_confirm_leave_map)
+	add_child(_leave_confirm_dialog)
+
+
+func _confirm_leave_map() -> void:
+	AdventureService.save_and_return_to_main()
 
 
 func _on_regen_pressed() -> void:

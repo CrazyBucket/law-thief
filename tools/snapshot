@@ -2,7 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GODOT="${GODOT:-/opt/homebrew/bin/godot}"
+source "$ROOT/tools/lib/godot.sh"
+GODOT="$(resolve_godot)"
+USER_ROOT="$ROOT/artifacts/verify/snapshot-userdata"
 
 cd "$ROOT"
-exec "$GODOT" --headless --path . --script res://scripts/tools/ai_snapshot.gd -- "$@"
+rm -rf "$USER_ROOT"
+mkdir -p "$USER_ROOT"
+SAVE_ROOT="$(godot_host_path "$USER_ROOT/save")"
+exec env WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" LAW_THIEF_SAVE_ROOT="$SAVE_ROOT" "$GODOT" --headless --path . --script res://scripts/tools/ai_snapshot.gd -- "$@"

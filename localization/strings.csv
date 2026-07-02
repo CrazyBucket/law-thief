@@ -1,4 +1,17 @@
 keys,zh_CN,en_US
+menu.exit.confirm.title,退出游戏,Quit Game
+menu.exit.confirm.body,当前进度会先保存。确定退出？,Progress will be saved first. Quit now?
+menu.exit.confirm.ok,退出,Quit
+menu.exit.confirm.cancel,取消,Cancel
+map.leave.confirm.title,返回主菜单,Return to Menu
+map.leave.confirm.body,当前路线会保存，下次可继续。,Your route will be saved and can be continued later.
+map.leave.confirm.ok,保存并返回,Save and Return
+map.leave.confirm.cancel,继续冒险,Keep Going
+battle.leave.confirm.title,离开战斗,Leave Battle
+battle.leave.confirm.body,当前战斗会保存，下次继续时回到这里。,This battle will be saved and continue from here next time.
+battle.leave.confirm.ok,保存并返回,Save and Return
+battle.leave.confirm.cancel,继续战斗,Keep Fighting
+battle.leave.busy,演出结束后再离开。,Leave after the action finishes.
 app.title,Law Thief,Law Thief
 app.subtitle,窃律者 MVP,Law Thief MVP
 tile.floor.name,地面,Floor

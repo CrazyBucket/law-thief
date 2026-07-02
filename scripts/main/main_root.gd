@@ -39,6 +39,7 @@ var _navigating: bool = false
 var _console_layer: CanvasLayer = null
 var _console: Control = null
 var _meta_cli: MetaConsoleCli = null
+var _exit_confirm_dialog: ConfirmationDialog = null
 
 
 func _ready() -> void:
@@ -48,6 +49,7 @@ func _ready() -> void:
 	_spawn_background_particles()
 	_wire_actions()
 	_apply_theme()
+	_create_exit_confirm_dialog()
 	_configure_menu_music()
 	_page_layer.visible = false
 	_content_margin.visible = true
@@ -646,6 +648,27 @@ func _on_editor_pressed() -> void:
 
 
 func _on_exit_pressed() -> void:
+	if _exit_confirm_dialog == null:
+		_confirm_exit_game()
+		return
+	_exit_confirm_dialog.popup_centered(Vector2i(420, 180))
+
+
+func _create_exit_confirm_dialog() -> void:
+	if _exit_confirm_dialog != null:
+		return
+	_exit_confirm_dialog = ConfirmationDialog.new()
+	_exit_confirm_dialog.title = tr("menu.exit.confirm.title")
+	_exit_confirm_dialog.dialog_text = tr("menu.exit.confirm.body")
+	_exit_confirm_dialog.ok_button_text = tr("menu.exit.confirm.ok")
+	_exit_confirm_dialog.get_cancel_button().text = tr("menu.exit.confirm.cancel")
+	_exit_confirm_dialog.confirmed.connect(_confirm_exit_game)
+	add_child(_exit_confirm_dialog)
+
+
+func _confirm_exit_game() -> void:
+	if RunService.is_run_active():
+		RunService.save_run()
 	get_tree().quit()
 
 

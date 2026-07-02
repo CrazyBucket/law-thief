@@ -172,6 +172,16 @@ func finish_room_and_return() -> void:
 	get_tree().change_scene_to_file(MAP_SCENE)
 
 
+func save_and_return_to_main() -> void:
+	if RunService.is_run_active():
+		if RunService.get_run_phase().is_empty():
+			RunService.set_run_phase("MAP")
+		_sync_run_progress()
+		RunService.save_run()
+	GameService.reset_session_state()
+	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+
+
 func resume_loaded_run() -> bool:
 	if not RunService.is_run_active():
 		return false
@@ -236,18 +246,38 @@ func _navigate_to_room(room_type: String) -> void:
 		"NORMAL_COMBAT", "ELITE_COMBAT":
 			var pool: Array = COMBAT_ENCOUNTERS.get(room_type, ["tutorial_001"])
 			var idx: int = (current_pos.x + current_pos.y + map_seed) % pool.size()
+			var encounter_id := str(pool[idx])
 			GameService.adventure_return = true
-			GameService.start_battle(pool[idx])
+			GameService.start_battle(encounter_id)
+			_mark_pending_battle(encounter_id)
 			RunService.save_run()
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		"END":
+			var encounter_id := _boss_encounter_for_chapter(get_current_chapter())
 			GameService.adventure_return = true
-			GameService.start_battle(_boss_encounter_for_chapter(get_current_chapter()))
+			GameService.start_battle(encounter_id)
+			_mark_pending_battle(encounter_id)
 			RunService.save_run()
 			get_tree().change_scene_to_file(BATTLE_SCENE)
 		_:
+			RunService.set_run_phase("ROOM")
+			RunService.set_pending_decision({
+				"type": "room",
+				"room_id": GameService.pending_room_id,
+				"room_type": pending_room_type,
+			})
 			RunService.save_run()
 			get_tree().change_scene_to_file(PLACEHOLDER_SCENE)
+
+
+func _mark_pending_battle(encounter_id: String) -> void:
+	RunService.set_run_phase("BATTLE")
+	RunService.set_pending_decision({
+		"type": "battle",
+		"room_id": GameService.pending_room_id,
+		"room_type": pending_room_type,
+		"encounter_id": encounter_id,
+	})
 
 
 func _boss_encounter_for_chapter(chapter: int) -> String:

@@ -54,7 +54,15 @@ func continue_scene_for_active_run() -> String:
 	var pending: Dictionary = RunService.get_pending_decision()
 	match phase:
 		"ROOM":
+			pending_room_id = str(pending.get("room_id", pending_room_id))
+			AdventureService.pending_room_type = str(pending.get("room_type", AdventureService.pending_room_type))
 			return ROOM_SCENE
+		"BATTLE":
+			pending_room_id = str(pending.get("room_id", ""))
+			pending_encounter_id = str(pending.get("encounter_id", pending_encounter_id))
+			adventure_return = true
+			AdventureService.pending_room_type = str(pending.get("room_type", AdventureService.pending_room_type))
+			return BATTLE_SCENE
 		"BATTLE_REWARD":
 			pending_room_id = str(pending.get("room_id", ""))
 			pending_encounter_id = str(pending.get("encounter_id", pending_encounter_id))

@@ -16,6 +16,16 @@ func _run_tests() -> void:
 	run_service.set_run_phase("ROOM")
 	run_service.set_pending_decision({"type": "room", "room_id": "chapter_1:0_0"})
 	assert(game_service.continue_scene_for_active_run() == "res://scenes/adventure/room_placeholder.tscn", "ROOM phase should continue to room")
+	run_service.set_run_phase("BATTLE")
+	run_service.set_pending_decision({
+		"type": "battle",
+		"room_id": "chapter_1:0_1",
+		"room_type": "ELITE_COMBAT",
+		"encounter_id": "enforcer_gate",
+	})
+	assert(game_service.continue_scene_for_active_run() == "res://scenes/battle/battle_scene.tscn", "BATTLE phase should continue to battle scene")
+	assert(str(game_service.pending_room_id) == "chapter_1:0_1", "battle continue route should restore pending room id")
+	assert(str(game_service.pending_encounter_id) == "enforcer_gate", "battle continue route should restore pending encounter id")
 	run_service.set_run_phase("BATTLE_REWARD")
 	run_service.set_pending_decision({
 		"type": "battle_reward",

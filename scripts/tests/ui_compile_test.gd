@@ -22,6 +22,7 @@ const OPERATOR_SCAN_DIRS: Array[String] = [
 
 var _failed := false
 var _scene_queue: Array[String] = []
+var _run_snapshot: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -30,14 +31,16 @@ func _initialize() -> void:
 
 func _run_tests() -> void:
 	print("=== UI Compile Test ===")
+	_capture_run_snapshot()
+	_prepare_scene_boot_state()
 	for path in CRITICAL_SCRIPTS:
 		_check_script(path)
 		if _failed:
-			quit(1)
+			_finish(1)
 			return
 	_check_invalid_operators()
 	if _failed:
-		quit(1)
+		_finish(1)
 		return
 	_scene_queue = CRITICAL_SCENES.duplicate()
 	_boot_next_scene()
@@ -58,11 +61,11 @@ func _check_script(path: String) -> void:
 
 func _boot_next_scene() -> void:
 	if _failed:
-		quit(1)
+		_finish(1)
 		return
 	if _scene_queue.is_empty():
 		print("UI_COMPILE_TEST_PASS")
-		quit(0)
+		_finish(0)
 		return
 	var path: String = _scene_queue.pop_front()
 	var packed: PackedScene = load(path) as PackedScene
@@ -87,6 +90,35 @@ func _boot_next_scene() -> void:
 	)
 	root.add_child(timer)
 	timer.start()
+
+
+func _capture_run_snapshot() -> void:
+	var run_service := root.get_node_or_null("RunService")
+	if run_service != null and run_service.has_method("snapshot_active_run"):
+		_run_snapshot = run_service.call("snapshot_active_run")
+
+
+func _prepare_scene_boot_state() -> void:
+	var run_service := root.get_node_or_null("RunService")
+	var adventure_service := root.get_node_or_null("AdventureService")
+	if run_service == null or adventure_service == null:
+		return
+	if bool(run_service.call("is_run_active")) and adventure_service.has_method("resume_loaded_run"):
+		adventure_service.call("resume_loaded_run")
+
+
+func _finish(exit_code: int) -> void:
+	_restore_run_snapshot()
+	quit(exit_code)
+
+
+func _restore_run_snapshot() -> void:
+	var run_service := root.get_node_or_null("RunService")
+	if run_service != null and run_service.has_method("restore_run_snapshot") and not _run_snapshot.is_empty():
+		run_service.call("restore_run_snapshot", _run_snapshot)
+	var adventure_service := root.get_node_or_null("AdventureService")
+	if adventure_service != null and adventure_service.has_method("reload_for_active_slot"):
+		adventure_service.call("reload_for_active_slot")
 
 
 func _validate_scene(path: String, node: Node) -> void:

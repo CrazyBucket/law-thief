@@ -136,6 +136,7 @@ var _editor_panel_toggle_btn: Button = null
 var _editor_inspector_toggle_btn: Button = null
 var _editor_inspector_body: VBoxContainer = null
 var _editor_panel_user_positioned: bool = false
+var _leave_confirm_dialog: ConfirmationDialog = null
 
 ## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
 const _ENCOUNTER_RELIC_SOURCE := {
@@ -247,6 +248,7 @@ func _ready() -> void:
 		"clear_timeline_hover_cb": Callable(self , "_clear_timeline_hover"),
 	})
 	_apply_animation_speed()
+	_create_leave_confirm_dialog()
 	_start_battle(GameService.pending_encounter_id)
 	call_deferred("_restore_battle_reward_if_needed")
 
@@ -951,12 +953,46 @@ func _exit_tree() -> void:
 
 
 func _on_back_pressed() -> void:
+	if _leave_confirm_dialog == null:
+		_confirm_leave_battle()
+		return
+	_leave_confirm_dialog.popup_centered(Vector2i(420, 180))
+
+
+func _create_leave_confirm_dialog() -> void:
+	if _leave_confirm_dialog != null:
+		return
+	_leave_confirm_dialog = ConfirmationDialog.new()
+	_leave_confirm_dialog.title = tr("battle.leave.confirm.title")
+	_leave_confirm_dialog.dialog_text = tr("battle.leave.confirm.body")
+	_leave_confirm_dialog.ok_button_text = tr("battle.leave.confirm.ok")
+	_leave_confirm_dialog.get_cancel_button().text = tr("battle.leave.confirm.cancel")
+	_leave_confirm_dialog.confirmed.connect(_confirm_leave_battle)
+	add_child(_leave_confirm_dialog)
+
+
+func _confirm_leave_battle() -> void:
+	if _player_animating or _enemy_phase_running or _event_player.is_playing():
+		_message_label.text = tr("battle.leave.busy")
+		return
+	_dismiss_popup()
 	GameService.pending_battle_mode = "normal"
-	if GameService.adventure_return:
-		GameService.adventure_return = false
-		get_tree().change_scene_to_file("res://scenes/map/adventure_map.tscn")
-	else:
-		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+	if RunService.is_run_active():
+		if _controller != null and _controller.state != null:
+			RunService.capture_player_battle_state(_controller.state)
+		if GameService.adventure_return and RunService.get_run_phase() != "BATTLE_REWARD":
+			if GameService.pending_room_id.is_empty():
+				GameService.pending_room_id = AdventureService.current_room_id()
+			RunService.set_run_phase("BATTLE")
+			RunService.set_pending_decision({
+				"type": "battle",
+				"room_id": GameService.pending_room_id,
+				"room_type": AdventureService.pending_room_type,
+				"encounter_id": _encounter_id,
+			})
+		RunService.save_run()
+	GameService.reset_session_state()
+	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
 
 func _on_battle_ended(result: String) -> void:

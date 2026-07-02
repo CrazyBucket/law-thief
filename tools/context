@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
+DESIGN_ROOT="${DESIGN_ROOT:-/Users/jinhuiwu/code/learning-notes/game/design/law-thief}"
 QUERY="${*:-宝石|倍率|伤害|叠加|取整}"
 
 cat <<EOF
@@ -15,6 +15,12 @@ AUTHORITY_ORDER:
 Conflicts must be reported before changing behavior. Detailed design wins by default.
 QUERY=$QUERY
 EOF
+
+if [[ ! -d "$DESIGN_ROOT" ]]; then
+  echo "DESIGN_ROOT_MISSING $DESIGN_ROOT"
+  echo "Set DESIGN_ROOT to the local design-doc path before relying on design search."
+  exit 0
+fi
 
 rg -n --glob '*.md' "$QUERY" \
   "$DESIGN_ROOT/详细设计" \
