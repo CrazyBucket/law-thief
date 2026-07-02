@@ -30,7 +30,8 @@ CORE_TESTS=(
   ai_test
   combat_transaction_test
   smoke_test
-  damage_debug_test
+  explosion_test
+  prop_entity_test
   stone_bow_guard_test
   split_shot_test
   bomb_rat_test
@@ -41,6 +42,11 @@ ALL_TESTS=()
 while IFS= read -r file; do
   ALL_TESTS+=("$(basename "$file" .gd)")
 done < <(find "$ROOT/scripts/tests" -maxdepth 1 -name '*_test.gd' | sort)
+
+MANUAL_TESTS=()
+while IFS= read -r file; do
+  MANUAL_TESTS+=("manual/$(basename "$file" .gd)")
+done < <(find "$ROOT/scripts/tests/manual" -maxdepth 1 -name '*_test.gd' 2>/dev/null | sort)
 
 tests_for_changed() {
   local changed
@@ -65,7 +71,8 @@ case "$MODE" in
     done < <(tests_for_changed | awk '!seen[$0]++')
     ;;
   all) TESTS=("${ALL_TESTS[@]}") ;;
-  *) echo "Usage: ./tools/verify fast|changed|all"; exit 2 ;;
+  manual) TESTS=("${MANUAL_TESTS[@]}") ;;
+  *) echo "Usage: ./tools/verify fast|changed|all|manual"; exit 2 ;;
 esac
 
 passed=0
@@ -75,12 +82,14 @@ start="$(date +%s)"
 
 for test_name in "${TESTS[@]}"; do
   echo "VERIFY_RUN $test_name"
-  if "$GODOT" --headless --path "$ROOT" --script "res://scripts/tests/${test_name}.gd" >"$REPORT_DIR/${test_name}.log" 2>&1; then
+  local_path="res://scripts/tests/${test_name}.gd"
+  log_name="${test_name//\//__}"
+  if "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$REPORT_DIR/${log_name}.log" 2>&1; then
     echo "VERIFY_PASS $test_name"
     passed=$((passed + 1))
   else
-    echo "VERIFY_FAIL $test_name (see artifacts/verify/${test_name}.log)"
-    tail -40 "$REPORT_DIR/${test_name}.log"
+    echo "VERIFY_FAIL $test_name (see artifacts/verify/${log_name}.log)"
+    tail -40 "$REPORT_DIR/${log_name}.log"
     failed=$((failed + 1))
   fi
 done

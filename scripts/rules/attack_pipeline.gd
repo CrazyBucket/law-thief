@@ -261,7 +261,8 @@ static func _phase_hit(ctx: AttackContext) -> void:
 	var hit_cell := ctx.aim_cell
 	if ctx.has_tag(TAG_RANGED):
 		var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
-		if not ctx.has_tag(TAG_SPLIT_SHOT):
+		var ignore_projectile_blockers := bool(ctx.payload.get("ignore_projectile_blockers", false))
+		if not ctx.has_tag(TAG_SPLIT_SHOT) and not ignore_projectile_blockers:
 			hit_cell = BoardUtils.resolve_projectile_impact(ctx.state, from_cell, ctx.aim_cell)
 		_push_projectile_event(ctx, from_cell, hit_cell)
 		ctx.target = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)

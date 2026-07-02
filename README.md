@@ -29,6 +29,7 @@ AI / 日常开发优先使用统一入口：
 ./tools/coverage
 ./tools/verify changed
 ./tools/verify fast
+./tools/verify manual
 ```
 
 `snapshot` 会将行动前后状态、差异、事件、不变量和数值计算 trace 写入
@@ -58,7 +59,15 @@ godot --headless --path . --script res://scripts/tests/encounter_load_test.gd &&
 命中/障碍物专项回归：
 
 ```bash
-godot --headless --path . --script res://scripts/tests/damage_debug_test.gd && godot --headless --path . --script res://scripts/tests/stone_bow_guard_test.gd && godot --headless --path . --script res://scripts/tests/split_shot_test.gd
+godot --headless --path . --script res://scripts/tests/explosion_test.gd && godot --headless --path . --script res://scripts/tests/prop_entity_test.gd && godot --headless --path . --script res://scripts/tests/stone_bow_guard_test.gd && godot --headless --path . --script res://scripts/tests/split_shot_test.gd
+```
+
+手动探针 / 压力验证（不再包含在 `./tools/verify all` 中）：
+
+```bash
+./tools/verify manual
+godot --headless --path . --script res://scripts/tests/manual/damage_debug_test.gd
+godot --headless --path . --script res://scripts/tests/manual/battle_stress_test.gd
 ```
 
 约定：只要改动了 `scripts/battle/`、`scripts/rules/`、`scripts/ui/` 或战斗场景资源，都要重新执行上面两组命令，确认战斗场景可启动、主流程可跑通、隔障碍攻击/分裂攻击没有回归。

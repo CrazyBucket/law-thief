@@ -144,7 +144,7 @@ ornament_texture = ExtResource("8_button_edge")
 [node name="CodexBtn" type="Button" parent="ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons"]
 custom_minimum_size = Vector2(480, 64)
 layout_mode = 2
-text = "图鉴"
+text = "成就"
 script = ExtResource("7_pixel_button")
 ornament_texture = ExtResource("8_button_edge")
 
@@ -192,7 +192,7 @@ vertical_alignment = 1
 [node name="FooterHint" type="Label" parent="HiddenMeta"]
 layout_mode = 0
 theme_override_font_sizes/font_size = 12
-text = "开始/继续会切换到流程场景；其他入口通过弹窗查看。"
+text = "开始/继续会切换到流程场景；其他入口作为页面查看。"
 autowrap_mode = 2
 
 [node name="BottomInfo" type="Label" parent="."]
@@ -209,7 +209,7 @@ grow_vertical = 0
 theme_override_font_sizes/font_size = 11
 text = "档案 1"
 
-[node name="ModalLayer" type="Control" parent="."]
+[node name="PageLayer" type="Control" parent="."]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -219,7 +219,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Backdrop" type="ColorRect" parent="ModalLayer"]
+[node name="Backdrop" type="ColorRect" parent="PageLayer"]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -230,7 +230,7 @@ grow_vertical = 2
 mouse_filter = 0
 color = Color(0, 0, 0, 0)
 
-[node name="PageMargin" type="MarginContainer" parent="ModalLayer"]
+[node name="PageMargin" type="MarginContainer" parent="PageLayer"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -242,48 +242,48 @@ offset_bottom = -48.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="PageFrame" type="PanelContainer" parent="ModalLayer/PageMargin"]
+[node name="PageFrame" type="PanelContainer" parent="PageLayer/PageMargin"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="VBox" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame"]
+[node name="VBox" type="VBoxContainer" parent="PageLayer/PageMargin/PageFrame"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 18
 
-[node name="Header" type="HBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox"]
+[node name="Header" type="HBoxContainer" parent="PageLayer/PageMargin/PageFrame/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 20
 alignment = 1
 
-[node name="HeaderText" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox/Header"]
+[node name="HeaderText" type="VBoxContainer" parent="PageLayer/PageMargin/PageFrame/VBox/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="Title" type="Label" parent="ModalLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
+[node name="Title" type="Label" parent="PageLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
-text = "弹窗标题"
+text = "页面标题"
 
-[node name="Subtitle" type="Label" parent="ModalLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
+[node name="Subtitle" type="Label" parent="PageLayer/PageMargin/PageFrame/VBox/Header/HeaderText"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "弹窗说明"
+text = "页面说明"
 autowrap_mode = 2
 
-[node name="CloseBtn" type="Button" parent="ModalLayer/PageMargin/PageFrame/VBox/Header"]
+[node name="CloseBtn" type="Button" parent="PageLayer/PageMargin/PageFrame/VBox/Header"]
 custom_minimum_size = Vector2(132, 44)
 layout_mode = 2
 text = "返回"
 
-[node name="Scroll" type="ScrollContainer" parent="ModalLayer/PageMargin/PageFrame/VBox"]
+[node name="Scroll" type="ScrollContainer" parent="PageLayer/PageMargin/PageFrame/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="Content" type="VBoxContainer" parent="ModalLayer/PageMargin/PageFrame/VBox/Scroll"]
+[node name="Content" type="VBoxContainer" parent="PageLayer/PageMargin/PageFrame/VBox/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16

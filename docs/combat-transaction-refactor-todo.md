@@ -336,7 +336,7 @@ scripts/tests/intent_consistency_contract_test.gd
 scripts/tests/gem_semantic_contract_test.gd
 scripts/tests/explosion_test.gd
 scripts/tests/attack_tag_combo_test.gd
-scripts/tests/battle_stress_test.gd
+scripts/tests/manual/battle_stress_test.gd
 ```
 
 ## Acceptance Criteria

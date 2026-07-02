@@ -140,7 +140,16 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	var to_pos := target_pos
 	var attack_events: Array[Dictionary] = []
 	var atk_result := CombatRules.ranged_attack(
-		state, player, target_pos, max_range, {"aim_cell": target_pos}
+		state,
+		player,
+		target_pos,
+		max_range,
+		{
+			"aim_cell": target_pos,
+			# Player manual attacks should honor the chosen aim cell even if a static entity sits in front.
+			# This keeps gem ground effects and target selection aligned with the tactical preview.
+			"ignore_projectile_blockers": true,
+		}
 	)
 	if not atk_result.get("ok", false):
 		return _fail(atk_result.get("reason", "无法攻击"))

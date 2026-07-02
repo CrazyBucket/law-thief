@@ -45,6 +45,12 @@ func set_value(key: String, value) -> void:
 	apply_runtime_settings()
 
 
+func reset_to_defaults() -> void:
+	_settings = _default_settings()
+	save_settings()
+	apply_runtime_settings()
+
+
 func toggle_bool(key: String) -> bool:
 	var next_value := not bool(get_value(key))
 	set_value(key, next_value)
