@@ -42,6 +42,8 @@ signal projectile_animation_finished()
 class BoardAnimationHostState:
 	var pulse_time: float = 0.0
 	var move_offsets: Dictionary = {}
+	var move_path_segments: Dictionary = {}
+	var move_path_segment_facings: Dictionary = {}
 	var particles: Array[Dictionary] = []
 	var strike_elapsed: Dictionary = {}
 	var walk_phase: Dictionary = {}
@@ -55,6 +57,8 @@ class BoardAnimationHostState:
 
 	func clear_state_runtime() -> void:
 		move_offsets.clear()
+		move_path_segments.clear()
+		move_path_segment_facings.clear()
 		walk_phase.clear()
 		idle_phase.clear()
 		strike_elapsed.clear()
@@ -2308,10 +2312,16 @@ func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true
 		if emit_finished:
 			animation_finished.emit()
 		return
+	var fallback_facing := "DR"
 	if state != null:
 		var mover: UnitState = state.units.get(unit_uid, null)
 		if mover != null:
-			mover.facing = _facing_from_grid_pos(path[path.size() - 2], path[path.size() - 1])
+			fallback_facing = mover.facing
+	var segment_facings := _build_path_segment_facings(path, fallback_facing)
+	_anim.move_path_segment_facings[unit_uid] = segment_facings
+	_anim.move_path_segments[unit_uid] = -1
+	if not segment_facings.is_empty():
+		_apply_move_path_segment_facing(unit_uid, 0, segment_facings)
 	var logical_pos: Vector2i = path[path.size() - 1]
 	if state != null:
 		var unit: UnitState = state.units.get(unit_uid, null)
@@ -2328,8 +2338,13 @@ func animate_move_path(unit_uid: String, path: Array, emit_finished: bool = true
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_IN_OUT)
 	tween.set_trans(Tween.TRANS_SINE)
-	tween.tween_method(_set_move_path_progress.bind(unit_uid, offset_path), 0.0, float(segment_count), duration)
-	tween.tween_callback(_on_move_anim_done.bind(unit_uid, Vector2.ZERO, emit_finished))
+	tween.tween_method(
+		_set_move_path_progress.bind(unit_uid, offset_path, segment_facings),
+		0.0,
+		float(segment_count),
+		duration
+	)
+	tween.tween_callback(_on_move_path_anim_done.bind(unit_uid, segment_facings, emit_finished))
 
 
 func animate_move_path_task(unit_uid: String, path: Array) -> void:
@@ -2428,22 +2443,67 @@ func _set_move_offset(offset: Vector2, uid: String) -> void:
 	queue_redraw()
 
 
-func _set_move_path_progress(progress: float, uid: String, offset_path: Array[Vector2]) -> void:
+func _build_path_segment_facings(path: Array, fallback_facing: String) -> Array[String]:
+	var facings: Array[String] = []
+	var last_facing := fallback_facing
+	for i in range(path.size() - 1):
+		var from_cell: Vector2i = path[i]
+		var to_cell: Vector2i = path[i + 1]
+		if from_cell == to_cell:
+			facings.append(last_facing)
+		else:
+			last_facing = _facing_from_grid_pos(from_cell, to_cell)
+			facings.append(last_facing)
+	return facings
+
+
+func _apply_move_path_segment_facing(uid: String, seg: int, segment_facings: Array[String]) -> void:
+	if seg < 0 or seg >= segment_facings.size():
+		return
+	if int(_anim.move_path_segments.get(uid, -1)) == seg:
+		return
+	_anim.move_path_segments[uid] = seg
+	if state == null:
+		return
+	var mover: UnitState = state.units.get(uid, null)
+	if mover != null:
+		mover.facing = segment_facings[seg]
+
+
+func _set_move_path_progress(
+	progress: float,
+	uid: String,
+	offset_path: Array[Vector2],
+	segment_facings: Array[String]
+) -> void:
 	if offset_path.is_empty():
 		return
 	var max_segment := offset_path.size() - 1
 	var seg := clampi(int(floor(progress)), 0, max_segment)
 	if seg >= max_segment:
 		_anim.move_offsets[uid] = offset_path[max_segment]
+		if max_segment > 0:
+			_apply_move_path_segment_facing(uid, max_segment - 1, segment_facings)
 	else:
 		var local_t := clampf(progress - float(seg), 0.0, 1.0)
 		_anim.move_offsets[uid] = offset_path[seg].lerp(offset_path[seg + 1], local_t)
+		_apply_move_path_segment_facing(uid, seg, segment_facings)
 	queue_redraw()
+
+
+func _on_move_path_anim_done(uid: String, segment_facings: Array[String], emit_finished: bool) -> void:
+	if state != null and not segment_facings.is_empty():
+		var mover: UnitState = state.units.get(uid, null)
+		if mover != null:
+			mover.facing = segment_facings[segment_facings.size() - 1]
+	_on_move_anim_done(uid, Vector2.ZERO, emit_finished)
 
 
 func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool = true) -> void:
 	_anim.walk_phase.erase(uid)
 	_anim.move_offsets.erase(uid)
+	_anim.move_path_segments.erase(uid)
+	_anim.move_path_segment_facings.erase(uid)
 	queue_redraw()
 	if not emit_finished:
 		_anim.parallel_move_remaining = maxi(0, _anim.parallel_move_remaining - 1)
