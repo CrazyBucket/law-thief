@@ -2,6 +2,8 @@ class_name CombatRules
 extends RefCounted
 
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const StatusConfig = preload("res://scripts/core/status_config.gd")
 const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
 
 
@@ -25,7 +27,10 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		var registry := _relic_effect_registry()
 		var absorb: bool = registry != null and bool(registry.query_modifier("first_damage_absorb", state))
 		if absorb:
-			incoming = 1
+			var damage_cap := int(registry.query_modifier("first_damage_cap", state)) if registry != null else 1
+			if damage_cap <= 0:
+				damage_cap = 1
+			incoming = mini(incoming, damage_cap)
 			state.battle_temp_flags["painkiller_used"] = true
 	var blocked := incoming
 	var remaining := StatusRules.absorb_with_shield(state, unit, incoming)
@@ -36,7 +41,7 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		return 0
 	var final_amount := remaining
 	if StatusRules.is_vulnerable(unit):
-		final_amount = int(final_amount * 1.5)
+		final_amount = int(float(final_amount) * StatusConfig.float_value("vulnerable", "damage_taken_mult", 1.5))
 	final_amount = GemEffects.intercept_damage_for_split(state, unit, source_uid, reason, final_amount)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
 	unit.hp -= final_amount
@@ -239,11 +244,13 @@ static func ranged_attack(
 	state: GameState,
 	attacker: UnitState,
 	aim_cell: Vector2i,
-	max_range: int = Constants.ATTACK_RANGE,
+	max_range: int = -1,
 	payload: Dictionary = {}
 ) -> Dictionary:
 	if not attacker.alive:
 		return {"ok": false, "reason": "攻击者无效", "events": []}
+	if max_range < 0:
+		max_range = CombatConfig.attack_range()
 	return AttackPipeline.execute_aimed(
 		state,
 		attacker,
@@ -259,11 +266,13 @@ static func ranged_attack_unit(
 	state: GameState,
 	attacker: UnitState,
 	target: UnitState,
-	max_range: int = Constants.ATTACK_RANGE,
+	max_range: int = -1,
 	payload: Dictionary = {}
 ) -> Dictionary:
 	if not attacker.alive or not target.alive:
 		return {"ok": false, "reason": "目标无效", "events": []}
+	if max_range < 0:
+		max_range = CombatConfig.attack_range()
 	if BoardUtils.distance_between_units(attacker, target) > max_range:
 		return {"ok": false, "reason": "目标超出射程", "events": []}
 	var aim_cell: Vector2i = target.pos
@@ -284,10 +293,10 @@ static func split_melee_attack(state: GameState, attacker: UnitState, target: Un
 		state,
 		attacker,
 		aim_cell,
-		[AttackPipeline.TAG_MELEE, AttackPipeline.TAG_SPLIT_SHOT],
-		{"aim_cell": aim_cell},
-		Constants.SPLIT_ATTACK_RANGE
-	)
+			[AttackPipeline.TAG_MELEE, AttackPipeline.TAG_SPLIT_SHOT],
+			{"aim_cell": aim_cell},
+			CombatConfig.split_attack_range()
+		)
 
 
 static func attack_damage(state: GameState, attacker: UnitState) -> int:
@@ -300,7 +309,7 @@ static func attack_damage(state: GameState, attacker: UnitState) -> int:
 		bonus = int(registry.query_modifier("attack_damage_bonus", state))
 	var result := int(float(base) * mult) + bonus
 	if StatusRules.is_weak(attacker):
-		result = int(float(result) * 0.75)
+		result = int(float(result) * StatusConfig.float_value("weak", "attack_damage_mult", 0.75))
 	return maxi(0, result)
 
 

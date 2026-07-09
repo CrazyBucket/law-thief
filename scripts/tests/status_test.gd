@@ -14,6 +14,9 @@ func _run_tests() -> void:
 	_test_rooted_blocks_move()
 	_test_lawless_payload()
 	_test_exposed_expires()
+	_test_default_status_values_from_config()
+	_test_status_combat_multipliers_from_config()
+	_test_relic_numeric_refs_runtime()
 	print("STATUS_TEST_PASS")
 	quit()
 
@@ -64,7 +67,7 @@ func _test_relic_grants_shield_not_unit_armor() -> void:
 	var registry: Node = Engine.get_main_loop().root.get_node("RelicEffectRegistry")
 	registry.call("_action_add_shield", "relic_cracked_amulet", {
 		"target": "player",
-		"amount": 3,
+		"amount_ref": "relic_cracked_amulet_shield",
 	}, state, {})
 	assert(player.armor == 0, "relic should not modify unit.armor stat")
 	assert(StatusRules.get_shield(player) == 3, "relic should grant shield status")
@@ -113,6 +116,80 @@ func _test_exposed_expires() -> void:
 	print("  [OK] exposed expire + re-lock")
 
 
+func _test_default_status_values_from_config() -> void:
+	var state := _make_state()
+	var unit := _make_unit(state, "u_defaults")
+	StatusRules.apply_poison(state, unit)
+	StatusRules.apply_rooted(state, unit)
+	StatusRules.apply_light_exposed(state, unit)
+	var poison: StatusInstance = unit.get_status(Constants.STATUS_POISON)
+	assert(poison != null and poison.stacks == 1 and poison.duration == 2, "poison defaults should come from status config")
+	var rooted: StatusInstance = unit.get_status(Constants.STATUS_ROOTED)
+	assert(rooted != null and rooted.duration == 2, "rooted default duration should come from status config")
+	var exposed: StatusInstance = unit.get_status(Constants.STATUS_LIGHT_EXPOSED)
+	assert(exposed != null and exposed.stacks == 1 and exposed.duration == 0, "light exposed defaults should come from status config")
+	print("  [OK] status defaults from config")
+
+
+func _test_status_combat_multipliers_from_config() -> void:
+	var state := _make_state()
+	var attacker := _make_unit(state, "u_attacker")
+	var target := _make_unit(state, "u_target")
+	attacker.base_attack = 8
+	StatusRules.apply_weak(state, attacker)
+	assert(CombatRules.attack_damage(state, attacker) == 6, "weak attack multiplier should come from status config")
+	StatusRules.apply_vulnerable(state, target)
+	CombatRules.apply_damage(state, target, 4, attacker.uid, "test_hit")
+	assert(target.hp == 4, "vulnerable damage multiplier should come from status config")
+	StatusRules.apply_slowed(state, target, 5)
+	assert(StatusRules.effective_move_points(target, 2) == 1, "slowed min move points should come from status config")
+	print("  [OK] status combat multipliers from config")
+
+
+func _test_relic_numeric_refs_runtime() -> void:
+	var state := _make_state()
+	var player := _make_unit(state, "player")
+	player.team = Constants.TEAM_PLAYER
+	player.max_hp = 10
+	player.hp = 10
+	player.slots.append(SlotState.create(Constants.SLOT_RED))
+	player.slots.append(SlotState.create(Constants.SLOT_BLUE))
+	state.player_uid = player.uid
+	var registry: Node = Engine.get_main_loop().root.get_node("RelicEffectRegistry")
+	var arc_mult: float = float(registry.call("_eval_modifier_entry", "relic_silver_cable", {
+		"modifier": "arc_damage_mult",
+		"value_ref": "relic_silver_cable_arc_damage_mult",
+	}, state, {}))
+	assert(absf(arc_mult - 1.2) < 0.001, "relic modifier value refs should resolve at runtime")
+	var adventure_service: Node = root.get_node("AdventureService")
+	var run_service: Node = root.get_node("RunService")
+	adventure_service.start_new_run(20260708)
+	var run: RunState = run_service.get_run()
+	run.owned_relics.clear()
+	run.owned_relics.append("relic_cracked_goggles")
+	var miss_chance := float(registry.query_modifier("attack_miss_chance", state))
+	assert(absf(miss_chance - 0.1) < 0.001, "float additive relic modifiers should not be truncated")
+	run.owned_relics.clear()
+	run.owned_relics.append("relic_painkiller")
+	player.hp = 10
+	state.battle_temp_flags.clear()
+	CombatRules.apply_damage(state, player, 5, "enemy_test", "painkiller_test")
+	assert(player.hp == 9, "painkiller first damage cap should come from relic numeric refs")
+	CombatRules.apply_damage(state, player, 5, "enemy_test", "painkiller_test")
+	assert(player.hp == 4, "painkiller first damage cap should only apply once")
+	run_service.end_run()
+	var per_empty_slot: int = int(registry.call("_eval_modifier_entry", "relic_empty_shell", {
+		"modifier": "extract_range_bonus",
+		"per_empty_slot_ref": "relic_empty_shell_extract_per_empty_slot",
+	}, state, {}))
+	assert(per_empty_slot == 2, "relic per-empty-slot refs should resolve at runtime")
+	registry.call("_action_apply_max_hp_reduction", "relic_empty_coffin", {
+		"ratio_ref": "relic_empty_coffin_max_hp_reduction_ratio",
+	}, state)
+	assert(player.max_hp == 7, "relic ratio refs should resolve for max hp reduction")
+	print("  [OK] relic numeric refs runtime")
+
+
 func _make_state() -> GameState:
 	var state := GameState.new()
 	state.player_uid = "player"
@@ -124,8 +201,9 @@ func _make_unit(state: GameState, uid: String) -> UnitState:
 	var unit := UnitState.new()
 	unit.uid = uid
 	unit.team = Constants.TEAM_ENEMY
+	unit.pos = Vector2i.ZERO
 	unit.hp = 10
 	unit.max_hp = 10
 	unit.alive = true
-	state.units[uid] = unit
+	state.register_unit(unit)
 	return unit

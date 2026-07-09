@@ -1,7 +1,10 @@
 extends Node
 
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
+const AdventureConfigValidator = preload("res://scripts/services/adventure_config_validator.gd")
+const BalanceConfigValidator = preload("res://scripts/services/balance_config_validator.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
@@ -24,17 +27,40 @@ const _RARITY_WEIGHTS := {
 }
 
 # 来源 → 每个稀有度的权重（决定 roll 时各等级的抽出概率）
-const _SOURCE_RARITY_WEIGHTS := {
+const _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS := {
 	"normal_chest": {"common": 65.0, "rare": 25.0, "boss": 10.0},
 	"elite_combat": {"common": 40.0, "rare": 40.0, "boss": 20.0},
 	"large_chest": {"common": 10.0, "rare": 60.0, "boss": 30.0},
 	"shop": {"common": 50.0, "rare": 35.0, "boss": 15.0},
 }
 
+const _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS := {
+	"NORMAL_COMBAT": {
+		"1": [20.0, 70.0, 10.0, 0.0],
+		"2": [10.0, 60.0, 30.0, 0.0],
+		"default": [0.0, 30.0, 60.0, 10.0],
+	},
+	"ELITE_COMBAT": {
+		"1": [0.0, 40.0, 50.0, 10.0],
+		"2": [0.0, 20.0, 50.0, 30.0],
+		"default": [0.0, 10.0, 40.0, 50.0],
+	},
+	"BOSS_COMBAT": {
+		"1": [0.0, 10.0, 60.0, 30.0],
+		"2": [0.0, 0.0, 55.0, 45.0],
+		"default": [0.0, 0.0, 25.0, 75.0],
+	},
+}
+
 var _gem_effect_profiles: Dictionary = {}
+var _gem_effect_levels: Dictionary = {}
 var _gem_defs: Dictionary = {}
 var _gem_pools: Dictionary = {}
 var _gem_teaching_boosts: Dictionary = {}
+var _relic_numeric_refs: Dictionary = {}
+var _relic_source_weights: Dictionary = {}
+var _reward_offer_config: Dictionary = {}
+var _enemy_slot_curves: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
 var _relic_defs: Dictionary = {}
@@ -46,9 +72,15 @@ func _ready() -> void:
 	_register_gem_defs()
 	_register_unit_defs()
 	_register_encounters()
+	_load_gem_effect_levels_from_json()
 	# JSON 覆盖：若外部文件存在则合并/替换硬编码数据
 	_load_gem_defs_from_json()
 	_load_gem_pools_from_json()
+	_load_relic_numeric_refs_from_json()
+	_load_relic_source_weights_from_json()
+	_validate_shop_pools_source_refs()
+	_load_reward_offer_config_from_json()
+	_load_enemy_slot_curves_from_json()
 	_load_unit_defs_from_json()
 	_load_encounters_from_json()
 	_load_relic_defs_from_json()
@@ -281,6 +313,16 @@ func get_unit_def(unit_def_id: String) -> Dictionary:
 	return _unit_defs.get(unit_def_id, {}).duplicate(true)
 
 
+func get_unit_balance_value(unit_def_id: String, key: String, fallback: Variant = null) -> Variant:
+	var def: Dictionary = _unit_defs.get(unit_def_id, {})
+	if def.is_empty():
+		return fallback
+	var balance: Variant = def.get("balance", {})
+	if not balance is Dictionary:
+		return fallback
+	return (balance as Dictionary).get(key, fallback)
+
+
 func get_unit_def_ids() -> Array[String]:
 	var ids: Array[String] = []
 	for unit_def_id in _unit_defs.keys():
@@ -479,6 +521,24 @@ func get_gem_combo_tags(gem_ref: Variant) -> Array[String]:
 	return results
 
 
+func get_gem_effect_level_def(tag: String, slot_type: String, level: int) -> Dictionary:
+	if tag.is_empty() or slot_type.is_empty():
+		return {}
+	var slot_defs: Dictionary = _gem_effect_levels.get(slot_type, {})
+	if slot_defs.is_empty():
+		return {}
+	var tag_defs: Dictionary = slot_defs.get(tag, {})
+	if tag_defs.is_empty():
+		return {}
+	var current_level := maxi(1, level)
+	while current_level >= 1:
+		var entry: Variant = tag_defs.get(str(current_level), null)
+		if entry is Dictionary:
+			return (entry as Dictionary).duplicate(true)
+		current_level -= 1
+	return {}
+
+
 func get_gem_rarity_label(gem_ref: Variant) -> String:
 	var rarity: String = get_gem_rarity(gem_ref)
 	return _translate_key("gem.rarity.%s" % rarity, {}, rarity.capitalize())
@@ -498,15 +558,84 @@ func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
 func get_gem_pool_def(source: String) -> Dictionary:
 	if _gem_pools.has(source):
 		return _gem_pools[source].duplicate(true)
-	return _gem_pools.get("global", {}).duplicate(true)
+	return {}
+
+
+func has_gem_pool_source(source: String) -> bool:
+	return _gem_pools.has(source)
+
+
+func get_gem_pool_source_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for source_id in _gem_pools.keys():
+		ids.append(str(source_id))
+	ids.sort()
+	return ids
 
 
 func get_gem_pool_source_tier(source: String) -> int:
 	return maxi(1, int(get_gem_pool_def(source).get("source_tier", 1)))
 
 
+func get_relic_source_weights(source: String) -> Dictionary:
+	if _relic_source_weights.has(source):
+		return (_relic_source_weights[source] as Dictionary).duplicate(true)
+	if _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.has(source):
+		return (_DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS[source] as Dictionary).duplicate(true)
+	return {}
+
+
+func has_relic_source(source: String) -> bool:
+	return _relic_source_weights.has(source) or _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.has(source)
+
+
+func get_relic_source_ids() -> Array[String]:
+	var ids: Array[String] = []
+	var source_ids: Array = _relic_source_weights.keys() if not _relic_source_weights.is_empty() else _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.keys()
+	for source_id in source_ids:
+		ids.append(str(source_id))
+	ids.sort()
+	return ids
+
+
+func get_battle_reward_offer_config(room_type: String) -> Dictionary:
+	var rewards: Dictionary = _reward_offer_config.get("battle_rewards", {})
+	var key := room_type.to_upper()
+	var raw_entry: Variant = rewards.get(key, rewards.get("default", {}))
+	return (raw_entry as Dictionary).duplicate(true) if raw_entry is Dictionary else {}
+
+
+func get_battle_relic_offer_source(room_type: String) -> String:
+	return str(get_battle_reward_offer_config(room_type).get("relic_source", ""))
+
+
+func get_battle_relic_offer_count(room_type: String) -> int:
+	return maxi(0, int(get_battle_reward_offer_config(room_type).get("relic_offer_count", 0)))
+
+
+func get_enemy_total_slot_weights(room_type: String, chapter: int) -> Array[float]:
+	var normalized_room_type := room_type.to_upper()
+	var curve_key := normalized_room_type
+	if curve_key in ["BOSS", "END"]:
+		curve_key = "BOSS_COMBAT"
+	elif curve_key.is_empty():
+		curve_key = "NORMAL_COMBAT"
+	var curve: Dictionary = _enemy_slot_curves.get(curve_key, {})
+	if curve.is_empty():
+		curve = _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS.get(curve_key, _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS.get("NORMAL_COMBAT", {}))
+	var chapter_key := str(maxi(1, chapter))
+	var raw_weights: Variant = curve.get(chapter_key, curve.get("default", []))
+	var weights: Array[float] = []
+	if raw_weights is Array:
+		for raw in raw_weights:
+			weights.append(float(raw))
+	return weights
+
+
 func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, allowed_rarities: Array = []) -> Array[String]:
 	var results: Array[String] = []
+	if not has_gem_pool_source(source):
+		return results
 	var pool_def := get_gem_pool_def(source)
 	var source_tier := maxi(1, int(pool_def.get("source_tier", 1)))
 	var max_tier := mini(source_tier, maxi(1, chapter_tier))
@@ -525,6 +654,8 @@ func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, al
 
 
 func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = [], source: String = "global", chapter_tier: int = 99) -> String:
+	if not has_gem_pool_source(source):
+		return ""
 	var pool_def := get_gem_pool_def(source)
 	var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
 	var allowed: Array = allowed_rarities.duplicate()
@@ -559,7 +690,8 @@ func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array 
 # ═══════════════════════════════════════════════════════════════════════════
 
 func get_relic_def(relic_id: String) -> Dictionary:
-	return _relic_defs.get(relic_id, {})
+	var raw_def: Variant = _relic_defs.get(relic_id, {})
+	return (raw_def as Dictionary).duplicate(true) if raw_def is Dictionary else {}
 
 
 func get_relic_rarity(relic_id: String) -> String:
@@ -575,6 +707,37 @@ func get_relic_ids() -> Array[String]:
 	for k in _relic_defs.keys():
 		ids.append(str(k))
 	return ids
+
+
+func has_relic_numeric_ref(ref_id: String) -> bool:
+	return _relic_numeric_refs.has(ref_id)
+
+
+func get_relic_numeric_ref(ref_id: String, fallback: float = 0.0) -> float:
+	if not _relic_numeric_refs.has(ref_id):
+		return fallback
+	return _numeric_ref_value(_relic_numeric_refs.get(ref_id), fallback)
+
+
+func get_relic_numeric_ref_def(ref_id: String) -> Dictionary:
+	if not _relic_numeric_refs.has(ref_id):
+		return {}
+	var raw_ref: Variant = _relic_numeric_refs.get(ref_id)
+	if raw_ref is Dictionary:
+		var ref_def := (raw_ref as Dictionary).duplicate(true)
+		ref_def["value"] = _numeric_ref_value(raw_ref)
+		return ref_def
+	return {
+		"value": _numeric_ref_value(raw_ref),
+		"kind": "legacy",
+		"unit": "",
+	}
+
+
+func get_relic_numeric_refs() -> Dictionary:
+	return _relic_numeric_refs.duplicate(true)
+
+
 
 
 func get_relic_unlock_condition_ids() -> Array[String]:
@@ -617,7 +780,7 @@ func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> floa
 	var empty_slots: int = int(weight_ctx.get("empty_slots", 0))
 	for rule in rules:
 		var rule_type := str(rule.get("type", ""))
-		var multiplier := maxf(0.0, float(rule.get("multiplier", 1.0)))
+		var multiplier := maxf(0.0, _resolve_relic_numeric_field(rule, "multiplier", 1.0))
 		var matched := false
 		match rule_type:
 			"has_gem":
@@ -627,9 +790,9 @@ func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> floa
 			"has_relic":
 				matched = str(rule.get("value", "")) in owned_relics
 			"slot_count_gte":
-				matched = total_slots >= int(rule.get("value", 0))
+				matched = total_slots >= int(_resolve_relic_numeric_field(rule, "value", 0.0))
 			"empty_slot_count_gte":
-				matched = empty_slots >= int(rule.get("value", 0))
+				matched = empty_slots >= int(_resolve_relic_numeric_field(rule, "value", 0.0))
 		if matched:
 			weight *= multiplier
 	return weight
@@ -659,7 +822,9 @@ func _relic_matches_source(def: Dictionary, source: String, source_weights: Dict
 
 func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array = []) -> Array[String]:
 	var results: Array[String] = []
-	var source_weights: Dictionary = _SOURCE_RARITY_WEIGHTS.get(source, {})
+	var source_weights := get_relic_source_weights(source)
+	if source_weights.is_empty():
+		return results
 	for relic_id in _relic_defs.keys():
 		var def: Dictionary = _relic_defs[relic_id]
 		if not _relic_matches_source(def, source, source_weights):
@@ -692,7 +857,7 @@ func roll_relic_for_source(
 	unlock_flags: Array = [],
 	weight_ctx: Dictionary = {}
 ) -> String:
-	var source_rarity_weights: Dictionary = _SOURCE_RARITY_WEIGHTS.get(source, {"common": 100.0})
+	var source_rarity_weights := get_relic_source_weights(source)
 	# 阶段一：按来源权重 roll 出稀有度
 	var rarity_order: Array[String] = []
 	var rarity_ws: Array[float] = []
@@ -763,6 +928,10 @@ func roll_gem_offer(
 	exclude_ids: Array = []
 ) -> Array[String]:
 	var result: Array[String] = []
+	if not has_gem_pool_source(source):
+		for i in range(count):
+			result.append("")
+		return result
 	var used_ids: Array = exclude_ids.duplicate()
 	for i in range(count):
 		var pool_def := get_gem_pool_def(source)
@@ -891,8 +1060,8 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
-				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action", "params": {"damage": Constants.EXPLOSION_DAMAGE}},
+					ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": CombatConfig.explosion_damage()}},
+					ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action", "params": {"damage": CombatConfig.explosion_damage()}},
 				ABILITY_BLUE_TURN_START: {"key": "gem.effect.explosion.blue_turn_start"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.explosion.black_death"},
 				ABILITY_TILE_ACTIVE: {"key": "gem.effect.explosion.tile_active"},
@@ -1215,6 +1384,11 @@ func _register_unit_defs() -> void:
 			"base_attack": 6,
 			"ai_profile_id": "melee_chase",
 			"behavior_id": "patrol_guard",
+			"balance": {
+				"rampage_move_bonus": Constants.PATROL_GUARD_RAMPAGE_MOVE_BONUS,
+				"charge_bonus": Constants.PATROL_GUARD_CHARGE_BONUS,
+				"charge_min_steps": Constants.PATROL_GUARD_CHARGE_MIN_STEPS,
+			},
 			"tags": [Constants.TAG_UNIT_PATROL_GUARD],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
@@ -1231,6 +1405,41 @@ func _register_unit_defs() -> void:
 			"base_attack": 4,
 			"ai_profile_id": "stone_bow",
 			"behavior_id": "stone_bow_guard",
+			"balance": {
+				"attack_range": Constants.STONE_BOW_ATTACK_RANGE,
+				"deploy_range_bonus": Constants.STONE_BOW_DEPLOY_RANGE_BONUS,
+				"faulty_miss_chance": Constants.STONE_BOW_FAULTY_MISS_CHANCE,
+				"faulty_damage_bonus": Constants.STONE_BOW_FAULTY_DAMAGE_BONUS,
+				"kite_ideal_range": Constants.STONE_BOW_KITE_IDEAL_RANGE,
+				"kite_min_range": Constants.STONE_BOW_KITE_MIN_RANGE,
+				"ranged_damage_score_mult": 10.0,
+				"kill_bonus": 150.0,
+				"move_step_cost": 0.35,
+				"ideal_range_penalty": 14.0,
+				"too_close_extra_penalty": 18.0,
+				"max_range_bonus": 4.0,
+				"hold_position_bonus": 120.0,
+				"deploy_hold_bonus": 12.0,
+				"move_when_shooting_penalty": 45.0,
+				"closer_when_shooting_penalty": 80.0,
+				"emergency_retreat_bonus_per_tile": 32.0,
+				"extra_distance_penalty_per_tile": 8.0,
+				"closer_to_gain_shot_bonus_per_tile": 6.0,
+				"setup_deploy_bonus": 6.0,
+				"approach_progress_score": 45.0,
+				"approach_distance_cost": 0.5,
+				"approach_too_close_penalty": 40.0,
+				"approach_ideal_band_bonus": 25.0,
+				"retreat_bonus_per_tile": 22.0,
+				"retreat_ideal_range_penalty": 6.0,
+				"retreat_too_close_penalty": 30.0,
+				"line_unreachable_penalty": -18.0,
+				"line_setup_bonus": 34.0,
+				"line_setup_distance_cost": 1.2,
+				"line_progress_bonus_per_step": 28.0,
+				"line_no_progress_penalty": -4.0,
+				"wait_score": -5.0,
+			},
 			"tags": [Constants.TAG_UNIT_STONE_BOW_GUARD, Constants.TAG_UNIT_RANGED],
 			"slots": [
 				{"slot_type": Constants.SLOT_RED},
@@ -1247,6 +1456,11 @@ func _register_unit_defs() -> void:
 			"base_attack": 4,
 			"ai_profile_id": "melee_chase",
 			"behavior_id": "fission_slime",
+			"balance": {
+				"split_stat_ratio": Constants.FISSION_SLIME_SPLIT_STAT_RATIO,
+				"slam_push_steps": Constants.FISSION_SLIME_SLAM_PUSH_STEPS,
+				"trample_damage": Constants.FISSION_SLIME_TRAMPLE_DAMAGE,
+			},
 			"footprint_size": Vector2i(2, 2),
 			"tags": [Constants.TAG_UNIT_FISSION_SLIME],
 			"slots": [
@@ -1488,6 +1702,21 @@ func _deep_merge_dict(base: Dictionary, overrides: Dictionary) -> Dictionary:
 
 # ─── JSON 外部数据加载 ────────────────────────────────────────────────────────
 
+func _numeric_ref_value(raw_ref: Variant, fallback: float = 0.0) -> float:
+	if raw_ref is int or raw_ref is float:
+		return float(raw_ref)
+	if raw_ref is Dictionary:
+		return float((raw_ref as Dictionary).get("value", fallback))
+	return fallback
+
+
+func _resolve_relic_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> float:
+	var ref_key := "%s_ref" % field_id
+	if payload.has(ref_key):
+		return get_relic_numeric_ref(str(payload.get(ref_key, "")), fallback)
+	return float(payload.get(field_id, fallback))
+
+
 func _load_gem_defs_from_json() -> void:
 	var path := "res://resources/gems/gem_defs.json"
 	var raw := _read_json_file(path)
@@ -1502,6 +1731,15 @@ func _load_gem_defs_from_json() -> void:
 			_gem_defs[gem_id] = _deep_merge_dict(_gem_defs[gem_id], entry)
 		else:
 			_gem_defs[gem_id] = entry
+
+
+func _load_gem_effect_levels_from_json() -> void:
+	var path := "res://resources/gems/gem_effect_levels.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_gem_effect_levels(raw))
+	_gem_effect_levels = raw.duplicate(true)
 
 
 func _load_gem_pools_from_json() -> void:
@@ -1526,11 +1764,70 @@ func _load_gem_pools_from_json() -> void:
 		}
 
 
+func _load_relic_numeric_refs_from_json() -> void:
+	var path := "res://resources/relics/relic_numeric_refs.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		_relic_numeric_refs = {}
+		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_numeric_refs(raw))
+	_relic_numeric_refs = raw.duplicate(true)
+
+
+func _load_relic_source_weights_from_json() -> void:
+	var path := "res://resources/adventure/relic_source_weights.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		_relic_source_weights = {}
+		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_source_weights(raw))
+	_relic_source_weights = raw.duplicate(true)
+
+
+func _load_reward_offer_config_from_json() -> void:
+	var path := "res://resources/adventure/reward_offer_config.json"
+	if not FileAccess.file_exists(path):
+		AdventureConfigValidator.ensure_valid(path, ["reward_offer_config file missing"])
+		return
+	var raw := _read_json_file(path)
+	AdventureConfigValidator.ensure_valid(
+		path,
+		AdventureConfigValidator.validate_reward_offer_config(raw, _key_set(get_relic_source_ids()))
+	)
+	_reward_offer_config = raw.duplicate(true)
+
+
+func _validate_shop_pools_source_refs() -> void:
+	var path := "res://resources/adventure/shop_pools.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		return
+	AdventureConfigValidator.ensure_valid(
+		path,
+		AdventureConfigValidator.validate_shop_pools(
+			raw,
+			_key_set(get_gem_pool_source_ids()),
+			_key_set(get_relic_source_ids())
+		)
+	)
+
+
+func _load_enemy_slot_curves_from_json() -> void:
+	var path := "res://resources/adventure/enemy_slot_curves.json"
+	var raw := _read_json_file(path)
+	if raw.is_empty():
+		_enemy_slot_curves = {}
+		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_enemy_slot_curves(raw))
+	_enemy_slot_curves = raw.duplicate(true)
+
+
 func _load_unit_defs_from_json() -> void:
 	var path := "res://resources/units/unit_defs.json"
 	var raw := _read_json_file(path)
 	if raw.is_empty():
 		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_unit_balance_defs(raw))
 	for unit_id in raw.keys():
 		var entry: Dictionary = raw[unit_id]
 		if _unit_defs.has(unit_id):
@@ -1656,7 +1953,7 @@ func _roll_enemy_total_gem_slots(
 	if max_slots <= 0:
 		return 0
 	var normalized_room_type := room_type.to_upper()
-	var weights := _enemy_total_slot_weights(chapter, normalized_room_type)
+	var weights := get_enemy_total_slot_weights(normalized_room_type, chapter)
 	var items: Array = []
 	var item_weights: Array[float] = []
 	for slot_count in range(weights.size()):
@@ -1685,31 +1982,7 @@ func _enemy_requires_initial_gem(enemy_data: Dictionary, def: Dictionary) -> boo
 
 
 func _enemy_total_slot_weights(chapter: int, room_type: String) -> Array[float]:
-	match room_type:
-		"ELITE_COMBAT":
-			match chapter:
-				1:
-					return [0.0, 40.0, 50.0, 10.0]
-				2:
-					return [0.0, 20.0, 50.0, 30.0]
-				_:
-					return [0.0, 10.0, 40.0, 50.0]
-		"BOSS", "BOSS_COMBAT", "END":
-			match chapter:
-				1:
-					return [0.0, 10.0, 60.0, 30.0]
-				2:
-					return [0.0, 0.0, 55.0, 45.0]
-				_:
-					return [0.0, 0.0, 25.0, 75.0]
-		_:
-			match chapter:
-				1:
-					return [20.0, 70.0, 10.0, 0.0]
-				2:
-					return [10.0, 60.0, 30.0, 0.0]
-				_:
-					return [0.0, 30.0, 60.0, 10.0]
+	return get_enemy_total_slot_weights(room_type, chapter)
 
 
 func _load_relic_defs_from_json() -> void:
@@ -1717,8 +1990,13 @@ func _load_relic_defs_from_json() -> void:
 	var raw := _read_json_file(path)
 	if raw.is_empty():
 		return
+	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_defs(raw, _relic_numeric_refs))
 	for relic_id in raw.keys():
-		var entry: Dictionary = raw[relic_id]
+		var entry: Dictionary = (raw[relic_id] as Dictionary).duplicate(true)
+		if entry.has("desc"):
+			entry["desc"] = NumericTextResolver.format_text(str(entry.get("desc", "")), {
+				"relic_numeric_refs": _relic_numeric_refs,
+			})
 		if _relic_defs.has(relic_id):
 			_relic_defs[relic_id] = _deep_merge_dict(_relic_defs[relic_id], entry)
 		else:
@@ -1909,3 +2187,10 @@ func _read_json_file(path: String) -> Dictionary:
 		return data as Dictionary
 	push_warning("DataRegistry: expected JSON object in %s" % path)
 	return {}
+
+
+func _key_set(ids: Array[String]) -> Dictionary:
+	var result := {}
+	for id in ids:
+		result[str(id)] = true
+	return result

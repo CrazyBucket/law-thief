@@ -1,0 +1,20 @@
+{
+  "battle_rewards": {
+    "default": {
+      "relic_source": "normal_chest",
+      "relic_offer_count": 3
+    },
+    "NORMAL_COMBAT": {
+      "relic_source": "normal_chest",
+      "relic_offer_count": 3
+    },
+    "ELITE_COMBAT": {
+      "relic_source": "elite_combat",
+      "relic_offer_count": 3
+    },
+    "END": {
+      "relic_source": "large_chest",
+      "relic_offer_count": 3
+    }
+  }
+}

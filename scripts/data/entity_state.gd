@@ -1,6 +1,8 @@
 class_name EntityState
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 var uid: String = ""
 var entity_id: String = ""
 var pos: Vector2i = Vector2i.ZERO
@@ -33,8 +35,8 @@ func _init_from_def() -> void:
 			max_hp = -1
 			tags = ["hazard"]
 		Constants.ENTITY_BARREL:
-			hp = Constants.BARREL_HP
-			max_hp = Constants.BARREL_HP
+			hp = CombatConfig.barrel_hp()
+			max_hp = CombatConfig.barrel_hp()
 			tags = ["blocks_move", "blocks_projectile", "destructible", "explosive", "flammable"]
 
 

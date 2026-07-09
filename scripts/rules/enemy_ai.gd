@@ -38,6 +38,12 @@ static func _w(profile: Dictionary, key: String, fallback: float = 0.0) -> float
 	return float(profile.get(key, fallback))
 
 
+static func _t(profile: Dictionary, key: String, fallback: float = 0.0) -> float:
+	if profile.has(key):
+		return float(profile.get(key, fallback))
+	return float(AIProfiles.get_tuning_value(key, fallback))
+
+
 # ─── 主入口：为一个敌人生成最优行动 ─────────────────────────────────────────
 static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary = {}) -> Dictionary:
 	## 返回 { "move_path": Array[Vector2i], "action": ActionCandidate }
@@ -186,7 +192,7 @@ static func _evaluate_ranged_attacks_from(
 	var player: UnitState = state.get_player()
 	if player == null or not player.alive:
 		return results
-	var max_range: int = GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
+	var max_range: int = GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
 	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
 	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
 	var from_cell := BoardUtils.projectile_origin_cell_at(enemy, from_pos, player.pos)
@@ -205,7 +211,7 @@ static func _evaluate_ranged_attacks_from(
 	score -= float(move_dist) * _w(profile, "w_move_cost", 0.5)
 	score += _evaluate_tile_safety(state, from_pos, profile)
 	if profile.get("prefer_distance", false):
-		score += float(dist) * _w(profile, "w_keep_distance", 3.0) * 0.3
+		score += float(dist) * _w(profile, "w_keep_distance", 3.0) * _t(profile, "ranged_keep_distance_scale", 0.3)
 	candidate.score = score
 	var range_label := str(max_range)
 	candidate.description = "在%s远程射击(%s格)" % [str(from_pos), range_label]
@@ -286,7 +292,7 @@ static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos
 static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
 	var dist_to_player: int = BoardUtils.manhattan(from_pos, player.pos)
-	var max_threat_range: int = Constants.CHARGE_EXPLODE_DASH_RANGE + Constants.EXPLOSION_RADIUS
+	var max_threat_range: int = CombatConfig.charge_explode_dash_range() + CombatConfig.explosion_radius()
 	if dist_to_player > max_threat_range:
 		return results
 
@@ -296,15 +302,15 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 	candidate.action_target_uid = player.uid
 
 	var score: float = 0.0
-	if dist_to_player <= Constants.EXPLOSION_RADIUS:
-		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0) * 2.0
+	if dist_to_player <= CombatConfig.explosion_radius():
+		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage", 10.0) * _t(profile, "explosion_adjacent_bonus_mult", 2.0)
 	elif dist_to_player <= max_threat_range:
-		score += float(Constants.EXPLOSION_DAMAGE) * _w(profile, "w_damage", 10.0)
+		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage", 10.0)
 
 	score += _w(profile, "w_self_sacrifice", 0.0)
 
 	# 友军误伤扣分
-	for cell in BoardUtils.cells_in_radius(player.pos, Constants.EXPLOSION_RADIUS):
+	for cell in BoardUtils.cells_in_radius(player.pos, CombatConfig.explosion_radius()):
 		var unit: UnitState = state.get_unit_at(cell)
 		if unit != null and unit.alive:
 			if unit.team == Constants.TEAM_ENEMY and unit.uid != enemy.uid:
@@ -329,16 +335,16 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 
-	var score: float = _w(profile, "w_pull", 15.0) + 8.0
+	var score: float = _w(profile, "w_pull", 15.0) + _t(profile, "pull_base_bonus", 8.0)
 	# 拉到危险地块加分
 	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
 	if BoardUtils.spike_entity_at(state, pull_dest) != null:
-		score += float(Constants.SPIKE_DAMAGE) * _w(profile, "w_damage", 10.0)
+		score += float(CombatConfig.spike_damage()) * _w(profile, "w_damage", 10.0)
 	var pull_tile: TileState = state.get_tile(pull_dest)
 	if pull_tile.has_modifier("poison_fog"):
-		score += _w(profile, "w_damage", 10.0) * 0.5
+		score += _w(profile, "w_damage", 10.0) * _t(profile, "pull_damage_bonus_mult", 0.5)
 	# 引力会附带束缚，距离越远价值越高
-	score += float(dist) * 1.2
+	score += float(dist) * _t(profile, "pull_distance_score_mult", 1.2)
 
 	candidate.score = score
 	candidate.description = "引力拉近(%d格)" % max_range
@@ -380,7 +386,7 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 		if not unit.alive or unit.team == player.team or unit.uid == player.uid:
 			continue
 		if BoardUtils.chebyshev(player.pos, unit.pos) <= CombatConfig.arc_chain_range():
-			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage", 10.0) * 0.5
+			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage", 10.0) * _t(profile, "arc_chain_bonus_mult", 0.5)
 	candidate.score = score
 	candidate.description = "电击"
 	results.append(candidate)
@@ -471,7 +477,7 @@ static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: V
 
 static func _score_echo_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
 	var results: Array = []
-	var max_range := GemEffects.red_attack_range(state, enemy, Constants.ATTACK_RANGE)
+	var max_range := GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
 	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
 	if not in_range:
 		return results
@@ -531,7 +537,7 @@ static func _evaluate_move_only(
 				var candidate := ActionCandidate.new()
 				candidate.type = ActionType.MOVE
 				candidate.move_target = planned_pos
-				var progress := maxf(0.25, float(current_dist - planned_dist))
+				var progress := maxf(_t(profile, "approach_progress_floor", 0.25), float(current_dist - planned_dist))
 				var score := progress * _w(profile, "w_approach", 5.0)
 				score += _evaluate_tile_safety(state, planned_pos, profile)
 				candidate.score = score
@@ -604,7 +610,7 @@ static func _evaluate_move_kiting(
 static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 	return {
 		"base_step_cost": _w(profile, "path_base_step_cost", 1.0),
-		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * 0.25),
+		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * _t(profile, "path_self_damage_ratio", 0.25)),
 		"water_cost_bias": _w(profile, "path_water_cost_bias", 0.0),
 		"allow_partial_path": profile.get("allow_partial_path", true),
 	}
@@ -614,7 +620,7 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 static func _evaluate_tile_safety(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var score: float = 0.0
 	if BoardUtils.spike_entity_at(state, pos) != null:
-		score -= float(Constants.SPIKE_DAMAGE) * _w(profile, "w_self_damage", 8.0)
+		score -= float(CombatConfig.spike_damage()) * _w(profile, "w_self_damage", 8.0)
 	var tile: TileState = state.get_tile(pos)
 	if tile.has_modifier("poison_fog"):
 		score -= float(CombatConfig.poison_fog_damage()) * _w(profile, "w_self_damage", 8.0)

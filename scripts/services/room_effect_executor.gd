@@ -69,9 +69,12 @@ func _apply_effect(effect: Dictionary, ctx: Dictionary, effect_index: int) -> Di
 	var transaction_id := _effect_transaction_id(ctx, effect_index)
 	match str(effect.get("action", "")):
 		"grant_resource":
+			var grant_amount_result := _resolve_numeric_field(effect, "amount")
+			if not bool(grant_amount_result.get("ok", false)):
+				return grant_amount_result
 			var grant_result := EconomyService.grant(
 				str(effect.get("resource_id", "gold")),
-				int(effect.get("amount", 0)),
+				int(grant_amount_result.get("value", 0.0)),
 				"event_reward",
 				_merge_ctx(ctx, {"transaction_id": transaction_id})
 			)
@@ -80,9 +83,12 @@ func _apply_effect(effect: Dictionary, ctx: Dictionary, effect_index: int) -> Di
 			var entry: Dictionary = grant_result.get("entry", {})
 			return {"ok": true, "summary": EconomyService.format_entry(entry), "entry": entry}
 		"spend_resource":
+			var spend_amount_result := _resolve_numeric_field(effect, "amount")
+			if not bool(spend_amount_result.get("ok", false)):
+				return spend_amount_result
 			var spend_result := EconomyService.spend(
 				str(effect.get("resource_id", "gold")),
-				int(effect.get("amount", 0)),
+				int(spend_amount_result.get("value", 0.0)),
 				"event_cost",
 				_merge_ctx(ctx, {"transaction_id": transaction_id})
 			)
@@ -91,13 +97,22 @@ func _apply_effect(effect: Dictionary, ctx: Dictionary, effect_index: int) -> Di
 			var spend_entry: Dictionary = spend_result.get("entry", {})
 			return {"ok": true, "summary": EconomyService.format_entry(spend_entry), "entry": spend_entry}
 		"heal_player":
-			var heal_result := RunService.heal_player_amount(int(effect.get("amount", 0)))
+			var heal_amount_result := _resolve_numeric_field(effect, "amount")
+			if not bool(heal_amount_result.get("ok", false)):
+				return heal_amount_result
+			var heal_result := RunService.heal_player_amount(int(heal_amount_result.get("value", 0.0)))
 			return {"ok": true, "summary": "恢复 %d 点生命" % int(heal_result.get("amount", 0)), "heal": heal_result}
 		"heal_player_percent":
-			var heal_percent_result := RunService.heal_player_percent(float(effect.get("amount", 0.0)))
+			var heal_percent_amount_result := _resolve_numeric_field(effect, "amount")
+			if not bool(heal_percent_amount_result.get("ok", false)):
+				return heal_percent_amount_result
+			var heal_percent_result := RunService.heal_player_percent(float(heal_percent_amount_result.get("value", 0.0)))
 			return {"ok": true, "summary": "恢复 %d 点生命" % int(heal_percent_result.get("amount", 0)), "heal": heal_percent_result}
 		"damage_player":
-			var damage_result := RunService.damage_player_amount(int(effect.get("amount", 0)))
+			var damage_amount_result := _resolve_numeric_field(effect, "amount")
+			if not bool(damage_amount_result.get("ok", false)):
+				return damage_amount_result
+			var damage_result := RunService.damage_player_amount(int(damage_amount_result.get("value", 0.0)))
 			return {"ok": true, "summary": "失去 %d 点生命" % int(damage_result.get("amount", 0)), "damage": damage_result}
 		"grant_relic":
 			var relic_id := str(effect.get("relic_id", ""))
@@ -138,7 +153,10 @@ func _evaluate_condition(condition: Dictionary, _ctx: Dictionary) -> Dictionary:
 	match str(condition.get("type", "")):
 		"resource_gte":
 			var resource_id := str(condition.get("resource_id", "gold"))
-			var amount := int(condition.get("amount", 0))
+			var amount_result := _resolve_numeric_field(condition, "amount")
+			if not bool(amount_result.get("ok", false)):
+				return amount_result
+			var amount := int(amount_result.get("value", 0.0))
 			if EconomyService.get_balance(resource_id) >= amount:
 				return {"ok": true}
 			return {"ok": false, "error": "resource_gte_failed", "reason": "%s 不足" % resource_id}
@@ -190,9 +208,13 @@ func _merge_ctx(base: Dictionary, patch: Dictionary) -> Dictionary:
 	return result
 
 
+func _resolve_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> Dictionary:
+	return EconomyService.resolve_numeric_field(payload, field_id, fallback)
+
+
 func _load_room_defs() -> void:
 	_room_defs = _load_json(ROOM_DEFS_PATH)
-	_Validator.ensure_valid(ROOM_DEFS_PATH, _Validator.validate_room_defs(_room_defs))
+	_Validator.ensure_valid(ROOM_DEFS_PATH, _Validator.validate_room_defs(_room_defs, EconomyService.get_amount_refs()))
 
 
 func _load_json(path: String) -> Dictionary:

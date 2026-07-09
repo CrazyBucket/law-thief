@@ -38,32 +38,32 @@
   },
   "relic_autopsy_log": {
     "name": "验尸记录",
-    "desc": "用黑色宝石击杀敌人后，回复 1 点生命。",
+    "desc": "用黑色宝石击杀敌人后，回复 {relic_numeric_ref:relic_autopsy_log_heal} 点生命。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "weight_rules": [
-      {"type": "has_gem_color", "value": "black", "multiplier": 2.5}
+      {"type": "has_gem_color", "value": "black", "multiplier_ref": "relic_autopsy_log_black_gem_weight_mult"}
     ],
     "effects": [
-      {"on": "unit_die", "action": "heal", "target": "player", "amount": 1,
+      {"on": "unit_die", "action": "heal", "target": "player", "amount_ref": "relic_autopsy_log_heal",
        "condition": "black_gem_kill"}
     ]
   },
   "relic_empty_coffin": {
     "name": "空棺",
-    "desc": "战斗开始时最大生命减少 30%，并随机获得一个额外槽位（每局限一次）。",
+    "desc": "战斗开始时最大生命减少 {relic_numeric_percent:relic_empty_coffin_max_hp_reduction_ratio}，并随机获得一个额外槽位（每局限一次）。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "weight_rules": [
-      {"type": "empty_slot_count_gte", "value": 2, "multiplier": 3.0}
+      {"type": "empty_slot_count_gte", "value_ref": "relic_empty_coffin_empty_slot_threshold", "multiplier_ref": "relic_empty_coffin_empty_slot_weight_mult"}
     ],
     "effects": [
       {"on": "battle_start", "action": "apply_max_hp_reduction",
-       "ratio": 0.3, "once_per_run": "empty_coffin_applied"},
+       "ratio_ref": "relic_empty_coffin_max_hp_reduction_ratio", "once_per_run": "empty_coffin_applied"},
       {"on": "battle_start", "action": "add_slot",
        "slot_type": "random",
        "once_per_run": "empty_coffin_slot_added"}
@@ -71,17 +71,17 @@
   },
   "relic_empty_shell": {
     "name": "空壳",
-    "desc": "每个空槽使拔出与嵌入的射程各 +1。",
+    "desc": "每个空槽使拔出射程 {relic_numeric_signed:relic_empty_shell_extract_per_empty_slot}，嵌入射程 {relic_numeric_signed:relic_empty_shell_insert_per_empty_slot}。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "weight_rules": [
-      {"type": "empty_slot_count_gte", "value": 1, "multiplier": 2.0}
+      {"type": "empty_slot_count_gte", "value_ref": "relic_empty_shell_empty_slot_threshold", "multiplier_ref": "relic_empty_shell_empty_slot_weight_mult"}
     ],
     "effects": [
-      {"modifier": "extract_range_bonus", "per_empty_slot": 1},
-      {"modifier": "insert_range_bonus", "per_empty_slot": 1}
+      {"modifier": "extract_range_bonus", "per_empty_slot_ref": "relic_empty_shell_extract_per_empty_slot"},
+      {"modifier": "insert_range_bonus", "per_empty_slot_ref": "relic_empty_shell_insert_per_empty_slot"}
     ]
   },
   "relic_night_heron_wings": {
@@ -121,173 +121,174 @@
   },
   "relic_slime_crown": {
     "name": "史莱姆皇冠",
-    "desc": "持有分裂宝石时：红分裂伤害 80%、蓝转移 60%、黑分身属性 50%。",
+    "desc": "持有分裂宝石时：红分裂伤害 {relic_numeric_percent:relic_slime_crown_split_red_damage_ratio}、蓝转移 {relic_numeric_percent:relic_slime_crown_split_blue_redirect_ratio}、黑分身属性 {relic_numeric_percent:relic_slime_crown_split_black_stat_ratio}。",
     "rarity": "rare",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "unlock_condition": "boss_slime_king",
     "weight_rules": [
-      {"type": "has_gem", "value": "gem_split", "multiplier": 5.0}
+      {"type": "has_gem", "value": "gem_split", "multiplier_ref": "relic_slime_crown_split_gem_weight_mult"}
     ],
     "effects": [
-      {"modifier": "split_red_damage_ratio", "value": 0.8,
+      {"modifier": "split_red_damage_ratio", "value_ref": "relic_slime_crown_split_red_damage_ratio",
        "condition": "has_gem_split"},
-      {"modifier": "split_blue_redirect_ratio", "value": 0.6,
+      {"modifier": "split_blue_redirect_ratio", "value_ref": "relic_slime_crown_split_blue_redirect_ratio",
        "condition": "has_gem_split"},
-      {"modifier": "split_black_stat_ratio", "value": 0.5,
+      {"modifier": "split_black_stat_ratio", "value_ref": "relic_slime_crown_split_black_stat_ratio",
        "condition": "has_gem_split"}
     ]
   },
   "relic_gas_mask": {
     "name": "呼吸面罩",
-    "desc": "穿越毒雾或火焰地块时，移动消耗减少 1。",
+    "desc": "穿越毒雾或火焰地块时，移动消耗减少 {relic_numeric_ref:relic_gas_mask_overlay_move_cost_reduction}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"modifier": "overlay_move_cost_reduction", "overlays": ["poison_fog", "fire"], "value": 1}
+      {"modifier": "overlay_move_cost_reduction", "overlays": ["poison_fog", "fire"], "value_ref": "relic_gas_mask_overlay_move_cost_reduction"}
     ]
   },
   "relic_cracked_amulet": {
     "name": "破损护符",
-    "desc": "战斗开始时获得 3 点护盾。",
+    "desc": "战斗开始时获得 {relic_numeric_ref:relic_cracked_amulet_shield} 点护盾。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"on": "battle_start", "action": "add_armor", "target": "player", "amount": 3}
+      {"on": "battle_start", "action": "add_armor", "target": "player", "amount_ref": "relic_cracked_amulet_shield"}
     ]
   },
   "relic_copper_wire": {
     "name": "导热铜线",
-    "desc": "导电宝石的电弧额外弹射 1 个目标。",
+    "desc": "导电宝石的电弧额外弹射 {relic_numeric_ref:relic_copper_wire_arc_bounce_bonus} 个目标。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "weight_rules": [
-      {"type": "has_gem", "value": "gem_conductive", "multiplier": 3.0}
+      {"type": "has_gem", "value": "gem_conductive", "multiplier_ref": "relic_copper_wire_conductive_weight_mult"}
     ],
     "effects": [
-      {"modifier": "arc_bounce_count_bonus", "value": 1}
+      {"modifier": "arc_bounce_count_bonus", "value_ref": "relic_copper_wire_arc_bounce_bonus"}
     ]
   },
   "relic_broken_rib": {
     "name": "断裂肋骨",
-    "desc": "碰撞造成的伤害 ×1.5。",
+    "desc": "碰撞造成的伤害 ×{relic_numeric_ref:relic_broken_rib_collision_damage_mult}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"modifier": "collision_damage_mult", "value": 1.5}
+      {"modifier": "collision_damage_mult", "value_ref": "relic_broken_rib_collision_damage_mult"}
     ]
   },
   "relic_pressure_valve": {
     "name": "旧式压力阀",
-    "desc": "你触发蓝色宝石效果后，本回合获得 +1 临时移动力。",
+    "desc": "你触发蓝色宝石效果后，本回合获得 {relic_numeric_signed:relic_pressure_valve_temp_move} 临时移动力。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "weight_rules": [
-      {"type": "has_gem_color", "value": "blue", "multiplier": 2.0}
+      {"type": "has_gem_color", "value": "blue", "multiplier_ref": "relic_pressure_valve_blue_gem_weight_mult"}
     ],
     "effects": [
-      {"on": "blue_gem_triggered", "action": "add_temp_move", "amount": 1,
+      {"on": "blue_gem_triggered", "action": "add_temp_move", "amount_ref": "relic_pressure_valve_temp_move",
        "condition": "actor_is_player"}
     ]
   },
   "relic_crowbar": {
     "name": "应急撬棍",
-    "desc": "攻击时对目标的护甲锁造成额外 4 点结构伤害。",
+    "desc": "攻击时对目标的护甲锁造成额外 {relic_numeric_ref:relic_crowbar_armor_lock_break_bonus} 点结构伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"modifier": "armor_lock_break_bonus", "value": 4}
+      {"modifier": "armor_lock_break_bonus", "value_ref": "relic_crowbar_armor_lock_break_bonus"}
     ]
   },
   "relic_adrenaline": {
     "name": "肾上腺素",
-    "desc": "生命较低时，移动力与拔/嵌射程各 +1。",
+    "desc": "生命较低时，移动力 {relic_numeric_signed:relic_adrenaline_move_bonus}，拔出射程 {relic_numeric_signed:relic_adrenaline_extract_range_bonus}，嵌入射程 {relic_numeric_signed:relic_adrenaline_insert_range_bonus}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "effects": [
-      {"modifier": "move_bonus", "condition": "player_hp_low", "value": 1},
-      {"modifier": "extract_range_bonus", "condition": "player_hp_low", "value": 1},
-      {"modifier": "insert_range_bonus", "condition": "player_hp_low", "value": 1}
+      {"modifier": "move_bonus", "condition": "player_hp_low", "value_ref": "relic_adrenaline_move_bonus"},
+      {"modifier": "extract_range_bonus", "condition": "player_hp_low", "value_ref": "relic_adrenaline_extract_range_bonus"},
+      {"modifier": "insert_range_bonus", "condition": "player_hp_low", "value_ref": "relic_adrenaline_insert_range_bonus"}
     ]
   },
   "relic_reinforced_base": {
     "name": "加固底座",
-    "desc": "向自己嵌入宝石后，获得 4 点护盾。",
+    "desc": "向自己嵌入宝石后，获得 {relic_numeric_ref:relic_reinforced_base_shield} 点护盾。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "weight_rules": [
-      {"type": "slot_count_gte", "value": 3, "multiplier": 2.0}
+      {"type": "slot_count_gte", "value_ref": "relic_reinforced_base_slot_threshold", "multiplier_ref": "relic_reinforced_base_slot_weight_mult"}
     ],
     "effects": [
       {"on": "after_insert", "action": "add_armor", "target": "player",
-       "amount": 4, "condition": "insert_to_player"}
+       "amount_ref": "relic_reinforced_base_shield", "condition": "insert_to_player"}
     ]
   },
   "relic_silver_cable": {
     "name": "镀银电缆",
-    "desc": "电弧伤害 ×1.2。",
+    "desc": "电弧伤害 ×{relic_numeric_ref:relic_silver_cable_arc_damage_mult}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "weight_rules": [
-      {"type": "has_gem", "value": "gem_conductive", "multiplier": 2.5},
-      {"type": "has_relic", "value": "relic_copper_wire", "multiplier": 2.0}
+      {"type": "has_gem", "value": "gem_conductive", "multiplier_ref": "relic_silver_cable_conductive_weight_mult"},
+      {"type": "has_relic", "value": "relic_copper_wire", "multiplier_ref": "relic_silver_cable_copper_wire_weight_mult"}
     ],
     "effects": [
-      {"modifier": "arc_damage_mult", "value": 1.2}
+      {"modifier": "arc_damage_mult", "value_ref": "relic_silver_cable_arc_damage_mult"}
     ]
   },
   "relic_cracked_goggles": {
     "name": "破损护目镜",
-    "desc": "攻击有 10% 落空，但命中额外 +2 伤害。",
+    "desc": "攻击有 {relic_numeric_percent:relic_cracked_goggles_attack_miss_chance} 落空，但命中额外 {relic_numeric_signed:relic_cracked_goggles_attack_damage_bonus} 伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"modifier": "attack_miss_chance", "value": 0.1},
-      {"modifier": "attack_damage_bonus", "value": 2}
+      {"modifier": "attack_miss_chance", "value_ref": "relic_cracked_goggles_attack_miss_chance"},
+      {"modifier": "attack_damage_bonus", "value_ref": "relic_cracked_goggles_attack_damage_bonus"}
     ]
   },
   "relic_painkiller": {
     "name": "止痛药",
-    "desc": "每场战斗首次受到伤害时，仅承受 1 点伤害。",
+    "desc": "每场战斗首次受到伤害时，仅承受 {relic_numeric_ref:relic_painkiller_damage_cap} 点伤害。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": true,
     "effects": [
-      {"modifier": "first_damage_absorb", "flag": "painkiller_used"}
+      {"modifier": "first_damage_absorb", "flag": "painkiller_used"},
+      {"modifier": "first_damage_cap", "value_ref": "relic_painkiller_damage_cap"}
     ]
   },
   "relic_iron_boots": {
     "name": "铁靴",
-    "desc": "免疫强制位移，移动力 -1。",
+    "desc": "免疫强制位移，移动力 {relic_numeric_signed:relic_iron_boots_move_penalty}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
       {"modifier": "forced_move_immune", "value": true},
-      {"modifier": "move_bonus", "value": -1}
+      {"modifier": "move_bonus", "value_ref": "relic_iron_boots_move_penalty"}
     ]
   },
   "relic_placeholder": {

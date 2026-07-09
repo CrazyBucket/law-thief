@@ -116,10 +116,12 @@ static func execute_aimed(
 	aim_cell: Vector2i,
 	initial_tags: Array[String] = [],
 	payload: Dictionary = {},
-	max_range: int = Constants.ATTACK_RANGE
+	max_range: int = -1
 ) -> Dictionary:
 	if not attacker.alive:
 		return _fail("攻击者无效")
+	if max_range < 0:
+		max_range = CombatConfig.attack_range()
 	max_range = GemEffects.red_attack_range(state, attacker, max_range)
 	if GemEffects.unit_has_red_light(state, attacker) and not GemEffects.is_valid_light_aim(attacker, aim_cell):
 		return _fail("光束只能朝八个方向发射")
@@ -417,26 +419,29 @@ static func _apply_poison_at_cell(
 	gem_ctx: Dictionary = {}
 ) -> void:
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "poison"))
-	var radius := 0
-	var duration := CombatConfig.poison_fog_duration()
-	if level >= 2:
-		radius = 1
-	if level >= 3:
-		duration += 1
-	var burst := {"type": "poison_burst", "pos": cell, "radius": 0 if level >= 2 else radius, "duration": duration}
-	if level >= 2:
+	var level_def := _effect_level_def("poison", Constants.SLOT_RED, level)
+	var fog_pattern := str(level_def.get("fog_pattern", "single"))
+	var duration := CombatConfig.poison_fog_duration() + int(level_def.get("duration_bonus", 0))
+	var burst := {"type": "poison_burst", "pos": cell, "radius": 0, "duration": duration}
+	if fog_pattern == "cross":
 		burst["pattern"] = "cross"
 	ctx.push_event(burst)
 	if BoardUtils.in_bounds(ctx.state, cell):
 		TileRules.begin_overlay_batch(ctx.state)
 		TileRules.create_poison_fog(ctx.state, cell, duration)
-		if level >= 2:
+		if fog_pattern == "cross":
 			for neighbor in BoardUtils.neighbors4(cell):
 				if BoardUtils.in_bounds(ctx.state, neighbor):
 					TileRules.create_poison_fog(ctx.state, neighbor, duration)
 		TileRules.end_overlay_batch(ctx.state)
 	if unit != null and unit.alive:
-		StatusRules.apply_poison(ctx.state, unit, 1, 0, ctx.attacker.uid)
+		StatusRules.apply_poison(
+			ctx.state,
+			unit,
+			int(level_def.get("hit_poison_stacks", 1)),
+			int(level_def.get("hit_poison_duration", 0)),
+			ctx.attacker.uid
+		)
 
 
 static func _apply_fire_tile_at_cell(
@@ -447,14 +452,13 @@ static func _apply_fire_tile_at_cell(
 	had_burning_before: bool = false
 ) -> void:
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "fire"))
+	var level_def := _effect_level_def("fire", Constants.SLOT_RED, level)
 	ctx.push_event({"type": "fire_burst", "pos": cell})
 	TileRules.begin_overlay_batch(ctx.state)
 	TileRules.create_fire(ctx.state, cell)
-	var spread_count := 0
-	if level >= 2:
-		spread_count += 1
-	if level >= 3 and had_burning_before:
-		spread_count += 1
+	var spread_count := int(level_def.get("spread_count", 0))
+	if had_burning_before:
+		spread_count += int(level_def.get("burning_bonus_spread_count", 0))
 	if spread_count > 0:
 		for spread_cell in _random_adjacent_cells(ctx.state, cell, spread_count, "fire_spread_%d_%d" % [cell.x, cell.y]):
 			TileRules.create_fire(ctx.state, spread_cell)
@@ -464,14 +468,19 @@ static func _apply_fire_tile_at_cell(
 
 static func _apply_cross_explosion_at(ctx: AttackContext, center: Vector2i) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
-	if GemEffects.explosion_uses_square_blast(gem_ctx):
-		var damage := GemEffects.explosion_scaled_damage(CombatConfig.explosion_cross_damage(), gem_ctx)
+	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "explosion"))
+	var level_def := _effect_level_def("explosion", Constants.SLOT_RED, level)
+	var blast_pattern := str(level_def.get("blast_pattern", "cross"))
+	var damage_multiplier := float(level_def.get("damage_multiplier", 1.0))
+	var damage := maxi(1, int(CombatConfig.explosion_cross_damage() * damage_multiplier))
+	if blast_pattern == "square":
 		var square_events := GemEffects.explode_square_at(ctx.state, center, ctx.attacker.uid, damage, gem_ctx)
 		for ev in square_events:
 			ctx.events.append(ev)
 		return
 	var opts: Dictionary = {
-		"center_damage": CombatConfig.explosion_cross_damage(),
+		"center_damage": damage,
+		"cross_damage": damage,
 		"gem_tag_context": gem_ctx,
 	}
 	var cross_events := GemEffects.explode_cross_at(
@@ -495,8 +504,15 @@ static func _apply_gravity_aura(ctx: AttackContext) -> void:
 	if ctx.target == null or not ctx.target.alive or ctx.target.uid == ctx.attacker.uid:
 		return
 	var level := maxi(1, GemTagResolver.tag_level(ctx.payload.get("gem_tag_context", {}), "gravity"))
+	var level_def := _effect_level_def("gravity", Constants.SLOT_RED, level)
 	ctx.events.append_array(
-		GemEffects.pull_unit_toward_with_events(ctx.state, ctx.target, ctx.attacker.pos, level, ctx.attacker.uid)
+		GemEffects.pull_unit_toward_with_events(
+			ctx.state,
+			ctx.target,
+			ctx.attacker.pos,
+			int(level_def.get("pull_steps", level)),
+			ctx.attacker.uid
+		)
 	)
 
 
@@ -516,7 +532,13 @@ static func _apply_single_light_beam(
 	from_cell: Vector2i,
 	aim_cell: Vector2i
 ) -> void:
-	var cells := _light_beam_cells(ctx.state, from_cell, aim_cell, level >= 3)
+	var level_def := _effect_level_def("light", Constants.SLOT_RED, level)
+	var cells := _light_beam_cells(
+		ctx.state,
+		from_cell,
+		aim_cell,
+		bool(level_def.get("pierce_blockers", false))
+	)
 	if cells.is_empty():
 		return
 	var hit_effects: Array[Dictionary] = []
@@ -545,17 +567,14 @@ static func _apply_single_light_beam(
 			"dye_transitions": GemEffects.light_dye_transitions(ctx.state, cells),
 			"hit_effects": hit_effects,
 			"end_color": GemEffects.light_color_for_context(preview_ctx),
-			"power": 0.95 + float(level) * 0.1,
+			"power": float(level_def.get("beam_power", 0.95 + float(level) * 0.1)),
 			"source_uid": ctx.attacker.uid,
 		}
 	)
 	ctx.push_event(beam_event)
 	var beam_hit_event_start := ctx.events.size()
-	var damage_ratio := 0.5
-	if level >= 3:
-		damage_ratio = 1.0
-	elif level >= 2:
-		damage_ratio = 0.75
+	var damage_ratio := float(level_def.get("damage_ratio", 0.5))
+	var exposed_stacks := int(level_def.get("exposed_stacks", 1))
 	var damage := maxi(1, int(float(ctx.base_damage) * damage_ratio))
 	var hit_uids: Dictionary = {}
 	var traveled_ctx := gem_ctx.duplicate(true)
@@ -572,7 +591,7 @@ static func _apply_single_light_beam(
 		})
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
-			StatusRules.apply_light_exposed(ctx.state, target, 2 if level >= 3 else 1, ctx.attacker.uid)
+			StatusRules.apply_light_exposed(ctx.state, target, exposed_stacks, ctx.attacker.uid)
 		GemEffects.apply_light_colored_status(
 			ctx.state,
 			target,
@@ -614,11 +633,8 @@ static func _light_split_directions(forward: Vector2i, split_level: int) -> Arra
 	var dir_index := SplitShotRules.DIR8.find(forward)
 	if dir_index < 0:
 		return [forward] as Array[Vector2i]
-	var offsets: Array[int] = [0, -1, 1]
-	if split_level >= 2:
-		offsets.append(-2)
-	if split_level >= 3:
-		offsets.append(2)
+	var level_def := _effect_level_def("split", Constants.SLOT_RED, split_level)
+	var offsets := _int_array(level_def.get("light_direction_offsets", [0, -1, 1]))
 	for offset in offsets:
 		var idx := (dir_index + offset + SplitShotRules.DIR8.size()) % SplitShotRules.DIR8.size()
 		var direction: Vector2i = SplitShotRules.DIR8[idx]
@@ -648,7 +664,14 @@ static func _apply_red_counter(ctx: AttackContext) -> void:
 		return
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "counter"))
-	StatusRules.apply_counter_mark(ctx.state, ctx.target, ctx.attacker.uid, level, ctx.attacker.uid)
+	var level_def := _effect_level_def("counter", Constants.SLOT_RED, level)
+	StatusRules.apply_counter_mark(
+		ctx.state,
+		ctx.target,
+		ctx.attacker.uid,
+		int(level_def.get("mark_stacks", level)),
+		ctx.attacker.uid
+	)
 
 
 static func _apply_red_echo_followup(ctx: AttackContext) -> void:
@@ -662,7 +685,13 @@ static func _apply_red_echo_followup(ctx: AttackContext) -> void:
 	if bool(ctx.state.battle_temp_flags.get(once_key, false)):
 		return
 	ctx.state.battle_temp_flags[once_key] = true
-	var dealt := ctx.damage_unit(ctx.target, maxi(1, int(ceil(float(ctx.base_damage) * 0.5))), "echo_red")
+	var level_def := _effect_level_def("echo", Constants.SLOT_RED, echo_level)
+	var followup_ratio := float(level_def.get("followup_ratio", 0.5))
+	var dealt := ctx.damage_unit(
+		ctx.target,
+		maxi(1, int(ceil(float(ctx.base_damage) * followup_ratio))),
+		"echo_red"
+	)
 	if dealt > 0:
 		ctx.push_event({"type": "gem_flash", "pos": ctx.attacker.pos, "echo_followup": true})
 
@@ -742,11 +771,9 @@ static func _try_deflect(ctx: AttackContext) -> void:
 			slot
 		)
 		var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-		var chance := 0.5
-		if level >= 3:
-			chance = 1.0
-		elif level >= 2:
-			chance = 0.75
+		var level_def := _effect_level_def("gravity", Constants.SLOT_BLUE, level)
+		var chance := float(level_def.get("deflect_chance", 0.5))
+		var redirect_enemy_only := bool(level_def.get("redirect_enemy_only", false))
 		var rng := _rng_service()
 		if rng == null or not bool(rng.chance("pipeline_gravity_deflect_%s" % ctx.target.uid, chance)):
 			break
@@ -754,7 +781,7 @@ static func _try_deflect(ctx: AttackContext) -> void:
 		for neighbor in BoardUtils.neighbors4(ctx.target.pos):
 			var hit := ctx.state.get_unit_at(neighbor)
 			if hit != null and hit.alive and hit.uid != ctx.attacker.uid:
-				if level >= 2 and hit.team == ctx.target.team:
+				if redirect_enemy_only and hit.team == ctx.target.team:
 					continue
 				candidates.append(hit)
 		if candidates.is_empty():
@@ -895,11 +922,8 @@ static func _split_level(ctx: AttackContext) -> int:
 
 static func _split_red_damage_ratio(ctx: AttackContext) -> float:
 	var level := _split_level(ctx)
-	if level >= 3:
-		return 0.3
-	if level >= 2:
-		return 0.5
-	return CombatConfig.split_attack_damage_ratio()
+	var level_def := _effect_level_def("split", Constants.SLOT_RED, level)
+	return float(level_def.get("damage_ratio", CombatConfig.split_attack_damage_ratio()))
 
 
 static func _resolve_unit_at_aim(state: GameState, attacker: UnitState, aim_cell: Vector2i) -> UnitState:
@@ -918,6 +942,18 @@ static func _resolve_aim_cell(payload: Dictionary, fallback: Vector2i) -> Vector
 
 static func _ability_profile(gem: GemState, ability_slot: String) -> String:
 	return _data_registry().get_gem_ability_profile(gem, ability_slot)
+
+
+static func _effect_level_def(tag: String, slot_type: String, level: int) -> Dictionary:
+	return _data_registry().get_gem_effect_level_def(tag, slot_type, level)
+
+
+static func _int_array(raw: Variant) -> Array[int]:
+	var values: Array[int] = []
+	if raw is Array:
+		for entry in raw:
+			values.append(int(entry))
+	return values
 
 
 static func _data_registry() -> Node:

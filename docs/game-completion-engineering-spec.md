@@ -226,6 +226,7 @@ resources/adventure/
   room_defs.json
   event_defs.json
   map_rule_defs.json
+  reward_offer_config.json
   shop_pools.json
 ```
 
@@ -335,9 +336,14 @@ func validate_rule(rule: Dictionary) -> Array[String]
 | --- | --- | --- |
 | `gold_gain_mult` | 获得金币倍率 | 叠乘 |
 | `shop_price_mult` | 商店价格倍率 | 叠乘 |
+| `rest_heal_mult` | 营地回血倍率 | 叠乘 |
+
+后续候选 modifier 在有运行时语义前不要加入校验白名单：
+
+| modifier_id | 预期语义 | 合并方式 |
+| --- | --- | --- |
 | `shop_offer_count_bonus` | 商店候选数量加成 | 相加 |
 | `event_reward_mult` | 事件数值奖励倍率 | 叠乘 |
-| `rest_heal_mult` | 营地回血倍率 | 叠乘 |
 | `battle_reward_option_bonus` | 战后奖励候选数量加成 | 相加 |
 
 第一批 hook 词表：
@@ -899,9 +905,35 @@ TODO 状态使用：
   "starting_gold": 0,
   "normal_combat_gold": 10,
   "elite_combat_gold": 20,
+  "boss_combat_gold": 40,
   "gem_base_price": 15,
-  "relic_base_price": 30,
-  "shop_offer_count": 3
+  "relic_base_price": 30
+}
+```
+
+商店候选数量属于 `resources/adventure/shop_pools.json`：
+
+```json
+{
+  "default": {
+    "gem_offer_count": 2,
+    "relic_offer_count": 1,
+    "gem_source": "shop",
+    "relic_source": "shop"
+  }
+}
+```
+
+战斗奖励候选数量属于 `resources/adventure/reward_offer_config.json`：
+
+```json
+{
+  "battle_rewards": {
+    "NORMAL_COMBAT": {
+      "relic_source": "normal_chest",
+      "relic_offer_count": 3
+    }
+  }
 }
 ```
 

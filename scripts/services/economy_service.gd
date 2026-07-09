@@ -40,6 +40,59 @@ func get_base_price(item_type: String) -> int:
 			return int(_config.get("gem_base_price", 15))
 
 
+func has_amount_ref(ref_id: String) -> bool:
+	return (_config.get("amount_refs", {}) as Dictionary).has(ref_id)
+
+
+func get_amount_ref(ref_id: String, fallback: float = 0.0) -> float:
+	var amount_refs := _config.get("amount_refs", {}) as Dictionary
+	if not amount_refs.has(ref_id):
+		return fallback
+	return _amount_ref_value(amount_refs.get(ref_id), fallback)
+
+
+func get_amount_ref_def(ref_id: String) -> Dictionary:
+	var amount_refs := _config.get("amount_refs", {}) as Dictionary
+	if not amount_refs.has(ref_id):
+		return {}
+	var raw_ref: Variant = amount_refs.get(ref_id)
+	if raw_ref is Dictionary:
+		var ref_def := (raw_ref as Dictionary).duplicate(true)
+		ref_def["value"] = _amount_ref_value(raw_ref)
+		return ref_def
+	return {
+		"value": _amount_ref_value(raw_ref),
+		"kind": "legacy",
+		"unit": "",
+	}
+
+
+func get_amount_refs() -> Dictionary:
+	return (_config.get("amount_refs", {}) as Dictionary).duplicate(true)
+
+
+func resolve_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> Dictionary:
+	if payload.has(field_id):
+		return {"ok": true, "value": float(payload.get(field_id, fallback))}
+	var ref_id := str(payload.get("%s_ref" % field_id, ""))
+	if ref_id.is_empty():
+		return {
+			"ok": false,
+			"error": "missing_numeric_field",
+			"reason": "missing %s" % field_id,
+			"field": field_id,
+		}
+	if not has_amount_ref(ref_id):
+		return {
+			"ok": false,
+			"error": "unknown_amount_ref",
+			"reason": "unknown amount ref %s" % ref_id,
+			"field": field_id,
+			"amount_ref": ref_id,
+		}
+	return {"ok": true, "value": get_amount_ref(ref_id, fallback), "amount_ref": ref_id}
+
+
 func can_afford(cost: Dictionary) -> bool:
 	for resource_id in cost.keys():
 		if get_balance(str(resource_id)) < int(cost.get(resource_id, 0)):
@@ -192,3 +245,11 @@ func _find_ledger_entry(transaction_id: String) -> Dictionary:
 		if raw_entry is Dictionary and str(raw_entry.get("transaction_id", "")) == transaction_id:
 			return (raw_entry as Dictionary).duplicate(true)
 	return {}
+
+
+func _amount_ref_value(raw_ref: Variant, fallback: float = 0.0) -> float:
+	if raw_ref is int or raw_ref is float:
+		return float(raw_ref)
+	if raw_ref is Dictionary:
+		return float((raw_ref as Dictionary).get("value", fallback))
+	return fallback

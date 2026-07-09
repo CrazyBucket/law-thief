@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
+const CombatRules = preload("res://scripts/rules/combat_rules.gd")
 const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CONTRACT_PATH := "res://tests/contracts/gem_semantics.json"
 
@@ -25,7 +26,7 @@ func _run() -> void:
 
 
 func _run_case(contract: Dictionary) -> void:
-	var builder = Builder.new("fission_slime_test", 4401, true)
+	var builder = Builder.new("fission_slime_test", int(contract.get("seed", 4401)), true)
 	var player := builder.player()
 	builder.clear_slots(player)
 	var player_pos := _vector_from_variant(contract.get("player_pos", Vector2i(2, 3)))
@@ -35,12 +36,13 @@ func _run_case(contract: Dictionary) -> void:
 		builder.set_stats(player, player_stats)
 	builder.mount_gems(player, Constants.SLOT_RED, contract.get("gems", []))
 	var target_pos := _vector_from_variant(contract.get("target_pos", Vector2i(5, 3)))
+	var target_stats: Dictionary = contract.get("target_stats", {"hp": 100, "max_hp": 100})
 	var target := builder.add_unit(
 		"contract_target",
-		"unit_patrol_guard",
+		str(contract.get("target_unit_def_id", "unit_patrol_guard")),
 		Constants.TEAM_ENEMY,
 		target_pos,
-		{"hp": 100, "max_hp": 100}
+		target_stats
 	)
 	var tracked_units: Dictionary = {
 		target.uid: target,
@@ -58,6 +60,15 @@ func _run_case(contract: Dictionary) -> void:
 			raw_unit.get("stats", {"hp": 100, "max_hp": 100})
 		)
 		tracked_units[extra.uid] = extra
+	for raw_mount in contract.get("mounts", []):
+		var unit_uid := str(raw_mount.get("uid", ""))
+		var unit: UnitState = tracked_units.get(unit_uid, null)
+		_check(unit != null, str(contract.get("id", "unnamed")), "missing mount unit %s" % unit_uid)
+		if unit == null:
+			continue
+		if bool(raw_mount.get("clear_slots", false)):
+			builder.clear_slots(unit)
+		builder.mount_gems(unit, str(raw_mount.get("slot", Constants.SLOT_RED)), raw_mount.get("gems", []))
 	for raw_entity in contract.get("entities", []):
 		builder.state.add_entity(EntityState.create(
 			str(raw_entity.get("uid", "")),
@@ -233,6 +244,8 @@ func _apply_setup_statuses(state: GameState, unit: UnitState, source: UnitState,
 				StatusRules.apply_paralyzed(state, unit, int(raw_status.get("duration", 1)), source.uid)
 			Constants.STATUS_WET:
 				StatusRules.apply_wet(state, unit, int(raw_status.get("duration", 2)), source.uid)
+			Constants.STATUS_LIGHT_EXPOSED:
+				StatusRules.apply_light_exposed(state, unit, int(raw_status.get("stacks", 1)), source.uid)
 
 
 func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, raw_step: Dictionary) -> void:
@@ -252,6 +265,26 @@ func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, 
 				str(raw_step.get("reason", "attack")),
 				{"pos": target.pos}
 			)
+		"combat_apply_damage":
+			var target: UnitState = tracked_units.get(str(raw_step.get("target", "")), null)
+			var source: UnitState = tracked_units.get(str(raw_step.get("source", "")), null)
+			_check(target != null, "post_step", "missing combat damage target %s" % str(raw_step.get("target", "")))
+			_check(source != null, "post_step", "missing combat damage source %s" % str(raw_step.get("source", "")))
+			if target == null or source == null:
+				return
+			CombatRules.apply_damage(
+				state,
+				target,
+				int(raw_step.get("amount", 0)),
+				source.uid,
+				str(raw_step.get("reason", "attack"))
+			)
+		"run_blue_poison_turn_end":
+			var owner: UnitState = tracked_units.get(str(raw_step.get("uid", "")), null)
+			_check(owner != null, "post_step", "missing blue poison owner %s" % str(raw_step.get("uid", "")))
+			if owner == null:
+				return
+			GemEffects.run_blue_poison_turn_end_spreads(state, owner.uid)
 
 
 func _vector_from_variant(raw: Variant) -> Vector2i:

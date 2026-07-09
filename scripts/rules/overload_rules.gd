@@ -2,6 +2,7 @@ class_name OverloadRules
 extends RefCounted
 
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 const MUTATIONS: Array[String] = [
 	Constants.OVERLOAD_LAWLESS_ANY_EXTRACT,
@@ -143,7 +144,7 @@ static func apply_gem_operation_backlash(state: GameState, out_events: Array[Dic
 	var player := state.get_player()
 	if player == null or not player.alive:
 		return
-	var damage := mini(Constants.OVERLOAD_GEM_OP_DAMAGE_AMOUNT, maxi(player.hp - 1, 0))
+	var damage := mini(CombatConfig.overload_gem_op_damage_amount(), maxi(player.hp - 1, 0))
 	if damage <= 0:
 		return
 	var tx := _CombatTransaction.begin(state, out_events)
@@ -240,10 +241,20 @@ static func ai_control_probability(state: GameState) -> float:
 	var chapter := 1
 	var run_service: Node = _run_service()
 	if run_service != null and run_service.has_method("get_current_chapter"):
-		chapter = clampi(int(run_service.get_current_chapter()), 1, 45)
+		chapter = clampi(
+			int(run_service.get_current_chapter()),
+			CombatConfig.overload_ai_control_min_chapter(),
+			CombatConfig.overload_ai_control_max_chapter()
+		)
 	var gem_count := _player_gem_count(state)
-	var percent := 75.0 - float(chapter - 3) - float(gem_count - 9) * 7.0
-	return clampf(percent / 100.0, 0.0, 0.95)
+	var percent := CombatConfig.overload_ai_control_base_percent()
+	percent -= float(chapter - CombatConfig.overload_ai_control_chapter_baseline()) * CombatConfig.overload_ai_control_chapter_penalty()
+	percent -= float(gem_count - CombatConfig.overload_ai_control_gem_baseline()) * CombatConfig.overload_ai_control_gem_penalty()
+	return clampf(
+		percent / 100.0,
+		CombatConfig.overload_ai_control_min_probability(),
+		CombatConfig.overload_ai_control_max_probability()
+	)
 
 
 static func blocks_player_manual_actions(state: GameState) -> bool:
@@ -377,7 +388,7 @@ static func _execute_player_ai_control(state: GameState, player: UnitState, out_
 	if player.alive and not state.player_acted:
 		var attack_target := _nearest_attackable_enemy(state, player)
 		if attack_target != null:
-			var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+			var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 			var attack_result := CombatRules.ranged_attack(
 				state,
 				player,
@@ -438,7 +449,7 @@ static func _try_player_ai_extract(state: GameState, player: UnitState, out_even
 
 
 static func _nearest_attackable_enemy(state: GameState, player: UnitState) -> UnitState:
-	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	var best: UnitState = null
 	var best_dist := 999999
 	for enemy in state.get_alive_enemies():

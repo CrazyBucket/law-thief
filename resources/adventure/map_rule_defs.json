@@ -1,7 +1,7 @@
 {
   "map_rule_gold_gain_10": {
     "name": "金币增益",
-    "desc": "后续获得的金币 +10%。",
+    "desc": "后续获得的金币 {effect_percent_delta:gold_gain_mult}。",
     "default_scope": "run",
     "effects": [
       {"modifier": "gold_gain_mult", "value": 1.1}
@@ -9,7 +9,7 @@
   },
   "map_rule_shop_discount_20": {
     "name": "折扣标签",
-    "desc": "后续商店价格 -20%。",
+    "desc": "后续商店价格 {effect_percent_delta:shop_price_mult}。",
     "default_scope": "run",
     "effects": [
       {"modifier": "shop_price_mult", "value": 0.8}
@@ -17,7 +17,7 @@
   },
   "map_rule_rest_heal_50": {
     "name": "修整脚本",
-    "desc": "营地回复效果 +50%。",
+    "desc": "营地回复效果 {effect_percent_delta:rest_heal_mult}。",
     "default_scope": "run",
     "effects": [
       {"modifier": "rest_heal_mult", "value": 1.5}

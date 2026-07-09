@@ -82,6 +82,7 @@ func _run_tests() -> void:
 	assert(rest_result.get("ok", false), "rest resolve should succeed")
 	var heal: Dictionary = rest_result.get("result", {}).get("heal", {})
 	var heal_trace: Dictionary = rest_result.get("result", {}).get("heal_trace", {})
+	assert(absf(float(heal_trace.get("base_value", 0.0)) - 0.2) < 0.001, "rest heal trace should start from configured base ratio")
 	assert(absf(float(heal_trace.get("final_value", 0.0)) - 0.3) < 0.001, "rest heal trace should become 0.3")
 	assert(run_service.get_run().player_hp - hp_before_rest == 3, "rest heal should increase hp by 3, heal=%s after_hp=%d" % [JSON.stringify(heal), run_service.get_run().player_hp])
 

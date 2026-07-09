@@ -139,12 +139,6 @@ var _editor_inspector_body: VBoxContainer = null
 var _editor_panel_user_positioned: bool = false
 var _leave_confirm_dialog: GameConfirmDialog = null
 
-## 遭遇 room_type → 遗物来源 key（DataRegistry 池筛选用）
-const _ENCOUNTER_RELIC_SOURCE := {
-	"NORMAL_COMBAT": "normal_chest",
-	"ELITE_COMBAT": "elite_combat",
-	"END": "large_chest",
-}
 const _EDITOR_KIND_LABELS := {
 	"unit": "怪物",
 	"tile": "地块",
@@ -1089,11 +1083,8 @@ func _apply_battle_end(result: String) -> void:
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
 	if result == "win" and RunService.is_run_active():
 		_settlement_gold_amount = _grant_combat_gold_once()
-		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
-			AdventureService.pending_room_type.to_upper(), "normal_chest"
-		))
 		var room_id := GameService.pending_room_id
-		var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
+		var relic_offer: Array[String] = _battle_relic_offer(room_id)
 		var has_relics := not relic_offer.is_empty() and not relic_offer.all(
 			func(rid: String) -> bool: return rid == "relic_placeholder"
 		)
@@ -1125,6 +1116,15 @@ func _consume_pending_battle_end_if_any() -> bool:
 		return false
 	_apply_battle_end(pending_battle_end)
 	return true
+
+
+func _battle_relic_offer(room_id: String) -> Array[String]:
+	var room_type := AdventureService.pending_room_type.to_upper()
+	return RunService.get_or_roll_relic_offer(
+		room_id,
+		DataRegistry.get_battle_relic_offer_source(room_type),
+		DataRegistry.get_battle_relic_offer_count(room_type)
+	)
 
 
 func _grant_combat_gold_once() -> int:
@@ -2284,10 +2284,7 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 		if _relic_reward_overlay != null:
 			_relic_reward_overlay.queue_free()
 			_relic_reward_overlay = null
-		var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
-			AdventureService.pending_room_type.to_upper(), "normal_chest"
-		))
-		var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(GameService.pending_room_id, source, 3)
+		var relic_offer: Array[String] = _battle_relic_offer(GameService.pending_room_id)
 		_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
 		return
 	if not relic_id.is_empty():
@@ -2360,10 +2357,7 @@ func _restore_battle_reward_if_needed() -> void:
 		return
 	var room_id := str(pending.get("room_id", GameService.pending_room_id))
 	var battle_result := str(pending.get("battle_result", "win"))
-	var source: String = str(_ENCOUNTER_RELIC_SOURCE.get(
-		AdventureService.pending_room_type.to_upper(), "normal_chest"
-	))
-	var relic_offer: Array[String] = RunService.get_or_roll_relic_offer(room_id, source, 3)
+	var relic_offer: Array[String] = _battle_relic_offer(room_id)
 	match str(pending.get("reward_kind", "")):
 		"settlement":
 			var has_relics := not relic_offer.is_empty() and not relic_offer.all(

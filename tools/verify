@@ -15,6 +15,7 @@ fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 FAST_TESTS=(
+  balance_config_test
   combat_transaction_test
   battle_presentation_planner_test
   battle_event_player_cluster_test
@@ -24,8 +25,15 @@ FAST_TESTS=(
   full_run_contract_test
   intent_consistency_contract_test
   room_effect_executor_test
+  economy_service_test
+  event_service_test
+  adventure_rule_registry_test
+  shop_service_test
   explosion_test
   gem_level_context_test
+  status_test
+  prop_entity_test
+  stone_bow_guard_test
   split_shot_test
   gravity_test
   bomb_rat_test
@@ -33,11 +41,17 @@ FAST_TESTS=(
 )
 
 CORE_TESTS=(
+  balance_config_test
   encounter_load_test
   ai_test
   combat_transaction_test
   smoke_test
+  economy_service_test
+  event_service_test
+  adventure_rule_registry_test
+  shop_service_test
   explosion_test
+  status_test
   prop_entity_test
   stone_bow_guard_test
   split_shot_test
@@ -58,9 +72,9 @@ done < <(find "$ROOT/scripts/tests/manual" -maxdepth 1 -name '*_test.gd' 2>/dev/
 tests_for_changed() {
   local changed
   changed="$(git -C "$ROOT" diff --name-only HEAD; git -C "$ROOT" ls-files --others --exclude-standard)"
-  if grep -Eq 'scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd|resources/gems/|localization/strings\.csv' <<<"$changed"; then
+  if grep -Eq 'scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd|scripts/core/combat_config\.gd|resources/(gems|combat|adventure|relics)/|resources/units/unit_defs\.json|localization/strings\.csv' <<<"$changed"; then
     printf '%s\n' "${FAST_TESTS[@]}"
-  elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/' <<<"$changed"; then
+  elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/|scripts/services/(data_registry|balance_config_validator|economy_service|event_service|room_effect_executor|adventure_rule_registry|shop_service|room_flow_service|adventure_config_validator|numeric_text_resolver)\.gd' <<<"$changed"; then
     printf '%s\n' "${CORE_TESTS[@]}"
   elif grep -Eq 'scripts/testkit/|scripts/tools/|tools/' <<<"$changed"; then
     printf '%s\n' testkit_snapshot_test

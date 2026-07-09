@@ -1,6 +1,7 @@
 class_name BattleTurnService
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
@@ -236,7 +237,7 @@ func _merge_split_clones_on_win(ctrl) -> void:
 	var total_hp := 0
 	for clone in clones:
 		total_hp += clone.hp
-	var merged_hp := maxi(1, total_hp / Constants.SPLIT_DEATH_HP_MERGE_DIVISOR)
+	var merged_hp := maxi(1, total_hp / CombatConfig.split_death_hp_merge_divisor())
 	for clone in clones:
 		for slot in clone.slots:
 			if slot.gem_uid.is_empty():

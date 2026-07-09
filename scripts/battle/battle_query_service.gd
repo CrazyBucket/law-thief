@@ -165,7 +165,7 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 	var spike := BoardUtils.spike_entity_at(state, cell)
 	if spike != null:
 		lines.append("地刺：踏入受 %d 伤害；被推入时易伤并受 %d 伤害" % [
-			Constants.SPIKE_DAMAGE, Constants.SPIKE_COLLISION_DAMAGE
+			CombatConfig.spike_damage(), CombatConfig.spike_collision_damage()
 		])
 	var blocking := BoardUtils.blocking_entity_at(state, cell)
 	if blocking != null and blocking.is_indestructible():
@@ -200,7 +200,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				lines.append("落点可达")
 		Constants.ACTION_ATTACK:
 			var can_attack_now := ctrl.editor_unlimited_actions_enabled() or not state.player_acted or StatusRules.has_extra_attack(player)
-			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, Constants.ATTACK_RANGE):
+			var attack_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
+			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, attack_range):
 				if blocking != null and blocking.is_indestructible() and unit == null:
 					lines.append("射击会被障碍挡下")
 				elif tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
@@ -251,7 +252,7 @@ func get_action_hint() -> String:
 		Constants.ACTION_ATTACK:
 			if ctrl.editor_unlimited_actions_enabled():
 				return "射击待命 · 编辑模式"
-			return "射击待命 · 射程 %d" % Constants.ATTACK_RANGE
+			return "射击待命 · 射程 %d" % CombatConfig.attack_range()
 		Constants.ACTION_EXTRACT:
 			return "拔取宝石"
 		Constants.ACTION_INSERT:
@@ -284,13 +285,12 @@ func get_tutorial_hint() -> String:
 		var player: UnitState = state.get_player()
 		var guard_near := false
 		for unit in state.get_alive_enemies():
-			if unit.has_tag(Constants.TAG_UNIT_PATROL_GUARD) and BoardUtils.manhattan(player.pos, unit.pos) <= Constants.INSERT_RANGE:
+			if unit.has_tag(Constants.TAG_UNIT_PATROL_GUARD) and BoardUtils.manhattan(player.pos, unit.pos) <= CombatConfig.insert_range():
 				guard_near = true
 				break
 		if guard_near:
 			return "把爆炸嵌入巡路甲兵黑槽，再射击引爆"
-		else:
-			return "靠近巡路甲兵，嵌入黑槽后击杀引爆"
+		return "靠近巡路甲兵，嵌入黑槽后击杀引爆"
 	if held == null and state.player_acted:
 		return "行动已用，结束回合"
 	return "夺爆炸，塞黑槽，击杀引爆"
@@ -322,10 +322,10 @@ func _unit_has_gem_slot_target(ctrl, state: GameState, player: UnitState, unit: 
 func _is_viewable_gem_slot(state: GameState, player: UnitState, unit: UnitState, slot: SlotState, action: String) -> bool:
 	if slot.gem_uid.is_empty():
 		return false
-	var max_range := Constants.EXTRACT_RANGE
+	var max_range := CombatConfig.extract_range()
 	match action:
 		Constants.ACTION_INSERT:
-			max_range = Constants.INSERT_RANGE
+			max_range = CombatConfig.insert_range()
 	return BoardUtils.distance_between_units(player, unit) <= max_range
 
 
@@ -345,7 +345,7 @@ func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
 
 func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
-	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
@@ -388,7 +388,7 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 		return []
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
 		return []
-	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else Constants.ATTACK_RANGE
+	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else CombatConfig.attack_range()
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return []
 	if GemEffects.unit_has_red_light(state, player):
@@ -453,7 +453,7 @@ func _attack_effect_preview(state: GameState, player: UnitState) -> Array:
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == player.uid:
 			continue
-		if not BoardUtils.can_unit_reach_unit(player, unit, Constants.ATTACK_RANGE):
+		if not BoardUtils.can_unit_reach_unit(player, unit, CombatConfig.attack_range()):
 			continue
 		if unit.hp > 1:
 			continue
@@ -489,7 +489,7 @@ func _death_gem_preview_cells(state: GameState, origin: Vector2i, gem_ref: Varia
 	var cells: Array = []
 	match _data_registry().get_gem_ability_profile(gem_ref, "black_death"):
 		"explosion":
-			for cell in BoardUtils.cells_in_radius(origin, Constants.EXPLOSION_RADIUS):
+			for cell in BoardUtils.cells_in_radius(origin, CombatConfig.explosion_radius()):
 				if BoardUtils.in_bounds(state, cell):
 					cells.append(cell)
 	return cells

@@ -8,7 +8,7 @@
         "label": "拿走金币",
         "conditions": [],
         "effects": [
-          {"action": "grant_resource", "resource_id": "gold", "amount": 10}
+          {"action": "grant_resource", "resource_id": "gold", "amount_ref": "event_debug_cache_gold"}
         ]
       },
       {
@@ -27,35 +27,35 @@
     "options": [
       {
         "id": "take_gold",
-        "label": "拿 8 金币",
+        "label": "拿 {amount_ref:event_debug_relief_gold} 金币",
         "conditions": [],
         "effects": [
-          {"action": "grant_resource", "resource_id": "gold", "amount": 8}
+          {"action": "grant_resource", "resource_id": "gold", "amount_ref": "event_debug_relief_gold"}
         ]
       },
       {
         "id": "heal",
-        "label": "恢复 4 点生命",
+        "label": "恢复 {amount_ref:event_debug_relief_heal} 点生命",
         "conditions": [],
         "effects": [
-          {"action": "heal_player", "amount": 4}
+          {"action": "heal_player", "amount_ref": "event_debug_relief_heal"}
         ]
       }
     ]
   },
   "event_debug_toll": {
     "title": "收费闸机",
-    "body": "一台还在运转的旧闸机要求你缴纳 5 金币，否则什么都不给。",
+    "body": "一台还在运转的旧闸机要求你缴纳 {amount_ref:event_debug_toll_cost} 金币，否则什么都不给。",
     "options": [
       {
         "id": "pay_for_heal",
-        "label": "支付 5 金币并恢复 4 点生命",
+        "label": "支付 {amount_ref:event_debug_toll_cost} 金币并恢复 {amount_ref:event_debug_toll_heal} 点生命",
         "conditions": [
-          {"type": "resource_gte", "resource_id": "gold", "amount": 5}
+          {"type": "resource_gte", "resource_id": "gold", "amount_ref": "event_debug_toll_cost"}
         ],
         "effects": [
-          {"action": "spend_resource", "resource_id": "gold", "amount": 5},
-          {"action": "heal_player", "amount": 4}
+          {"action": "spend_resource", "resource_id": "gold", "amount_ref": "event_debug_toll_cost"},
+          {"action": "heal_player", "amount_ref": "event_debug_toll_heal"}
         ]
       },
       {

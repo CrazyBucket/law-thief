@@ -26,6 +26,7 @@ static func build_context(
 	var context := {
 		"owner_uid": _owner_uid(owner),
 		"slot_type": slot_type,
+		"effect_level_scope": slot_type,
 		"timing": timing,
 		"primary_tag": "",
 		"tag_levels": {},

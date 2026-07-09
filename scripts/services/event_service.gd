@@ -2,6 +2,7 @@ extends Node
 
 const CONFIG_PATH := "res://resources/adventure/event_defs.json"
 const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
+const _TextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 
 var _defs: Dictionary = {}
 
@@ -30,7 +31,7 @@ func get_event_view(room_id: String) -> Dictionary:
 		})
 		options.append({
 			"id": str(option.get("id", "")),
-			"label": str(option.get("label", "")),
+			"label": _render_text(str(option.get("label", ""))),
 			"enabled": bool(condition_result.get("ok", false)),
 			"disabled_reason": str(condition_result.get("disabled_reason", "")),
 		})
@@ -38,8 +39,8 @@ func get_event_view(room_id: String) -> Dictionary:
 		"ok": true,
 		"room_id": room_id,
 		"event_id": event_id,
-		"title": str(def.get("title", event_id)),
-		"body": str(def.get("body", "")),
+		"title": _render_text(str(def.get("title", event_id))),
+		"body": _render_text(str(def.get("body", ""))),
 		"options": options,
 	}
 
@@ -119,7 +120,13 @@ func _ensure_event_snapshot(room_id: String) -> Dictionary:
 
 func _load_defs() -> void:
 	_defs = _load_json(CONFIG_PATH)
-	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_event_defs(_defs))
+	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_event_defs(_defs, EconomyService.get_amount_refs()))
+
+
+func _render_text(template: String) -> String:
+	return _TextResolver.format_text(template, {
+		"amount_refs": EconomyService.get_amount_refs(),
+	})
 
 
 func _load_json(path: String) -> Dictionary:

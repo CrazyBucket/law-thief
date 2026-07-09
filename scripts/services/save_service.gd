@@ -275,19 +275,19 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 	for flag in flags:
 		if str(flag).begins_with("seen_relic_"):
 			seen_relics += 1
-	var current_pos: Dictionary = {"x": 0, "y": 0}
-	var raw_current_pos: Variant = progress_payload.get("current_map_pos", current_pos)
-	if raw_current_pos is Dictionary:
-		current_pos = (raw_current_pos as Dictionary).duplicate(true)
-	var pos_text := "(%d, %d)" % [int(current_pos.get("x", 0)), int(current_pos.get("y", 0))]
 	var has_run := not run_payload.is_empty()
 	var has_data := has_run or not flags.is_empty() or not records.is_empty()
 	var invalid_reason := str(meta.get("run_invalid_reason", ""))
+	var owned_relic_count := 0
+	var raw_owned_relics: Variant = run_payload.get("owned_relics", [])
+	if raw_owned_relics is Array:
+		owned_relic_count = (raw_owned_relics as Array).size()
+	var current_chapter := maxi(1, int(run_payload.get("current_chapter", 1)))
 	var status := "空白档案"
 	var subtitle := "尚未开始"
 	if has_run:
 		status = "进行中"
-		subtitle = "种子 %d · 位置 %s" % [int(run_payload.get("map_seed", 0)), pos_text]
+		subtitle = "第 %d 章 · 持有遗物 %d" % [current_chapter, owned_relic_count]
 	elif not invalid_reason.is_empty():
 		status = "进行中的这一局已失效"
 		subtitle = invalid_reason
@@ -295,10 +295,6 @@ func _build_slot_summary(slot_id: int) -> Dictionary:
 		status = "历史档案"
 		subtitle = "累计胜利 %d 场" % wins
 	var last_played_at := int(meta.get("last_played_at", 0))
-	var owned_relic_count := 0
-	var raw_owned_relics: Variant = run_payload.get("owned_relics", [])
-	if raw_owned_relics is Array:
-		owned_relic_count = (raw_owned_relics as Array).size()
 	return {
 		"slot_id": resolved_slot_id,
 		"label": get_slot_label(resolved_slot_id),

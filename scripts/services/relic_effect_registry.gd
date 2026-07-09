@@ -89,8 +89,10 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 	var owned := RunService.get_owned_relics()
 	var mult_result := 1.0
 	var add_result := 0
+	var float_result := 0.0
 	var bool_result := false
 	var is_mult := modifier_id.ends_with("_mult")
+	var is_float := modifier_id == "attack_miss_chance"
 	var is_bool := (modifier_id.ends_with("_immune")
 		or modifier_id == "first_damage_absorb"
 		or modifier_id == "chaos_launcher_active")
@@ -111,6 +113,8 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 					bool_result = true
 			elif is_mult:
 				mult_result *= float(val)
+			elif is_float:
+				float_result += float(val)
 			else:
 				add_result += int(val)
 
@@ -118,6 +122,8 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 		return bool_result
 	elif is_mult:
 		return mult_result
+	elif is_float:
+		return float_result
 	else:
 		return add_result
 
@@ -141,7 +147,7 @@ func query_override_modifier(modifier_id: String, state: GameState, default_valu
 			if not cond.is_empty():
 				if not _check_modifier_condition(cond, state):
 					continue
-			var v: float = float(effect.get("value", default_value))
+			var v := _resolve_number(effect, "value", default_value)
 			if v > best:
 				best = v
 	return best
@@ -186,7 +192,7 @@ func _action_add_shield(_relic_id: String, effect: Dictionary, state: GameState,
 	var unit := _resolve_target(effect, state)
 	if unit == null:
 		return
-	var amount: int = int(effect.get("amount", 1))
+	var amount := _resolve_amount(effect, 1)
 	var duration: int = int(effect.get("duration", 0))
 	StatusRules.apply_shield(state, unit, amount, duration)
 	state.log("[Relic] %s -> +%d shield for %s" % [_relic_id, amount, unit.uid])
@@ -204,7 +210,7 @@ func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payloa
 	var unit := _resolve_target(effect, state)
 	if unit == null:
 		return
-	var amount: int = int(effect.get("amount", 1))
+	var amount := _resolve_amount(effect, 1)
 	var def := DataRegistry.get_unit_def(unit.unit_def_id)
 	var max_hp: int = int(def.get("max_hp", unit.max_hp))
 	unit.hp = mini(unit.hp + amount, max_hp)
@@ -212,7 +218,7 @@ func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payloa
 
 
 func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
-	var amount: int = int(effect.get("amount", 1))
+	var amount := _resolve_amount(effect, 1)
 	var player := state.get_player()
 	if player == null:
 		return
@@ -227,7 +233,7 @@ func _action_add_temp_move(relic_id: String, effect: Dictionary, state: GameStat
 		var actor_uid: String = str(payload.get("actor_uid", ""))
 		if actor_uid != state.player_uid:
 			return
-	var amount: int = int(effect.get("amount", 1))
+	var amount := _resolve_amount(effect, 1)
 	var player := state.get_player()
 	if player == null:
 		return
@@ -389,7 +395,7 @@ func _action_apply_max_hp_reduction(relic_id: String, effect: Dictionary, state:
 	var player := state.get_player()
 	if player == null:
 		return
-	var ratio: float = float(effect.get("ratio", 0.3))
+	var ratio := _resolve_number(effect, "ratio", 0.3)
 	var reduction: int = maxi(1, int(float(player.max_hp) * ratio))
 	player.max_hp = maxi(1, player.max_hp - reduction)
 	player.hp = mini(player.hp, player.max_hp)
@@ -457,7 +463,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 
 	# 空槽倍数：每个空槽额外乘以 (1 + factor)，基础值 1.0
 	if effect.has("empty_slot_mult"):
-		var factor: float = float(effect.get("empty_slot_mult", 0.0))
+		var factor := _resolve_number(effect, "empty_slot_mult", 0.0)
 		var player := state.get_player()
 		var empty_count := 0
 		if player != null:
@@ -468,7 +474,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 
 	# 每个空槽加成（extract/insert range）
 	if effect.has("per_empty_slot"):
-		var per: int = int(effect.get("per_empty_slot", 1))
+		var per := int(_resolve_number(effect, "per_empty_slot", 1.0))
 		var player := state.get_player()
 		var empty_count := 0
 		if player != null:
@@ -483,14 +489,14 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 		var ctx_overlay: String = str(ctx.get("overlay_type", ""))
 		if ctx_overlay.is_empty() or not (ctx_overlay in overlays):
 			return 0
-		return int(effect.get("value", 1))
+		return int(_resolve_number(effect, "value", 1.0))
 
 	# 概率触发加成
 	if effect.has("rng_chance"):
-		var chance: float = float(effect.get("rng_chance", 0.0))
+		var chance := _resolve_number(effect, "rng_chance", 0.0)
 		var roll: float = float(RngService.roll_int("rng_chance_%s" % relic_id, 0, 999)) / 1000.0
 		if roll < chance:
-			return effect.get("value", 0)
+			return _resolve_number(effect, "value", 0.0)
 		return 0
 
 	# condition 前置检查
@@ -504,7 +510,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 			else:
 				return 0
 
-	var val: Variant = effect.get("value", 0)
+	var val: Variant = _resolve_number(effect, "value", 0.0)
 	return val
 
 
@@ -557,6 +563,17 @@ func _resolve_target(effect: Dictionary, state: GameState) -> UnitState:
 			return state.get_player()
 		_:
 			return state.units.get(target, null)
+
+
+func _resolve_amount(effect: Dictionary, fallback: int = 1) -> int:
+	return int(_resolve_number(effect, "amount", float(fallback)))
+
+
+func _resolve_number(effect: Dictionary, field_id: String, fallback: float = 0.0) -> float:
+	var ref_key := "%s_ref" % field_id
+	if effect.has(ref_key):
+		return DataRegistry.get_relic_numeric_ref(str(effect.get(ref_key, "")), fallback)
+	return float(effect.get(field_id, fallback))
 
 
 func _register_builtin_actions() -> void:

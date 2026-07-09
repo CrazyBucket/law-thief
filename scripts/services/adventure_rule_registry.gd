@@ -2,6 +2,7 @@ extends Node
 
 const CONFIG_PATH := "res://resources/adventure/map_rule_defs.json"
 const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
+const _TextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 
 var _defs: Dictionary = {}
 
@@ -21,10 +22,11 @@ func get_rule_def(rule_id: String) -> Dictionary:
 
 func get_rule_display(rule_id: String) -> Dictionary:
 	var def := get_rule_def(rule_id)
+	var effect_values := _effect_value_map(def.get("effects", []))
 	return {
 		"rule_id": rule_id,
-		"name": str(def.get("name", rule_id)),
-		"desc": str(def.get("desc", "")),
+		"name": _TextResolver.format_text(str(def.get("name", rule_id)), {"effect_values": effect_values}),
+		"desc": _TextResolver.format_text(str(def.get("desc", "")), {"effect_values": effect_values}),
 	}
 
 
@@ -152,6 +154,16 @@ func get_active_rule_display(ctx: Dictionary = {}) -> Array[Dictionary]:
 func _load_defs() -> void:
 	_defs = _load_json(CONFIG_PATH)
 	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_map_rule_defs(_defs))
+
+
+func _effect_value_map(effects: Array) -> Dictionary:
+	var values := {}
+	for raw_effect in effects:
+		if not raw_effect is Dictionary:
+			continue
+		var effect := raw_effect as Dictionary
+		values[str(effect.get("modifier", ""))] = float(effect.get("value", 1.0))
+	return values
 
 
 func _load_json(path: String) -> Dictionary:

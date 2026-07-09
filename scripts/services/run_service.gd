@@ -475,7 +475,7 @@ func get_relic_runtime(relic_id: String) -> RelicRuntimeState:
 	return _run.get_runtime(relic_id)
 
 
-func get_or_roll_relic_offer(room_id: String, source: String, count: int = 3) -> Array[String]:
+func get_or_roll_relic_offer(room_id: String, source: String, count: int) -> Array[String]:
 	if _run == null:
 		return []
 	var snapshot := _run.get_offer_snapshot(room_id)
@@ -501,7 +501,7 @@ func get_or_roll_relic_offer(room_id: String, source: String, count: int = 3) ->
 ## 按房间来源抽宝石奖励，结果锁定快照保证 SL 安全（key 前缀 "gem_offer_"）
 ## source:  pool key（"normal_chest" / "elite_combat" / "boss_reward"）
 ## count:   奖励数量
-func get_or_roll_gem_offer(room_id: String, source: String, count: int = 3) -> Array[String]:
+func get_or_roll_gem_offer(room_id: String, source: String, count: int) -> Array[String]:
 	if _run == null:
 		return []
 	var snapshot_key := "gem_offer_%s" % room_id

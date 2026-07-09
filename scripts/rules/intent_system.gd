@@ -2,6 +2,7 @@ class_name IntentSystem
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
@@ -195,14 +196,14 @@ static func _build_skill_intent(
 		if target != null:
 			var dash_from: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
 			var charge_path := BoardUtils.path_toward(
-				state, dash_from, target.pos, Constants.CHARGE_EXPLODE_DASH_RANGE, unit.uid, {}, cell_blockers
+				state, dash_from, target.pos, CombatConfig.charge_explode_dash_range(), unit.uid, {}, cell_blockers
 			)
 			for step in charge_path:
 				intent.path.append(step)
 			var end_pos: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
-			intent.affected_cells = BoardUtils.cells_in_radius(end_pos, Constants.EXPLOSION_RADIUS)
+			intent.affected_cells = BoardUtils.cells_in_radius(end_pos, CombatConfig.explosion_radius())
 			intent.target_pos = end_pos
-			intent.preview_text = "冲刺爆炸 (%d)" % Constants.EXPLOSION_DAMAGE
+			intent.preview_text = "冲刺爆炸 (%d)" % CombatConfig.explosion_damage()
 	if intent.type == "split_attack":
 		var split_target: UnitState = state.units.get(action.action_target_uid, null)
 		if split_target != null:
@@ -300,7 +301,7 @@ static func _execute_ranged(
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
 	var attack_ctx: Dictionary = _behavior_for(unit).ranged_attack_context(state, unit, move_start_pos, intent.path)
-	var max_range: int = int(attack_ctx.get("max_range", Constants.ATTACK_RANGE))
+	var max_range: int = int(attack_ctx.get("max_range", CombatConfig.attack_range()))
 	var payload_variant: Variant = attack_ctx.get("payload", {})
 	var payload: Dictionary = payload_variant if payload_variant is Dictionary else {}
 	var aim_cell: Vector2i = target.pos
@@ -333,7 +334,7 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
 		return
-	if BoardUtils.manhattan(unit.pos, target.pos) > Constants.EXTRACT_RANGE:
+	if BoardUtils.manhattan(unit.pos, target.pos) > CombatConfig.extract_range():
 		return
 	for i in range(target.slots.size()):
 		var slot: SlotState = target.slots[i]

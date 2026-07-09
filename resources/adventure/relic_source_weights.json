@@ -1,0 +1,22 @@
+{
+  "normal_chest": {
+    "common": 65.0,
+    "rare": 25.0,
+    "boss": 10.0
+  },
+  "elite_combat": {
+    "common": 40.0,
+    "rare": 40.0,
+    "boss": 20.0
+  },
+  "large_chest": {
+    "common": 10.0,
+    "rare": 60.0,
+    "boss": 30.0
+  },
+  "shop": {
+    "common": 50.0,
+    "rare": 35.0,
+    "boss": 15.0
+  }
+}

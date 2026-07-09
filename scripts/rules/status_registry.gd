@@ -2,6 +2,7 @@ class_name StatusRegistry
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const StatusConfig = preload("res://scripts/core/status_config.gd")
 
 const TICK_TURN_START := "turn_start"
 const TICK_TURN_END := "turn_end"
@@ -159,9 +160,11 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:
-			return "易伤：受到伤害 +50%%，剩余 %d 回合" % status.duration
+			var damage_taken_mult := StatusConfig.float_value("vulnerable", "damage_taken_mult", 1.5)
+			return "易伤：受到伤害 +%d%%，剩余 %d 回合" % [_percent_bonus_from_mult(damage_taken_mult), status.duration]
 		Constants.STATUS_WEAK:
-			return "虚弱：普通攻击伤害变为 75%%，剩余 %d 回合" % status.duration
+			var attack_damage_mult := StatusConfig.float_value("weak", "attack_damage_mult", 0.75)
+			return "虚弱：普通攻击伤害变为 %d%%，剩余 %d 回合" % [_percent_from_mult(attack_damage_mult), status.duration]
 		Constants.STATUS_COUNTER_MARK:
 			return "截击：若该单位在本轮结束前伤害标记者，会立刻吃一次追击"
 		Constants.STATUS_EXTRA_ATTACK:
@@ -169,6 +172,14 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_EXTRA_MOVE:
 			return "额外移动：本回合已移动后，仍可再移动 %d 次" % status.stacks
 	return display_name(status.status_id)
+
+
+static func _percent_bonus_from_mult(mult: float) -> int:
+	return int(round((mult - 1.0) * 100.0))
+
+
+static func _percent_from_mult(mult: float) -> int:
+	return int(round(mult * 100.0))
 
 
 static func sort_statuses(statuses: Array) -> Array:

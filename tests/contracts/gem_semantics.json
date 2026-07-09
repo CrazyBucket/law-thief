@@ -557,6 +557,254 @@
         "target_pos": [4, 1],
         "event_counts": {"light_beam": 1, "move_step": 0}
       }
+    },
+    {
+      "id": "poison/blue/1_contact_poison",
+      "covers": ["gem_poison:blue:1"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_poison"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "poison": {"stacks": 1, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/blue/2_turn_end_spread",
+      "covers": ["gem_poison:blue:2"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_poison", "gem_poison"]}
+      ],
+      "extra_units": [
+        {"uid": "spread_target", "pos": [6, 3]}
+      ],
+      "post_steps": [
+        {"type": "run_blue_poison_turn_end", "uid": "contract_target"}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "poison": {"stacks": 1, "duration": 0}
+          },
+          "spread_target": {
+            "poison": {"stacks": 1, "duration": 2}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/blue/3_copy_debuff_on_contact",
+      "covers": ["gem_poison:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_poison", "gem_poison", "gem_poison"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "slowed", "stacks": 2}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "poison": {"stacks": 1, "duration": 0},
+            "slowed": {"stacks": 2, "duration": 0}
+          },
+          "contract_target": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "counter/blue/1_reflect_damage",
+      "covers": ["gem_counter:blue:1"],
+      "player_stats": {"base_attack": 0},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_counter"]}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 6, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "damage": 6,
+        "unit_damages": {
+          "contract_target": 6,
+          "player": 6
+        }
+      }
+    },
+    {
+      "id": "counter/blue/2_carries_red_tags",
+      "covers": ["gem_counter:blue:2"],
+      "player_stats": {"base_attack": 0},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_counter", "gem_counter"]},
+        {"uid": "contract_target", "slot": "red", "gems": ["gem_fire"]}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 6, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "damage": 6,
+        "unit_damages": {
+          "contract_target": 6,
+          "player": 6
+        },
+        "unit_statuses": {
+          "player": {
+            "burning": {"stacks": 2, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "counter/blue/3_player_extra_move_on_kill",
+      "covers": ["gem_counter:blue:3"],
+      "target_pos": [7, 3],
+      "aim_cell": [4, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [
+        {"uid": "player", "slot": "blue", "gems": ["gem_counter", "gem_counter", "gem_counter"]}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "player", "source": "contract_target", "amount": 6, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "unit_damages": {
+          "contract_target": 10,
+          "player": 6
+        },
+        "unit_statuses": {
+          "player": {
+            "extra_move": {"stacks": 1}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/black/1_spread_debuff",
+      "covers": ["gem_poison:black:1"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_poison"]}
+      ],
+      "extra_units": [
+        {"uid": "black_poison_neighbor", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "setup": {
+        "target_statuses": [
+          {"status": "slowed", "stacks": 2}
+        ]
+      },
+      "expect": {
+        "damage": 20,
+        "poison_fog_cells": 0,
+        "event_counts": {"poison_burst": 0},
+        "unit_statuses": {
+          "black_poison_neighbor": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/black/2_spawn_fog",
+      "covers": ["gem_poison:black:2"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_poison", "gem_poison"]}
+      ],
+      "extra_units": [
+        {"uid": "black_poison_neighbor", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "setup": {
+        "target_statuses": [
+          {"status": "slowed", "stacks": 2}
+        ]
+      },
+      "expect": {
+        "damage": 20,
+        "poison_fog_cells": 9,
+        "event_counts": {"poison_burst": 1},
+        "unit_statuses": {
+          "black_poison_neighbor": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "poison/black/3_spread_to_two_targets",
+      "covers": ["gem_poison:black:3"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_poison", "gem_poison", "gem_poison"]}
+      ],
+      "extra_units": [
+        {"uid": "black_poison_a", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}},
+        {"uid": "black_poison_b", "pos": [5, 4], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "setup": {
+        "target_statuses": [
+          {"status": "slowed", "stacks": 2}
+        ]
+      },
+      "expect": {
+        "damage": 20,
+        "poison_fog_cells": 9,
+        "event_counts": {"poison_burst": 1},
+        "unit_statuses": {
+          "black_poison_a": {
+            "slowed": {"stacks": 2, "duration": 0}
+          },
+          "black_poison_b": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        }
+      }
+    },
+    {
+      "id": "light/black/3_blinds_survivor",
+      "covers": ["gem_light:black:3"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_light", "gem_light", "gem_light"]}
+      ],
+      "extra_units": [
+        {"uid": "light_black_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "setup": {
+        "unit_statuses": [
+          {
+            "uid": "light_black_target",
+            "statuses": [
+              {"status": "light_exposed", "stacks": 2}
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "damage": 20,
+        "unit_damages": {
+          "light_black_target": 12
+        },
+        "event_min_counts": {"light_beam": 1},
+        "unit_statuses": {
+          "light_black_target": {
+            "blinded": {"duration": 1}
+          }
+        }
+      }
     }
   ]
 }

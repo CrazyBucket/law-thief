@@ -2,6 +2,7 @@ class_name EntityRules
 extends RefCounted
 
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 ## 单位步入实体格
 static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary = {}) -> void:
@@ -14,10 +15,10 @@ static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary 
 		Constants.ENTITY_SPIKE:
 			var tx := _CombatTransaction.begin_from_state(state)
 			if forced:
-				tx.damage_unit(unit, Constants.SPIKE_COLLISION_DAMAGE, source_uid, "spike_collision")
+				tx.damage_unit(unit, CombatConfig.spike_collision_damage(), source_uid, "spike_collision")
 				StatusRules.apply_vulnerable(state, unit, 1, source_uid)
 			else:
-				tx.damage_unit(unit, Constants.SPIKE_DAMAGE, "", "spike_enter")
+				tx.damage_unit(unit, CombatConfig.spike_damage(), "", "spike_enter")
 			_unlock_armor_locks(state, unit)
 			tx.finish("EntityRules.on_unit_entered")
 
@@ -148,6 +149,6 @@ static func _explode_barrel(
 		var hit_unit := state.get_unit_at(cell)
 		if hit_unit != null and hit_unit.alive and not hit_uids.has(hit_unit.uid):
 			hit_uids[hit_unit.uid] = true
-			tx.damage_unit(hit_unit, Constants.BARREL_EXPLOSION_DAMAGE, source_uid, "barrel_explosion")
+			tx.damage_unit(hit_unit, CombatConfig.barrel_explosion_damage(), source_uid, "barrel_explosion")
 		TileRules.create_fire(state, cell)
 	TileRules.end_overlay_batch(state)

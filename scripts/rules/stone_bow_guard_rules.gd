@@ -5,14 +5,36 @@ const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
 
 
+static func _data_registry() -> Node:
+	return Engine.get_main_loop().root.get_node_or_null("DataRegistry")
+
+
+static func _balance_int(unit_def_id: String, key: String, fallback: int) -> int:
+	var registry := _data_registry()
+	if registry == null:
+		return fallback
+	return int(registry.get_unit_balance_value(unit_def_id, key, fallback))
+
+
+static func _balance_float(unit_def_id: String, key: String, fallback: float) -> float:
+	var registry := _data_registry()
+	if registry == null:
+		return fallback
+	return float(registry.get_unit_balance_value(unit_def_id, key, fallback))
+
+
+static func _score_float(unit_def_id: String, key: String, fallback: float) -> float:
+	return _balance_float(unit_def_id, key, fallback)
+
+
 static func is_deployed(_start_pos: Vector2i, move_path: Array) -> bool:
 	return move_path.is_empty()
 
 
 static func attack_range_for(_start_pos: Vector2i, move_path: Array) -> int:
-	var range := Constants.STONE_BOW_ATTACK_RANGE
+	var range := _balance_int("unit_stone_bow_guard", "attack_range", Constants.STONE_BOW_ATTACK_RANGE)
 	if is_deployed(_start_pos, move_path):
-		range += Constants.STONE_BOW_DEPLOY_RANGE_BONUS
+		range += _balance_int("unit_stone_bow_guard", "deploy_range_bonus", Constants.STONE_BOW_DEPLOY_RANGE_BONUS)
 	return range
 
 
@@ -26,7 +48,8 @@ static func can_shoot_from_anchor(
 	if state == null or unit == null or target == null or not target.alive:
 		return false
 	var dist := BoardUtils.distance_between_unit_at_and_unit(unit, anchor, target)
-	if dist < Constants.STONE_BOW_KITE_MIN_RANGE:
+	var kite_min_range := _balance_int(unit.unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+	if dist < kite_min_range:
 		return false
 	var max_range := attack_range_for(anchor, move_path)
 	if dist > max_range:
@@ -49,7 +72,7 @@ static func on_lawless_recovered(_unit: UnitState) -> void:
 
 static func bonus_damage(unit: UnitState) -> int:
 	if is_faulty_blind_shot(unit):
-		return Constants.STONE_BOW_FAULTY_DAMAGE_BONUS
+		return _balance_int(unit.unit_def_id, "faulty_damage_bonus", Constants.STONE_BOW_FAULTY_DAMAGE_BONUS)
 	return 0
 
 
@@ -59,7 +82,7 @@ static func ranged_damage_preview(state: GameState, unit: UnitState) -> int:
 
 static func roll_hit(_state: GameState, attacker_uid: String) -> bool:
 	var roll := float(_rng_service().roll_int("stone_bow_hit_%s" % attacker_uid, 0, 999)) / 999.0
-	return roll >= Constants.STONE_BOW_FAULTY_MISS_CHANCE
+	return roll >= _balance_float("unit_stone_bow_guard", "faulty_miss_chance", Constants.STONE_BOW_FAULTY_MISS_CHANCE)
 
 
 static func _rng_service() -> Node:
@@ -119,7 +142,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 				continue
 		var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, move_pos, player)
 		var max_range: int = attack_range_for(turn_start, move_path)
-		if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range:
+		var kite_min_range := _balance_int(enemy.unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+		if dist < kite_min_range or dist > max_range:
 			continue
 		if not in_range(state, enemy, move_pos, player, move_path):
 			continue
@@ -149,7 +173,8 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		if _anchor_blocked(state, enemy, move_pos, cell_blockers):
 			continue
 		var new_dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, move_pos, player)
-		if can_shoot_here and new_dist >= Constants.STONE_BOW_KITE_MIN_RANGE:
+		var kite_min_range := _balance_int(enemy.unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+		if can_shoot_here and new_dist >= kite_min_range:
 			continue
 		if can_shoot_here and new_dist < current_dist:
 			continue
@@ -157,9 +182,9 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		candidate.type = _EnemyAI.ActionType.MOVE
 		candidate.move_target = move_pos
 		if current_dist > max_shoot_range:
-			candidate.score = _score_approach_out_of_range(current_dist, new_dist, move_pos, enemy.pos)
+			candidate.score = _score_approach_out_of_range(enemy.unit_def_id, current_dist, new_dist, move_pos, enemy.pos)
 		else:
-			candidate.score = _score_kite_reposition(current_dist, new_dist)
+			candidate.score = _score_kite_reposition(enemy.unit_def_id, current_dist, new_dist)
 		if not can_shoot_here:
 			candidate.score += _score_reposition_for_line(
 				state, enemy, turn_start, move_pos, player, reachable, cell_blockers
@@ -170,7 +195,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	var wait := _EnemyAI.make_candidate()
 	wait.type = _EnemyAI.ActionType.WAIT
 	wait.move_target = enemy.pos
-	wait.score = -5.0
+	wait.score = _score_float(enemy.unit_def_id, "wait_score", -5.0)
 	wait.description = "等待"
 	candidates.append(wait)
 
@@ -193,60 +218,68 @@ static func _score_ranged_position(
 	player: UnitState
 ) -> float:
 	var damage: int = ranged_damage_preview(state, enemy)
-	var score: float = float(damage) * 10.0
+	var unit_def_id := enemy.unit_def_id
+	var kite_ideal_range := _balance_int(enemy.unit_def_id, "kite_ideal_range", Constants.STONE_BOW_KITE_IDEAL_RANGE)
+	var kite_min_range := _balance_int(enemy.unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+	var score: float = float(damage) * _score_float(unit_def_id, "ranged_damage_score_mult", 10.0)
 	if player.hp <= damage:
-		score += 150.0
+		score += _score_float(unit_def_id, "kill_bonus", 150.0)
 	var move_steps: int = move_path.size()
-	score -= float(move_steps) * 0.35
-	score -= float(absi(dist - Constants.STONE_BOW_KITE_IDEAL_RANGE)) * 14.0
-	if dist < Constants.STONE_BOW_KITE_IDEAL_RANGE:
-		score -= float(Constants.STONE_BOW_KITE_IDEAL_RANGE - dist) * 18.0
+	score -= float(move_steps) * _score_float(unit_def_id, "move_step_cost", 0.35)
+	score -= float(absi(dist - kite_ideal_range)) * _score_float(unit_def_id, "ideal_range_penalty", 14.0)
+	if dist < kite_ideal_range:
+		score -= float(kite_ideal_range - dist) * _score_float(unit_def_id, "too_close_extra_penalty", 18.0)
 	if dist == max_range:
-		score += 4.0
+		score += _score_float(unit_def_id, "max_range_bonus", 4.0)
 
 	if can_shoot_here:
 		if move_pos == turn_start:
-			score += 120.0
-			if is_deployed(turn_start, move_path) and dist >= Constants.STONE_BOW_KITE_IDEAL_RANGE:
-				score += 12.0
+			score += _score_float(unit_def_id, "hold_position_bonus", 120.0)
+			if is_deployed(turn_start, move_path) and dist >= kite_ideal_range:
+				score += _score_float(unit_def_id, "deploy_hold_bonus", 12.0)
 		else:
-			score -= 45.0
+			score -= _score_float(unit_def_id, "move_when_shooting_penalty", 45.0)
 			if dist < current_dist:
-				score -= 80.0
-	elif current_dist <= Constants.STONE_BOW_KITE_MIN_RANGE and dist > current_dist:
-		score += float(dist - current_dist) * 32.0
+				score -= _score_float(unit_def_id, "closer_when_shooting_penalty", 80.0)
+	elif current_dist <= kite_min_range and dist > current_dist:
+		score += float(dist - current_dist) * _score_float(unit_def_id, "emergency_retreat_bonus_per_tile", 32.0)
 	elif dist > current_dist:
-		score -= float(dist - current_dist) * 8.0
+		score -= float(dist - current_dist) * _score_float(unit_def_id, "extra_distance_penalty_per_tile", 8.0)
 	elif not can_shoot_here and dist < current_dist:
-		score += float(current_dist - dist) * 6.0
+		score += float(current_dist - dist) * _score_float(unit_def_id, "closer_to_gain_shot_bonus_per_tile", 6.0)
 
-	if is_deployed(turn_start, move_path) and dist >= Constants.STONE_BOW_KITE_IDEAL_RANGE and not can_shoot_here:
-		score += 6.0
+	if is_deployed(turn_start, move_path) and dist >= kite_ideal_range and not can_shoot_here:
+		score += _score_float(unit_def_id, "setup_deploy_bonus", 6.0)
 	return score
 
 
 static func _score_approach_out_of_range(
+	unit_def_id: String,
 	current_dist: int,
 	new_dist: int,
 	move_pos: Vector2i,
 	turn_start: Vector2i
 ) -> float:
-	var score: float = float(current_dist - new_dist) * 45.0
-	score -= float(BoardUtils.manhattan(turn_start, move_pos)) * 0.5
-	if new_dist < Constants.STONE_BOW_KITE_MIN_RANGE:
-		score -= 40.0
-	elif new_dist <= Constants.STONE_BOW_KITE_IDEAL_RANGE:
-		score += 25.0
+	var kite_min_range := _balance_int(unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+	var kite_ideal_range := _balance_int(unit_def_id, "kite_ideal_range", Constants.STONE_BOW_KITE_IDEAL_RANGE)
+	var score: float = float(current_dist - new_dist) * _score_float(unit_def_id, "approach_progress_score", 45.0)
+	score -= float(BoardUtils.manhattan(turn_start, move_pos)) * _score_float(unit_def_id, "approach_distance_cost", 0.5)
+	if new_dist < kite_min_range:
+		score -= _score_float(unit_def_id, "approach_too_close_penalty", 40.0)
+	elif new_dist <= kite_ideal_range:
+		score += _score_float(unit_def_id, "approach_ideal_band_bonus", 25.0)
 	return score
 
 
-static func _score_kite_reposition(current_dist: int, new_dist: int) -> float:
+static func _score_kite_reposition(unit_def_id: String, current_dist: int, new_dist: int) -> float:
+	var kite_min_range := _balance_int(unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+	var kite_ideal_range := _balance_int(unit_def_id, "kite_ideal_range", Constants.STONE_BOW_KITE_IDEAL_RANGE)
 	var score: float = 0.0
-	if current_dist <= Constants.STONE_BOW_KITE_MIN_RANGE and new_dist > current_dist:
-		score += float(new_dist - current_dist) * 22.0
-	score -= float(absi(new_dist - Constants.STONE_BOW_KITE_IDEAL_RANGE)) * 6.0
-	if new_dist < Constants.STONE_BOW_KITE_MIN_RANGE:
-		score -= 30.0
+	if current_dist <= kite_min_range and new_dist > current_dist:
+		score += float(new_dist - current_dist) * _score_float(unit_def_id, "retreat_bonus_per_tile", 22.0)
+	score -= float(absi(new_dist - kite_ideal_range)) * _score_float(unit_def_id, "retreat_ideal_range_penalty", 6.0)
+	if new_dist < kite_min_range:
+		score -= _score_float(unit_def_id, "retreat_too_close_penalty", 30.0)
 	return score
 
 
@@ -259,15 +292,16 @@ static func _score_reposition_for_line(
 	reachable: Array[Vector2i],
 	cell_blockers: Dictionary
 ) -> float:
+	var unit_def_id := enemy.unit_def_id
 	var best_current := _nearest_open_shot_path_distance(state, enemy, turn_start, player, reachable, cell_blockers)
 	var best_next := _nearest_open_shot_path_distance(state, enemy, move_pos, player, reachable, cell_blockers)
 	if best_next < 0:
-		return -18.0
+		return _score_float(unit_def_id, "line_unreachable_penalty", -18.0)
 	if best_current < 0:
-		return 34.0 - float(BoardUtils.manhattan(turn_start, move_pos)) * 1.2
+		return _score_float(unit_def_id, "line_setup_bonus", 34.0) - float(BoardUtils.manhattan(turn_start, move_pos)) * _score_float(unit_def_id, "line_setup_distance_cost", 1.2)
 	if best_next < best_current:
-		return float(best_current - best_next) * 28.0
-	return -4.0
+		return float(best_current - best_next) * _score_float(unit_def_id, "line_progress_bonus_per_step", 28.0)
+	return _score_float(unit_def_id, "line_no_progress_penalty", -4.0)
 
 
 static func _nearest_open_shot_path_distance(
@@ -309,7 +343,8 @@ static func _open_shot_anchors(
 			var dist := BoardUtils.distance_between_unit_at_and_unit(enemy, anchor, player)
 			var from_cell := BoardUtils.projectile_origin_cell_at(enemy, anchor, player.pos)
 			var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
-			if dist < Constants.STONE_BOW_KITE_MIN_RANGE or dist > max_range or blocked:
+			var kite_min_range := _balance_int(enemy.unit_def_id, "kite_min_range", Constants.STONE_BOW_KITE_MIN_RANGE)
+			if dist < kite_min_range or dist > max_range or blocked:
 				continue
 			anchors.append(anchor)
 	return anchors

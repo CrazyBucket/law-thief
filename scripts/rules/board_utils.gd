@@ -1,6 +1,8 @@
 class_name BoardUtils
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 const _MIN_STEP_COST: float = 1.0
 const _FULL_PATH_BUDGET_FACTOR: float = 8.0
 const _DEFAULT_PATH_COST_PROFILE := {
@@ -133,7 +135,7 @@ static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Di
 	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
 	var spike := spike_entity_at(state, pos)
 	if spike != null:
-		cost += float(Constants.SPIKE_DAMAGE) * float(profile.get("spike_damage_weight", 2.0))
+		cost += float(CombatConfig.spike_damage()) * float(profile.get("spike_damage_weight", 2.0))
 	var tile: TileState = state.get_tile(pos)
 	# 水洼（含毒水洼）：移动消耗 +1；夜鹭翅膀免疫
 	if not tile_immune and (tile.has_ground_tag(Constants.GROUND_TAG_WATER) or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE)):

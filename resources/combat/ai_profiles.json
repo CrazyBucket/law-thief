@@ -1,0 +1,57 @@
+{
+  "default_profile": "melee_chase",
+  "aliases": {
+    "bomb_rat": "bomb_rat",
+    "stone_bow": "stone_bow",
+    "patrol_guard": "melee_chase",
+    "fission_slime": "melee_chase"
+  },
+  "tuning": {
+    "ranged_keep_distance_scale": 0.3,
+    "explosion_adjacent_bonus_mult": 2.0,
+    "pull_base_bonus": 8.0,
+    "pull_damage_bonus_mult": 0.5,
+    "pull_distance_score_mult": 1.2,
+    "arc_chain_bonus_mult": 0.5,
+    "approach_progress_floor": 0.25,
+    "path_self_damage_ratio": 0.25
+  },
+  "profiles": {
+    "melee_chase": {
+      "w_damage": 10.0,
+      "w_kill_player": 150.0,
+      "w_self_sacrifice": -20.0,
+      "w_self_damage": 8.0,
+      "w_friendly_fire": 30.0,
+      "w_approach": 6.0,
+      "w_move_cost": 0.5,
+      "w_pull": 0.0,
+      "w_poison": 0.0,
+      "wait_score": -10.0,
+      "can_extract": false,
+      "prefer_distance": false,
+      "guard_ally": false
+    },
+    "stone_bow": {
+      "w_damage": 10.0,
+      "w_kill_player": 150.0,
+      "w_self_sacrifice": -25.0,
+      "w_self_damage": 8.0,
+      "w_friendly_fire": 25.0,
+      "w_approach": 2.0,
+      "w_move_cost": 0.4,
+      "w_deploy_bonus": 14.0,
+      "w_keep_distance": 5.0,
+      "wait_score": 2.0,
+      "can_ranged_attack": true,
+      "prefer_distance": true,
+      "can_extract": false,
+      "guard_ally": false
+    },
+    "bomb_rat": {
+      "w_approach": 10.0,
+      "wait_score": -50.0,
+      "can_extract": false
+    }
+  }
+}

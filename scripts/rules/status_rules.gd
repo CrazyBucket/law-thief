@@ -5,6 +5,7 @@ const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const StatusConfig = preload("res://scripts/core/status_config.gd")
 
 
 static func _rng_service() -> Node:
@@ -14,13 +15,15 @@ static func _rng_service() -> Node:
 static func apply_poison(
 	state: GameState,
 	unit: UnitState,
-	stacks: int = 1,
-	duration: int = 2,
+	stacks: int = -1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_stacks := stacks if stacks >= 0 else _default_stacks("poison", 1)
+	var resolved_duration := duration if duration >= 0 else _default_duration("poison", 2)
 	_apply(state, unit, Constants.STATUS_POISON, {
-		"stacks": stacks,
-		"duration": duration,
+		"stacks": resolved_stacks,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -28,12 +31,13 @@ static func apply_poison(
 static func apply_burning(
 	state: GameState,
 	unit: UnitState,
-	stacks: int = 1,
+	stacks: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_stacks := stacks if stacks >= 0 else _default_stacks("burning", 1)
 	_apply(state, unit, Constants.STATUS_BURNING, {
-		"stacks": stacks,
-		"duration": 0,
+		"stacks": resolved_stacks,
+		"duration": _default_duration("burning", 0),
 		"source_uid": source_uid,
 	})
 
@@ -42,24 +46,26 @@ static func apply_armor(
 	state: GameState,
 	unit: UnitState,
 	value: int,
-	duration: int = 1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
-	apply_shield(state, unit, value, duration, source_uid)
+	var resolved_duration := duration if duration >= 0 else _default_duration("armor", 1)
+	apply_shield(state, unit, value, resolved_duration, source_uid)
 
 
 static func apply_shield(
 	state: GameState,
 	unit: UnitState,
 	value: int,
-	duration: int = 0,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
 	if value <= 0:
 		return
+	var resolved_duration := duration if duration >= 0 else _default_duration("shield", 0)
 	_apply(state, unit, Constants.STATUS_ARMOR, {
 		"value": value,
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -81,11 +87,12 @@ static func absorb_with_shield(state: GameState, unit: UnitState, amount: int) -
 static func apply_rooted(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 2,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_duration := duration if duration >= 0 else _default_duration("rooted", 2)
 	_apply(state, unit, Constants.STATUS_ROOTED, {
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -93,7 +100,7 @@ static func apply_rooted(
 static func apply_exposed(state: GameState, unit: UnitState, slot: SlotState, turn_index: int) -> void:
 	var saved_lock_type := slot.lock_type if not slot.lock_type.is_empty() else Constants.LOCK_ARMOR
 	_apply(state, unit, Constants.STATUS_EXPOSED, {
-		"duration": 1,
+		"duration": _default_duration("exposed", 1),
 		"payload": {
 			"slot_type": slot.slot_type,
 			"lock_type": saved_lock_type,
@@ -106,7 +113,7 @@ static func apply_exposed(state: GameState, unit: UnitState, slot: SlotState, tu
 
 static func apply_lawless(state: GameState, unit: UnitState, target_gem_uid: String, source_uid: String = "") -> void:
 	_apply(state, unit, Constants.STATUS_LAWLESS, {
-		"duration": 0,
+		"duration": _default_duration("lawless", 0),
 		"source_uid": source_uid,
 		"payload": {"target_gem_uid": target_gem_uid},
 	})
@@ -129,7 +136,7 @@ static func get_lawless_gem_uid(unit: UnitState) -> String:
 
 static func apply_bomb_rat_plunder(state: GameState, unit: UnitState, phase: int) -> void:
 	_apply(state, unit, Constants.STATUS_BOMB_RAT_PLUNDER, {
-		"duration": 0,
+		"duration": _default_duration("bomb_rat_plunder", 0),
 		"payload": {"phase": phase},
 	})
 
@@ -185,13 +192,14 @@ static func get_shield(unit: UnitState) -> int:
 static func apply_paralyzed(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
 	if unit.has_status(Constants.STATUS_PARALYZED):
 		return
+	var resolved_duration := duration if duration >= 0 else _default_duration("paralyzed", 1)
 	_apply(state, unit, Constants.STATUS_PARALYZED, {
-		"duration": maxi(1, duration),
+		"duration": maxi(1, resolved_duration),
 		"source_uid": source_uid,
 	})
 
@@ -199,12 +207,13 @@ static func apply_paralyzed(
 static func apply_slowed(
 	state: GameState,
 	unit: UnitState,
-	stacks: int = 1,
+	stacks: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_stacks := stacks if stacks >= 0 else _default_stacks("slowed", 1)
 	_apply(state, unit, Constants.STATUS_SLOWED, {
-		"stacks": stacks,
-		"duration": 0,
+		"stacks": resolved_stacks,
+		"duration": _default_duration("slowed", 0),
 		"source_uid": source_uid,
 	})
 
@@ -212,11 +221,12 @@ static func apply_slowed(
 static func apply_wet(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 2,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_duration := duration if duration >= 0 else _default_duration("wet", 2)
 	_apply(state, unit, Constants.STATUS_WET, {
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -227,7 +237,7 @@ static func apply_sluggish(
 	source_uid: String = ""
 ) -> void:
 	_apply(state, unit, Constants.STATUS_SLUGGISH, {
-		"duration": 1,
+		"duration": _default_duration("sluggish", 1),
 		"source_uid": source_uid,
 	})
 
@@ -235,11 +245,12 @@ static func apply_sluggish(
 static func apply_vulnerable(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_duration := duration if duration >= 0 else _default_duration("vulnerable", 1)
 	_apply(state, unit, Constants.STATUS_VULNERABLE, {
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -251,11 +262,12 @@ static func is_vulnerable(unit: UnitState) -> bool:
 static func apply_weak(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_duration := duration if duration >= 0 else _default_duration("weak", 1)
 	_apply(state, unit, Constants.STATUS_WEAK, {
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -267,12 +279,13 @@ static func is_weak(unit: UnitState) -> bool:
 static func apply_light_exposed(
 	state: GameState,
 	unit: UnitState,
-	stacks: int = 1,
+	stacks: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_stacks := stacks if stacks >= 0 else _default_stacks("light_exposed", 1)
 	_apply(state, unit, Constants.STATUS_LIGHT_EXPOSED, {
-		"stacks": stacks,
-		"duration": 0,
+		"stacks": resolved_stacks,
+		"duration": _default_duration("light_exposed", 0),
 		"source_uid": source_uid,
 	})
 
@@ -280,11 +293,12 @@ static func apply_light_exposed(
 static func apply_blinded(
 	state: GameState,
 	unit: UnitState,
-	duration: int = 1,
+	duration: int = -1,
 	source_uid: String = ""
 ) -> void:
+	var resolved_duration := duration if duration >= 0 else _default_duration("blinded", 1)
 	_apply(state, unit, Constants.STATUS_BLINDED, {
-		"duration": duration,
+		"duration": resolved_duration,
 		"source_uid": source_uid,
 	})
 
@@ -293,18 +307,20 @@ static func apply_counter_mark(
 	state: GameState,
 	unit: UnitState,
 	watcher_uid: String,
-	level: int = 1,
+	level: int = -1,
 	source_uid: String = ""
 ) -> void:
 	if watcher_uid.is_empty():
 		return
+	var resolved_level := level if level >= 0 else _default_level("counter_mark", 1)
+	var resolved_duration := _default_duration("counter_mark", 1)
 	var existing: StatusInstance = unit.get_status(Constants.STATUS_COUNTER_MARK)
 	if existing == null:
 		_apply(state, unit, Constants.STATUS_COUNTER_MARK, {
-			"duration": 1,
+			"duration": resolved_duration,
 			"source_uid": source_uid,
 			"payload": {
-				"watchers": [{"uid": watcher_uid, "level": maxi(1, level)}],
+				"watchers": [{"uid": watcher_uid, "level": maxi(1, resolved_level)}],
 			},
 		})
 		return
@@ -316,32 +332,34 @@ static func apply_counter_mark(
 			continue
 		watchers[i] = {
 			"uid": watcher_uid,
-			"level": maxi(int(watcher.get("level", 1)), maxi(1, level)),
+			"level": maxi(int(watcher.get("level", 1)), maxi(1, resolved_level)),
 		}
 		replaced = true
 		break
 	if not replaced:
-		watchers.append({"uid": watcher_uid, "level": maxi(1, level)})
-	existing.duration = 1
+		watchers.append({"uid": watcher_uid, "level": maxi(1, resolved_level)})
+	existing.duration = resolved_duration
 	existing.source_uid = source_uid
 	existing.payload["watchers"] = watchers
 	state.log("%s 获得状态 %s" % [unit.uid, _StatusRegistry.display_name(Constants.STATUS_COUNTER_MARK)])
 
 
-static func grant_extra_attack(state: GameState, unit: UnitState, amount: int = 1, source_uid: String = "") -> void:
-	if amount <= 0:
+static func grant_extra_attack(state: GameState, unit: UnitState, amount: int = -1, source_uid: String = "") -> void:
+	var resolved_amount := amount if amount >= 0 else _default_stacks("extra_attack", 1)
+	if resolved_amount <= 0:
 		return
 	_apply(state, unit, Constants.STATUS_EXTRA_ATTACK, {
-		"stacks": amount,
+		"stacks": resolved_amount,
 		"source_uid": source_uid,
 	})
 
 
-static func grant_extra_move(state: GameState, unit: UnitState, amount: int = 1, source_uid: String = "") -> void:
-	if amount <= 0:
+static func grant_extra_move(state: GameState, unit: UnitState, amount: int = -1, source_uid: String = "") -> void:
+	var resolved_amount := amount if amount >= 0 else _default_stacks("extra_move", 1)
+	if resolved_amount <= 0:
 		return
 	_apply(state, unit, Constants.STATUS_EXTRA_MOVE, {
-		"stacks": amount,
+		"stacks": resolved_amount,
 		"source_uid": source_uid,
 	})
 
@@ -384,7 +402,7 @@ static func effective_move_points(unit: UnitState, base: int) -> int:
 	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
 	if slow == null:
 		return base
-	return maxi(1, base - slow.stacks)
+	return maxi(_config_int("slowed", "min_move_points", 1), base - slow.stacks)
 
 
 static func can_act(unit: UnitState) -> bool:
@@ -470,11 +488,11 @@ static var _OVERLAY_STATUS_PRETICK: Array = [
 	# 处于火焰中：burning 层数 ×2
 	[Constants.STATUS_BURNING, Constants.TILE_MOD_FIRE,
 		func(status: StatusInstance, state: GameState, unit: UnitState) -> void:
-			status.stacks = status.stacks * 2
+			status.stacks = status.stacks * _config_int("burning", "firelike_stack_mult", 2)
 			state.log("%s 处于火焰中，burning 层数翻倍为 %d" % [unit.uid, status.stacks])],
 	[Constants.STATUS_BURNING, Constants.TILE_MOD_TOXIC_SMOKE,
 		func(status: StatusInstance, state: GameState, unit: UnitState) -> void:
-			status.stacks = status.stacks * 2
+			status.stacks = status.stacks * _config_int("burning", "firelike_stack_mult", 2)
 			state.log("%s 处于毒烟中，burning 层数翻倍为 %d" % [unit.uid, status.stacks])],
 ]
 
@@ -597,7 +615,7 @@ static func _tick_grass_growth(state: GameState) -> void:
 	if rng == null:
 		return
 	for tile in state.tiles.values():
-		if tile.tile_id == Constants.TILE_GRASS and bool(rng.chance("tile_grass_grow_%s" % str(tile.pos), Constants.GRASS_GROW_CHANCE)):
+		if tile.tile_id == Constants.TILE_GRASS and bool(rng.chance("tile_grass_grow_%s" % str(tile.pos), CombatConfig.grass_grow_chance())):
 			tile.tile_id = Constants.TILE_BUSH
 			tile._init_ground_tags()
 			state.log("草地 %s 长成草丛" % [tile.pos])
@@ -611,3 +629,19 @@ static func _apply_tile_pillar_auras(state: GameState) -> void:
 
 static func _apply_blue_turn_start_effects(state: GameState, unit: UnitState) -> void:
 	GemEffects.run_unit_hooks(state, unit, Constants.SLOT_BLUE, GemEffects.TIMING_TURN_START, {})
+
+
+static func _default_stacks(entry_id: String, fallback: int) -> int:
+	return StatusConfig.default_stacks(entry_id, fallback)
+
+
+static func _default_duration(entry_id: String, fallback: int) -> int:
+	return StatusConfig.default_duration(entry_id, fallback)
+
+
+static func _default_level(entry_id: String, fallback: int) -> int:
+	return StatusConfig.default_level(entry_id, fallback)
+
+
+static func _config_int(entry_id: String, field_id: String, fallback: int) -> int:
+	return StatusConfig.int_value(entry_id, field_id, fallback)

@@ -20,6 +20,12 @@ func _run_test() -> void:
 	})
 	run_service.save_run()
 
+	var active_summary: Dictionary = save_service.peek_slot_summary(save_service.get_active_slot_id())
+	var active_subtitle := str(active_summary.get("subtitle", ""))
+	assert(active_subtitle.find("种子") < 0, "active slot summary should not expose map seed")
+	assert(active_subtitle.find("位置") < 0 and active_subtitle.find("(") < 0, "active slot summary should not expose map coordinates")
+	assert(active_subtitle.find("第 ") >= 0 and active_subtitle.find("持有遗物") >= 0, "active slot summary should use player-facing progress")
+
 	var path := ProjectSettings.globalize_path(str(save_service.slot_file_path("run_save.json")))
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	assert(file != null, "should open active run save for corruption injection")

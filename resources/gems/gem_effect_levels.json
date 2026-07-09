@@ -1,0 +1,151 @@
+{
+  "red": {
+    "explosion": {
+      "1": {"blast_pattern": "cross", "damage_multiplier": 1.0},
+      "2": {"blast_pattern": "square", "damage_multiplier": 1.0},
+      "3": {"blast_pattern": "square", "damage_multiplier": 2.0}
+    },
+    "poison": {
+      "1": {"fog_pattern": "single", "duration_bonus": 0, "hit_poison_stacks": 1, "hit_poison_duration": 0},
+      "2": {"fog_pattern": "cross", "duration_bonus": 0, "hit_poison_stacks": 1, "hit_poison_duration": 0},
+      "3": {"fog_pattern": "cross", "duration_bonus": 1, "hit_poison_stacks": 1, "hit_poison_duration": 0}
+    },
+    "fire": {
+      "1": {"spread_count": 0, "burning_bonus_spread_count": 0},
+      "2": {"spread_count": 1, "burning_bonus_spread_count": 0},
+      "3": {"spread_count": 1, "burning_bonus_spread_count": 1}
+    },
+    "gravity": {
+      "1": {"pull_steps": 1, "range_bonus": 1},
+      "2": {"pull_steps": 2, "range_bonus": 2},
+      "3": {"pull_steps": 3, "range_bonus": 3}
+    },
+    "arc": {
+      "1": {"bounce_hops": 1, "range": 2},
+      "2": {"bounce_hops": 2, "range": 2},
+      "3": {"bounce_hops": 2, "range": 3}
+    },
+    "split": {
+      "1": {"damage_ratio": 0.7, "light_direction_offsets": [0, -1, 1]},
+      "2": {"damage_ratio": 0.5, "light_direction_offsets": [0, -1, 1, -2]},
+      "3": {"damage_ratio": 0.3, "light_direction_offsets": [0, -1, 1, -2, 2]}
+    },
+    "light": {
+      "1": {"damage_ratio": 0.5, "exposed_stacks": 1, "pierce_blockers": false, "beam_power": 1.05, "beam_width": 1.0},
+      "2": {"damage_ratio": 0.75, "exposed_stacks": 1, "pierce_blockers": false, "beam_power": 1.15, "beam_width": 1.65},
+      "3": {"damage_ratio": 1.0, "exposed_stacks": 2, "pierce_blockers": true, "beam_power": 1.25, "beam_width": 2.35}
+    },
+    "ice": {
+      "1": {"hit_slowed_stacks": 1, "freeze_if_target_slowed": false},
+      "2": {"hit_slowed_stacks": 2, "freeze_if_target_slowed": false},
+      "3": {"hit_slowed_stacks": 2, "freeze_if_target_slowed": true}
+    },
+    "counter": {
+      "1": {"mark_stacks": 1},
+      "2": {"mark_stacks": 2},
+      "3": {"mark_stacks": 3}
+    },
+    "echo": {
+      "3": {"followup_ratio": 0.5}
+    }
+  },
+  "blue": {
+    "poison": {
+      "1": {"turn_end_spread": false, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2},
+      "2": {"turn_end_spread": true, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2},
+      "3": {"turn_end_spread": true, "copy_debuff_on_contact": true, "copy_debuff_on_damaged": true, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2}
+    },
+    "explosion": {
+      "1": {"detonate_on_any_damage": false, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1},
+      "2": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1},
+      "3": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "square", "pillar_radius": 1, "pillar_damage": 1}
+    },
+    "gravity": {
+      "1": {"deflect_chance": 0.5, "redirect_enemy_only": false, "slow_on_damaged": false, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
+      "2": {"deflect_chance": 0.75, "redirect_enemy_only": true, "slow_on_damaged": true, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
+      "3": {"deflect_chance": 1.0, "redirect_enemy_only": true, "slow_on_damaged": true, "root_on_damaged": true, "pillar_pull_radius": 2, "pillar_pull_steps": 1}
+    },
+    "arc": {
+      "1": {"rebound_chance": 0.33},
+      "2": {"rebound_chance": 0.66},
+      "3": {"rebound_chance": 1.0}
+    },
+    "split": {
+      "1": {"spawn_temp_clone": false, "even_redirect_distribution": false},
+      "2": {"spawn_temp_clone": false, "even_redirect_distribution": true},
+      "3": {"spawn_temp_clone": true, "even_redirect_distribution": true}
+    },
+    "light": {
+      "1": {"reflect_beams": 1, "reflect_damage_ratio": 0.2, "reflect_exposed_stacks": 1, "reflect_power": 0.72, "reflect_impact_size": 0.72},
+      "2": {"reflect_beams": 2, "reflect_damage_ratio": 0.2, "reflect_exposed_stacks": 1, "reflect_power": 0.72, "reflect_impact_size": 0.72},
+      "3": {"reflect_beams": 3, "reflect_damage_ratio": 0.2, "reflect_exposed_stacks": 1, "reflect_power": 0.72, "reflect_impact_size": 0.72}
+    },
+    "counter": {
+      "1": {"use_ranged_counter": false, "grant_extra_move_on_kill": false},
+      "2": {"use_ranged_counter": true, "grant_extra_move_on_kill": false},
+      "3": {"use_ranged_counter": true, "grant_extra_move_on_kill": true}
+    },
+    "fire": {
+      "1": {"create_fire_on_contact": false, "double_burning_on_already_burning": false, "contact_burning_stacks": 1},
+      "2": {"create_fire_on_contact": true, "double_burning_on_already_burning": false, "contact_burning_stacks": 1},
+      "3": {"create_fire_on_contact": true, "double_burning_on_already_burning": true, "contact_burning_stacks": 1}
+    },
+    "ice": {
+      "1": {"contact_slowed_stacks": 1, "upgrade_slowed_to_sluggish": false},
+      "2": {"contact_slowed_stacks": 2, "upgrade_slowed_to_sluggish": false},
+      "3": {"contact_slowed_stacks": 2, "upgrade_slowed_to_sluggish": true}
+    },
+    "echo": {
+      "1": {"first_tag_strength": 1},
+      "2": {"first_tag_strength": 1},
+      "3": {"first_tag_strength": 2}
+    }
+  },
+  "black": {
+    "explosion": {
+      "1": {"chain_followup": false},
+      "2": {"chain_followup": true},
+      "3": {"chain_followup": true}
+    },
+    "poison": {
+      "1": {"spawn_fog": false, "fog_radius": 0, "debuff_copies": 1, "debuff_spread_radius": 1},
+      "2": {"spawn_fog": true, "fog_radius": 1, "debuff_copies": 1, "debuff_spread_radius": 1},
+      "3": {"spawn_fog": true, "fog_radius": 1, "debuff_copies": 2, "debuff_spread_radius": 1}
+    },
+    "gravity": {
+      "1": {"pull_steps": 1, "apply_slow": false, "apply_root": false},
+      "2": {"pull_steps": 1, "apply_slow": true, "apply_root": false},
+      "3": {"pull_steps": 1, "apply_slow": true, "apply_root": true}
+    },
+    "arc": {
+      "1": {"strike_count": 1, "strike_all_targets": false},
+      "2": {"strike_count": 2, "strike_all_targets": false},
+      "3": {"strike_count": 999, "strike_all_targets": true}
+    },
+    "fire": {
+      "1": {"prefer_occupied_cells": false, "death_fire_count_bonus": 0, "death_duration_bonus": 0},
+      "2": {"prefer_occupied_cells": true, "death_fire_count_bonus": 0, "death_duration_bonus": 0},
+      "3": {"prefer_occupied_cells": true, "death_fire_count_bonus": 2, "death_duration_bonus": 1}
+    },
+    "ice": {
+      "1": {"apply_slowed": false, "apply_paralyzed": false},
+      "2": {"apply_slowed": true, "apply_paralyzed": false},
+      "3": {"apply_slowed": true, "apply_paralyzed": true}
+    },
+    "split": {
+      "1": {"stat_ratio": 0.3},
+      "2": {"stat_ratio": 0.5},
+      "3": {"stat_ratio": 0.8}
+    },
+    "light": {
+      "1": {"beam_width": 1.53, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": false},
+      "2": {"beam_width": 1.71, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": false},
+      "3": {"beam_width": 1.89, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": true}
+    },
+    "echo": {
+      "1": {"first_tag_repeat_count": 1},
+      "2": {"first_tag_repeat_count": 1},
+      "3": {"first_tag_repeat_count": 2}
+    }
+  }
+}

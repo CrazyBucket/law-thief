@@ -1,6 +1,7 @@
 class_name BattleActionService
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
@@ -132,7 +133,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail("不能攻击自己")
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
 		return _fail("光束只能朝八个方向发射")
-	var max_range := GemEffects.red_attack_range(state, player, Constants.ATTACK_RANGE)
+	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return _fail("目标超出射程")
 	var presentation_state: GameState = state.clone()

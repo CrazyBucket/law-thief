@@ -181,7 +181,10 @@ func _resolve_room(room_id: String, room_type: String) -> Dictionary:
 					continue
 				var effect := (raw_effect as Dictionary).duplicate(true)
 				if str(effect.get("action", "")) == "heal_player_percent":
-					var base_ratio := float(effect.get("amount", 0.0))
+					var base_ratio_result := EconomyService.resolve_numeric_field(effect, "amount")
+					if not bool(base_ratio_result.get("ok", false)):
+						return base_ratio_result
+					var base_ratio := float(base_ratio_result.get("value", 0.0))
 					var heal_trace := AdventureRuleRegistry.query_modifier("rest_heal_mult", base_ratio, {"room_id": room_id})
 					effect["amount"] = float(heal_trace.get("final_value", base_ratio))
 					result["heal_trace"] = heal_trace
@@ -207,8 +210,7 @@ func _resolve_room(room_id: String, room_type: String) -> Dictionary:
 		"EVENT":
 			result["summary"] = "事件等待选择。"
 		"SHOP":
-			RunService.get_or_roll_gem_offer(room_id, "shop", 3)
-			result["summary"] = "商店节点先保留，占位等待后续接入商品与购买流程。"
+			result["summary"] = "商店等待购买。"
 		"END":
 			var chapter := AdventureService.get_current_chapter()
 			if chapter < AdventureService.get_chapter_count():

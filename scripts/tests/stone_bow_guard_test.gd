@@ -66,6 +66,7 @@ func _test_blocked_shot_not_planned() -> void:
 	var state := controller.state
 	var bow := _find_bow(state)
 	var player := state.get_player()
+	_clear_red_slot(state, bow)
 	bow.pos = Vector2i(5, 2)
 	player.pos = Vector2i(1, 2)
 	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(3, 2))
@@ -81,6 +82,7 @@ func _test_blocked_shot_repositions() -> void:
 	var state := controller.state
 	var bow := _find_bow(state)
 	var player := state.get_player()
+	_clear_red_slot(state, bow)
 	bow.pos = Vector2i(5, 2)
 	player.pos = Vector2i(1, 2)
 	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(3, 2))
@@ -129,6 +131,7 @@ func _test_kite_retreat_then_shoot() -> void:
 	var state := controller.state
 	var bow := _find_bow(state)
 	var player := state.get_player()
+	_clear_red_slot(state, bow)
 	bow.pos = Vector2i(4, 2)
 	player.pos = Vector2i(4, 3)
 	state.rebuild_occupancy()
@@ -155,6 +158,7 @@ func _test_hold_position_when_in_range() -> void:
 	var state := controller.state
 	var bow := _find_bow(state)
 	var player := state.get_player()
+	_clear_red_slot(state, bow)
 	bow.pos = Vector2i(5, 2)
 	player.pos = Vector2i(1, 2)
 	assert(BoardUtils.manhattan(bow.pos, player.pos) == 4, "setup at max deploy range")
@@ -170,6 +174,7 @@ func _test_intent_tracks_player_after_move() -> void:
 	var state := controller.state
 	var bow := _find_bow(state)
 	var player := state.get_player()
+	_clear_red_slot(state, bow)
 	bow.pos = Vector2i(5, 2)
 	player.pos = Vector2i(1, 2)
 	IntentSystem.refresh_all_intents(state)
@@ -186,3 +191,11 @@ func _find_bow(state: GameState) -> UnitState:
 		if unit.unit_def_id == "unit_stone_bow_guard":
 			return unit
 	return null
+
+
+func _clear_red_slot(state: GameState, bow: UnitState) -> void:
+	var red := bow.get_slot(Constants.SLOT_RED)
+	if red == null or red.gem_uid.is_empty():
+		return
+	state.gems.erase(red.gem_uid)
+	red.gem_uid = ""

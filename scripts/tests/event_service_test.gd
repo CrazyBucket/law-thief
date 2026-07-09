@@ -44,6 +44,10 @@ func _run_tests() -> void:
 	node.properties["event_id"] = "event_debug_relief"
 	room_id = str(adventure_service.current_room_id())
 	room_flow_service.enter_room(room_id)
+	event_view = root.get_node("EventService").get_event_view(room_id)
+	options = event_view.get("options", [])
+	assert(str((options[0] as Dictionary).get("label", "")) == "拿 8 金币", "amount-ref label should render configured gold")
+	assert(str((options[1] as Dictionary).get("label", "")) == "恢复 4 点生命", "amount-ref label should render configured heal")
 	var choose_gold: Dictionary = room_flow_service.submit_room_command(room_id, {
 		"action": "choose_option",
 		"option_id": "take_gold",
@@ -63,6 +67,8 @@ func _run_tests() -> void:
 	event_view = view.get("payload", {}).get("event", {})
 	options = event_view.get("options", [])
 	assert(options.size() == 2, "toll event should expose two options")
+	assert(str(event_view.get("body", "")) == "一台还在运转的旧闸机要求你缴纳 5 金币，否则什么都不给。", "amount-ref body should render configured toll text")
+	assert(str((options[0] as Dictionary).get("label", "")) == "支付 5 金币并恢复 4 点生命", "amount-ref option label should render configured numbers")
 	assert(not bool((options[0] as Dictionary).get("enabled", true)), "pay option should be disabled without gold")
 	assert(str((options[0] as Dictionary).get("disabled_reason", "")) != "", "disabled option should explain reason")
 	var blocked: Dictionary = room_flow_service.submit_room_command(room_id, {

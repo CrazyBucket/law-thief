@@ -1,5 +1,7 @@
 extends SceneTree
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -211,7 +213,7 @@ func _test_operation_damage(controller: BattleController, state: GameState, play
 	if not result.get("ok", false):
 		_fail("insert for damage test failed: %s" % result.get("reason", ""))
 		return
-	if player.hp != hp_before - Constants.OVERLOAD_GEM_OP_DAMAGE_AMOUNT:
+	if player.hp != hp_before - CombatConfig.overload_gem_op_damage_amount():
 		_fail("gem operation should damage player by overload amount")
 		return
 	print("  [OK] gem operations can damage the player")

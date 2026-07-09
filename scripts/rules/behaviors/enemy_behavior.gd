@@ -36,7 +36,7 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid
 	intent.target_uid = target_uid
-	if target_uid != "" and BoardUtils.manhattan(unit.pos, target_pos) <= Constants.EXTRACT_RANGE:
+	if target_uid != "" and BoardUtils.manhattan(unit.pos, target_pos) <= CombatConfig.extract_range():
 		intent.type = "lawless_extract"
 		intent.target_pos = unit.pos
 		intent.preview_text = "失律夺回宝石"
@@ -115,13 +115,13 @@ static func ranged_attack_context(
 	_intent_path: Array[Vector2i]
 ) -> Dictionary:
 	return {
-		"max_range": Constants.ATTACK_RANGE,
+		"max_range": CombatConfig.attack_range(),
 		"payload": {},
 	}
 
 
 static func split_clone_ratio(_unit: UnitState) -> float:
-	return Constants.SPLIT_STAT_RATIO
+	return CombatConfig.split_black_stat_ratio()
 
 
 static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
@@ -231,11 +231,11 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			if echo_target == null or not echo_target.alive:
 				return [] as Array[Dictionary]
 			var echo_result := CombatRules.ranged_attack(
-				state,
-				unit,
-				echo_target.pos,
-				GemEffects.red_attack_range(state, unit, Constants.ATTACK_RANGE)
-			)
+					state,
+					unit,
+					echo_target.pos,
+					GemEffects.red_attack_range(state, unit, CombatConfig.attack_range())
+				)
 			if not echo_result.get("ok", false):
 				return [] as Array[Dictionary]
 			return echo_result.get("events", [] as Array[Dictionary])
@@ -297,7 +297,7 @@ static func _execute_lawless_extract(state: GameState, unit: UnitState, target_u
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return false
-	if BoardUtils.manhattan(unit.pos, target.pos) > Constants.EXTRACT_RANGE:
+	if BoardUtils.manhattan(unit.pos, target.pos) > CombatConfig.extract_range():
 		return false
 	var target_gem_uid := StatusRules.get_lawless_gem_uid(unit)
 	var stolen_gem: GemState = state.gems.get(target_gem_uid, null)
@@ -362,8 +362,8 @@ static func _execute_charge_explosion(state: GameState, unit: UnitState, target_
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null:
 		return events
-	events.append({"type": "explode", "pos": unit.pos, "radius": Constants.EXPLOSION_RADIUS})
-	events.append_array(GemEffects.explode_at(state, unit.pos, Constants.EXPLOSION_DAMAGE, unit.uid))
+	events.append({"type": "explode", "pos": unit.pos, "radius": CombatConfig.explosion_radius()})
+	events.append_array(GemEffects.explode_at(state, unit.pos, CombatConfig.explosion_damage(), unit.uid))
 	var tx := _CombatTransaction.begin(state, events)
 	tx.damage_unit(unit, unit.hp, unit.uid, "self_explosion")
 	return events

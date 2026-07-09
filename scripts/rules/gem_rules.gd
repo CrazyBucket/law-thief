@@ -2,6 +2,7 @@ class_name GemRules
 extends RefCounted
 
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 
@@ -12,13 +13,13 @@ static func _relic_effect_registry() -> Node:
 static func _effective_extract_range(state: GameState) -> int:
 	var registry := _relic_effect_registry()
 	var bonus: int = int(registry.query_modifier("extract_range_bonus", state)) if registry != null else 0
-	return Constants.EXTRACT_RANGE + bonus
+	return CombatConfig.extract_range() + bonus
 
 
 static func _effective_insert_range(state: GameState) -> int:
 	var registry := _relic_effect_registry()
 	var bonus: int = int(registry.query_modifier("insert_range_bonus", state)) if registry != null else 0
-	return Constants.INSERT_RANGE + bonus
+	return CombatConfig.insert_range() + bonus
 
 
 static func operation_range_for_action(state: GameState, action: String) -> int:
@@ -41,15 +42,15 @@ static func is_unit_in_operation_range(state: GameState, actor: UnitState, targe
 
 static func _effective_trigger_range(state: GameState, slot: SlotState) -> int:
 	if slot == null or slot.gem_uid.is_empty():
-		return Constants.TRIGGER_RANGE
+		return CombatConfig.trigger_range()
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
-		return Constants.TRIGGER_RANGE
+		return CombatConfig.trigger_range()
 	var profile: String = _data_registry().get_gem_ability_profile(gem, GemEffects.ABILITY_UNIT_RED_ACTIVE)
 	match profile:
 		"explosion", "poison", "gravity", "fire_gem", "ice", "split":
 			return 1
-	return Constants.TRIGGER_RANGE
+	return CombatConfig.trigger_range()
 
 
 static func can_extract(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -287,7 +288,7 @@ static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState
 		return _fail("槽位为空")
 	if not slot.is_operable(state.turn_index):
 		return _fail("槽位被锁定")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > Constants.TRIGGER_RANGE:
+	if BoardUtils.manhattan(actor.pos, tile.pos) > CombatConfig.trigger_range():
 		return _fail("超出范围")
 	return _ok()
 

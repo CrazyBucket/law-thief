@@ -1,6 +1,8 @@
 class_name IntentState
 extends RefCounted
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 var type: String = "wait"
 var source_uid: String = ""
 var target_uid: String = ""
@@ -52,7 +54,7 @@ static func charge_explode(source_uid: String, target_uid: String) -> IntentStat
 	intent.type = "charge_explode"
 	intent.source_uid = source_uid
 	intent.target_uid = target_uid
-	intent.preview_text = "冲刺爆炸 (%d)" % Constants.EXPLOSION_DAMAGE
+	intent.preview_text = "冲刺爆炸 (%d)" % CombatConfig.explosion_damage()
 	return intent
 
 
