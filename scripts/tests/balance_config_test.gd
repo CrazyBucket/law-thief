@@ -21,6 +21,7 @@ func _run_tests() -> void:
 	_test_relic_numeric_refs_config()
 	_test_relic_source_weights_config()
 	_test_reward_offer_config()
+	_test_battle_reward_ui_config()
 	_test_player_copy_numeric_tokens()
 	_test_enemy_slot_curves_config()
 	_test_ai_profile_config()
@@ -115,6 +116,43 @@ func _test_reward_offer_config() -> void:
 	var missing_gem_offer: Array[String] = reg.roll_gem_offer("test_missing_gem_source", "missing_gem_source", 2, 1)
 	_expect(missing_gem_offer == ["", ""], "unknown gem sources should produce empty gem offer slots")
 	print("  [OK] reward offer config")
+
+
+func _test_battle_reward_ui_config() -> void:
+	var reg := _registry()
+	if reg == null:
+		return
+	var raw := _load_json("res://resources/ui/battle_reward_ui_config.json")
+	var errors := AdventureConfigValidator.validate_battle_reward_ui_config(raw)
+	_expect(errors.is_empty(), "battle reward ui config should pass validator")
+	var settlement: Dictionary = reg.get_battle_reward_ui_layout("settlement")
+	_expect(float(settlement.get("panel_width", 0)) > 0.0, "settlement panel width should come from config")
+	var relic_card: Dictionary = reg.get_battle_reward_card_layout("relic")
+	_expect(float(relic_card.get("height", 0)) > 0.0, "relic card height should come from config")
+	var invalid := {
+		"settlement": {
+			"canvas_layer": 78,
+			"panel_width": 0,
+		},
+		"reward_overlay": {
+			"canvas_layer": 80,
+			"content_separation": 16,
+			"card_separation": 20,
+			"scroll_max_width": 440,
+			"scroll_viewport_ratio": 1.5,
+			"scroll_hover_pad": 12,
+			"scroll_bar_reserve": 18,
+			"scroll_edge_pad": 8,
+			"action_button_width": 160,
+			"action_button_height": 40,
+			"fallback_viewport_width": 1280,
+		},
+		"cards": {},
+	}
+	var invalid_errors := AdventureConfigValidator.validate_battle_reward_ui_config(invalid)
+	_expect(_contains_error(invalid_errors, "battle_reward_ui_config.settlement.panel_width should be positive"), "ui config should reject non-positive layout values")
+	_expect(_contains_error(invalid_errors, "battle_reward_ui_config.reward_overlay.scroll_viewport_ratio should be in (0, 1]"), "ui config should reject invalid viewport ratio")
+	print("  [OK] battle reward ui config")
 
 
 func _test_player_copy_numeric_tokens() -> void:

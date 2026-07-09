@@ -1,0 +1,55 @@
+{
+  "settlement": {
+    "canvas_layer": 78,
+    "panel_width": 480,
+    "panel_margin": 28,
+    "content_separation": 14,
+    "row_separation": 10,
+    "row_width": 420,
+    "row_height": 54,
+    "row_action_width": 96,
+    "row_action_height": 40,
+    "continue_button_width": 280,
+    "continue_button_height": 46
+  },
+  "reward_overlay": {
+    "canvas_layer": 80,
+    "content_separation": 16,
+    "card_separation": 20,
+    "scroll_max_width": 1080,
+    "scroll_viewport_ratio": 0.92,
+    "scroll_hover_pad": 8,
+    "scroll_bar_reserve": 18,
+    "scroll_edge_pad": 8,
+    "action_button_width": 160,
+    "action_button_height": 40,
+    "fallback_viewport_width": 1280
+  },
+  "cards": {
+    "relic": {
+      "width": 168,
+      "height": 252,
+      "desc_width": 148,
+      "desc_height": 72,
+      "icon_size": 48,
+      "pick_button_height": 40
+    },
+    "gem": {
+      "width": 160,
+      "height": 200,
+      "icon_size": 48,
+      "pick_button_height": 40
+    },
+    "dropped_gem": {
+      "width": 160,
+      "height": 210,
+      "icon_size": 48,
+      "pick_button_height": 40
+    },
+    "slot_embed": {
+      "width": 150,
+      "height": 170,
+      "pick_button_height": 40
+    }
+  }
+}

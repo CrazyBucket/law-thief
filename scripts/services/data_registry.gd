@@ -60,6 +60,7 @@ var _gem_teaching_boosts: Dictionary = {}
 var _relic_numeric_refs: Dictionary = {}
 var _relic_source_weights: Dictionary = {}
 var _reward_offer_config: Dictionary = {}
+var _battle_reward_ui_config: Dictionary = {}
 var _enemy_slot_curves: Dictionary = {}
 var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
@@ -80,6 +81,7 @@ func _ready() -> void:
 	_load_relic_source_weights_from_json()
 	_validate_shop_pools_source_refs()
 	_load_reward_offer_config_from_json()
+	_load_battle_reward_ui_config_from_json()
 	_load_enemy_slot_curves_from_json()
 	_load_unit_defs_from_json()
 	_load_encounters_from_json()
@@ -611,6 +613,20 @@ func get_battle_relic_offer_source(room_type: String) -> String:
 
 func get_battle_relic_offer_count(room_type: String) -> int:
 	return maxi(0, int(get_battle_reward_offer_config(room_type).get("relic_offer_count", 0)))
+
+
+func get_battle_reward_ui_layout(section: String) -> Dictionary:
+	var section_value: Variant = _battle_reward_ui_config.get(section, {})
+	return section_value if section_value is Dictionary else {}
+
+
+func get_battle_reward_ui_number(section: String, key: String) -> float:
+	return float(get_battle_reward_ui_layout(section).get(key, 0))
+
+
+func get_battle_reward_card_layout(card_kind: String) -> Dictionary:
+	var card_value: Variant = get_battle_reward_ui_layout("cards").get(card_kind, {})
+	return card_value if card_value is Dictionary else {}
 
 
 func get_enemy_total_slot_weights(room_type: String, chapter: int) -> Array[float]:
@@ -1795,6 +1811,19 @@ func _load_reward_offer_config_from_json() -> void:
 		AdventureConfigValidator.validate_reward_offer_config(raw, _key_set(get_relic_source_ids()))
 	)
 	_reward_offer_config = raw.duplicate(true)
+
+
+func _load_battle_reward_ui_config_from_json() -> void:
+	var path := "res://resources/ui/battle_reward_ui_config.json"
+	if not FileAccess.file_exists(path):
+		AdventureConfigValidator.ensure_valid(path, ["battle_reward_ui_config file missing"])
+		return
+	var raw := _read_json_file(path)
+	AdventureConfigValidator.ensure_valid(
+		path,
+		AdventureConfigValidator.validate_battle_reward_ui_config(raw)
+	)
+	_battle_reward_ui_config = raw.duplicate(true)
 
 
 func _validate_shop_pools_source_refs() -> void:

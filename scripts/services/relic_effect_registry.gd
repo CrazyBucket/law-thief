@@ -109,7 +109,7 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 				continue
 			var val: Variant = _eval_modifier_entry(relic_id, effect, state, ctx)
 			if is_bool:
-				if val == true:
+				if bool(val):
 					bool_result = true
 			elif is_mult:
 				mult_result *= float(val)

@@ -1160,8 +1160,9 @@ func _open_battle_settlement() -> void:
 
 
 func _build_settlement_overlay() -> Node:
+	var settlement := DataRegistry.get_battle_reward_ui_layout("settlement")
 	var canvas := CanvasLayer.new()
-	canvas.layer = 78
+	canvas.layer = int(settlement.get("canvas_layer", 0))
 
 	var root_ctrl := Control.new()
 	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1182,16 +1183,17 @@ func _build_settlement_overlay() -> Node:
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.TEXT_GOLD))
-	panel.custom_minimum_size = Vector2(480, 0)
+	panel.custom_minimum_size = Vector2(float(settlement.get("panel_width", 0)), 0)
 	center.add_child(panel)
 
 	var margin := MarginContainer.new()
+	var panel_margin := int(settlement.get("panel_margin", 0))
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_%s" % side, 28)
+		margin.add_theme_constant_override("margin_%s" % side, panel_margin)
 	panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
+	vbox.add_theme_constant_override("separation", int(settlement.get("content_separation", 0)))
 	margin.add_child(vbox)
 
 	var title := Label.new()
@@ -1212,15 +1214,20 @@ func _build_settlement_overlay() -> Node:
 	vbox.add_child(sep)
 
 	_settlement_rows_box = VBoxContainer.new()
-	_settlement_rows_box.add_theme_constant_override("separation", 10)
+	_settlement_rows_box.add_theme_constant_override("separation", int(settlement.get("row_separation", 0)))
 	vbox.add_child(_settlement_rows_box)
 
+	var continue_wrap := CenterContainer.new()
 	var continue_btn := Button.new()
 	continue_btn.text = _settlement_continue_label()
-	continue_btn.custom_minimum_size = Vector2(0, 46)
+	continue_btn.custom_minimum_size = Vector2(
+		float(settlement.get("continue_button_width", 0)),
+		float(settlement.get("continue_button_height", 0))
+	)
 	BattleUiTheme.apply_button(continue_btn, "end")
 	continue_btn.pressed.connect(_on_settlement_continue)
-	vbox.add_child(continue_btn)
+	continue_wrap.add_child(continue_btn)
+	vbox.add_child(continue_wrap)
 
 	_refresh_settlement_rows()
 	_animate_panel_in(panel)
@@ -1322,9 +1329,13 @@ func _refresh_settlement_rows(play_intro: bool = true) -> void:
 
 
 func _build_settlement_row(label_text: String, value_text: String, action_text: String, value_color: Color, action_cb: Callable, icon_tex: Texture2D) -> Control:
+	var settlement := DataRegistry.get_battle_reward_ui_layout("settlement")
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
-	row.custom_minimum_size = Vector2(420, 54)
+	row.custom_minimum_size = Vector2(
+		float(settlement.get("row_width", 0)),
+		float(settlement.get("row_height", 0))
+	)
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 10)
@@ -1358,7 +1369,10 @@ func _build_settlement_row(label_text: String, value_text: String, action_text: 
 	if not action_text.is_empty() and action_cb.is_valid():
 		var btn := Button.new()
 		btn.text = action_text
-		btn.custom_minimum_size = Vector2(96, 40)
+		btn.custom_minimum_size = Vector2(
+			float(settlement.get("row_action_width", 0)),
+			float(settlement.get("row_action_height", 0))
+		)
 		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		BattleUiTheme.apply_button(btn, "end")
 		btn.pressed.connect(action_cb)
@@ -1369,6 +1383,124 @@ func _build_settlement_row(label_text: String, value_text: String, action_text: 
 		hbox.add_child(spacer)
 
 	return row
+
+
+func _reward_overlay_viewport_cap() -> float:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var viewport_w := float(layout.get("fallback_viewport_width", 0))
+	if is_inside_tree():
+		viewport_w = get_viewport_rect().size.x
+	var ratio := float(layout.get("scroll_viewport_ratio", 0))
+	var max_w := float(layout.get("scroll_max_width", 0))
+	return minf(viewport_w * ratio, max_w)
+
+
+func _reward_cards_row_metrics(cards_row: HBoxContainer) -> Dictionary:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var separation := float(layout.get("card_separation", 0))
+	var content_w := 0.0
+	var content_h := 0.0
+	var count := cards_row.get_child_count()
+	for i in range(count):
+		var ctrl := cards_row.get_child(i) as Control
+		if ctrl == null:
+			continue
+		var sz := ctrl.custom_minimum_size
+		if sz.x <= 0.0 or sz.y <= 0.0:
+			sz = ctrl.get_combined_minimum_size()
+		content_w += sz.x
+		content_h = maxf(content_h, sz.y)
+	if count > 1:
+		content_w += separation * float(count - 1)
+	return {
+		"content_width": content_w,
+		"content_height": content_h,
+	}
+
+
+func _reward_overlay_scroll_metrics(cards_row: HBoxContainer) -> Dictionary:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var row := _reward_cards_row_metrics(cards_row)
+	var content_w: float = row.get("content_width", 0.0)
+	var content_h: float = row.get("content_height", 0.0)
+	var viewport_cap := _reward_overlay_viewport_cap()
+	var edge_pad := float(layout.get("scroll_edge_pad", 0))
+	var padded_w := content_w + edge_pad * 2.0
+	var needs_h_scroll := padded_w > viewport_cap + 0.5
+	var scroll_w := viewport_cap if needs_h_scroll else padded_w
+	var hover_pad := float(layout.get("scroll_hover_pad", 0))
+	var bar_reserve := float(layout.get("scroll_bar_reserve", 0))
+	var scroll_h := content_h + hover_pad + (bar_reserve if needs_h_scroll else 0.0)
+	return {
+		"size": Vector2(scroll_w, scroll_h),
+		"width": scroll_w,
+		"needs_horizontal_scroll": needs_h_scroll,
+	}
+
+
+func _wrap_reward_cards_scroll(cards_row: HBoxContainer, metrics: Dictionary) -> ScrollContainer:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var edge_pad := int(layout.get("scroll_edge_pad", 0))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = metrics.get("size", Vector2.ZERO)
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	if bool(metrics.get("needs_horizontal_scroll", false)):
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	else:
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", edge_pad)
+	margin.add_theme_constant_override("margin_right", edge_pad)
+	margin.add_child(cards_row)
+	scroll.add_child(margin)
+	return scroll
+
+
+func _build_reward_overlay_action_button(text: String, pressed_cb: Callable, scroll_width: float) -> Control:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var action_wrap := CenterContainer.new()
+	action_wrap.custom_minimum_size = Vector2(scroll_width, 0)
+	var btn := Button.new()
+	btn.text = text
+	btn.custom_minimum_size = Vector2(
+		float(layout.get("action_button_width", 0)),
+		float(layout.get("action_button_height", 0))
+	)
+	BattleUiTheme.apply_button(btn, "ghost")
+	btn.pressed.connect(pressed_cb)
+	action_wrap.add_child(btn)
+	return action_wrap
+
+
+func _begin_reward_overlay_shell(layer: int) -> Dictionary:
+	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var canvas := CanvasLayer.new()
+	canvas.layer = layer
+
+	var root_ctrl := Control.new()
+	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.theme = BattleUiTheme.build_theme()
+	canvas.add_child(root_ctrl)
+
+	var bg := ColorRect.new()
+	bg.color = Color(UiPalette.BG_DEEP, 0.82)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(bg)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_ctrl.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", int(layout.get("content_separation", 0)))
+	center.add_child(vbox)
+
+	return {
+		"canvas": canvas,
+		"root_ctrl": root_ctrl,
+		"vbox": vbox,
+	}
 
 
 ## 卡片/行入场在包裹节点内做位移，避开 HBox/VBox 对 position 的接管。
@@ -1706,26 +1838,9 @@ func _has_pending_dropped_gem_reward() -> bool:
 
 
 func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Array[String], battle_result: String) -> Node:
-	var canvas := CanvasLayer.new()
-	canvas.layer = 80
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.82)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
-	center.add_child(vbox)
+	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var vbox: VBoxContainer = frame["vbox"]
 
 	var title := Label.new()
 	title.text = "选择一颗掉落宝石嵌入"
@@ -1735,36 +1850,36 @@ func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Ar
 	vbox.add_child(title)
 
 	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(cards_row)
-
+	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
 	var cards: Array[Control] = []
 	for drop in dropped_gems:
-		var card := _build_dropped_gem_card(drop, battle_result, relic_offer, canvas)
+		var card := _build_dropped_gem_card(drop, battle_result, relic_offer, frame["canvas"])
 		cards_row.add_child(card)
 		cards.append(card)
+	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
+	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
 	_animate_cards_in(cards, {"hover": true})
 
-	var skip_btn := Button.new()
-	skip_btn.text = "不嵌入"
-	skip_btn.custom_minimum_size = Vector2(140, 40)
-	BattleUiTheme.apply_button(skip_btn, "ghost")
-	skip_btn.pressed.connect(func() -> void:
-		_on_dropped_gem_insert_skipped(battle_result, relic_offer, canvas)
-	)
-	vbox.add_child(skip_btn)
+	var skip_width := float(scroll_metrics.get("width", 0.0))
+	var on_skip := func() -> void:
+		_on_dropped_gem_insert_skipped(battle_result, relic_offer, frame["canvas"])
+	vbox.add_child(_build_reward_overlay_action_button("不嵌入", on_skip, skip_width))
 
-	return canvas
+	return frame["canvas"]
 
 
 func _build_dropped_gem_card(drop: Dictionary, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
+	var card_layout := DataRegistry.get_battle_reward_card_layout("dropped_gem")
 	var gem_uid := str(drop.get("gem_uid", ""))
 	var gem_id := str(drop.get("gem_id", ""))
 	var panel := PanelContainer.new()
 	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
 	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(160, 210)
+	panel.custom_minimum_size = Vector2(
+		float(card_layout.get("width", 0)),
+		float(card_layout.get("height", 0))
+	)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -1781,7 +1896,8 @@ func _build_dropped_gem_card(drop: Dictionary, battle_result: String, relic_offe
 		icon.texture = icon_tex
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		icon.self_modulate = UnitLooks.gem_sprite_modulate(dummy_gem)
-		icon.custom_minimum_size = Vector2(48, 48)
+		var icon_size := float(card_layout.get("icon_size", 0))
+		icon.custom_minimum_size = Vector2(icon_size, icon_size)
 		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		vb.add_child(icon)
@@ -1804,7 +1920,7 @@ func _build_dropped_gem_card(drop: Dictionary, battle_result: String, relic_offe
 
 	var pick_btn := Button.new()
 	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(0, 40)
+	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
 	BattleUiTheme.apply_button(pick_btn, "end")
 	pick_btn.pressed.connect(func() -> void:
 		_on_dropped_gem_selected_for_insert(gem_uid, battle_result, relic_offer, canvas)
@@ -1830,26 +1946,10 @@ func _on_dropped_gem_selected_for_insert(gem_uid: String, battle_result: String,
 
 
 func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, relic_offer: Array[String]) -> Node:
-	var canvas := CanvasLayer.new()
-	canvas.layer = 80
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.82)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
-	center.add_child(vbox)
+	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var vbox: VBoxContainer = frame["vbox"]
+	var canvas: Node = frame["canvas"]
 
 	var gem: GemState = _controller.state.gems.get(gem_uid, null)
 	var title := Label.new()
@@ -1860,35 +1960,38 @@ func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, rel
 	vbox.add_child(title)
 
 	var slots_row := HBoxContainer.new()
-	slots_row.add_theme_constant_override("separation", 16)
-	vbox.add_child(slots_row)
-
+	slots_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
 	var player := _controller.state.get_player()
 	if player != null:
 		for slot_index in range(player.slots.size()):
 			slots_row.add_child(_build_player_slot_embed_card(gem_uid, slot_index, battle_result, relic_offer, canvas))
+	var scroll_metrics := _reward_overlay_scroll_metrics(slots_row)
+	vbox.add_child(_wrap_reward_cards_scroll(slots_row, scroll_metrics))
 
-	var cancel_btn := Button.new()
-	cancel_btn.text = "返回"
-	cancel_btn.custom_minimum_size = Vector2(140, 40)
-	BattleUiTheme.apply_button(cancel_btn, "ghost")
-	cancel_btn.pressed.connect(func() -> void:
+	var back_width := float(scroll_metrics.get("width", 0.0))
+	var on_back := func() -> void:
 		if canvas != null and is_instance_valid(canvas):
 			canvas.queue_free()
-		_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
-	)
-	vbox.add_child(cancel_btn)
+		if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+			_open_settlement_gem()
+		else:
+			_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
+	vbox.add_child(_build_reward_overlay_action_button("返回", on_back, back_width))
 
 	return canvas
 
 
 func _build_player_slot_embed_card(gem_uid: String, slot_index: int, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
+	var card_layout := DataRegistry.get_battle_reward_card_layout("slot_embed")
 	var player := _controller.state.get_player()
 	var slot: SlotState = player.get_slot_by_index(slot_index) if player != null else null
 	var color := UnitLooks.slot_color(slot.slot_type if slot != null else "")
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(color))
-	panel.custom_minimum_size = Vector2(150, 170)
+	panel.custom_minimum_size = Vector2(
+		float(card_layout.get("width", 0)),
+		float(card_layout.get("height", 0))
+	)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -1916,7 +2019,7 @@ func _build_player_slot_embed_card(gem_uid: String, slot_index: int, battle_resu
 
 	var insert_btn := Button.new()
 	insert_btn.text = "嵌入"
-	insert_btn.custom_minimum_size = Vector2(0, 40)
+	insert_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
 	BattleUiTheme.apply_button(insert_btn, "end")
 	insert_btn.disabled = slot == null
 	insert_btn.pressed.connect(func() -> void:
@@ -1939,26 +2042,9 @@ func _slot_display_name(slot_type: String) -> String:
 
 
 func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> Node:
-	var canvas := CanvasLayer.new()
-	canvas.layer = 80
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.82)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
-	center.add_child(vbox)
+	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var vbox: VBoxContainer = frame["vbox"]
 
 	var title := Label.new()
 	title.text = "选择宝石"
@@ -1968,36 +2054,36 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 	vbox.add_child(title)
 
 	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(cards_row)
-
+	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
 	var cards: Array[Control] = []
 	for gem_id in gem_offer:
 		if gem_id.is_empty():
 			continue
-		var card := _build_gem_card(gem_id, battle_result, relic_offer, canvas)
+		var card := _build_gem_card(gem_id, battle_result, relic_offer, frame["canvas"])
 		cards_row.add_child(card)
 		cards.append(card)
+	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
+	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
 
-	var skip_btn := Button.new()
-	skip_btn.text = "跳过"
-	skip_btn.custom_minimum_size = Vector2(140, 40)
-	BattleUiTheme.apply_button(skip_btn, "ghost")
-	skip_btn.pressed.connect(func() -> void:
-		_on_gem_chosen("", battle_result, relic_offer, canvas)
-	)
-	vbox.add_child(skip_btn)
+	var skip_width := float(scroll_metrics.get("width", 0.0))
+	var on_skip := func() -> void:
+		_on_gem_chosen("", battle_result, relic_offer, frame["canvas"])
+	vbox.add_child(_build_reward_overlay_action_button("跳过", on_skip, skip_width))
 
 	_animate_cards_in(cards, {"hover": true})
-	return canvas
+	return frame["canvas"]
 
 
 func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
+	var card_layout := DataRegistry.get_battle_reward_card_layout("gem")
 	var panel := PanelContainer.new()
 	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
 	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(160, 200)
+	panel.custom_minimum_size = Vector2(
+		float(card_layout.get("width", 0)),
+		float(card_layout.get("height", 0))
+	)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -2012,7 +2098,8 @@ func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[S
 		icon.texture = icon_tex
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		icon.self_modulate = UnitLooks.gem_sprite_modulate(dummy_gem)
-		icon.custom_minimum_size = Vector2(48, 48)
+		var icon_size := float(card_layout.get("icon_size", 0))
+		icon.custom_minimum_size = Vector2(icon_size, icon_size)
 		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		vb.add_child(icon)
@@ -2041,7 +2128,7 @@ func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[S
 
 	var pick_btn := Button.new()
 	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(0, 40)
+	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
 	BattleUiTheme.apply_button(pick_btn, "end")
 	pick_btn.pressed.connect(func() -> void:
 		_on_gem_chosen(gem_id, battle_result, relic_offer, canvas)
@@ -2112,11 +2199,14 @@ func _on_dropped_gem_slot_chosen(gem_uid: String, slot_index: int, battle_result
 
 
 func _on_dropped_gem_insert_skipped(battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
-	if _controller != null and _controller.state != null:
-		_controller.state.battle_temp_flags["dropped_gem_reward_handled"] = true
 	if canvas != null and is_instance_valid(canvas):
 		canvas.queue_free()
 	_relic_reward_overlay = null
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_return_to_settlement()
+		return
+	if _controller != null and _controller.state != null:
+		_controller.state.battle_temp_flags["dropped_gem_reward_handled"] = true
 	_continue_after_dropped_gem_embed(battle_result, relic_offer)
 
 
@@ -2147,40 +2237,22 @@ func _show_relic_reward(offer: Array[String], battle_result: String) -> void:
 
 
 func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
-	var canvas := CanvasLayer.new()
-	canvas.layer = 80
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.82)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
-	center.add_child(vbox)
+	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
+	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var vbox: VBoxContainer = frame["vbox"]
 
 	var is_no_relics := offer.size() == 1 and offer[0] == "relic_placeholder"
+	var accent: Color = BattleUiTheme.TEXT_MUTED if is_no_relics else BattleUiTheme.TEXT_GOLD
 
 	var title := Label.new()
 	title.text = "无可选遗物" if is_no_relics else "选择遗物"
 	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED if is_no_relics else BattleUiTheme.TEXT_GOLD)
+	title.add_theme_color_override("font_color", accent)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
 	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", 20)
-	vbox.add_child(cards_row)
-
+	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
 	var cards: Array[Control] = []
 	for relic_id in offer:
 		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
@@ -2188,26 +2260,28 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 		var card := _build_relic_card(relic_id, def, rarity, battle_result)
 		cards_row.add_child(card)
 		cards.append(card)
+	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
+	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
 
-	var skip_btn := Button.new()
-	skip_btn.text = "跳过"
-	skip_btn.custom_minimum_size = Vector2(140, 40)
-	BattleUiTheme.apply_button(skip_btn, "ghost")
-	skip_btn.pressed.connect(func() -> void:
-		_on_relic_chosen("", battle_result)
-	)
-	vbox.add_child(skip_btn)
+	var skip_width := float(scroll_metrics.get("width", 0.0))
+	var on_skip := func() -> void:
+		_on_relic_overlay_dismissed(battle_result)
+	vbox.add_child(_build_reward_overlay_action_button("跳过", on_skip, skip_width))
 
 	_animate_cards_in(cards, {"hover": true})
-	return canvas
+	return frame["canvas"]
 
 
 func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
+	var card_layout := DataRegistry.get_battle_reward_card_layout("relic")
 	var is_placeholder := bool(def.get("placeholder", false))
 	var panel := PanelContainer.new()
 	var rarity_color: Color = BattleUiTheme.TEXT_MUTED if is_placeholder else _hud_presenter.rarity_color(rarity)
 	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(180, 220)
+	panel.custom_minimum_size = Vector2(
+		float(card_layout.get("width", 0)),
+		float(card_layout.get("height", 0))
+	)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -2218,7 +2292,8 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 		var icon := TextureRect.new()
 		icon.texture = icon_tex
 		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(48, 48)
+		var icon_size := float(card_layout.get("icon_size", 0))
+		icon.custom_minimum_size = Vector2(icon_size, icon_size)
 		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		vb.add_child(icon)
@@ -2244,13 +2319,16 @@ func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle
 	desc_lbl.text = desc_text
 	desc_lbl.add_theme_font_size_override("normal_font_size", 12)
 	desc_lbl.add_theme_color_override("default_color", BattleUiTheme.TEXT_HINT)
-	desc_lbl.custom_minimum_size = Vector2(160, 80)
-	desc_lbl.fit_content = true
+	desc_lbl.custom_minimum_size = Vector2(
+		float(card_layout.get("desc_width", 0)),
+		float(card_layout.get("desc_height", 0))
+	)
+	desc_lbl.scroll_active = false
 	vb.add_child(desc_lbl)
 
 	var pick_btn := Button.new()
 	pick_btn.text = "收下" if is_placeholder else "选择"
-	pick_btn.custom_minimum_size = Vector2(0, 40)
+	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
 	BattleUiTheme.apply_button(pick_btn, "ghost" if is_placeholder else "end")
 	pick_btn.pressed.connect(func() -> void:
 		_on_relic_chosen("" if is_placeholder else relic_id, battle_result)
@@ -2270,14 +2348,24 @@ func _rarity_display_name(rarity: String) -> String:
 		_: return rarity
 
 
+func _on_relic_overlay_dismissed(battle_result: String) -> void:
+	if _relic_reward_overlay != null:
+		_relic_reward_overlay.queue_free()
+		_relic_reward_overlay = null
+	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
+		_return_to_settlement()
+		return
+	_on_relic_chosen("", battle_result)
+
+
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
 		if not relic_id.is_empty():
 			RunService.acquire_relic(relic_id)
+			_settlement_relic_pending = false
 		if _relic_reward_overlay != null:
 			_relic_reward_overlay.queue_free()
 			_relic_reward_overlay = null
-		_settlement_relic_pending = false
 		_return_to_settlement()
 		return
 	if _has_pending_dropped_gem_reward():
