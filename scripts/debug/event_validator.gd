@@ -114,6 +114,19 @@ static func _check_damage(ev: Dictionary, index: int, out: Array[String]) -> voi
 	var is_crit = ev.get("is_crit")
 	if is_crit != null and not is_crit is bool:
 		out.append("[%d] 'damage' event 'is_crit' must be bool, got: %s" % [index, str(is_crit)])
+	if ev.has("damage_tags"):
+		var tags: Variant = ev["damage_tags"]
+		if not tags is Array:
+			out.append("[%d] 'damage' event 'damage_tags' must be an Array" % index)
+		else:
+			var seen: Dictionary = {}
+			for raw_tag in tags:
+				if not raw_tag is String or str(raw_tag).is_empty():
+					out.append("[%d] 'damage' event has an invalid damage tag: %s" % [index, str(raw_tag)])
+					continue
+				if seen.has(raw_tag):
+					out.append("[%d] 'damage' event has duplicate damage tag: %s" % [index, raw_tag])
+				seen[raw_tag] = true
 
 
 static func _check_heal(ev: Dictionary, index: int, out: Array[String]) -> void:

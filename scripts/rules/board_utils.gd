@@ -2,15 +2,10 @@ class_name BoardUtils
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
 
 const _MIN_STEP_COST: float = 1.0
 const _FULL_PATH_BUDGET_FACTOR: float = 8.0
-const _DEFAULT_PATH_COST_PROFILE := {
-	"base_step_cost": 1.0,
-	"spike_damage_weight": 0.4,
-	"water_cost_bias": 0.0,
-	"allow_partial_path": true,
-}
 
 
 static func in_bounds(state: GameState, pos: Vector2i) -> bool:
@@ -116,7 +111,7 @@ static func is_passable(
 
 ## 生成寻路权重配置（可通过 overrides 覆盖）
 static func path_cost_profile(overrides: Dictionary = {}) -> Dictionary:
-	var profile: Dictionary = _DEFAULT_PATH_COST_PROFILE.duplicate(true)
+	var profile: Dictionary = AIProfiles.get_path_defaults()
 	for key in overrides.keys():
 		profile[key] = overrides[key]
 	return profile
@@ -125,21 +120,21 @@ static func path_cost_profile(overrides: Dictionary = {}) -> Dictionary:
 ## 获取地块移动代价（用于 A* 和 reachable_cells）
 ## 保留旧接口，兼容历史调用
 static func tile_move_cost(state: GameState, pos: Vector2i) -> float:
-	return _step_cost_with_profile(state, pos, _DEFAULT_PATH_COST_PROFILE)
+	return _step_cost_with_profile(state, pos, path_cost_profile())
 
 
 static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
-	var base_step: float = float(profile.get("base_step_cost", 1.0))
+	var base_step: float = float(profile["base_step_cost"])
 	var cost: float = base_step
 	var registry: Node = Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 	var tile_immune: bool = registry != null and bool(registry.query_modifier("tile_effect_immune", state))
 	var spike := spike_entity_at(state, pos)
 	if spike != null:
-		cost += float(CombatConfig.spike_damage()) * float(profile.get("spike_damage_weight", 2.0))
+		cost += float(CombatConfig.spike_damage()) * float(profile["spike_damage_weight"])
 	var tile: TileState = state.get_tile(pos)
 	# 水洼（含毒水洼）：移动消耗 +1；夜鹭翅膀免疫
 	if not tile_immune and (tile.has_ground_tag(Constants.GROUND_TAG_WATER) or tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE)):
-		var water_cost := 1.0 + float(profile.get("water_cost_bias", 0.0))
+		var water_cost := CombatConfig.water_move_cost_extra() + float(profile["water_cost_bias"])
 		if registry != null:
 			var reduce: int = int(registry.query_modifier("overlay_move_cost_reduction", state, {"overlay_type": "water"}))
 			water_cost = maxf(0.0, water_cost - float(reduce))
@@ -172,7 +167,7 @@ static func astar_path(
 	if from_pos == to_pos:
 		return [] as Array[Vector2i]
 	var profile := path_cost_profile(cost_profile)
-	var allow_partial: bool = bool(profile.get("allow_partial_path", true))
+	var allow_partial: bool = bool(profile["allow_partial_path"])
 	var use_footprint: bool = moving_unit != null and moving_unit.footprint_size != Vector2i(1, 1)
 
 	var open_set: Array[Vector2i] = [from_pos]
@@ -278,7 +273,7 @@ static func path_toward(
 	if bool(path_result.get("ok", false)):
 		var full_path: Array[Vector2i] = path_result.get("path", [] as Array[Vector2i])
 		return _trim_path_to_budget(state, full_path, max_steps, profile)
-	if not bool(profile.get("allow_partial_path", true)):
+	if not bool(profile["allow_partial_path"]):
 		return [] as Array[Vector2i]
 	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, profile, cell_blockers, moving_unit)
 
@@ -337,7 +332,7 @@ static func _best_full_path_toward(
 
 static func _full_path_budget(state: GameState, profile: Dictionary) -> int:
 	var cells := maxi(1, state.board_size.x * state.board_size.y)
-	var base_cost := maxf(1.0, float(profile.get("base_step_cost", 1.0)))
+	var base_cost := maxf(_MIN_STEP_COST, float(profile["base_step_cost"]))
 	return int(ceili(float(cells) * base_cost * _FULL_PATH_BUDGET_FACTOR))
 
 
@@ -600,9 +595,9 @@ static func can_unit_push_to(
 	return unit_footprint_passable(state, unit, new_anchor, unit.uid, cell_blockers)
 
 
-## 星状外扩落点搜索：以 origin 为震中，按距离 1→2 逐圈扫描合法空格
+## 星状外扩落点搜索：以 origin 为震中，扫描至配置的最大距离。
 ## 距离 1：先四正交（上/下/左/右），再四对角
-## 距离 2：外圈 12 格（按环形顺序）
+## 距离 2 及以上：每圈从上方中点开始顺时针扫描方形外环。
 ## ignore_uid：被腾挪单位自身，排除自占
 ## 返回第一个合法空格；若全堵死返回 origin
 static func find_star_relocation_cell(
@@ -610,6 +605,7 @@ static func find_star_relocation_cell(
 	origin: Vector2i,
 	ignore_uid: String = ""
 ) -> Dictionary:
+	var max_distance := CombatConfig.star_relocation_max_distance()
 	const _RING1: Array[Vector2i] = [
 		Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0),
 		Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1),
@@ -620,20 +616,29 @@ static func find_star_relocation_cell(
 			continue
 		if is_passable(state, candidate, ignore_uid):
 			return {"found": true, "pos": candidate, "dist": 1}
-	const _RING2: Array[Vector2i] = [
-		Vector2i(0, -2), Vector2i(1, -2), Vector2i(2, -2),
-		Vector2i(2, -1), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2),
-		Vector2i(1, 2), Vector2i(0, 2), Vector2i(-1, 2), Vector2i(-2, 2),
-		Vector2i(-2, 1), Vector2i(-2, 0), Vector2i(-2, -1), Vector2i(-2, -2),
-		Vector2i(-1, -2),
-	]
-	for offset in _RING2:
-		var candidate := origin + offset
-		if not in_bounds(state, candidate):
-			continue
-		if is_passable(state, candidate, ignore_uid):
-			return {"found": true, "pos": candidate, "dist": 2}
-	return {"found": false, "pos": origin, "dist": 0}
+	for distance in range(2, max_distance + 1):
+		for offset in _star_relocation_ring(distance):
+			var candidate := origin + offset
+			if not in_bounds(state, candidate):
+				continue
+			if is_passable(state, candidate, ignore_uid):
+				return {"found": true, "pos": candidate, "dist": distance}
+	return {"found": false, "pos": origin, "dist": 0, "max_dist": max_distance}
+
+
+static func _star_relocation_ring(distance: int) -> Array[Vector2i]:
+	var offsets: Array[Vector2i] = [Vector2i(0, -distance)]
+	for x in range(1, distance + 1):
+		offsets.append(Vector2i(x, -distance))
+	for y in range(-distance + 1, distance + 1):
+		offsets.append(Vector2i(distance, y))
+	for x in range(distance - 1, -distance - 1, -1):
+		offsets.append(Vector2i(x, distance))
+	for y in range(distance - 1, -distance - 1, -1):
+		offsets.append(Vector2i(-distance, y))
+	for x in range(-distance + 1, 0):
+		offsets.append(Vector2i(x, -distance))
+	return offsets
 
 
 ## 旧接口保留兼容：贪心单步（仅 pull 技能等内部使用）

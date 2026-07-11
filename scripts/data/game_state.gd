@@ -120,13 +120,15 @@ func purge_dead_controllable() -> void:
 	)
 
 
-## 收集同一原体下的存活玩家分身
+## 收集同一原体下的存活玩家死亡分身；蓝槽临时分身不进入接班/合并流程。
 func get_alive_split_clones(origin_uid: String) -> Array[UnitState]:
 	var clones: Array[UnitState] = []
 	for unit in units.values():
 		if not unit.alive or unit.team != Constants.TEAM_PLAYER:
 			continue
 		if not unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			continue
+		if unit.has_tag(Constants.TAG_UNIT_SPLIT_BLUE_TEMP_CLONE):
 			continue
 		if unit.split_origin_uid != origin_uid:
 			continue

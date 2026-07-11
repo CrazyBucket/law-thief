@@ -2,6 +2,7 @@ class_name EnemyAI
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 
 ## 分值评估系统 (Utility AI)
 ## 核心思路：遍历所有合法行动 → 模拟执行 → 打分 → 选最高分
@@ -33,15 +34,18 @@ static func make_candidate() -> ActionCandidate:
 	return ActionCandidate.new()
 
 
-# ─── 辅助：从 profile 字典安全取 float ─────────────────────────────────────
-static func _w(profile: Dictionary, key: String, fallback: float = 0.0) -> float:
-	return float(profile.get(key, fallback))
-
-
-static func _t(profile: Dictionary, key: String, fallback: float = 0.0) -> float:
+# ─── 辅助：从已校验并合成的 profile 字典取值 ──────────────────────────────────
+static func _w(profile: Dictionary, key: String) -> float:
 	if profile.has(key):
-		return float(profile.get(key, fallback))
-	return float(AIProfiles.get_tuning_value(key, fallback))
+		return float(profile[key])
+	push_error("EnemyAI: required profile value missing: %s" % key)
+	return 0.0
+
+
+static func _t(profile: Dictionary, key: String) -> float:
+	if profile.has(key):
+		return float(profile[key])
+	return float(AIProfiles.get_tuning_value(key))
 
 
 # ─── 主入口：为一个敌人生成最优行动 ─────────────────────────────────────────
@@ -116,12 +120,12 @@ static func _generate_all_candidates(
 		# --- 在每个可达位置评估可执行的行动 ---
 
 		# 1. 近战攻击
-		if profile.get("ranged_only", false):
+		if bool(profile["ranged_only"]):
 			pass
 		else:
 			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(attack_candidates)
-		if profile.get("can_ranged_attack", false) and not GemEffects.unit_has_red_split(state, enemy):
+		if bool(profile["can_ranged_attack"]) and not GemEffects.unit_has_red_split(state, enemy):
 			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, move_pos, profile)
 			candidates.append_array(ranged_candidates)
 
@@ -137,7 +141,7 @@ static func _generate_all_candidates(
 	var wait := ActionCandidate.new()
 	wait.type = ActionType.WAIT
 	wait.move_target = enemy.pos
-	wait.score = _w(profile, "wait_score", -10.0)
+	wait.score = _w(profile, "wait_score")
 	wait.description = "等待"
 	candidates.append(wait)
 
@@ -162,16 +166,16 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 	candidate.action_target_uid = player.uid
 
 	# 打分
-	var damage_dealt: int = CombatRules.attack_damage(state, enemy)
-	var score: float = float(damage_dealt) * _w(profile, "w_damage", 10.0)
+	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, player)
+	var score: float = float(damage_dealt) * _w(profile, "w_damage")
 
 	# 击杀加分
 	if player.hp <= damage_dealt:
-		score += _w(profile, "w_kill_player", 200.0)
+		score += _w(profile, "w_kill_player")
 
 	# 距离惩罚（移动越远扣分越少，鼓励靠近攻击）
 	var move_dist: int = BoardUtils.manhattan(enemy.pos, from_pos)
-	score -= float(move_dist) * _w(profile, "w_move_cost", 0.5)
+	score -= float(move_dist) * _w(profile, "w_move_cost")
 
 	# 自身安全评估：移动后是否踩到危险地块
 	score += _evaluate_tile_safety(state, from_pos, profile)
@@ -203,15 +207,15 @@ static func _evaluate_ranged_attacks_from(
 	candidate.type = ActionType.RANGED_ATTACK
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var damage_dealt: int = CombatRules.attack_damage(state, enemy)
-	var score: float = float(damage_dealt) * _w(profile, "w_damage", 10.0)
+	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, player)
+	var score: float = float(damage_dealt) * _w(profile, "w_damage")
 	if player.hp <= damage_dealt:
-		score += _w(profile, "w_kill_player", 200.0)
+		score += _w(profile, "w_kill_player")
 	var move_dist: int = BoardUtils.manhattan(enemy.pos, from_pos)
-	score -= float(move_dist) * _w(profile, "w_move_cost", 0.5)
+	score -= float(move_dist) * _w(profile, "w_move_cost")
 	score += _evaluate_tile_safety(state, from_pos, profile)
-	if profile.get("prefer_distance", false):
-		score += float(dist) * _w(profile, "w_keep_distance", 3.0) * _t(profile, "ranged_keep_distance_scale", 0.3)
+	if bool(profile["prefer_distance"]):
+		score += float(dist) * _w(profile, "w_keep_distance") * _t(profile, "ranged_keep_distance_scale")
 	candidate.score = score
 	var range_label := str(max_range)
 	candidate.description = "在%s远程射击(%s格)" % [str(from_pos), range_label]
@@ -278,10 +282,12 @@ static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var damage: int = CombatConfig.explosion_cross_damage()
-	candidate.score = float(damage) * _w(profile, "w_damage", 10.0)
+	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
+	if damage <= 0:
+		return results
+	candidate.score = float(damage) * _w(profile, "w_damage")
 	if player.hp <= damage:
-		candidate.score += _w(profile, "w_kill_player", 200.0)
+		candidate.score += _w(profile, "w_kill_player")
 	candidate.score += _evaluate_tile_safety(state, from_pos, profile)
 	candidate.description = "爆炸攻击"
 	results.append(candidate)
@@ -303,18 +309,18 @@ static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos:
 
 	var score: float = 0.0
 	if dist_to_player <= CombatConfig.explosion_radius():
-		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage", 10.0) * _t(profile, "explosion_adjacent_bonus_mult", 2.0)
+		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage") * _t(profile, "explosion_adjacent_bonus_mult")
 	elif dist_to_player <= max_threat_range:
-		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage", 10.0)
+		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage")
 
-	score += _w(profile, "w_self_sacrifice", 0.0)
+	score += _w(profile, "w_self_sacrifice")
 
 	# 友军误伤扣分
 	for cell in BoardUtils.cells_in_radius(player.pos, CombatConfig.explosion_radius()):
 		var unit: UnitState = state.get_unit_at(cell)
 		if unit != null and unit.alive:
 			if unit.team == Constants.TEAM_ENEMY and unit.uid != enemy.uid:
-				score -= _w(profile, "w_friendly_fire", 30.0)
+				score -= _w(profile, "w_friendly_fire")
 
 	candidate.score = score
 	candidate.description = "冲刺爆炸"
@@ -335,16 +341,16 @@ static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 
-	var score: float = _w(profile, "w_pull", 15.0) + _t(profile, "pull_base_bonus", 8.0)
+	var score: float = _w(profile, "w_pull") + _t(profile, "pull_base_bonus")
 	# 拉到危险地块加分
 	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
 	if BoardUtils.spike_entity_at(state, pull_dest) != null:
-		score += float(CombatConfig.spike_damage()) * _w(profile, "w_damage", 10.0)
+		score += float(CombatConfig.spike_damage()) * _w(profile, "w_damage")
 	var pull_tile: TileState = state.get_tile(pull_dest)
 	if pull_tile.has_modifier("poison_fog"):
-		score += _w(profile, "w_damage", 10.0) * _t(profile, "pull_damage_bonus_mult", 0.5)
+		score += _w(profile, "w_damage") * _t(profile, "pull_damage_bonus_mult")
 	# 引力会附带束缚，距离越远价值越高
-	score += float(dist) * _t(profile, "pull_distance_score_mult", 1.2)
+	score += float(dist) * _t(profile, "pull_distance_score_mult")
 
 	candidate.score = score
 	candidate.description = "引力拉近(%d格)" % max_range
@@ -363,8 +369,8 @@ static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Ve
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_poison", 8.0)  # 附加中毒价值
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
+	score += _w(profile, "w_poison")  # 附加中毒价值
 
 	candidate.score = score
 	candidate.description = "毒攻击"
@@ -381,12 +387,12 @@ static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
 	var base := float(CombatRules.attack_damage(state, enemy))
-	var score: float = base * _w(profile, "w_damage", 10.0)
+	var score: float = base * _w(profile, "w_damage")
 	for unit in state.units.values():
 		if not unit.alive or unit.team == player.team or unit.uid == player.uid:
 			continue
 		if BoardUtils.chebyshev(player.pos, unit.pos) <= CombatConfig.arc_chain_range():
-			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage", 10.0) * _t(profile, "arc_chain_bonus_mult", 0.5)
+			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage") * _t(profile, "arc_chain_bonus_mult")
 	candidate.score = score
 	candidate.description = "电击"
 	results.append(candidate)
@@ -401,8 +407,8 @@ static func _score_fire_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_status", 6.0)
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
+	score += _w(profile, "w_status")
 	candidate.score = score
 	candidate.description = "烈焰攻击"
 	results.append(candidate)
@@ -417,8 +423,8 @@ static func _score_ice_skill(state: GameState, enemy: UnitState, from_pos: Vecto
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_status", 6.0)
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
+	score += _w(profile, "w_status")
 	candidate.score = score
 	candidate.description = "寒冰攻击"
 	results.append(candidate)
@@ -434,8 +440,10 @@ static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var base := float(CombatRules.attack_damage(state, enemy)) * CombatConfig.split_attack_damage_ratio()
-	var score: float = base * _w(profile, "w_damage", 10.0)
+	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
+	if damage <= 0:
+		return results
+	var score: float = float(damage) * _w(profile, "w_damage")
 	candidate.score = score
 	candidate.description = "分裂攻击"
 	results.append(candidate)
@@ -451,12 +459,31 @@ static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vec
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * 0.5 * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_status", 6.0)
+	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
+	if damage <= 0:
+		return results
+	var score: float = float(damage) * _w(profile, "w_damage")
+	score += _w(profile, "w_status")
 	candidate.score = score
 	candidate.description = "光束"
 	results.append(candidate)
 	return results
+
+
+static func _previewed_red_damage_to(
+	state: GameState,
+	enemy: UnitState,
+	from_pos: Vector2i,
+	target: UnitState
+) -> int:
+	var preview := IntentPreviewRules.build_red_attack_profile(
+		state,
+		enemy,
+		from_pos,
+		target.pos,
+		CombatRules.attack_damage(state, enemy)
+	)
+	return IntentPreviewRules.predicted_raw_damage_to(preview, target.uid)
 
 
 static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
@@ -467,8 +494,8 @@ static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: V
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_status", 6.0)
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
+	score += _w(profile, "w_status")
 	candidate.score = score
 	candidate.description = "反击"
 	results.append(candidate)
@@ -485,8 +512,8 @@ static func _score_echo_skill(state: GameState, enemy: UnitState, from_pos: Vect
 	candidate.type = ActionType.SKILL_RED
 	candidate.move_target = from_pos
 	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage", 10.0)
-	score += _w(profile, "w_status", 6.0)
+	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
+	score += _w(profile, "w_status")
 	candidate.score = score
 	candidate.description = "回响"
 	results.append(candidate)
@@ -506,7 +533,7 @@ static func _evaluate_move_only(
 	if player == null:
 		return results
 
-	if profile.get("prefer_distance", false):
+	if bool(profile["prefer_distance"]):
 		return _evaluate_move_kiting(state, enemy, reachable, profile, cell_blockers)
 
 	var current_dist := BoardUtils.path_distance_to_cell(
@@ -537,8 +564,8 @@ static func _evaluate_move_only(
 				var candidate := ActionCandidate.new()
 				candidate.type = ActionType.MOVE
 				candidate.move_target = planned_pos
-				var progress := maxf(_t(profile, "approach_progress_floor", 0.25), float(current_dist - planned_dist))
-				var score := progress * _w(profile, "w_approach", 5.0)
+				var progress := maxf(_t(profile, "approach_progress_floor"), float(current_dist - planned_dist))
+				var score := progress * _w(profile, "w_approach")
 				score += _evaluate_tile_safety(state, planned_pos, profile)
 				candidate.score = score
 				candidate.description = "移动到%s" % str(planned_pos)
@@ -568,7 +595,7 @@ static func _evaluate_move_only(
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.MOVE
 	candidate.move_target = best_pos
-	var score := float(current_dist - best_dist) * _w(profile, "w_approach", 5.0)
+	var score := float(current_dist - best_dist) * _w(profile, "w_approach")
 	score += _evaluate_tile_safety(state, best_pos, profile)
 	candidate.score = score
 	candidate.description = "移动到%s" % str(best_pos)
@@ -597,8 +624,8 @@ static func _evaluate_move_kiting(
 		candidate.move_target = pos
 		var dist_to_player: int = BoardUtils.manhattan(pos, player.pos)
 		var current_dist: int = BoardUtils.manhattan(enemy.pos, player.pos)
-		var score: float = float(current_dist - dist_to_player) * _w(profile, "w_approach", 5.0)
-		score += float(dist_to_player) * _w(profile, "w_keep_distance", 3.0)
+		var score: float = float(current_dist - dist_to_player) * _w(profile, "w_approach")
+		score += float(dist_to_player) * _w(profile, "w_keep_distance")
 		score += _evaluate_tile_safety(state, pos, profile)
 		candidate.score = score
 		candidate.description = "移动到%s" % str(pos)
@@ -609,10 +636,10 @@ static func _evaluate_move_kiting(
 # ─── 路径权重构建 ───────────────────────────────────────────────────────────
 static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 	return {
-		"base_step_cost": _w(profile, "path_base_step_cost", 1.0),
-		"spike_damage_weight": _w(profile, "path_spike_damage_weight", _w(profile, "w_self_damage", 8.0) * _t(profile, "path_self_damage_ratio", 0.25)),
-		"water_cost_bias": _w(profile, "path_water_cost_bias", 0.0),
-		"allow_partial_path": profile.get("allow_partial_path", true),
+		"base_step_cost": _w(profile, "path_base_step_cost"),
+		"spike_damage_weight": _w(profile, "path_spike_damage_weight"),
+		"water_cost_bias": _w(profile, "path_water_cost_bias"),
+		"allow_partial_path": bool(profile["allow_partial_path"]),
 	}
 
 
@@ -620,10 +647,10 @@ static func _build_path_cost_profile(profile: Dictionary) -> Dictionary:
 static func _evaluate_tile_safety(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var score: float = 0.0
 	if BoardUtils.spike_entity_at(state, pos) != null:
-		score -= float(CombatConfig.spike_damage()) * _w(profile, "w_self_damage", 8.0)
+		score -= float(CombatConfig.spike_damage()) * _w(profile, "w_self_damage")
 	var tile: TileState = state.get_tile(pos)
 	if tile.has_modifier("poison_fog"):
-		score -= float(CombatConfig.poison_fog_damage()) * _w(profile, "w_self_damage", 8.0)
+		score -= float(CombatConfig.poison_fog_damage()) * _w(profile, "w_self_damage")
 	return score
 
 

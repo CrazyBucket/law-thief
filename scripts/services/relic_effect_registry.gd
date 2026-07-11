@@ -395,7 +395,10 @@ func _action_apply_max_hp_reduction(relic_id: String, effect: Dictionary, state:
 	var player := state.get_player()
 	if player == null:
 		return
-	var ratio := _resolve_number(effect, "ratio", 0.3)
+	var ratio := _resolve_number(effect, "ratio", 0.0)
+	if ratio <= 0.0:
+		push_error("RelicEffectRegistry: apply_max_hp_reduction requires a positive ratio")
+		return
 	var reduction: int = maxi(1, int(float(player.max_hp) * ratio))
 	player.max_hp = maxi(1, player.max_hp - reduction)
 	player.hp = mini(player.hp, player.max_hp)
@@ -462,7 +465,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 		return bool(effect.get("value", false))
 
 	# 空槽倍数：每个空槽额外乘以 (1 + factor)，基础值 1.0
-	if effect.has("empty_slot_mult"):
+	if effect.has("empty_slot_mult") or effect.has("empty_slot_mult_ref"):
 		var factor := _resolve_number(effect, "empty_slot_mult", 0.0)
 		var player := state.get_player()
 		var empty_count := 0
@@ -473,7 +476,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 		return 1.0 + factor * float(empty_count)
 
 	# 每个空槽加成（extract/insert range）
-	if effect.has("per_empty_slot"):
+	if effect.has("per_empty_slot") or effect.has("per_empty_slot_ref"):
 		var per := int(_resolve_number(effect, "per_empty_slot", 1.0))
 		var player := state.get_player()
 		var empty_count := 0
@@ -492,7 +495,7 @@ func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState
 		return int(_resolve_number(effect, "value", 1.0))
 
 	# 概率触发加成
-	if effect.has("rng_chance"):
+	if effect.has("rng_chance") or effect.has("rng_chance_ref"):
 		var chance := _resolve_number(effect, "rng_chance", 0.0)
 		var roll: float = float(RngService.roll_int("rng_chance_%s" % relic_id, 0, 999)) / 1000.0
 		if roll < chance:

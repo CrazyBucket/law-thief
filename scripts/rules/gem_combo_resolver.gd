@@ -44,5 +44,5 @@ static func apply_after_attack_hit(
 		return
 	if not BoardUtils.in_bounds(state, hit_cell):
 		return
-	TileRules.create_toxic_smoke(state, hit_cell, 1)
+	TileRules.create_toxic_smoke(state, hit_cell)
 	out_events.append({"type": "toxic_smoke", "pos": hit_cell, "combo": "fire_poison"})

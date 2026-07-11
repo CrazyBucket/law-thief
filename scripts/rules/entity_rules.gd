@@ -6,6 +6,8 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 ## 单位步入实体格
 static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary = {}) -> void:
+	if unit == null or not unit.alive:
+		return
 	var entity := _hazard_entity_under_unit(state, unit)
 	if entity == null or not entity.alive:
 		return
@@ -15,8 +17,15 @@ static func on_unit_entered(state: GameState, unit: UnitState, opts: Dictionary 
 		Constants.ENTITY_SPIKE:
 			var tx := _CombatTransaction.begin_from_state(state)
 			if forced:
-				tx.damage_unit(unit, CombatConfig.spike_collision_damage(), source_uid, "spike_collision")
-				StatusRules.apply_vulnerable(state, unit, 1, source_uid)
+				tx.damage_unit(
+					unit,
+					CombatConfig.spike_collision_damage(),
+					source_uid,
+					"spike_collision",
+					{"damage_context": opts.get("damage_context", {})}
+				)
+				if unit.alive:
+					StatusRules.apply_vulnerable(state, unit, 1, source_uid)
 			else:
 				tx.damage_unit(unit, CombatConfig.spike_damage(), "", "spike_enter")
 			_unlock_armor_locks(state, unit)
@@ -34,7 +43,8 @@ static func on_unit_collide_entity(
 	entity: EntityState,
 	source_uid: String,
 	events: Array[Dictionary],
-	actual_steps: int = 1
+	actual_steps: int = 1,
+	damage_context: Dictionary = {}
 ) -> bool:
 	if not entity.alive:
 		return false
@@ -42,7 +52,13 @@ static func on_unit_collide_entity(
 		return false
 	var collision_damage := maxi(1, actual_steps)
 	var tx := _CombatTransaction.begin(state, events)
-	tx.damage_unit(unit, collision_damage, source_uid, "entity_collision")
+	tx.damage_unit(
+		unit,
+		collision_damage,
+		source_uid,
+		"entity_collision",
+		{"damage_context": damage_context}
+	)
 	if entity.max_hp > 0:
 		_damage_entity(state, entity, collision_damage, source_uid, events)
 	return true
@@ -139,11 +155,12 @@ static func _explode_barrel(
 		return
 	entity.alive = false
 	state.log("油桶 %s 爆炸！" % entity.uid)
-	events.append({"type": "explode", "pos": entity.pos, "radius": Constants.BARREL_EXPLOSION_RADIUS})
+	var explosion_radius := CombatConfig.barrel_explosion_radius()
+	events.append({"type": "explode", "pos": entity.pos, "radius": explosion_radius})
 	var hit_uids: Dictionary = {}
 	var tx := _CombatTransaction.begin(state, events)
 	TileRules.begin_overlay_batch(state)
-	for cell in BoardUtils.cells_in_radius(entity.pos, Constants.BARREL_EXPLOSION_RADIUS):
+	for cell in BoardUtils.cells_in_radius(entity.pos, explosion_radius):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
 		var hit_unit := state.get_unit_at(cell)

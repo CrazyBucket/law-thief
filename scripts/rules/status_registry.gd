@@ -22,6 +22,8 @@ static func get_def(status_id: String) -> Dictionary:
 
 
 static func display_name(status_id: String) -> String:
+	if status_id == Constants.STATUS_DISARMED:
+		return _translated("status.disarmed.name", "缴械")
 	return get_def(status_id).get("display_name", status_id)
 
 
@@ -43,6 +45,10 @@ static func blocks_movement(status_id: String) -> bool:
 
 static func blocks_action(status_id: String) -> bool:
 	return get_def(status_id).get("blocks_action", false)
+
+
+static func blocks_attack(status_id: String) -> bool:
+	return get_def(status_id).get("blocks_attack", false)
 
 
 static func apply_to_unit(unit: UnitState, incoming: StatusInstance) -> void:
@@ -104,6 +110,8 @@ static func short_label(status: StatusInstance) -> String:
 			return "掠"
 		Constants.STATUS_VULNERABLE:
 			return "易伤"
+		Constants.STATUS_DISARMED:
+			return _translated("status.disarmed.short", "械{stacks}", {"stacks": status.stacks})
 		Constants.STATUS_WEAK:
 			return "虚弱"
 		Constants.STATUS_COUNTER_MARK:
@@ -124,7 +132,7 @@ static func icon_badge(status: StatusInstance) -> String:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
-		Constants.STATUS_EXTRA_ATTACK, Constants.STATUS_EXTRA_MOVE:
+		Constants.STATUS_DISARMED, Constants.STATUS_EXTRA_ATTACK, Constants.STATUS_EXTRA_MOVE:
 			return str(status.stacks)
 	return ""
 
@@ -160,10 +168,16 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_BOMB_RAT_PLUNDER:
 			return "无律掠夺：黑槽空，准备夺取宝石"
 		Constants.STATUS_VULNERABLE:
-			var damage_taken_mult := StatusConfig.float_value("vulnerable", "damage_taken_mult", 1.5)
+			var damage_taken_mult := StatusConfig.float_value("vulnerable", "damage_taken_mult")
 			return "易伤：受到伤害 +%d%%，剩余 %d 回合" % [_percent_bonus_from_mult(damage_taken_mult), status.duration]
+		Constants.STATUS_DISARMED:
+			return _translated(
+				"status.disarmed.tooltip",
+				"缴械：无法攻击，剩余 {stacks} 次行动",
+				{"stacks": status.stacks}
+			)
 		Constants.STATUS_WEAK:
-			var attack_damage_mult := StatusConfig.float_value("weak", "attack_damage_mult", 0.75)
+			var attack_damage_mult := StatusConfig.float_value("weak", "attack_damage_mult")
 			return "虚弱：普通攻击伤害变为 %d%%，剩余 %d 回合" % [_percent_from_mult(attack_damage_mult), status.duration]
 		Constants.STATUS_COUNTER_MARK:
 			return "截击：若该单位在本轮结束前伤害标记者，会立刻吃一次追击"
@@ -180,6 +194,13 @@ static func _percent_bonus_from_mult(mult: float) -> int:
 
 static func _percent_from_mult(mult: float) -> int:
 	return int(round(mult * 100.0))
+
+
+static func _translated(key: String, fallback: String, params: Dictionary = {}) -> String:
+	var text := TranslationServer.translate(key)
+	if text == key:
+		text = fallback
+	return text.format(params) if not params.is_empty() else text
 
 
 static func sort_statuses(statuses: Array) -> Array:
@@ -328,6 +349,15 @@ static var _DEFS: Dictionary = {
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
 		"blocks_movement": false,
+	},
+	Constants.STATUS_DISARMED: {
+		"display_name": "缴械",
+		"type": TYPE_DEBUFF,
+		"color": UiPalette.VULNERABLE_RED,
+		"stack_rule": STACK_VALUE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+		"blocks_attack": true,
 	},
 	Constants.STATUS_WEAK: {
 		"display_name": "虚弱",

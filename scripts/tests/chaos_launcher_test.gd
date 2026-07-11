@@ -1,6 +1,7 @@
 extends SceneTree
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 var _failed := false
 
@@ -38,7 +39,7 @@ func _test_chaos_on_empty_aim_with_explosion() -> void:
 		aim,
 		[AttackPipeline.TAG_RANGED],
 		{},
-		Constants.ATTACK_RANGE
+		CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("aimed attack failed: %s" % result.get("reason", ""))

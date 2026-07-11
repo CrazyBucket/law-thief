@@ -14,6 +14,38 @@
       }
     },
     {
+      "id": "counter/red/2_retaliation_carries_tags",
+      "covers": ["gem_counter:red:2"],
+      "gems": ["gem_counter", "gem_counter", "gem_fire"],
+      "post_steps": [
+        {"type": "apply_damage", "target": "player", "source": "contract_target", "amount": 3, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "unit_damages": {"contract_target": 20, "player": 3},
+        "unit_statuses": {
+          "contract_target": {
+            "burning": {"stacks": 4}
+          }
+        }
+      }
+    },
+    {
+      "id": "counter/red/3_kill_refreshes_attack",
+      "covers": ["gem_counter:red:3"],
+      "gems": ["gem_counter", "gem_counter", "gem_counter"],
+      "target_stats": {"hp": 15, "max_hp": 15},
+      "post_steps": [
+        {"type": "apply_damage", "target": "player", "source": "contract_target", "amount": 3, "reason": "ranged_attack"}
+      ],
+      "expect": {
+        "unit_statuses": {
+          "player": {
+            "extra_attack": {"stacks": 1}
+          }
+        }
+      }
+    },
+    {
       "id": "fire/red/1",
       "covers": ["gem_fire:red:1"],
       "gems": ["gem_fire"],
@@ -201,7 +233,7 @@
     },
     {
       "id": "ice/red/1_apply_slow",
-      "covers": ["gem_ice:red:1"],
+      "covers": ["implementation:gem_ice:red:1:dry_slow_placeholder"],
       "gems": ["gem_ice"],
       "expect": {
         "damage": 10,
@@ -215,7 +247,7 @@
     },
     {
       "id": "ice/red/2_double_slow",
-      "covers": ["gem_ice:red:2"],
+      "covers": ["implementation:gem_ice:red:2:dry_slow_placeholder"],
       "gems": ["gem_ice", "gem_ice"],
       "expect": {
         "damage": 10,
@@ -229,7 +261,7 @@
     },
     {
       "id": "ice/red/3_freeze_slowed_target",
-      "covers": ["gem_ice:red:3"],
+      "covers": ["implementation:gem_ice:red:3:paralyzed_placeholder"],
       "gems": ["gem_ice", "gem_ice", "gem_ice"],
       "setup": {
         "target_statuses": [
@@ -298,6 +330,116 @@
           "wing_down": 3,
           "wing_back": 3,
           "wing_forward": 3
+        }
+      }
+    },
+    {
+      "id": "split/blue/1_redirect_half_to_random_neighbor",
+      "covers": ["gem_split:blue:1"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 100, "max_hp": 100},
+      "extra_units": [
+        {"uid": "split_neighbor", "pos": [5, 4], "stats": {"hp": 100, "max_hp": 100}}
+      ],
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "blue", "gems": ["gem_split"]}
+      ],
+      "expect": {
+        "damage": 5,
+        "unit_damages": {"contract_target": 5, "split_neighbor": 5}
+      }
+    },
+    {
+      "id": "split/blue/2_share_with_owner_and_all_neighbors",
+      "covers": ["gem_split:blue:2"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 100, "max_hp": 100},
+      "extra_units": [
+        {"uid": "split_neighbor_a", "pos": [5, 4], "stats": {"hp": 100, "max_hp": 100}},
+        {"uid": "split_neighbor_b", "pos": [4, 3], "stats": {"hp": 100, "max_hp": 100}}
+      ],
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "blue", "gems": ["gem_split", "gem_split"]}
+      ],
+      "expect": {
+        "damage": 4,
+        "unit_damages": {"contract_target": 4, "split_neighbor_a": 3, "split_neighbor_b": 3}
+      }
+    },
+    {
+      "id": "split/black/1_partition_two_clones_at_thirty_percent",
+      "covers": ["gem_split:black:1"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20, "base_attack": 10, "move_points": 10, "speed": 10, "armor": 10},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_split"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"split_spawn": 2},
+        "split_clones": {
+          "origin": "contract_target",
+          "count": 2,
+          "each_stats": {"hp": 6, "max_hp": 6, "base_attack": 3, "move_points": 3, "speed": 3, "armor": 3},
+          "total_slots": 3,
+          "total_gems": 1,
+          "disabled_split_slots": 1,
+          "dropped_gems": 0,
+          "source_slots_cleared": true,
+          "source_gems_removed": true
+        }
+      }
+    },
+    {
+      "id": "split/black/2_partition_two_clones_at_fifty_percent",
+      "covers": ["gem_split:black:2"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20, "base_attack": 10, "move_points": 10, "speed": 10, "armor": 10},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_split", "gem_split"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"split_spawn": 2},
+        "split_clones": {
+          "origin": "contract_target",
+          "count": 2,
+          "each_stats": {"hp": 10, "max_hp": 10, "base_attack": 5, "move_points": 5, "speed": 5, "armor": 5},
+          "total_slots": 4,
+          "total_gems": 2,
+          "disabled_split_slots": 2,
+          "dropped_gems": 0,
+          "source_slots_cleared": true,
+          "source_gems_removed": true
+        }
+      }
+    },
+    {
+      "id": "split/black/3_partition_two_clones_at_eighty_percent",
+      "covers": ["gem_split:black:3"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20, "base_attack": 10, "move_points": 10, "speed": 10, "armor": 10},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_split", "gem_split", "gem_split"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"split_spawn": 2},
+        "split_clones": {
+          "origin": "contract_target",
+          "count": 2,
+          "each_stats": {"hp": 16, "max_hp": 16, "base_attack": 8, "move_points": 8, "speed": 8, "armor": 8},
+          "total_slots": 5,
+          "total_gems": 3,
+          "disabled_split_slots": 3,
+          "dropped_gems": 0,
+          "source_slots_cleared": true,
+          "source_gems_removed": true
         }
       }
     },
@@ -402,7 +544,7 @@
     },
     {
       "id": "echo/red/3_followup_half_hit",
-      "covers": ["gem_echo:red:3"],
+      "covers": ["implementation:gem_echo:red:3:generic_followup_placeholder"],
       "gems": ["gem_echo", "gem_echo", "gem_echo", "gem_fire"],
       "player_stats": {"base_attack": 10},
       "expect": {
@@ -410,6 +552,52 @@
         "target_status": "burning",
         "fire_cells": 1,
         "event_min_counts": {"gem_flash": 2, "fire_burst": 1}
+      }
+    },
+    {
+      "id": "echo/black/1_replays_one_death_tag",
+      "covers": ["gem_echo:black:1"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_echo", "gem_explosion"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"explode": 2}
+      }
+    },
+    {
+      "id": "echo/black/2_replays_two_distinct_death_tags",
+      "covers": ["gem_echo:black:2"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_echo", "gem_echo", "gem_conductive", "gem_ice"]}
+      ],
+      "extra_units": [
+        {"uid": "echo_black_neighbor", "pos": [6, 3], "stats": {"hp": 100, "max_hp": 100}}
+      ],
+      "expect": {
+        "damage": 1,
+        "unit_damages": {"echo_black_neighbor": 20},
+        "event_counts": {"lightning": 2, "frost_pulse": 2}
+      }
+    },
+    {
+      "id": "echo/black/3_repeats_configured_first_tag",
+      "covers": ["implementation:gem_echo:black:3:first_tag_repeat"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_echo", "gem_echo", "gem_echo", "gem_explosion"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"explode": 3}
       }
     },
     {
@@ -559,6 +747,624 @@
       }
     },
     {
+      "id": "explosion/blue/1_regular_damage_does_not_detonate",
+      "covers": ["gem_explosion:blue:1"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_cross_target", "pos": [6, 3]},
+        {"uid": "blue_diag_target", "pos": [6, 2]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "blue_cross_target": 0},
+        "event_counts": {"explode": 0}
+      }
+    },
+    {
+      "id": "explosion/blue/1_burning_detonates_cross",
+      "covers": ["gem_explosion:blue:1"],
+      "player_stats": {"base_attack": 0},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_cross_target", "pos": [6, 3]},
+        {"uid": "blue_diag_target", "pos": [6, 2]}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 1, "reason": "burning"}
+      ],
+      "expect": {
+        "damage": 1,
+        "unit_damages": {"contract_target": 1, "blue_cross_target": 12, "blue_diag_target": 0}
+      }
+    },
+    {
+      "id": "explosion/blue/2_any_damage_detonates_cross",
+      "covers": ["gem_explosion:blue:2"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion", "gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_cross_target", "pos": [6, 3]},
+        {"uid": "blue_diag_target", "pos": [6, 2]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "blue_cross_target": 12, "blue_diag_target": 0},
+        "event_matches": [{"type": "explode", "pos": [5, 3]}]
+      }
+    },
+    {
+      "id": "explosion/blue/3_any_damage_detonates_square",
+      "covers": ["gem_explosion:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion", "gem_explosion", "gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_cross_target", "pos": [6, 3]},
+        {"uid": "blue_diag_target", "pos": [6, 2]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "blue_cross_target": 12, "blue_diag_target": 12},
+        "event_matches": [{"type": "explode", "pattern": "square", "pos": [5, 3]}]
+      }
+    },
+    {
+      "id": "explosion/black/1_death_blast_without_chain",
+      "covers": ["gem_explosion:black:1"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "black_blast_target", "pos": [5, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"contract_target": 20, "black_blast_target": 12},
+        "event_counts": {"explode": 1}
+      }
+    },
+    {
+      "id": "explosion/black/2_chain_after_blast_kill",
+      "covers": ["gem_explosion:black:2"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion", "gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "black_blast_target", "pos": [5, 3], "stats": {"hp": 12, "max_hp": 12}},
+        {"uid": "black_chain_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"contract_target": 20, "black_blast_target": 12, "black_chain_target": 12},
+        "event_min_counts": {"explode": 2},
+        "event_matches": [{"type": "explode", "pattern": "cross", "pos": [5, 3]}]
+      }
+    },
+    {
+      "id": "explosion/black/3_double_main_blast_not_chain",
+      "covers": ["gem_explosion:black:3"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion", "gem_explosion", "gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "black_blast_target", "pos": [5, 3], "stats": {"hp": 24, "max_hp": 24}},
+        {"uid": "black_diag_target", "pos": [5, 2], "stats": {"hp": 80, "max_hp": 80}},
+        {"uid": "black_chain_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"contract_target": 20, "black_blast_target": 24, "black_diag_target": 24, "black_chain_target": 12},
+        "event_matches": [{"type": "explode", "pattern": "cross", "pos": [5, 3]}]
+      }
+    },
+    {
+      "id": "gravity/black/1_pull_nearby_units",
+      "covers": ["gem_gravity:black:1"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_gravity"]}
+      ],
+      "extra_units": [
+        {"uid": "gravity_black_neighbor", "pos": [6, 3]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_positions": {"gravity_black_neighbor": [5, 3]}
+      }
+    },
+    {
+      "id": "gravity/black/2_pull_and_slow",
+      "covers": ["gem_gravity:black:2"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_gravity", "gem_gravity"]}
+      ],
+      "extra_units": [
+        {"uid": "gravity_black_neighbor", "pos": [6, 3]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_positions": {"gravity_black_neighbor": [5, 3]},
+        "unit_statuses": {
+          "gravity_black_neighbor": {
+            "slowed": {"stacks": 1}
+          }
+        }
+      }
+    },
+    {
+      "id": "gravity/black/3_pull_slow_and_root",
+      "covers": ["gem_gravity:black:3"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_gravity", "gem_gravity", "gem_gravity"]}
+      ],
+      "extra_units": [
+        {"uid": "gravity_black_neighbor", "pos": [6, 3]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_positions": {"gravity_black_neighbor": [5, 3]},
+        "unit_statuses": {
+          "gravity_black_neighbor": {
+            "slowed": {"stacks": 1},
+            "rooted": {"duration": 1}
+          }
+        }
+      }
+    },
+    {
+      "id": "conductive/blue/1_rebound_can_fail",
+      "covers": ["gem_conductive:blue:1"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_conductive"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "player": 0},
+        "event_counts": {"arc": 0}
+      }
+    },
+    {
+      "id": "conductive/blue/2_rebound_on_damaged",
+      "covers": ["gem_conductive:blue:2"],
+      "seed": 1,
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_conductive", "gem_conductive"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "player": 6},
+        "event_counts": {"arc": 1}
+      }
+    },
+    {
+      "id": "conductive/blue/3_rebound_on_damaged",
+      "covers": ["gem_conductive:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_conductive", "gem_conductive", "gem_conductive"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_damages": {"contract_target": 10, "player": 6},
+        "event_counts": {"arc": 1}
+      }
+    },
+    {
+      "id": "conductive/black/1_single_random_strike",
+      "covers": ["gem_conductive:black:1"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_conductive"]}
+      ],
+      "extra_units": [
+        {"uid": "black_arc_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"black_arc_target": 10},
+        "event_counts": {"lightning": 1}
+      }
+    },
+    {
+      "id": "conductive/black/2_two_unique_strikes",
+      "covers": ["gem_conductive:black:2"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_conductive", "gem_conductive"]}
+      ],
+      "extra_units": [
+        {"uid": "black_arc_a", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}},
+        {"uid": "black_arc_b", "pos": [5, 4], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"black_arc_a": 10, "black_arc_b": 10},
+        "event_counts": {"lightning": 2}
+      }
+    },
+    {
+      "id": "conductive/black/3_strikes_all_targets",
+      "covers": ["gem_conductive:black:3"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_conductive", "gem_conductive", "gem_conductive"]}
+      ],
+      "extra_units": [
+        {"uid": "black_arc_a", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}},
+        {"uid": "black_arc_b", "pos": [5, 4], "stats": {"hp": 80, "max_hp": 80}},
+        {"uid": "black_arc_c", "pos": [4, 4], "stats": {"hp": 80, "max_hp": 80}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"black_arc_a": 10, "black_arc_b": 10, "black_arc_c": 10},
+        "event_counts": {"lightning": 3}
+      }
+    },
+    {
+      "id": "fire/blue/1_contact_applies_burning",
+      "covers": ["gem_fire:blue:1"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_fire"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "burning": {"stacks": 1, "duration": 0}
+          }
+        },
+        "fire_cells": 0
+      }
+    },
+    {
+      "id": "fire/blue/2_contact_and_fire_apply_burning",
+      "covers": ["gem_fire:blue:2"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_fire", "gem_fire"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "burning": {"stacks": 2, "duration": 0}
+          }
+        },
+        "fire_cells": 1,
+        "tile_modifier_durations": [
+          {"pos": [2, 3], "modifier": "fire", "duration": 2}
+        ]
+      }
+    },
+    {
+      "id": "fire/blue/3_doubles_combined_burning",
+      "covers": ["gem_fire:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_fire", "gem_fire", "gem_fire"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "burning", "stacks": 2}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "burning": {"stacks": 8, "duration": 0}
+          }
+        },
+        "fire_cells": 1
+      }
+    },
+    {
+      "id": "fire/blue/3_doubles_only_once_per_turn",
+      "covers": ["gem_fire:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_fire", "gem_fire", "gem_fire"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "burning", "stacks": 2}
+        ]
+      },
+      "post_steps": [
+        {"type": "execute_attack", "source": "player", "target": "contract_target"}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_statuses": {
+          "player": {
+            "burning": {"stacks": 10, "duration": 0}
+          }
+        },
+        "fire_cells": 1
+      }
+    },
+    {
+      "id": "fire/black/1_five_fires_prefer_empty_cells",
+      "covers": ["gem_fire:black:1"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 4],
+      "target_pos": [4, 4],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_fire"]}
+      ],
+      "extra_units": [
+        {"uid": "fire_occ_north", "pos": [4, 2]},
+        {"uid": "fire_occ_south", "pos": [4, 6]},
+        {"uid": "fire_occ_east", "pos": [6, 4]},
+        {"uid": "fire_occ_ne", "pos": [6, 2]},
+        {"uid": "fire_occ_se", "pos": [6, 6]},
+        {"uid": "fire_outside_radius", "pos": [7, 4]}
+      ],
+      "expect": {
+        "damage": 20,
+        "fire_cells": 5,
+        "event_counts": {"fire_burst": 5},
+        "tile_modifier_absences": [
+          {"pos": [4, 2], "modifier": "fire"},
+          {"pos": [4, 6], "modifier": "fire"},
+          {"pos": [6, 4], "modifier": "fire"},
+          {"pos": [6, 2], "modifier": "fire"},
+          {"pos": [6, 6], "modifier": "fire"},
+          {"pos": [7, 4], "modifier": "fire"}
+        ],
+        "tile_modifier_duration_counts": [
+          {"modifier": "fire", "duration": 2, "count": 5}
+        ]
+      }
+    },
+    {
+      "id": "fire/black/2_five_fires_prefer_occupied_cells",
+      "covers": ["gem_fire:black:2"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 4],
+      "target_pos": [4, 4],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_fire", "gem_fire"]}
+      ],
+      "extra_units": [
+        {"uid": "fire_occ_north", "pos": [4, 2]},
+        {"uid": "fire_occ_south", "pos": [4, 6]},
+        {"uid": "fire_occ_east", "pos": [6, 4]},
+        {"uid": "fire_occ_ne", "pos": [6, 2]},
+        {"uid": "fire_occ_se", "pos": [6, 6]},
+        {"uid": "fire_outside_radius", "pos": [7, 4]}
+      ],
+      "expect": {
+        "damage": 20,
+        "fire_cells": 5,
+        "event_counts": {"fire_burst": 5},
+        "tile_modifier_durations": [
+          {"pos": [4, 2], "modifier": "fire", "duration": 2},
+          {"pos": [4, 6], "modifier": "fire", "duration": 2},
+          {"pos": [6, 4], "modifier": "fire", "duration": 2},
+          {"pos": [6, 2], "modifier": "fire", "duration": 2},
+          {"pos": [6, 6], "modifier": "fire", "duration": 2}
+        ],
+        "tile_modifier_absences": [
+          {"pos": [7, 4], "modifier": "fire"}
+        ]
+      }
+    },
+    {
+      "id": "fire/black/3_seven_longer_fires",
+      "covers": ["gem_fire:black:3"],
+      "player_stats": {"base_attack": 20},
+      "player_pos": [1, 4],
+      "target_pos": [4, 4],
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_fire", "gem_fire", "gem_fire"]}
+      ],
+      "extra_units": [
+        {"uid": "fire_occ_north", "pos": [4, 2]},
+        {"uid": "fire_occ_south", "pos": [4, 6]},
+        {"uid": "fire_occ_east", "pos": [6, 4]},
+        {"uid": "fire_occ_ne", "pos": [6, 2]},
+        {"uid": "fire_occ_se", "pos": [6, 6]},
+        {"uid": "fire_outside_radius", "pos": [7, 4]}
+      ],
+      "expect": {
+        "damage": 20,
+        "fire_cells": 7,
+        "event_counts": {"fire_burst": 7},
+        "tile_modifier_durations": [
+          {"pos": [4, 2], "modifier": "fire", "duration": 3},
+          {"pos": [4, 6], "modifier": "fire", "duration": 3},
+          {"pos": [6, 4], "modifier": "fire", "duration": 3},
+          {"pos": [6, 2], "modifier": "fire", "duration": 3},
+          {"pos": [6, 6], "modifier": "fire", "duration": 3}
+        ],
+        "tile_modifier_absences": [
+          {"pos": [7, 4], "modifier": "fire"}
+        ],
+        "tile_modifier_duration_counts": [
+          {"modifier": "fire", "duration": 3, "count": 7}
+        ]
+      }
+    },
+    {
+      "id": "ice/blue/1_contact_slow_min_one",
+      "covers": ["gem_ice:blue:1"],
+      "player_stats": {"move_points": 2},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_ice"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "slowed": {"stacks": 1, "duration": 0}
+          }
+        },
+        "unit_status_absences": {"player": ["sluggish"]},
+        "unit_effective_move_points": {"player": 1}
+      }
+    },
+    {
+      "id": "ice/blue/2_contact_slow_can_reduce_move_to_zero",
+      "covers": ["gem_ice:blue:2"],
+      "player_stats": {"move_points": 2},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_ice", "gem_ice"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        },
+        "unit_status_absences": {"player": ["sluggish"]},
+        "unit_effective_move_points": {"player": 0}
+      }
+    },
+    {
+      "id": "ice/blue/3_unslowed_contact_does_not_sink_order",
+      "covers": ["gem_ice:blue:3"],
+      "player_stats": {"move_points": 2},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_ice", "gem_ice", "gem_ice"]}
+      ],
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "slowed": {"stacks": 2, "duration": 0}
+          }
+        },
+        "unit_status_absences": {"player": ["sluggish"]},
+        "unit_effective_move_points": {"player": 0}
+      }
+    },
+    {
+      "id": "ice/blue/3_slowed_contact_sinks_order",
+      "covers": ["gem_ice:blue:3"],
+      "player_stats": {"move_points": 2},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_ice", "gem_ice", "gem_ice"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "slowed", "stacks": 1}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {
+            "slowed": {"stacks": 3, "duration": 0},
+            "sluggish": {"duration": 1}
+          }
+        },
+        "unit_effective_move_points": {"player": 0}
+      }
+    },
+    {
+      "id": "ice/black/1_sinks_order_in_three_by_three",
+      "covers": ["gem_ice:black:1"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_ice"]}
+      ],
+      "extra_units": [
+        {"uid": "black_ice_neighbor", "pos": [6, 3], "stats": {"move_points": 2}},
+        {"uid": "black_ice_outside", "pos": [7, 3], "stats": {"move_points": 2}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_statuses": {
+          "black_ice_neighbor": {
+            "sluggish": {"duration": 1}
+          }
+        },
+        "unit_status_absences": {
+          "black_ice_neighbor": ["slowed", "paralyzed"],
+          "black_ice_outside": ["sluggish", "slowed", "paralyzed"]
+        },
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "ice/black/2_sinks_order_and_slows",
+      "covers": ["gem_ice:black:2"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_ice", "gem_ice"]}
+      ],
+      "extra_units": [
+        {"uid": "black_ice_neighbor", "pos": [6, 3], "stats": {"move_points": 2}},
+        {"uid": "black_ice_outside", "pos": [7, 3], "stats": {"move_points": 2}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_statuses": {
+          "black_ice_neighbor": {
+            "sluggish": {"duration": 1},
+            "slowed": {"stacks": 1, "duration": 0}
+          }
+        },
+        "unit_status_absences": {
+          "black_ice_neighbor": ["paralyzed"],
+          "black_ice_outside": ["sluggish", "slowed", "paralyzed"]
+        },
+        "unit_effective_move_points": {"black_ice_neighbor": 1},
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "ice/black/3_current_paralysis_placeholder",
+      "covers": ["implementation:gem_ice:black:3:paralyzed_placeholder"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_ice", "gem_ice", "gem_ice"]}
+      ],
+      "extra_units": [
+        {"uid": "black_ice_neighbor", "pos": [6, 3], "stats": {"move_points": 2}}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_statuses": {
+          "black_ice_neighbor": {
+            "sluggish": {"duration": 1},
+            "slowed": {"stacks": 1, "duration": 0},
+            "paralyzed": {"duration": 1}
+          }
+        },
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
       "id": "poison/blue/1_contact_poison",
       "covers": ["gem_poison:blue:1"],
       "mounts": [
@@ -688,6 +1494,60 @@
       }
     },
     {
+      "id": "counter/black/1_reflects_actual_hp_loss",
+      "covers": ["gem_counter:black:1"],
+      "player_stats": {"hp": 100, "max_hp": 100, "base_attack": 50},
+      "target_stats": {"hp": 7, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter"]}
+      ],
+      "expect": {
+        "damage": 7,
+        "unit_damages": {"contract_target": 7, "player": 7},
+        "unit_status_absences": {"player": ["vulnerable", "disarmed"]}
+      }
+    },
+    {
+      "id": "counter/black/2_applies_vulnerable",
+      "covers": ["gem_counter:black:2"],
+      "player_stats": {"hp": 100, "max_hp": 100, "base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter", "gem_counter"]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"contract_target": 20, "player": 20},
+        "unit_statuses": {"player": {"vulnerable": {"duration": 1}}},
+        "unit_status_absences": {"player": ["disarmed"]}
+      }
+    },
+    {
+      "id": "counter/black/3_applies_disarm",
+      "covers": ["gem_counter:black:3"],
+      "player_stats": {"hp": 100, "max_hp": 100, "base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter", "gem_counter", "gem_counter"]}
+      ],
+      "extra_units": [
+        {"uid": "disarm_probe", "pos": [6, 3], "stats": {"hp": 30, "max_hp": 30}}
+      ],
+      "post_steps": [
+        {"type": "execute_attack", "source": "player", "target": "disarm_probe", "expect_ok": false}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"contract_target": 20, "player": 20, "disarm_probe": 0},
+        "unit_statuses": {
+          "player": {
+            "vulnerable": {"duration": 1},
+            "disarmed": {"stacks": 1}
+          }
+        }
+      }
+    },
+    {
       "id": "poison/black/1_spread_debuff",
       "covers": ["gem_poison:black:1"],
       "player_stats": {"base_attack": 20},
@@ -774,7 +1634,7 @@
     },
     {
       "id": "light/black/3_blinds_survivor",
-      "covers": ["gem_light:black:3"],
+      "covers": ["implementation:gem_light:black:3:damage_and_blind_placeholder"],
       "player_stats": {"base_attack": 20},
       "target_stats": {"hp": 20, "max_hp": 20},
       "mounts": [

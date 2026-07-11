@@ -4,7 +4,7 @@ extends RefCounted
 const _StatusUi = preload("res://scripts/ui/status_ui.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
-const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
@@ -69,7 +69,9 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 				var route: Array = [player.pos]
 				route.append_array(move_path)
 				_append_route(result, "move", route, {"arrow_reverse": false})
-	elif action == Constants.ACTION_ATTACK and (unlimited or not state.player_acted or StatusRules.has_extra_attack(player)):
+	elif action == Constants.ACTION_ATTACK \
+		and (unlimited or StatusRules.can_attack(player)) \
+		and (unlimited or not state.player_acted or StatusRules.has_extra_attack(player)):
 		var attack_range := _attack_target_cells(state, player)
 		result["attack_range"] = attack_range
 		_append_overlay(result, "attack_range", attack_range)
@@ -199,7 +201,8 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			if can_move_now and cell in BoardUtils.reachable_cells(state, player.pos, move_budget):
 				lines.append("落点可达")
 		Constants.ACTION_ATTACK:
-			var can_attack_now := ctrl.editor_unlimited_actions_enabled() or not state.player_acted or StatusRules.has_extra_attack(player)
+			var can_attack_now := ctrl.editor_unlimited_actions_enabled() \
+				or (StatusRules.can_attack(player) and (not state.player_acted or StatusRules.has_extra_attack(player)))
 			var attack_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, attack_range):
 				if blocking != null and blocking.is_indestructible() and unit == null:
@@ -252,6 +255,10 @@ func get_action_hint() -> String:
 		Constants.ACTION_ATTACK:
 			if ctrl.editor_unlimited_actions_enabled():
 				return "射击待命 · 编辑模式"
+			if ctrl.state != null:
+				var player: UnitState = ctrl.state.get_player()
+				if player != null and not StatusRules.can_attack(player):
+					return StatusRules.attack_block_reason(player)
 			return "射击待命 · 射程 %d" % CombatConfig.attack_range()
 		Constants.ACTION_EXTRACT:
 			return "拔取宝石"
@@ -388,35 +395,27 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 		return []
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
 		return []
-	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y if GemEffects.unit_has_red_light(state, player) else CombatConfig.attack_range()
+	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return []
-	if GemEffects.unit_has_red_light(state, player):
-		var beam_cells := _light_preview_cells(state, player, target_pos)
-		if not beam_cells.is_empty():
-			return beam_cells
-	var has_split: bool = GemEffects.unit_has_red_split(state, player)
-	var cells: Array = []
-	if has_split:
-		var gem_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-		var shot_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
-		var shot := _SplitShotRules.resolve_shot(player, target_pos, shot_level)
-		for cell in shot.cells:
-			if BoardUtils.in_bounds(state, cell) and not cell in cells:
-				cells.append(cell)
-	else:
-		cells.append(target_pos)
-	if GemEffects.unit_has_red_explosion(state, player):
-		var gem_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-		var blast_anchors: Array = cells.duplicate()
-		if not has_split:
-			blast_anchors = [target_pos]
-		for anchor in blast_anchors:
-			for cell in GemEffects.red_explosion_blast_cells(anchor, gem_ctx):
-				if BoardUtils.in_bounds(state, cell) and not cell in cells:
-					cells.append(cell)
-	var victim: UnitState = state.get_unit_at(target_pos)
-	if victim != null and victim.alive and victim.hp <= 1:
+	var profile := IntentPreviewRules.build_red_attack_profile(
+		state,
+		player,
+		player.pos,
+		target_pos,
+		CombatRules.attack_damage(state, player)
+	)
+	var cells: Array = profile.get("affected_cells", []).duplicate()
+	var predicted_uids: Dictionary = {}
+	for raw_component in profile.get("components", []):
+		if not raw_component is IntentDamageComponent:
+			continue
+		for target_uid in (raw_component as IntentDamageComponent).target_uids:
+			predicted_uids[target_uid] = true
+	for target_uid in predicted_uids:
+		var victim: UnitState = state.units.get(target_uid, null)
+		if not IntentPreviewRules.predicts_lethal_damage(state, player, victim, profile):
+			continue
 		for slot in victim.slots:
 			if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
 				continue
@@ -429,33 +428,25 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 	return cells
 
 
-func _light_preview_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
-	var cells: Array = []
-	var from_cell := BoardUtils.projectile_origin_cell(player, target_pos)
-	var dx := signi(target_pos.x - from_cell.x)
-	var dy := signi(target_pos.y - from_cell.y)
-	if dx == 0 and dy == 0:
-		return cells
-	var gem_ctx := GemTagResolver.build_context(state, player, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-	var pierce_blockers := GemTagResolver.tag_level(gem_ctx, "light") >= 3
-	var current := from_cell + Vector2i(dx, dy)
-	while BoardUtils.in_bounds(state, current):
-		cells.append(current)
-		var entity := state.get_entity_at(current)
-		if not pierce_blockers and entity != null and entity.alive and entity.blocks_projectile():
-			break
-		current += Vector2i(dx, dy)
-	return cells
-
-
 func _attack_effect_preview(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == player.uid:
 			continue
-		if not BoardUtils.can_unit_reach_unit(player, unit, CombatConfig.attack_range()):
+		if not BoardUtils.can_unit_reach_unit(
+			player,
+			unit,
+			GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
+		):
 			continue
-		if unit.hp > 1:
+		var profile := IntentPreviewRules.build_red_attack_profile(
+			state,
+			player,
+			player.pos,
+			unit.pos,
+			CombatRules.attack_damage(state, player)
+		)
+		if not IntentPreviewRules.predicts_lethal_damage(state, player, unit, profile):
 			continue
 		for slot in unit.slots:
 			if slot.slot_type != Constants.SLOT_BLACK or slot.gem_uid.is_empty():
@@ -479,7 +470,7 @@ func _death_gem_preview_lines(state: GameState, unit: UnitState) -> Array[String
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			continue
-		var effect := GemEffects.get_slot_effect_description(gem, Constants.SLOT_BLACK, "")
+		var effect := _slot_effect_summary(state, unit, slot, "")
 		if not effect.is_empty():
 			lines.append("预判: %s" % effect)
 	return lines
@@ -522,7 +513,7 @@ func _slot_preview_line(state: GameState, unit: UnitState, slot: SlotState) -> S
 	if gem == null:
 		return "%s槽: ?" % label
 	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	var effect := GemEffects.get_slot_effect_description(gem, slot.slot_type, RulesIndex.slot_inspect_context(unit, slot))
+	var effect := _slot_effect_summary(state, unit, slot, RulesIndex.slot_inspect_context(unit, slot))
 	if effect.is_empty():
 		return "%s槽: ◆%s" % [label, gem_name]
 	return "%s槽: ◆%s — %s" % [label, gem_name, effect]
@@ -538,7 +529,7 @@ func _slot_preview_line_tile(state: GameState, tile: TileState, slot: SlotState)
 	if gem == null:
 		return "地块%s槽: ?" % label
 	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	var effect := GemEffects.get_slot_effect_description(gem, slot.slot_type, RulesIndex.tile_inspect_context(tile))
+	var effect := _slot_effect_summary(state, tile, slot, RulesIndex.tile_inspect_context(tile))
 	if effect.is_empty():
 		return "地块%s槽: ◆%s" % [label, gem_name]
 	return "地块%s槽: ◆%s — %s" % [label, gem_name, effect]
@@ -546,3 +537,20 @@ func _slot_preview_line_tile(state: GameState, tile: TileState, slot: SlotState)
 
 func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
+
+
+func _slot_effect_summary(state: GameState, owner: Variant, slot: SlotState, fallback_context: String) -> String:
+	if state == null or owner == null or slot == null or slot.gem_uid.is_empty():
+		return ""
+	var gem: GemState = state.gems.get(slot.gem_uid, null)
+	if gem == null:
+		return ""
+	var registry := _data_registry()
+	if registry != null:
+		var gem_ctx := GemTagResolver.build_context(state, owner, slot.slot_type, GemEffects.TIMING_ACTIVE)
+		var tag := str(registry.get_gem_tag(gem))
+		var level := GemTagResolver.tag_level(gem_ctx, tag)
+		var summary := str(registry.get_gem_effect_level_summary(tag, slot.slot_type, level))
+		if not summary.is_empty():
+			return summary
+	return GemEffects.get_slot_effect_description(gem, slot.slot_type, fallback_context)

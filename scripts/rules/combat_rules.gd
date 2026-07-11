@@ -5,6 +5,7 @@ const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
 const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
+const DamageContext = preload("res://scripts/rules/damage_context.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -17,9 +18,17 @@ static var _death_chain_serial: int = 0
 static var _active_death_chain_id: int = 0
 
 
-static func apply_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
+static func apply_damage(
+	state: GameState,
+	unit: UnitState,
+	amount: int,
+	source_uid: String,
+	reason: String,
+	damage_context: Dictionary = {}
+) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	var resolved_damage_context := DamageContext.normalize(source_uid, reason, damage_context)
 	if _try_resolve_counter_mark_before_hit(state, unit, source_uid):
 		return 0
 	var incoming := amount
@@ -27,9 +36,10 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		var registry := _relic_effect_registry()
 		var absorb: bool = registry != null and bool(registry.query_modifier("first_damage_absorb", state))
 		if absorb:
-			var damage_cap := int(registry.query_modifier("first_damage_cap", state)) if registry != null else 1
+			var damage_cap := int(registry.query_modifier("first_damage_cap", state)) if registry != null else 0
 			if damage_cap <= 0:
-				damage_cap = 1
+				push_error("CombatRules: painkiller requires a positive first_damage_cap modifier")
+				return 0
 			incoming = mini(incoming, damage_cap)
 			state.battle_temp_flags["painkiller_used"] = true
 	var blocked := incoming
@@ -41,30 +51,49 @@ static func apply_damage(state: GameState, unit: UnitState, amount: int, source_
 		return 0
 	var final_amount := remaining
 	if StatusRules.is_vulnerable(unit):
-		final_amount = int(float(final_amount) * StatusConfig.float_value("vulnerable", "damage_taken_mult", 1.5))
-	final_amount = GemEffects.intercept_damage_for_split(state, unit, source_uid, reason, final_amount)
+		final_amount = int(float(final_amount) * StatusConfig.float_value("vulnerable", "damage_taken_mult"))
+	final_amount = GemEffects.intercept_damage_for_split(
+		state,
+		unit,
+		source_uid,
+		reason,
+		final_amount,
+		resolved_damage_context
+	)
 	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
+	var actual_hp_loss := mini(unit.hp, maxi(0, final_amount))
 	unit.hp -= final_amount
-	_record_damage_pair(state, unit.uid, source_uid, final_amount)
+	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])
 	state.on_damage_taken.emit(unit.uid, final_amount, reason)
+	if unit.alive and unit.hp > 0 and actual_hp_loss > 0:
+		_GemEffects.run_blue_split_after_damage(state, unit, reason, actual_hp_loss)
 	if unit.hp <= 0:
-		_kill_unit(state, unit, source_uid, reason)
+		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
 	return final_amount
 
 
 ## 无视护甲的真实伤害（毒/火等 DoT 使用）
-static func apply_true_damage(state: GameState, unit: UnitState, amount: int, source_uid: String, reason: String) -> int:
+static func apply_true_damage(
+	state: GameState,
+	unit: UnitState,
+	amount: int,
+	source_uid: String,
+	reason: String,
+	damage_context: Dictionary = {}
+) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	var resolved_damage_context := DamageContext.normalize(source_uid, reason, damage_context)
 	if reason == "burning" or reason == "tile_fire":
 		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount)
+	var actual_hp_loss := mini(unit.hp, amount)
 	unit.hp -= amount
-	_record_damage_pair(state, unit.uid, source_uid, amount)
+	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
 	state.log("%s 受到 %d 点真实伤害 (%s)" % [unit.uid, amount, reason])
 	state.on_damage_taken.emit(unit.uid, amount, reason)
 	if unit.hp <= 0:
-		_kill_unit(state, unit, source_uid, reason)
+		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
 	return amount
 
 
@@ -84,19 +113,26 @@ static func end_deferred_death_hooks(state: GameState) -> void:
 		var chain_id := int(entry.get("death_chain_id", 0))
 		var prev_chain_id := _active_death_chain_id
 		_active_death_chain_id = chain_id
-		_GemEffects.on_unit_death(state, unit, _death_event_sink, {
-			"death_chain_id": chain_id,
-			"source_uid": entry.get("source_uid", ""),
-			"damage": int(entry.get("damage", 0)),
-			"reason": entry.get("reason", ""),
-		})
+		_GemEffects.on_unit_death(
+			state,
+			unit,
+			_death_event_sink,
+			_death_hook_context(entry, chain_id)
+		)
 		_drop_enemy_gems_to_ground(state, unit)
 		_active_death_chain_id = prev_chain_id
 	_pending_deaths.clear()
 	_death_event_sink = []
 
 
-static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, reason: String) -> void:
+static func _kill_unit(
+	state: GameState,
+	unit: UnitState,
+	source_uid: String,
+	reason: String,
+	actual_hp_loss: int,
+	damage_context: Dictionary
+) -> void:
 	unit.hp = 0
 	state.kill_unit(unit)  # 撤销占格索引并标记 alive = false
 	state.log("%s 被击败" % unit.uid)
@@ -106,13 +142,13 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 		_death_chain_serial += 1
 		death_chain_id = _death_chain_serial
 	if _defer_death_hooks_depth > 0:
-		var last_damage := int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0))
 		_pending_deaths.append({
 			"unit": unit,
 			"death_chain_id": death_chain_id,
 			"source_uid": source_uid,
-			"damage": last_damage,
+			"damage": actual_hp_loss,
 			"reason": reason,
+			"lethal_damage": DamageContext.with_actual_damage(damage_context, actual_hp_loss),
 		})
 	else:
 		var prev_chain_id := _active_death_chain_id
@@ -120,14 +156,33 @@ static func _kill_unit(state: GameState, unit: UnitState, source_uid: String, re
 		var death_events: Array[Dictionary] = []
 		if state.has_combat_event_sink():
 			death_events = state.get_combat_event_sink()
-		_GemEffects.on_unit_death(state, unit, death_events, {
-			"death_chain_id": death_chain_id,
+		_GemEffects.on_unit_death(state, unit, death_events, _death_hook_context({
 			"source_uid": source_uid,
-			"damage": int(state.battle_temp_flags.get("last_damage_taken:%s" % unit.uid, 0)),
+			"damage": actual_hp_loss,
 			"reason": reason,
-		})
+			"lethal_damage": DamageContext.with_actual_damage(damage_context, actual_hp_loss),
+		}, death_chain_id))
 		_drop_enemy_gems_to_ground(state, unit)
 		_active_death_chain_id = prev_chain_id
+
+
+static func _death_hook_context(entry: Dictionary, death_chain_id: int) -> Dictionary:
+	var source_uid := str(entry.get("source_uid", ""))
+	var reason := str(entry.get("reason", ""))
+	var damage := maxi(0, int(entry.get("damage", 0)))
+	var lethal_damage: Dictionary = entry.get("lethal_damage", {})
+	if lethal_damage.is_empty():
+		lethal_damage = DamageContext.with_actual_damage(
+			DamageContext.create(source_uid, reason),
+			damage
+		)
+	return {
+		"death_chain_id": death_chain_id,
+		"source_uid": source_uid,
+		"damage": damage,
+		"reason": reason,
+		"lethal_damage": lethal_damage.duplicate(true),
+	}
 
 
 static func _record_damage_pair(state: GameState, victim_uid: String, source_uid: String, amount: int) -> void:
@@ -151,13 +206,17 @@ static func _try_resolve_counter_mark_before_hit(state: GameState, victim: UnitS
 		source.remove_status(Constants.STATUS_COUNTER_MARK)
 		return false
 	var matched := false
-	var matched_level := 1
+	var retaliation_with_tags := false
+	var grant_extra_attack_on_kill := false
 	var next_watchers: Array = []
 	for watcher_data in watchers:
 		var watcher: Dictionary = watcher_data
 		if str(watcher.get("uid", "")) == victim.uid and not matched:
 			matched = true
-			matched_level = maxi(1, int(watcher.get("level", 1)))
+			# Active saves may still contain the former level sentinel. New marks store direct semantics.
+			var legacy_level := maxi(1, int(watcher.get("level", 1)))
+			retaliation_with_tags = bool(watcher.get("retaliation_with_tags", legacy_level >= 2))
+			grant_extra_attack_on_kill = bool(watcher.get("grant_extra_attack_on_kill", legacy_level >= 3))
 			continue
 		next_watchers.append(watcher)
 	if not matched:
@@ -166,7 +225,7 @@ static func _try_resolve_counter_mark_before_hit(state: GameState, victim: UnitS
 		source.remove_status(Constants.STATUS_COUNTER_MARK)
 	else:
 		mark.payload["watchers"] = next_watchers
-	if matched_level >= 2:
+	if retaliation_with_tags:
 		var result := AttackPipeline.execute_aimed(state, victim, source.pos, [AttackPipeline.TAG_RANGED], {
 			"damage_reason": "counter_red",
 		})
@@ -174,12 +233,12 @@ static func _try_resolve_counter_mark_before_hit(state: GameState, victim: UnitS
 		for event in result.get("events", []):
 			if sink != null:
 				sink.append(event)
-		if matched_level >= 3 and not source.alive:
+		if grant_extra_attack_on_kill and not source.alive:
 			_grant_counter_kill_refresh(state, victim)
 		return not source.alive
 	var tx := CombatTransaction.begin_from_state(state)
 	tx.damage_unit(source, attack_damage(state, victim), victim.uid, "counter_red", {"pos": source.pos})
-	if matched_level >= 3 and not source.alive:
+	if grant_extra_attack_on_kill and not source.alive:
 		_grant_counter_kill_refresh(state, victim)
 	return not source.alive
 
@@ -194,11 +253,16 @@ static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> voi
 	if state == null or unit == null or unit.team != Constants.TEAM_ENEMY:
 		return
 	var registry := _data_registry()
+	var inherited := _GemEffects.consume_split_inherited_source_gems(state, unit.uid)
 	for unit_slot in unit.slots:
 		if unit_slot == null or unit_slot.gem_uid.is_empty():
 			continue
 		var gem: GemState = state.gems.get(unit_slot.gem_uid, null)
 		if gem == null:
+			unit_slot.gem_uid = ""
+			continue
+		if inherited.has(gem.uid):
+			state.gems.erase(gem.uid)
 			unit_slot.gem_uid = ""
 			continue
 		gem.owner_uid = ""
@@ -309,7 +373,7 @@ static func attack_damage(state: GameState, attacker: UnitState) -> int:
 		bonus = int(registry.query_modifier("attack_damage_bonus", state))
 	var result := int(float(base) * mult) + bonus
 	if StatusRules.is_weak(attacker):
-		result = int(float(result) * StatusConfig.float_value("weak", "attack_damage_mult", 0.75))
+		result = int(float(result) * StatusConfig.float_value("weak", "attack_damage_mult"))
 	return maxi(0, result)
 
 

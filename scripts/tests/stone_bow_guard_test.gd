@@ -140,7 +140,8 @@ func _test_kite_retreat_then_shoot() -> void:
 	assert(not bow.intent.path.is_empty(), "should move before shooting when player is adjacent")
 	var landing := bow.intent.path[bow.intent.path.size() - 1]
 	var dist_after := BoardUtils.manhattan(landing, player.pos)
-	assert(dist_after >= Constants.STONE_BOW_KITE_MIN_RANGE, "kite position should keep distance")
+	var kite_min_range := int(root.get_node("DataRegistry").get_unit_balance_value("unit_stone_bow_guard", "kite_min_range"))
+	assert(dist_after >= kite_min_range, "kite position should keep distance")
 	var saved_pos := bow.pos
 	bow.pos = landing
 	var clear_line := StoneBowGuardRules.in_range(state, bow, landing, player, bow.intent.path)

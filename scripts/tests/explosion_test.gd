@@ -1,5 +1,7 @@
 extends SceneTree
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -13,8 +15,9 @@ func _run() -> void:
 	_test_aim_cell_shifts_cross_center()
 	_test_red_explosion_level_2_uses_square()
 	_test_red_explosion_level_3_doubles_square_damage()
-	_test_red_explosion_level_4_triples_square_damage()
+	_test_red_explosion_level_4_clamps_to_level_3()
 	_test_active_trigger_level_2_uses_square()
+	_test_active_trigger_level_4_clamps_to_level_3()
 	print("EXPLOSION_TEST_PASS")
 	quit()
 
@@ -70,7 +73,7 @@ func _test_radius_explosion_dedupes_multicell() -> void:
 	var player := state.get_player()
 	player.pos = slime.pos + Vector2i(2, 0)
 	var hp_before := slime.hp
-	var events := GemEffects.explode_at(state, slime.pos, Constants.EXPLOSION_DAMAGE, player.uid)
+	var events := GemEffects.explode_at(state, slime.pos, CombatConfig.explosion_damage(), player.uid)
 	var slime_hits := 0
 	for ev in events:
 		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == slime.pos:
@@ -131,13 +134,13 @@ func _test_red_explosion_level_3_doubles_square_damage() -> void:
 	var result := ctrl.try_attack_cell(primary.pos)
 	assert(result.get("ok", false))
 	var dealt := hp_before - primary.hp
-	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE * 2, "level 3 explosion should deal double damage, got %d" % dealt)
+	assert(dealt >= CombatConfig.explosion_cross_damage() * 2, "level 3 explosion should deal double damage, got %d" % dealt)
 	var explode_ev := _first_explode_event(result.get("attack_events", []))
 	assert(explode_ev.get("pattern", "") == "square", "level 3 explosion should use square pattern")
 	print("  [OK] red explosion level 3 double damage")
 
 
-func _test_red_explosion_level_4_triples_square_damage() -> void:
+func _test_red_explosion_level_4_clamps_to_level_3() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 2027)
 	var state := ctrl.state
@@ -155,10 +158,10 @@ func _test_red_explosion_level_4_triples_square_damage() -> void:
 	assert(result.get("ok", false))
 	assert(soak.hp < hp_before, "diagonal unit should take square explosion damage")
 	var dealt := hp_before - soak.hp
-	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE * 3, "level 4 explosion should deal triple damage, got %d" % dealt)
+	assert(dealt == CombatConfig.explosion_cross_damage() * 2, "four gems should clamp to authored level 3 damage, got %d" % dealt)
 	var explode_ev := _first_explode_event(result.get("attack_events", []))
-	assert(explode_ev.get("pattern", "") == "square", "level 4 explosion should use square pattern")
-	print("  [OK] red explosion level 4 triple damage")
+	assert(explode_ev.get("pattern", "") == "square", "four gems should clamp to authored level 3 pattern")
+	print("  [OK] red explosion count above max clamps to level 3")
 
 
 func _test_active_trigger_level_2_uses_square() -> void:
@@ -181,6 +184,28 @@ func _test_active_trigger_level_2_uses_square() -> void:
 	assert(explode_ev.get("pattern", "") == "square", "active level 2 explosion should use square pattern")
 	assert(diagonal.hp < diagonal_hp, "active level 2 square explosion should hit diagonal unit")
 	print("  [OK] active red explosion level 2 square")
+
+
+func _test_active_trigger_level_4_clamps_to_level_3() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 2028)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosions(state, player, 4)
+	var guards := _guards(state)
+	assert(guards.size() >= 1)
+	var primary := guards[0]
+	var soak := _spawn_guard(state, primary.pos + Vector2i(1, 1))
+	soak.hp = 100
+	soak.max_hp = 100
+	state.rebuild_occupancy()
+	var hp_before := soak.hp
+	var events: Array[Dictionary] = []
+	var red_slot: SlotState = player.slots_accepting(Constants.SLOT_RED)[0]
+	var ok := GemEffects.trigger_gem(state, player.uid, red_slot, events, "", primary.pos)
+	assert(ok, "active trigger should succeed")
+	assert(hp_before - soak.hp == CombatConfig.explosion_cross_damage() * 2, "active trigger should clamp to authored level 3 damage")
+	print("  [OK] active explosion count above max clamps to level 3")
 
 
 func _equip_red_explosion(state: GameState, unit: UnitState) -> void:

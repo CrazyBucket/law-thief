@@ -32,14 +32,15 @@ func _test_charge_bonus_path() -> void:
 	var ctx := _charge_test_context()
 	var state: GameState = ctx["state"]
 	var unit: UnitState = ctx["unit"]
+	var charge_bonus := int(root.get_node("DataRegistry").get_unit_balance_value("unit_patrol_guard", "charge_bonus"))
 	var on_line: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2)]
-	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), on_line) == Constants.PATROL_GUARD_CHARGE_BONUS)
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), on_line) == charge_bonus)
 	var off_line: Array[Vector2i] = [Vector2i(5, 2), Vector2i(5, 3)]
 	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), off_line) == 0)
 	var line_then_break: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2), Vector2i(4, 3)]
 	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), line_then_break) == 0)
 	var turn_then_charge: Array[Vector2i] = [Vector2i(6, 3), Vector2i(5, 3), Vector2i(4, 3), Vector2i(3, 3)]
-	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), turn_then_charge) == Constants.PATROL_GUARD_CHARGE_BONUS)
+	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(6, 2), turn_then_charge) == charge_bonus)
 	var one_step: Array[Vector2i] = [Vector2i(4, 2)]
 	assert(PatrolGuardRules.charge_bonus(state, unit, Vector2i(5, 2), one_step) == 0)
 	_set_tile(state, Vector2i(5, 2), Constants.TILE_WATER)
@@ -54,6 +55,7 @@ func _charge_test_context() -> Dictionary:
 	var state := GameState.new()
 	var unit := UnitState.new()
 	unit.uid = "guard"
+	unit.unit_def_id = "unit_patrol_guard"
 	unit.team = Constants.TEAM_ENEMY
 	state.units[unit.uid] = unit
 	return {"state": state, "unit": unit}
@@ -73,8 +75,8 @@ func _test_charge_melee_damage() -> void:
 	if red != null and not red.gem_uid.is_empty():
 		state.gems.erase(red.gem_uid)
 		red.gem_uid = ""
-	guard.pos = Vector2i(6, 2)
-	player.pos = Vector2i(3, 2)
+	state.move_unit(guard, Vector2i(6, 2))
+	state.move_unit(player, Vector2i(3, 2))
 	var path: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2)]
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "melee_attack", "should attack after move, got %s" % guard.intent.type)

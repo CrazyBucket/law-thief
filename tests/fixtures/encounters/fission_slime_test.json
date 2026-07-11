@@ -1,0 +1,7 @@
+{
+  "catalog_visible": false,
+  "player_spawn": [0, 2],
+  "enemies": [
+    {"def_id": "unit_fission_slime", "pos": [4, 3]}
+  ]
+}

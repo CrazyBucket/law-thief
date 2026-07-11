@@ -9,7 +9,9 @@ var target_uid: String = ""
 var target_pos: Vector2i = Vector2i(-1, -1)
 var path: Array[Vector2i] = []
 var affected_cells: Array[Vector2i] = []
+var base_damage: int = 0
 var damage: int = 0
+var damage_components: Array[IntentDamageComponent] = []
 var preview_text: String = ""
 
 
@@ -66,6 +68,27 @@ func clone() -> IntentState:
 	intent.target_pos = target_pos
 	intent.path = path.duplicate()
 	intent.affected_cells = affected_cells.duplicate()
+	intent.base_damage = base_damage
 	intent.damage = damage
+	for component in damage_components:
+		intent.damage_components.append(component.clone())
 	intent.preview_text = preview_text
 	return intent
+
+
+func set_damage_components(components: Array) -> void:
+	damage_components.clear()
+	for raw_component in components:
+		if raw_component is IntentDamageComponent:
+			damage_components.append(raw_component)
+	if not damage_components.is_empty():
+		damage = damage_components[0].damage_per_hit
+
+
+func predicted_raw_damage_to(target_uid: String, include_conditional: bool = true) -> int:
+	var total := 0
+	for component in damage_components:
+		if not include_conditional and component.certainty == IntentDamageComponent.CERTAINTY_CONDITIONAL:
+			continue
+		total += component.predicted_raw_damage_to(target_uid)
+	return total

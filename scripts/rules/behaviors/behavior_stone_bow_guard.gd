@@ -42,6 +42,7 @@ static func on_lawless_recovered(unit: UnitState) -> void:
 
 
 static func build_ranged_intent(state: GameState, unit: UnitState, move_path: Array[Vector2i], intent: IntentState) -> void:
+	intent.base_damage = CombatRules.attack_damage(state, unit) + StoneBowGuardRules.bonus_damage(unit)
 	intent.damage = StoneBowGuardRules.ranged_damage_preview(state, unit)
 	var range: int = StoneBowGuardRules.attack_range_for(unit.pos, move_path)
 	if StoneBowGuardRules.is_deployed(unit.pos, move_path):

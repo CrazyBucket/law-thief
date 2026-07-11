@@ -4,12 +4,31 @@ extends RefCounted
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
-const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
-const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
+
+const ATTACK_INTENT_TYPES := [
+	"melee_attack",
+	"ranged_attack",
+	"explosion_attack",
+	"charge_explode",
+	"pull",
+	"poison_attack",
+	"arc_attack",
+	"fire_attack",
+	"ice_attack",
+	"split_attack",
+	"light_beam",
+	"counter_attack",
+	"echo_attack",
+	"trample",
+	"slam_attack",
+	"lawless_attack",
+	"bomb_rat_plunder_steal",
+]
 ## 敌人回合执行时按照预计算的意图行动
 
 
@@ -89,7 +108,28 @@ static func _compute_intent_from_ai(
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
 	var behavior: GDScript = _behavior_for(unit)
-	return behavior.compute_intent(state, unit, cell_blockers)
+	var intent: IntentState = behavior.compute_intent(state, unit, cell_blockers)
+	if intent != null and not StatusRules.can_attack(unit) and _is_attack_intent(intent.type):
+		intent = _movement_only_intent(unit, intent)
+	IntentPreviewRules.populate_damage(state, unit, intent)
+	return intent
+
+
+static func _is_attack_intent(intent_type: String) -> bool:
+	return intent_type in ATTACK_INTENT_TYPES
+
+
+static func _movement_only_intent(unit: UnitState, planned: IntentState) -> IntentState:
+	if planned.path.is_empty():
+		return IntentState.wait(unit.uid)
+	var intent := IntentState.new()
+	intent.source_uid = unit.uid
+	intent.type = "move"
+	intent.path = planned.path.duplicate()
+	intent.target_pos = intent.path[-1]
+	intent.target_uid = planned.target_uid
+	intent.preview_text = "移动"
+	return intent
 
 
 static func _behavior_for(unit: UnitState) -> GDScript:
@@ -116,14 +156,12 @@ static func enemy_intent_from_decision(
 			intent.type = "ranged_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
-			_apply_explosion_intent_cells(state, unit, intent)
 			_behavior_for(unit).build_ranged_intent(state, unit, move_path, intent)
 
 		_EnemyAI.ActionType.ATTACK:
 			intent.type = "melee_attack"
 			intent.target_uid = action.action_target_uid
 			intent.target_pos = action.move_target
-			_apply_explosion_intent_cells(state, unit, intent)
 			_behavior_for(unit).build_melee_intent(state, unit, move_path, intent)
 
 		_EnemyAI.ActionType.SKILL_RED:
@@ -157,16 +195,6 @@ static func enemy_intent_from_decision(
 	return intent
 
 
-static func _apply_explosion_intent_cells(state: GameState, unit: UnitState, intent: IntentState) -> void:
-	if not GemEffects.unit_has_red_explosion(state, unit):
-		return
-	var target: UnitState = state.units.get(intent.target_uid, null)
-	if target == null or not target.alive:
-		return
-	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-	intent.affected_cells = GemEffects.red_explosion_blast_cells(target.pos, gem_ctx)
-
-
 static func _build_skill_intent(
 	state: GameState,
 	unit: UnitState,
@@ -180,17 +208,13 @@ static func _build_skill_intent(
 	intent.target_uid = action.action_target_uid
 	intent.path = move_path.duplicate()
 	var base_damage := CombatRules.attack_damage(state, unit)
+	intent.base_damage = base_damage
 	var meta: Dictionary = GemEffects.get_enemy_red_intent_meta(gem, base_damage)
 	intent.type = meta.get("type", "wait")
 	intent.preview_text = meta.get("preview", "等待")
 	intent.damage = int(meta.get("damage", 0))
 	if intent.type == "wait":
 		return IntentState.wait(unit.uid)
-	if intent.type == "explosion_attack":
-		var boom_target: UnitState = state.units.get(action.action_target_uid, null)
-		if boom_target != null:
-			var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-			intent.affected_cells = GemEffects.red_explosion_blast_cells(boom_target.pos, gem_ctx)
 	if intent.type == "charge_explode":
 		var target: UnitState = state.units.get(action.action_target_uid, null)
 		if target != null:
@@ -204,32 +228,6 @@ static func _build_skill_intent(
 			intent.affected_cells = BoardUtils.cells_in_radius(end_pos, CombatConfig.explosion_radius())
 			intent.target_pos = end_pos
 			intent.preview_text = "冲刺爆炸 (%d)" % CombatConfig.explosion_damage()
-	if intent.type == "split_attack":
-		var split_target: UnitState = state.units.get(action.action_target_uid, null)
-		if split_target != null:
-			var anchor: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
-			var aim_pos := split_target.pos
-			var origin := BoardUtils.projectile_origin_cell_at(unit, anchor, aim_pos)
-			intent.affected_cells = []
-			var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE)
-			var split_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
-			var split_cells: Array[Vector2i] = _SplitShotRules.all_hit_cells(origin, aim_pos, [], split_level)
-			for cell in split_cells:
-				if not cell in intent.affected_cells:
-					intent.affected_cells.append(cell)
-	if intent.type == "light_beam":
-		var light_target: UnitState = state.units.get(action.action_target_uid, null)
-		if light_target != null:
-			intent.affected_cells = []
-			var anchor: Vector2i = intent.path[-1] if not intent.path.is_empty() else unit.pos
-			var from_cell := BoardUtils.projectile_origin_cell_at(unit, anchor, light_target.pos)
-			var dx := signi(light_target.pos.x - from_cell.x)
-			var dy := signi(light_target.pos.y - from_cell.y)
-			var current: Vector2i = from_cell + Vector2i(dx, dy)
-			while BoardUtils.in_bounds(state, current):
-				intent.affected_cells.append(current)
-				current += Vector2i(dx, dy)
-
 	return intent
 
 
@@ -251,6 +249,8 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	if StatusRules.can_move(unit) and not intent.path.is_empty():
 		var move_events := _execute_move(state, unit, intent)
 		anim_events.append_array(move_events)
+	if _is_attack_intent(intent.type) and not StatusRules.can_attack(unit):
+		return _validated_events(anim_events, "IntentSystem.execute_intent:%s" % intent.type)
 
 	var custom_result: Dictionary = _behavior_for(unit).execute_custom_intent(state, unit, intent, move_start_pos)
 	if bool(custom_result.get("handled", false)):
@@ -262,7 +262,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append_array(_execute_melee(state, unit, intent, move_start_pos))
 		"ranged_attack":
 			anim_events.append_array(_execute_ranged(state, unit, intent, move_start_pos))
-		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack", "light_beam":
+		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack", "light_beam", "counter_attack", "echo_attack":
 			anim_events.append_array(_behavior_for(unit).execute_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)

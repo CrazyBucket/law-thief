@@ -124,6 +124,8 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	if not unlimited and not StatusRules.can_attack(player):
+		return _fail(StatusRules.attack_block_reason(player))
 	var consume_bonus_attack := false
 	if not unlimited and state.player_acted:
 		if not StatusRules.has_extra_attack(player):
@@ -147,6 +149,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		max_range,
 		{
 			"aim_cell": target_pos,
+			"ignore_attack_block": unlimited,
 			# Player manual attacks should honor the chosen aim cell even if a static entity sits in front.
 			# This keeps gem ground effects and target selection aligned with the tactical preview.
 			"ignore_projectile_blockers": true,

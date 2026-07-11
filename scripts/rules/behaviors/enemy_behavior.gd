@@ -1,6 +1,8 @@
 class_name EnemyBehavior
 extends RefCounted
 
+const DamageContext = preload("res://scripts/rules/damage_context.gd")
+
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
@@ -32,8 +34,9 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 		if carrier != null:
 			target_pos = carrier.pos
 			target_uid = carrier.uid
-	var damage := CombatRules.attack_damage(state, unit) + 1
+	var damage := CombatRules.attack_damage(state, unit) + StatusConfig.int_value("lawless", "attack_bonus")
 	var intent := IntentState.new()
+	intent.base_damage = damage
 	intent.source_uid = unit.uid
 	intent.target_uid = target_uid
 	if target_uid != "" and BoardUtils.manhattan(unit.pos, target_pos) <= CombatConfig.extract_range():
@@ -89,12 +92,16 @@ static func on_unit_death(_state: GameState, _unit: UnitState) -> void:
 
 
 static func build_melee_intent(state: GameState, unit: UnitState, _move_path: Array[Vector2i], intent: IntentState) -> void:
-	intent.damage = CombatRules.attack_damage(state, unit)
+	var base_damage := CombatRules.attack_damage(state, unit)
+	intent.base_damage = base_damage
+	intent.damage = GemEffects.primary_attack_damage_preview(state, unit, base_damage)
 	intent.preview_text = "近战攻击 (%d)" % intent.damage
 
 
 static func build_ranged_intent(state: GameState, unit: UnitState, _move_path: Array[Vector2i], intent: IntentState) -> void:
-	intent.damage = CombatRules.attack_damage(state, unit)
+	var base_damage := CombatRules.attack_damage(state, unit)
+	intent.base_damage = base_damage
+	intent.damage = GemEffects.primary_attack_damage_preview(state, unit, base_damage)
 	intent.preview_text = "远程射击 (%d)" % intent.damage
 
 
@@ -121,7 +128,7 @@ static func ranged_attack_context(
 
 
 static func split_clone_ratio(_unit: UnitState) -> float:
-	return CombatConfig.split_black_stat_ratio()
+	return 0.0
 
 
 static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
@@ -350,11 +357,21 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 	var max_range := GemEffects.gravity_pull_range(state, unit, CombatConfig.enemy_gravity_pull_range())
 	if BoardUtils.distance_between_units(unit, target) > max_range:
 		return [] as Array[Dictionary]
-	var pull_steps := maxi(1, GemTagResolver.tag_level(
-		GemTagResolver.build_context(state, unit, Constants.SLOT_RED, GemEffects.TIMING_ACTIVE),
-		"gravity"
-	))
-	return GemEffects.pull_unit_toward_with_events(state, target, unit.pos, pull_steps, unit.uid)
+	var gem_ctx := GemTagResolver.build_context(
+		state,
+		unit,
+		Constants.SLOT_RED,
+		GemEffects.TIMING_ACTIVE
+	)
+	var pull_steps := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
+	return GemEffects.pull_unit_toward_with_events(
+		state,
+		target,
+		unit.pos,
+		pull_steps,
+		unit.uid,
+		DamageContext.create(unit.uid, "gravity_collision", ["gravity"], gem_ctx)
+	)
 
 
 static func _execute_charge_explosion(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:

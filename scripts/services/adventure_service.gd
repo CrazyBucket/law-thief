@@ -3,28 +3,11 @@ extends Node
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _AdventureBoardGenerator := preload("res://scripts/map/adventure_board_generator.gd")
 const _MapNode := preload("res://scripts/map/map_node.gd")
+const AdventureProgressionConfig = preload("res://scripts/core/adventure_progression_config.gd")
 
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
-
-const CHAPTER_COUNT := 3
-
-const COMBAT_ENCOUNTERS: Dictionary = {
-	"NORMAL_COMBAT": [
-		"crossfire_courtyard", "rat_run", "flooded_crossing", "spike_corridor",
-		"burning_storehouse", "poison_marsh", "frozen_gallery", "barrel_maze",
-		"shifting_quarry", "split_sanctum",
-	],
-	"ELITE_COMBAT": [
-		"enforcer_gate", "law_beast_arena", "toxic_furnace", "storm_pillars",
-	],
-}
-
-# 每章 END 节点对应的 Boss 遭遇；最后一章是终局 Boss。
-const BOSS_ENCOUNTERS: Array[String] = [
-	"boss_chapter_1", "boss_chapter_2", "boss_chapter_3",
-]
 
 var map_seed: int = 20260525
 var map_matrix: Array = []
@@ -44,7 +27,7 @@ func start_new_run(seed_value: int = -1) -> void:
 
 
 func get_chapter_count() -> int:
-	return CHAPTER_COUNT
+	return AdventureProgressionConfig.chapter_count()
 
 
 func get_current_chapter() -> int:
@@ -52,7 +35,7 @@ func get_current_chapter() -> int:
 
 
 func get_chapter_label() -> String:
-	return "第 %d / %d 关" % [get_current_chapter(), CHAPTER_COUNT]
+	return "第 %d / %d 关" % [get_current_chapter(), get_chapter_count()]
 
 
 func build_board_state() -> GameState:
@@ -99,7 +82,7 @@ func enter_cell(cell: Vector2i) -> void:
 	if node == null:
 		return
 	pending_room_type = node.room_type
-	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type, get_current_chapter(), CHAPTER_COUNT)
+	var display: Dictionary = _AdventureRoomDisplay.get_display(node.room_type, get_current_chapter(), get_chapter_count())
 	pending_room_label = _AdventureRoomDisplay.display_name(display)
 	_sync_run_progress()
 	_navigate_to_room(node.room_type)
@@ -244,7 +227,10 @@ func _navigate_to_room(room_type: String) -> void:
 	GameService.pending_room_id = current_room_id()
 	match room_type:
 		"NORMAL_COMBAT", "ELITE_COMBAT":
-			var pool: Array = COMBAT_ENCOUNTERS.get(room_type, ["tutorial_001"])
+			var pool: Array[String] = AdventureProgressionConfig.combat_encounters(room_type)
+			if pool.is_empty():
+				push_error("AdventureService: combat encounter pool is empty: %s" % room_type)
+				return
 			var idx: int = (current_pos.x + current_pos.y + map_seed) % pool.size()
 			var encounter_id := str(pool[idx])
 			GameService.adventure_return = true
@@ -281,16 +267,13 @@ func _mark_pending_battle(encounter_id: String) -> void:
 
 
 func _boss_encounter_for_chapter(chapter: int) -> String:
-	if BOSS_ENCOUNTERS.is_empty():
-		return "tutorial_001"
-	var idx := clampi(chapter - 1, 0, BOSS_ENCOUNTERS.size() - 1)
-	return BOSS_ENCOUNTERS[idx]
+	return AdventureProgressionConfig.boss_encounter(chapter)
 
 
 ## Boss 战胜利后调用：非最终章直接进入下一关地图，最终章则通关回主菜单。
 ## 与原 END 占位房间不同，这里不再走 room_placeholder 的确认步骤。
 func advance_after_boss_room() -> void:
-	if get_current_chapter() < CHAPTER_COUNT:
+	if get_current_chapter() < get_chapter_count():
 		_advance_to_next_chapter()
 		get_tree().change_scene_to_file(MAP_SCENE)
 		return
@@ -310,7 +293,7 @@ func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
 		var current_node = get_current_node()
 		if current_node != null:
 			var display: Dictionary = _AdventureRoomDisplay.get_display(
-				current_node.room_type, get_current_chapter(), CHAPTER_COUNT
+				current_node.room_type, get_current_chapter(), get_chapter_count()
 			)
 			pending_room_label = _AdventureRoomDisplay.display_name(display)
 
@@ -382,7 +365,7 @@ func _dict_to_vec(raw_value: Variant, fallback: Vector2i) -> Vector2i:
 
 
 func _chapter_map_seed(base_seed: int, chapter: int) -> int:
-	return base_seed + (maxi(1, chapter) - 1) * 9973
+	return base_seed + (maxi(1, chapter) - 1) * AdventureProgressionConfig.chapter_seed_stride()
 
 
 func _begin_chapter_map(chapter: int, base_seed: int) -> void:
@@ -397,7 +380,7 @@ func _begin_chapter_map(chapter: int, base_seed: int) -> void:
 	current_pos = Vector2i.ZERO
 	run_active = true
 	pending_room_type = "START"
-	var display: Dictionary = _AdventureRoomDisplay.get_display("START", chapter, CHAPTER_COUNT)
+	var display: Dictionary = _AdventureRoomDisplay.get_display("START", chapter, get_chapter_count())
 	pending_room_label = _AdventureRoomDisplay.display_name(display)
 	_sync_run_progress()
 
@@ -406,7 +389,7 @@ func _advance_to_next_chapter() -> void:
 	var run := RunService.get_run()
 	if run == null:
 		return
-	var next_chapter := mini(CHAPTER_COUNT, run.current_chapter + 1)
+	var next_chapter := mini(get_chapter_count(), run.current_chapter + 1)
 	run.resolved_rooms.clear()
 	run.room_states.clear()
 	run.relic_offer_snapshots.clear()

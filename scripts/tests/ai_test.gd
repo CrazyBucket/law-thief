@@ -164,7 +164,7 @@ func _test_enemy_extra_action_consumes_bonus() -> void:
 	})
 	builder.clear_slots(enemy)
 	var state := builder.finish()
-	state.battle_temp_flags["enemy_extra_actions:%s" % enemy.uid] = 1
+	StatusRules.grant_extra_attack(state, enemy, 1)
 	var controller := BattleController.new()
 	controller.state = state
 	controller.begin_enemy_phase()
@@ -173,7 +173,7 @@ func _test_enemy_extra_action_consumes_bonus() -> void:
 	var events: Array = result.get("events", [])
 	assert(player.hp == hp_before - 8, "enemy with one bonus action should deal damage twice")
 	assert(_count_damage_events_to(events, player.uid) >= 2, "enemy bonus action should emit two damage events")
-	assert(int(state.battle_temp_flags.get("enemy_extra_actions:%s" % enemy.uid, 0)) == 0, "bonus action charge should be consumed")
+	assert(not StatusRules.has_extra_attack(enemy), "bonus action charge should be consumed")
 	print("  [OK] enemy extra action consumed")
 
 

@@ -31,6 +31,8 @@ func begin_enemy_phase() -> void:
 		return
 	if ctrl.state == null or ctrl.state.phase != Constants.PHASE_PLAYER:
 		return
+	var ending_player: UnitState = ctrl.state.get_player()
+	StatusRules.consume_disarm(ending_player)
 	# 若队列中还有待操控单位，切换后继续玩家回合
 	if _try_activate_next_controllable(ctrl):
 		return
@@ -90,7 +92,10 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 		ctrl._check_battle_end()
 		if ctrl.state.phase == Constants.PHASE_ENDED or not enemy.alive:
 			break
+		if not StatusRules.can_attack(enemy):
+			break
 		first_action = false
+	StatusRules.consume_disarm(enemy)
 	ctrl._emit_changed()
 	return {
 		"events": events,
@@ -205,10 +210,15 @@ func _apply_move_bonus(state: GameState) -> void:
 func _try_inherit_split_clone(ctrl) -> bool:
 	if _try_activate_next_controllable(ctrl):
 		return true
-	# 兜底：从所有存活的分裂分身里找一个接班
+	# 兜底：从存活的黑槽死亡分身里找一个接班，排除蓝槽临时分身。
 	var survivors: Array = []
 	for unit in ctrl.state.units.values():
-		if unit.alive and unit.team == Constants.TEAM_PLAYER and unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+		if (
+			unit.alive
+			and unit.team == Constants.TEAM_PLAYER
+			and unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE)
+			and not unit.has_tag(Constants.TAG_UNIT_SPLIT_BLUE_TEMP_CLONE)
+		):
 			survivors.append(unit)
 	if survivors.is_empty():
 		return false

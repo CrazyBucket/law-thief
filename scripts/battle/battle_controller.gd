@@ -203,7 +203,10 @@ func can_use_action(action: String) -> bool:
 		Constants.ACTION_MOVE:
 			return not state.player_moved or StatusRules.has_extra_move(state.get_player())
 		Constants.ACTION_ATTACK:
-			return not state.player_acted or StatusRules.has_extra_attack(state.get_player())
+			var player := state.get_player()
+			return player != null \
+				and StatusRules.can_attack(player) \
+				and (not state.player_acted or StatusRules.has_extra_attack(player))
 		Constants.ACTION_EXTRACT:
 			return state.held_gem_uid.is_empty()
 		Constants.ACTION_INSERT:

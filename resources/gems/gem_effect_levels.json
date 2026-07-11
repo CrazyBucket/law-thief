@@ -36,17 +36,19 @@
       "3": {"damage_ratio": 1.0, "exposed_stacks": 2, "pierce_blockers": true, "beam_power": 1.25, "beam_width": 2.35}
     },
     "ice": {
-      "1": {"hit_slowed_stacks": 1, "freeze_if_target_slowed": false},
-      "2": {"hit_slowed_stacks": 2, "freeze_if_target_slowed": false},
-      "3": {"hit_slowed_stacks": 2, "freeze_if_target_slowed": true}
+      "1": {"hit_slowed_stacks": 1, "slowed_min_move_points": 1, "freeze_if_target_slowed": false},
+      "2": {"hit_slowed_stacks": 2, "slowed_min_move_points": 0, "freeze_if_target_slowed": false},
+      "3": {"hit_slowed_stacks": 2, "slowed_min_move_points": 0, "freeze_if_target_slowed": true}
     },
     "counter": {
-      "1": {"mark_stacks": 1},
-      "2": {"mark_stacks": 2},
-      "3": {"mark_stacks": 3}
+      "1": {"mark_duration": 1, "retaliation_with_tags": false, "grant_extra_attack_on_kill": false},
+      "2": {"mark_duration": 1, "retaliation_with_tags": true, "grant_extra_attack_on_kill": false},
+      "3": {"mark_duration": 1, "retaliation_with_tags": true, "grant_extra_attack_on_kill": true}
     },
     "echo": {
-      "3": {"followup_ratio": 0.5}
+      "1": {"echo_tag_count": 1, "followup_ratio": 0.0},
+      "2": {"echo_tag_count": 2, "followup_ratio": 0.0},
+      "3": {"echo_tag_count": 2, "followup_ratio": 0.5}
     }
   },
   "blue": {
@@ -56,14 +58,14 @@
       "3": {"turn_end_spread": true, "copy_debuff_on_contact": true, "copy_debuff_on_damaged": true, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2}
     },
     "explosion": {
-      "1": {"detonate_on_any_damage": false, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1},
-      "2": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1},
-      "3": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "square", "pillar_radius": 1, "pillar_damage": 1}
+      "1": {"detonate_on_any_damage": false, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1, "turn_start_damage": 1},
+      "2": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "cross", "pillar_radius": 1, "pillar_damage": 1, "turn_start_damage": 1},
+      "3": {"detonate_on_any_damage": true, "detonate_on_burning": true, "blast_pattern": "square", "pillar_radius": 1, "pillar_damage": 1, "turn_start_damage": 1}
     },
     "gravity": {
-      "1": {"deflect_chance": 0.5, "redirect_enemy_only": false, "slow_on_damaged": false, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
-      "2": {"deflect_chance": 0.75, "redirect_enemy_only": true, "slow_on_damaged": true, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
-      "3": {"deflect_chance": 1.0, "redirect_enemy_only": true, "slow_on_damaged": true, "root_on_damaged": true, "pillar_pull_radius": 2, "pillar_pull_steps": 1}
+      "1": {"deflect_chance": 0.5, "redirect_enemy_only": false, "redirect_radius": 1, "slow_on_damaged": false, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
+      "2": {"deflect_chance": 0.75, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
+      "3": {"deflect_chance": 1.0, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": true, "pillar_pull_radius": 2, "pillar_pull_steps": 1}
     },
     "arc": {
       "1": {"rebound_chance": 0.33},
@@ -71,9 +73,9 @@
       "3": {"rebound_chance": 1.0}
     },
     "split": {
-      "1": {"spawn_temp_clone": false, "even_redirect_distribution": false},
-      "2": {"spawn_temp_clone": false, "even_redirect_distribution": true},
-      "3": {"spawn_temp_clone": true, "even_redirect_distribution": true}
+      "1": {"redirect_mode": "random_ratio", "redirect_ratio": 0.5, "redirect_radius": 1, "temp_clone_count": 0, "temp_clone_hp": 0, "temp_clone_stat_ratio": 0.0, "temp_clone_duration": 0, "temp_clone_per_turn_limit": 0},
+      "2": {"redirect_mode": "equal_all", "redirect_ratio": 1.0, "redirect_radius": 1, "temp_clone_count": 0, "temp_clone_hp": 0, "temp_clone_stat_ratio": 0.0, "temp_clone_duration": 0, "temp_clone_per_turn_limit": 0},
+      "3": {"redirect_mode": "equal_all", "redirect_ratio": 1.0, "redirect_radius": 1, "temp_clone_count": 1, "temp_clone_hp": 1, "temp_clone_stat_ratio": 0.3, "temp_clone_duration": 1, "temp_clone_per_turn_limit": 1}
     },
     "light": {
       "1": {"reflect_beams": 1, "reflect_damage_ratio": 0.2, "reflect_exposed_stacks": 1, "reflect_power": 0.72, "reflect_impact_size": 0.72},
@@ -91,21 +93,21 @@
       "3": {"create_fire_on_contact": true, "double_burning_on_already_burning": true, "contact_burning_stacks": 1}
     },
     "ice": {
-      "1": {"contact_slowed_stacks": 1, "upgrade_slowed_to_sluggish": false},
-      "2": {"contact_slowed_stacks": 2, "upgrade_slowed_to_sluggish": false},
-      "3": {"contact_slowed_stacks": 2, "upgrade_slowed_to_sluggish": true}
+      "1": {"contact_slowed_stacks": 1, "slowed_min_move_points": 1, "upgrade_slowed_to_sluggish": false},
+      "2": {"contact_slowed_stacks": 2, "slowed_min_move_points": 0, "upgrade_slowed_to_sluggish": false},
+      "3": {"contact_slowed_stacks": 2, "slowed_min_move_points": 0, "upgrade_slowed_to_sluggish": true}
     },
     "echo": {
-      "1": {"first_tag_strength": 1},
-      "2": {"first_tag_strength": 1},
-      "3": {"first_tag_strength": 2}
+      "1": {"echo_tag_count": 1, "first_tag_strength": 1},
+      "2": {"echo_tag_count": 2, "first_tag_strength": 1},
+      "3": {"echo_tag_count": 2, "first_tag_strength": 2}
     }
   },
   "black": {
     "explosion": {
-      "1": {"chain_followup": false},
-      "2": {"chain_followup": true},
-      "3": {"chain_followup": true}
+      "1": {"chain_followup": false, "damage_multiplier": 1.0},
+      "2": {"chain_followup": true, "damage_multiplier": 1.0},
+      "3": {"chain_followup": true, "damage_multiplier": 2.0}
     },
     "poison": {
       "1": {"spawn_fog": false, "fog_radius": 0, "debuff_copies": 1, "debuff_spread_radius": 1},
@@ -118,34 +120,39 @@
       "3": {"pull_steps": 1, "apply_slow": true, "apply_root": true}
     },
     "arc": {
-      "1": {"strike_count": 1, "strike_all_targets": false},
-      "2": {"strike_count": 2, "strike_all_targets": false},
-      "3": {"strike_count": 999, "strike_all_targets": true}
+      "1": {"strike_radius": 1, "strike_count": 1, "strike_all_targets": false},
+      "2": {"strike_radius": 1, "strike_count": 2, "strike_all_targets": false},
+      "3": {"strike_radius": 1, "strike_all_targets": true}
     },
     "fire": {
-      "1": {"prefer_occupied_cells": false, "death_fire_count_bonus": 0, "death_duration_bonus": 0},
-      "2": {"prefer_occupied_cells": true, "death_fire_count_bonus": 0, "death_duration_bonus": 0},
-      "3": {"prefer_occupied_cells": true, "death_fire_count_bonus": 2, "death_duration_bonus": 1}
+      "1": {"prefer_occupied_cells": false, "death_fire_radius": 2, "death_fire_count": 5, "death_fire_duration": 2},
+      "2": {"prefer_occupied_cells": true, "death_fire_radius": 2, "death_fire_count": 5, "death_fire_duration": 2},
+      "3": {"prefer_occupied_cells": true, "death_fire_radius": 2, "death_fire_count": 7, "death_fire_duration": 3}
     },
     "ice": {
-      "1": {"apply_slowed": false, "apply_paralyzed": false},
-      "2": {"apply_slowed": true, "apply_paralyzed": false},
-      "3": {"apply_slowed": true, "apply_paralyzed": true}
+      "1": {"death_radius": 1, "slowed_stacks": 0, "slowed_min_move_points": 1, "freeze_duration": 0},
+      "2": {"death_radius": 1, "slowed_stacks": 1, "slowed_min_move_points": 1, "freeze_duration": 0},
+      "3": {"death_radius": 1, "slowed_stacks": 1, "slowed_min_move_points": 1, "freeze_duration": 1}
     },
     "split": {
-      "1": {"stat_ratio": 0.3},
-      "2": {"stat_ratio": 0.5},
-      "3": {"stat_ratio": 0.8}
+      "1": {"clone_count": 2, "stat_ratio": 0.3},
+      "2": {"clone_count": 2, "stat_ratio": 0.5},
+      "3": {"clone_count": 2, "stat_ratio": 0.8}
     },
     "light": {
       "1": {"beam_width": 1.53, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": false},
       "2": {"beam_width": 1.71, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": false},
       "3": {"beam_width": 1.89, "beam_power": 1.25, "impact_size": 1.3, "blind_on_survive": true}
     },
+    "counter": {
+      "1": {"damage_multiplier": 1.0, "vulnerable_duration": 0, "disarm_stacks": 0},
+      "2": {"damage_multiplier": 1.0, "vulnerable_duration": 1, "disarm_stacks": 0},
+      "3": {"damage_multiplier": 1.0, "vulnerable_duration": 1, "disarm_stacks": 1}
+    },
     "echo": {
-      "1": {"first_tag_repeat_count": 1},
-      "2": {"first_tag_repeat_count": 1},
-      "3": {"first_tag_repeat_count": 2}
+      "1": {"echo_tag_count": 1, "first_tag_repeat_count": 1},
+      "2": {"echo_tag_count": 2, "first_tag_repeat_count": 1},
+      "3": {"echo_tag_count": 2, "first_tag_repeat_count": 2}
     }
   }
 }

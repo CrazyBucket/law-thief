@@ -16,6 +16,7 @@ func _run_tests() -> void:
 	_test_exposed_expires()
 	_test_default_status_values_from_config()
 	_test_status_combat_multipliers_from_config()
+	_test_disarm_blocks_one_action()
 	_test_relic_numeric_refs_runtime()
 	print("STATUS_TEST_PASS")
 	quit()
@@ -128,6 +129,7 @@ func _test_default_status_values_from_config() -> void:
 	assert(rooted != null and rooted.duration == 2, "rooted default duration should come from status config")
 	var exposed: StatusInstance = unit.get_status(Constants.STATUS_LIGHT_EXPOSED)
 	assert(exposed != null and exposed.stacks == 1 and exposed.duration == 0, "light exposed defaults should come from status config")
+	assert(StatusConfig.default_stacks("disarmed") == 1, "disarm defaults should come from status config")
 	print("  [OK] status defaults from config")
 
 
@@ -143,7 +145,22 @@ func _test_status_combat_multipliers_from_config() -> void:
 	assert(target.hp == 4, "vulnerable damage multiplier should come from status config")
 	StatusRules.apply_slowed(state, target, 5)
 	assert(StatusRules.effective_move_points(target, 2) == 1, "slowed min move points should come from status config")
+	StatusRules.apply_slowed(state, target, 1, attacker.uid, 0)
+	assert(StatusRules.effective_move_points(target, 2) == 0, "source-specific slow should be able to lower the movement floor")
+	StatusRules.apply_slowed(state, target, 1)
+	assert(StatusRules.effective_move_points(target, 2) == 0, "later default slow should preserve the strongest lower movement floor")
 	print("  [OK] status combat multipliers from config")
+
+
+func _test_disarm_blocks_one_action() -> void:
+	var state := _make_state()
+	var unit := _make_unit(state, "u_disarmed")
+	StatusRules.apply_disarmed(state, unit, 1, "counter_owner")
+	assert(not StatusRules.can_attack(unit), "disarmed unit should not be able to attack")
+	assert(StatusRules.attack_block_reason(unit).contains("缴械"), "disarm should expose a player-facing block reason")
+	assert(StatusRules.consume_disarm(unit), "ending the unit action should consume one disarm stack")
+	assert(StatusRules.can_attack(unit), "unit should be able to attack after its disarm stack is consumed")
+	print("  [OK] disarm blocks one action")
 
 
 func _test_relic_numeric_refs_runtime() -> void:

@@ -300,7 +300,7 @@ func _test_training_dummy_waits_and_tracks_as_spawnable() -> void:
 func _test_editor_console_import_encounter_file() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 42)
-	var path := "/tmp/law_thief_editor_import_test.json"
+	var path := "user://law_thief_editor_import_test.json"
 	var payload := {
 		"schema_version": 2,
 		"player_spawn": [1, 1],
@@ -320,7 +320,7 @@ func _test_editor_console_import_encounter_file() -> void:
 	file.store_string(JSON.stringify(payload, "\t"))
 	file = null
 	var import_result := ctrl.run_editor_command("import %s" % path)
-	assert(import_result.get("ok", false), "editor console should import encounter file")
+	assert(import_result.get("ok", false), "editor console should import encounter file: %s" % import_result)
 	assert(ctrl.state.get_player() != null and ctrl.state.get_player().pos == Vector2i(1, 1), "player spawn should update from import")
 	var dummy := ctrl.state.get_unit_at(Vector2i(2, 2))
 	assert(dummy != null and dummy.unit_def_id == "unit_training_dummy", "import should spawn dummy enemy")
@@ -328,7 +328,7 @@ func _test_editor_console_import_encounter_file() -> void:
 	assert(barrel != null and barrel.entity_id == Constants.ENTITY_BARREL, "import should spawn entity")
 	assert(ctrl.state.get_tile(Vector2i(4, 4)).tile_id == Constants.TILE_WATER, "import should set tile")
 	assert(ctrl.state.get_tile(Vector2i(4, 4)).has_modifier(Constants.TILE_MOD_FIRE), "import should restore tile overlays")
-	DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	print("  [OK] editor console import encounter file")
 
 
@@ -370,6 +370,10 @@ func _test_editor_can_add_five_same_gems_to_red_slots() -> void:
 
 
 func _force_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
+	for slot in unit.slots:
+		if not slot.gem_uid.is_empty():
+			state.gems.erase(slot.gem_uid)
+			slot.gem_uid = ""
 	_force_slot_gems(state, unit, Constants.SLOT_RED, [gem_id])
 
 

@@ -112,6 +112,7 @@ gem.effect.ice.black_death,死亡：周围单位获得迟滞,Death: apply sluggi
 gem.light.name,光,Light
 gem.light.symbol,光,Light
 gem.intent.light_beam,光束 ({damage}),Light Beam ({damage})
+gem.intent.light_volley,光束齐射 ({damage}×{beams}),Light Volley ({damage}x{beams})
 gem.effect.light.unit_red_active,触发：穿透光束，2/3级变宽，按元素追加状态与曝光,Trigger: fire a piercing beam; levels 2/3 widen it and add colored statuses plus exposure
 gem.effect.light.enemy_red_action,光束 ({damage}),Light Beam ({damage})
 gem.effect.light.blue_damaged,被动：受远程攻击时反射 1/2/3 道光束,Passive: reflect 1/2/3 beams when hit by ranged attacks
@@ -132,25 +133,11 @@ gem.effect.echo.blue_damaged,被动：受击时回响已嵌入tag，每回合一
 gem.effect.echo.black_death,死亡：回响其他黑槽tag，沿用递归与 death_chain 防护,Death: echo other black-slot tags while respecting recursion and death-chain guards
 gem.split.name,分裂,Split
 gem.split.symbol,裂,Split
-gem.intent.split_attack,分裂射击 ({damage}x3),Split Shot ({damage}x3)
+gem.intent.split_attack,分裂射击 ({damage}×{hits}),Split Shot ({damage}x{hits})
 gem.effect.split.unit_red_active,触发：V字三发，每发 70% 伤害,Trigger: 3-way V-shot each dealing 70% damage
 gem.effect.split.enemy_red_action,分裂射击 ({damage}x3),Split Shot ({damage}x3)
 gem.effect.split.blue_damaged,被动：受击时 50% 伤害转移至周围 1 格内随机单位（无目标不减伤）,Passive: redirect 50% of incoming damage to a random unit within 1 tile (no redirect if none)
 gem.effect.split.black_death,死亡：在空地生成两个全属性 30% 的分身,Death: spawn two clones with 30% stats on empty cells
-gem.level.explosion.1,爆炸 Lv1：十字 5 格溅射,Explosion Lv1: cross blast 5 cells
-gem.level.explosion.2,爆炸 Lv2：3×3 方形爆炸，伤害翻倍,Explosion Lv2: 3×3 square blast, damage doubled
-gem.level.explosion.3,爆炸 Lv3：3×3 方形爆炸，伤害加倍,Explosion Lv3: 3×3 square blast, damage tripled
-gem.level.poison.1,剧毒 Lv1：单格毒雾，施加中毒,Poison Lv1: single-cell fog, inflict poison
-gem.level.poison.2,剧毒 Lv2：3×3 毒雾，回合末向最近未中毒友方传播,Poison Lv2: 3×3 fog, spread to nearest clean ally at turn end
-gem.level.poison.3,剧毒 Lv3：3×3 毒雾，持续时间延长,Poison Lv3: 3×3 fog, extended duration
-gem.level.conductive.1,导电 Lv1：弹射 1 次，6.6% 麻痹,Conductive Lv1: arc 1 bounce, 6.6% paralyze
-gem.level.conductive.2,导电 Lv2：弹射 2 次，13.2% 麻痹,Conductive Lv2: arc 2 bounces, 13.2% paralyze
-gem.level.conductive.3,导电 Lv3：弹射 3 次，死亡落雷,Conductive Lv3: arc 3 bounces, death lightning
-gem.level.arc.1,导电 Lv1：弹射 1 次，6.6% 麻痹,Conductive Lv1: arc 1 bounce, 6.6% paralyze
-gem.level.arc.2,导电 Lv2：弹射 2 次，13.2% 麻痹,Conductive Lv2: arc 2 bounces, 13.2% paralyze
-gem.level.arc.3,导电 Lv3：弹射 3 次，死亡落雷,Conductive Lv3: arc 3 bounces, death lightning
-gem.level.gravity.1,引力 Lv1：攻击范围不变，命中后拉扯 1 步,Gravity Lv1: base range, pull 1 step on hit
-gem.level.gravity.2,引力 Lv2：攻击范围 +1，命中后拉扯 2 步并施加减速,Gravity Lv2: range +1, pull 2 steps and slow on hit
 map.screen.title,路线图,Route Map
 map.screen.empty_preview,选择前方房间，确认下一段旅程。,Choose a room ahead to plan the next stretch of the journey.
 map.screen.current_route,当前路线,Current Route
@@ -199,25 +186,48 @@ map.screen.summary.elite,强敌战斗，风险与奖励更高,Elite battle with 
 map.screen.summary.rest,休整与恢复,Rest and recover
 map.screen.summary.shop,补给、交易与构筑调整,Supplies, trade, and deck tuning
 map.screen.summary.event,特殊事件，结果未明,Uncertain event with unknown outcome
-gem.level.gravity.3,引力 Lv3：攻击范围 +2，命中后拉扯 3 步并施加定身,Gravity Lv3: range +2, pull 3 steps and root on hit
-gem.level.fire.1,烈焰 Lv1：目标格点火，周围单位施加着火,Fire Lv1: ignite target cell, set nearby units ablaze
-gem.level.fire.2,烈焰 Lv2：目标格点火并扩散 1 格,Fire Lv2: ignite and spread 1 cell
-gem.level.fire.3,烈焰 Lv3：目标格点火并扩散 2 格,Fire Lv3: ignite and spread 2 cells
-gem.level.ice.1,寒冰 Lv1：目标施加缓速,Ice Lv1: inflict slowed
-gem.level.ice.2,寒冰 Lv2：目标施加冻结（潮湿则直接冻结）,Ice Lv2: inflict chilled (freeze if wet)
-gem.level.ice.3,寒冰 Lv3：目标施加寒冻，周围 1 格迟滞,Ice Lv3: inflict frozen, sluggish nearby
-gem.level.split.1,分裂 Lv1：V 字三发，每发 70% 伤害,Split Lv1: V-shot ×3, each 70% damage
-gem.level.split.2,分裂 Lv2：四发弹道，每发 70% 伤害,Split Lv2: 4-shot, each 70% damage
-gem.level.split.3,分裂 Lv3：五发弹道，每发 70% 伤害,Split Lv3: 5-shot, each 70% damage
-gem.level.light.1,光 Lv1：穿透直线光束,Light Lv1: piercing beam
-gem.level.light.2,光 Lv2：宽度 +1 光束，施加曝光与元素状态,Light Lv2: beam width +1, expose and apply status
-gem.level.light.3,光 Lv3：宽度 +2 光束，穿透阻挡物，清算曝光时致盲,Light Lv3: beam width +2, pierce blockers, blind on judgment
-gem.level.counter.1,反击 Lv1：本回合受攻击后追加反击,Counter Lv1: strike back if hit this turn
-gem.level.counter.2,反击 Lv2：受任何伤害均反击来源,Counter Lv2: counter any damage source
-gem.level.counter.3,反击 Lv3：受伤害后反击并施加减速,Counter Lv3: counter and slow on any damage
-gem.level.echo.1,回响 Lv1：回响 1 个 tag 的效果,Echo Lv1: echo 1 tag
-gem.level.echo.2,回响 Lv2：回响 2 个 tag 的效果,Echo Lv2: echo 2 tags
-gem.level.echo.3,回响 Lv3：首个 tag 强化，额外追加 50% 回响,Echo Lv3: empower first tag and add 50% follow-up echo
 gem.combo.explosion_fire,爆炸+烈焰：爆炸后散布火焰,Explosion+Fire: scatter fire after explosion
 gem.combo.explosion_poison,爆炸+剧毒：爆炸后散布毒雾,Explosion+Poison: scatter poison fog after explosion
 gem.combo.poison_fire,剧毒+烈焰：毒烟地块，兼具中毒与燃烧,Poison+Fire: toxic smoke tile with poison and burning
+gem.level.bool.true,是,yes
+gem.level.bool.false,否,no
+gem.level.pattern.cross,十字,cross
+gem.level.pattern.square,3×3,3×3
+gem.level.pattern.single,单格,single cell
+gem.level.target.all,全部目标,all targets
+gem.level.red.explosion,爆炸 Lv{level}：{blast_pattern}爆炸，伤害×{damage_multiplier},Explosion Lv{level}: {blast_pattern} blast x{damage_multiplier} damage
+gem.level.red.poison,剧毒 Lv{level}：{fog_pattern}毒雾，持续+{duration_bonus}回合,Poison Lv{level}: {fog_pattern} fog with +{duration_bonus} duration
+gem.level.red.fire,烈焰 Lv{level}：扩散{spread_count}格，燃烧目标额外扩散{burning_bonus_spread_count}格,Fire Lv{level}: spread {spread_count} cells with +{burning_bonus_spread_count} on burning targets
+gem.level.red.gravity,引力 Lv{level}：拉扯{pull_steps}格，攻击范围+{range_bonus},Gravity Lv{level}: pull {pull_steps} cells with +{range_bonus} range
+gem.level.red.arc,导电 Lv{level}：弹射{bounce_hops}次，范围{range},Conductive Lv{level}: {bounce_hops} bounces at range {range}
+gem.level.red.split,分裂 Lv{level}：{shot_count}发弹道，每发{damage_ratio}伤害,Split Lv{level}: {shot_count} shots at {damage_ratio} damage each
+gem.level.red.light,光 Lv{level}：{damage_ratio}伤害，施加{exposed_stacks}层曝光，光束宽度{beam_width},Light Lv{level}: {damage_ratio} damage with {exposed_stacks} exposed and width {beam_width}
+gem.level.red.ice,寒冰 Lv{level}：施加{hit_slowed_stacks}层减速，最低移动力{slowed_min_move_points}；减速目标冻结：{freeze_if_target_slowed},Ice Lv{level}: {hit_slowed_stacks} slowed with {slowed_min_move_points} minimum move; freeze slowed target: {freeze_if_target_slowed}
+gem.level.red.counter,反击 Lv{level}：标记{mark_duration}回合；反击携带TAG：{retaliation_with_tags}；击杀刷新攻击：{grant_extra_attack_on_kill},Counter Lv{level}: mark for {mark_duration} turn(s); retaliation carries tags: {retaliation_with_tags}; refresh attack on kill: {grant_extra_attack_on_kill}
+gem.level.red.echo,回响 Lv{level}：回响{echo_tag_count}个 tag，追加{followup_ratio}伤害,Echo Lv{level}: echo {echo_tag_count} tags with {followup_ratio} follow-up damage
+gem.level.blue.poison,剧毒 Lv{level}：接触施加{contact_poison_stacks}层中毒，回合末传播：{turn_end_spread},Poison Lv{level}: contact poison {contact_poison_stacks}; turn-end spread: {turn_end_spread}
+gem.level.blue.explosion,爆炸 Lv{level}：燃烧触发：{detonate_on_burning}，任意受伤触发：{detonate_on_any_damage}，形态{blast_pattern},Explosion Lv{level}: burning trigger {detonate_on_burning}; any-damage trigger {detonate_on_any_damage}; {blast_pattern}
+gem.level.blue.gravity,引力 Lv{level}：偏转概率{deflect_chance}，受伤减速：{slow_on_damaged}，定身：{root_on_damaged},Gravity Lv{level}: {deflect_chance} deflect; slow {slow_on_damaged}; root {root_on_damaged}
+gem.level.blue.arc,导电 Lv{level}：反弹概率{rebound_chance},Conductive Lv{level}: {rebound_chance} rebound chance
+gem.level.blue.split,分裂 Lv{level}：{redirect_radius}格内{redirect_mode}，转移比例{redirect_ratio}；临时分身{temp_clone_count}个（{temp_clone_hp}生命，{temp_clone_stat_ratio}属性，持续{temp_clone_duration}回合，每回合上限{temp_clone_per_turn_limit}）,Split Lv{level}: {redirect_mode} within {redirect_radius}; redirect {redirect_ratio}; {temp_clone_count} temporary clone(s) ({temp_clone_hp} HP, {temp_clone_stat_ratio} stats, {temp_clone_duration} turn(s), limit {temp_clone_per_turn_limit} per turn)
+gem.level.blue.light,光 Lv{level}：反射{reflect_beams}束，每束{reflect_damage_ratio}伤害,Light Lv{level}: reflect {reflect_beams} beams at {reflect_damage_ratio} damage
+gem.level.blue.counter,反击 Lv{level}：远程反击：{use_ranged_counter}，击杀后额外移动：{grant_extra_move_on_kill},Counter Lv{level}: ranged {use_ranged_counter}; extra move on kill {grant_extra_move_on_kill}
+gem.level.blue.fire,烈焰 Lv{level}：接触{contact_burning_stacks}层燃烧，生成火焰：{create_fire_on_contact},Fire Lv{level}: contact {contact_burning_stacks} burning; create fire {create_fire_on_contact}
+gem.level.blue.ice,寒冰 Lv{level}：接触{contact_slowed_stacks}层减速，最低移动力{slowed_min_move_points}；升级迟滞：{upgrade_slowed_to_sluggish},Ice Lv{level}: contact {contact_slowed_stacks} slowed with {slowed_min_move_points} minimum move; upgrade sluggish {upgrade_slowed_to_sluggish}
+gem.level.blue.echo,回响 Lv{level}：回响{echo_tag_count}个 tag，首个强度×{first_tag_strength},Echo Lv{level}: echo {echo_tag_count} tags with first x{first_tag_strength}
+gem.level.black.explosion,爆炸 Lv{level}：伤害×{damage_multiplier}，连锁追爆：{chain_followup},Explosion Lv{level}: x{damage_multiplier} damage; chain follow-up {chain_followup}
+gem.level.black.poison,剧毒 Lv{level}：毒雾半径{fog_radius}，转移{debuff_copies}个负面效果,Poison Lv{level}: fog radius {fog_radius}; transfer {debuff_copies} debuffs
+gem.level.black.gravity,引力 Lv{level}：拉扯{pull_steps}格，减速：{apply_slow}，定身：{apply_root},Gravity Lv{level}: pull {pull_steps}; slow {apply_slow}; root {apply_root}
+gem.level.black.arc,导电 Lv{level}：{strike_radius}格内打击{strike_targets},Conductive Lv{level}: strike {strike_targets} within {strike_radius} tiles
+gem.level.black.fire,烈焰 Lv{level}：{death_fire_radius}格内生成{death_fire_count}团火焰，持续{death_fire_duration}回合；优先单位格：{prefer_occupied_cells},Fire Lv{level}: create {death_fire_count} fires within {death_fire_radius} tiles for {death_fire_duration} turns; prefer occupied {prefer_occupied_cells}
+gem.level.black.ice,寒冰 Lv{level}：{death_radius}格内迟滞，减速{slowed_stacks}层，冻结{freeze_duration}回合,Ice Lv{level}: sluggish within {death_radius} tiles; {slowed_stacks} slowed; freeze for {freeze_duration} turns
+gem.level.black.split,分裂 Lv{level}：生成{clone_count}个分身，保留{stat_ratio}属性,Split Lv{level}: create {clone_count} clones retaining {stat_ratio} stats
+gem.level.split.redirect.random_ratio,随机单位转移,redirect to one random unit
+gem.level.split.redirect.equal_all,所有单位均分,share among all units
+gem.level.black.light,光 Lv{level}：光束宽度{beam_width}，幸存者致盲：{blind_on_survive},Light Lv{level}: beam width {beam_width}; blind survivor {blind_on_survive}
+gem.level.black.counter,反击 Lv{level}：反伤×{damage_multiplier}，易伤{vulnerable_duration}回合，缴械{disarm_stacks}次行动,Counter Lv{level}: reflect x{damage_multiplier}; vulnerable {vulnerable_duration} turns; disarm {disarm_stacks} actions
+gem.level.black.echo,回响 Lv{level}：回响{echo_tag_count}个 tag，首个重复{first_tag_repeat_count}次,Echo Lv{level}: echo {echo_tag_count} tags with first repeats {first_tag_repeat_count}
+status.disarmed.name,缴械,Disarmed
+status.disarmed.short,械{stacks},Disarm {stacks}
+status.disarmed.tooltip,缴械：无法攻击，剩余 {stacks} 次行动,Disarmed: cannot attack for {stacks} action(s)
+status.disarmed.block,被缴械，无法攻击,Disarmed: cannot attack

@@ -3,7 +3,10 @@ extends Node
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 const AdventureConfigValidator = preload("res://scripts/services/adventure_config_validator.gd")
 const BalanceConfigValidator = preload("res://scripts/services/balance_config_validator.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
+const AdventureProgressionConfig = preload("res://scripts/core/adventure_progression_config.gd")
 const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
@@ -17,39 +20,15 @@ const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
 
-const _RARITY_WEIGHTS := {
-	"common": 100.0,
-	"uncommon": 55.0,
-	"rare": 25.0,
-	"epic": 10.0,
-	"legendary": 4.0,
-	"boss": 0.0,
-}
-
-# 来源 → 每个稀有度的权重（决定 roll 时各等级的抽出概率）
-const _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS := {
-	"normal_chest": {"common": 65.0, "rare": 25.0, "boss": 10.0},
-	"elite_combat": {"common": 40.0, "rare": 40.0, "boss": 20.0},
-	"large_chest": {"common": 10.0, "rare": 60.0, "boss": 30.0},
-	"shop": {"common": 50.0, "rare": 35.0, "boss": 15.0},
-}
-
-const _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS := {
-	"NORMAL_COMBAT": {
-		"1": [20.0, 70.0, 10.0, 0.0],
-		"2": [10.0, 60.0, 30.0, 0.0],
-		"default": [0.0, 30.0, 60.0, 10.0],
-	},
-	"ELITE_COMBAT": {
-		"1": [0.0, 40.0, 50.0, 10.0],
-		"2": [0.0, 20.0, 50.0, 30.0],
-		"default": [0.0, 10.0, 40.0, 50.0],
-	},
-	"BOSS_COMBAT": {
-		"1": [0.0, 10.0, 60.0, 30.0],
-		"2": [0.0, 0.0, 55.0, 45.0],
-		"default": [0.0, 0.0, 25.0, 75.0],
-	},
+const _GEM_EFFECT_LEVEL_PERCENT_FIELDS := {
+	"deflect_chance": true,
+	"rebound_chance": true,
+	"damage_ratio": true,
+	"reflect_damage_ratio": true,
+	"stat_ratio": true,
+	"followup_ratio": true,
+	"redirect_ratio": true,
+	"temp_clone_stat_ratio": true,
 }
 
 var _gem_effect_profiles: Dictionary = {}
@@ -70,11 +49,7 @@ var _uid_counter: int = 0
 
 func _ready() -> void:
 	_register_gem_effect_profiles()
-	_register_gem_defs()
-	_register_unit_defs()
-	_register_encounters()
 	_load_gem_effect_levels_from_json()
-	# JSON 覆盖：若外部文件存在则合并/替换硬编码数据
 	_load_gem_defs_from_json()
 	_load_gem_pools_from_json()
 	_load_relic_numeric_refs_from_json()
@@ -85,6 +60,7 @@ func _ready() -> void:
 	_load_enemy_slot_curves_from_json()
 	_load_unit_defs_from_json()
 	_load_encounters_from_json()
+	_validate_adventure_progression_refs()
 	_load_relic_defs_from_json()
 
 
@@ -236,8 +212,14 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 	return state
 
 
-func get_encounter_ids() -> Array:
-	return _encounters.keys()
+func get_encounter_ids(include_hidden: bool = false) -> Array:
+	var ids: Array[String] = []
+	for encounter_id in _encounters.keys():
+		var encounter: Dictionary = _encounters[encounter_id]
+		if include_hidden or bool(encounter.get("catalog_visible", true)):
+			ids.append(str(encounter_id))
+	ids.sort()
+	return ids
 
 
 ## Resolve hand-authored encounter composition after the combat RNG context is active.
@@ -461,10 +443,10 @@ func get_overlay_default_duration(overlay_id: String) -> int:
 		Constants.TILE_MOD_FIRE:
 			return CombatConfig.fire_duration()
 		Constants.TILE_MOD_TOXIC_SMOKE:
-			return 1
+			return CombatConfig.toxic_smoke_duration()
 		Constants.TILE_MOD_POISON_PUDDLE:
-			return 2
-	return 1
+			return CombatConfig.poison_puddle_duration()
+	return 0
 
 
 func get_gem_def(gem_ref: Variant) -> Dictionary:
@@ -507,11 +489,11 @@ func get_gem_element(gem_ref: Variant) -> String:
 
 
 func get_gem_pool_tier(gem_ref: Variant) -> int:
-	return maxi(1, int(_resolve_gem_def(gem_ref).get("pool_tier", 1)))
+	return int(_resolve_gem_def(gem_ref)["pool_tier"])
 
 
 func get_gem_max_stack_level(gem_ref: Variant) -> int:
-	return maxi(1, int(_resolve_gem_def(gem_ref).get("max_stack_level", 3)))
+	return int(_resolve_gem_def(gem_ref)["max_stack_level"])
 
 
 func get_gem_combo_tags(gem_ref: Variant) -> Array[String]:
@@ -541,6 +523,30 @@ func get_gem_effect_level_def(tag: String, slot_type: String, level: int) -> Dic
 	return {}
 
 
+func get_gem_effect_level_summary(tag: String, slot_type: String, level: int) -> String:
+	if tag.is_empty() or slot_type.is_empty():
+		return ""
+	var slot_defs: Dictionary = _gem_effect_levels.get(slot_type, {})
+	var tag_defs: Dictionary = slot_defs.get(tag, {})
+	if tag_defs.is_empty():
+		return ""
+	var resolved_level := maxi(1, level)
+	var level_def: Dictionary = {}
+	while resolved_level >= 1:
+		var entry: Variant = tag_defs.get(str(resolved_level), null)
+		if entry is Dictionary:
+			level_def = entry as Dictionary
+			break
+		resolved_level -= 1
+	if level_def.is_empty():
+		return ""
+	return _translate_key(
+		"gem.level.%s.%s" % [slot_type, tag],
+		_gem_effect_level_summary_params(level_def, resolved_level),
+		""
+	)
+
+
 func get_gem_rarity_label(gem_ref: Variant) -> String:
 	var rarity: String = get_gem_rarity(gem_ref)
 	return _translate_key("gem.rarity.%s" % rarity, {}, rarity.capitalize())
@@ -550,7 +556,9 @@ func get_gem_spawn_weight(gem_ref: Variant) -> float:
 	var def: Dictionary = _resolve_gem_def(gem_ref)
 	if def.has("spawn_weight"):
 		return float(def.get("spawn_weight", 0.0))
-	return float(_RARITY_WEIGHTS.get(get_gem_rarity(gem_ref), 1.0))
+	var global_pool := get_gem_pool_def("global")
+	var rarity_weights: Dictionary = global_pool.get("rarity_weights", {})
+	return float(rarity_weights.get(get_gem_rarity(gem_ref), 0.0))
 
 
 func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
@@ -576,25 +584,23 @@ func get_gem_pool_source_ids() -> Array[String]:
 
 
 func get_gem_pool_source_tier(source: String) -> int:
-	return maxi(1, int(get_gem_pool_def(source).get("source_tier", 1)))
+	var pool := get_gem_pool_def(source)
+	return int(pool.get("source_tier", 0))
 
 
 func get_relic_source_weights(source: String) -> Dictionary:
 	if _relic_source_weights.has(source):
 		return (_relic_source_weights[source] as Dictionary).duplicate(true)
-	if _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.has(source):
-		return (_DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS[source] as Dictionary).duplicate(true)
 	return {}
 
 
 func has_relic_source(source: String) -> bool:
-	return _relic_source_weights.has(source) or _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.has(source)
+	return _relic_source_weights.has(source)
 
 
 func get_relic_source_ids() -> Array[String]:
 	var ids: Array[String] = []
-	var source_ids: Array = _relic_source_weights.keys() if not _relic_source_weights.is_empty() else _DEFAULT_RELIC_SOURCE_RARITY_WEIGHTS.keys()
-	for source_id in source_ids:
+	for source_id in _relic_source_weights.keys():
 		ids.append(str(source_id))
 	ids.sort()
 	return ids
@@ -638,7 +644,8 @@ func get_enemy_total_slot_weights(room_type: String, chapter: int) -> Array[floa
 		curve_key = "NORMAL_COMBAT"
 	var curve: Dictionary = _enemy_slot_curves.get(curve_key, {})
 	if curve.is_empty():
-		curve = _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS.get(curve_key, _DEFAULT_ENEMY_TOTAL_SLOT_WEIGHTS.get("NORMAL_COMBAT", {}))
+		push_error("DataRegistry: enemy slot curve missing: %s" % curve_key)
+		return []
 	var chapter_key := str(maxi(1, chapter))
 	var raw_weights: Variant = curve.get(chapter_key, curve.get("default", []))
 	var weights: Array[float] = []
@@ -653,7 +660,7 @@ func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, al
 	if not has_gem_pool_source(source):
 		return results
 	var pool_def := get_gem_pool_def(source)
-	var source_tier := maxi(1, int(pool_def.get("source_tier", 1)))
+	var source_tier := int(pool_def["source_tier"])
 	var max_tier := mini(source_tier, maxi(1, chapter_tier))
 	for gem_id in _gem_defs.keys():
 		var def: Dictionary = _gem_defs[gem_id]
@@ -711,7 +718,8 @@ func get_relic_def(relic_id: String) -> Dictionary:
 
 
 func get_relic_rarity(relic_id: String) -> String:
-	return str(_relic_defs.get(relic_id, {}).get("rarity", "common"))
+	var def: Dictionary = _relic_defs.get(relic_id, {})
+	return str(def["rarity"]) if not def.is_empty() else ""
 
 
 func has_relic_def(relic_id: String) -> bool:
@@ -785,7 +793,9 @@ func get_relic_unlock_condition_ids() -> Array[String]:
 ##   empty_slot_count_gte value=int        空置槽位数 >= value 时乘
 func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> float:
 	var def: Dictionary = _relic_defs.get(relic_id, {})
-	var weight := maxf(0.0, float(def.get("base_weight", 1.0)))
+	if def.is_empty():
+		return 0.0
+	var weight := float(def["base_weight"])
 	var rules: Array = def.get("weight_rules", [])
 	if rules.is_empty() or weight_ctx.is_empty():
 		return weight
@@ -819,7 +829,7 @@ func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> floa
 ## owned_ids: 当前局内已持有的遗物 id 集合（用于过滤 unique 遗物重复）
 ## unlock_flags: 当前已解锁的 flag 集合（String 数组）
 func _relic_matches_source(def: Dictionary, source: String, source_weights: Dictionary) -> bool:
-	var pool_types: Array = def.get("pool_types", ["global"])
+	var pool_types: Array = def["pool_types"]
 	var allows_boss := source_weights.has("boss") and float(source_weights.get("boss", 0.0)) > 0.0
 	if "global" in pool_types:
 		match source:
@@ -846,7 +856,7 @@ func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array =
 		if not _relic_matches_source(def, source, source_weights):
 			continue
 		# boss 遗物只在 source_weights 允许时出现
-		var rarity := str(def.get("rarity", "common"))
+		var rarity := str(def["rarity"])
 		if rarity == "boss" and not source_weights.has("boss"):
 			continue
 		if rarity == "boss" and float(source_weights.get("boss", 0.0)) <= 0.0:
@@ -1020,6 +1030,8 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 	if intent.is_empty():
 		return {"type": "wait", "preview": _translate_key("intent.wait", {}, "等待"), "damage": 0}
 	var params: Dictionary = intent.get("params", {}).duplicate(true)
+	if not params.has("hits"):
+		params["hits"] = 1
 	var resolved_damage := int(intent.get("damage", 0))
 	match str(intent.get("damage_mode", "fixed")):
 		"base_attack":
@@ -1062,7 +1074,7 @@ func _apply_unit_spawn_variants(unit: UnitState, def: Dictionary) -> void:
 	if not def.has("hp_roll_max"):
 		return
 	var bonus := RngService.roll_int("unit_spawn_hp_%s" % unit.unit_def_id, 0, int(def.get("hp_roll_max", 0)))
-	unit.hp = int(def.get("max_hp", 1)) + bonus
+	unit.hp = int(def["max_hp"]) + bonus
 	unit.max_hp = unit.hp
 
 
@@ -1216,391 +1228,6 @@ func _register_gem_effect_profiles() -> void:
 	}
 
 
-func _register_gem_defs() -> void:
-	_gem_defs = {
-		Constants.GEM_EXPLOSION: {
-			"display_name_key": "gem.explosion.name",
-			"symbol_key": "gem.explosion.symbol",
-			"symbol": "爆",
-			"color": Color(1.0, 0.45, 0.2),
-			"rarity": "common",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "explosion",
-				ABILITY_ENEMY_RED_ACTION: "explosion",
-				ABILITY_BLUE_TURN_START: "explosion",
-				ABILITY_BLUE_DAMAGED: "explosion",
-				ABILITY_BLACK_DEATH: "explosion",
-				ABILITY_TILE_ACTIVE: "explosion",
-				ABILITY_TILE_TURN_START: "explosion",
-			},
-		},
-		Constants.GEM_POISON: {
-			"display_name_key": "gem.poison.name",
-			"symbol_key": "gem.poison.symbol",
-			"symbol": "毒",
-			"color": Color(0.55, 0.9, 0.35),
-			"rarity": "common",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "poison",
-				ABILITY_ENEMY_RED_ACTION: "poison",
-				ABILITY_BLUE_DAMAGED: "poison",
-				ABILITY_BLACK_DEATH: "poison",
-				ABILITY_TILE_ACTIVE: "poison",
-				ABILITY_TILE_TURN_START: "poison",
-			},
-		},
-		Constants.GEM_GRAVITY: {
-			"display_name_key": "gem.gravity.name",
-			"symbol_key": "gem.gravity.symbol",
-			"symbol": "引",
-			"color": Color(0.35, 0.65, 1.0),
-			"rarity": "rare",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "gravity",
-				ABILITY_ENEMY_RED_ACTION: "gravity",
-				ABILITY_BLUE_DAMAGED: "gravity",
-				ABILITY_BLACK_DEATH: "gravity",
-				ABILITY_TILE_ACTIVE: "gravity",
-				ABILITY_TILE_TURN_START: "gravity",
-			},
-		},
-		Constants.GEM_CONDUCTIVE: {
-			"display_name_key": "gem.conductive.name",
-			"symbol_key": "gem.conductive.symbol",
-			"symbol": "电",
-			"color": Color(0.95, 0.9, 0.3),
-			"rarity": "uncommon",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "arc",
-				ABILITY_ENEMY_RED_ACTION: "arc",
-				ABILITY_BLUE_DAMAGED: "arc",
-				ABILITY_BLACK_DEATH: "arc",
-			},
-		},
-		Constants.GEM_FIRE: {
-			"display_name_key": "gem.fire.name",
-			"symbol_key": "gem.fire.symbol",
-			"symbol": "炎",
-			"color": Color(1.0, 0.35, 0.1),
-			"rarity": "uncommon",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "fire_gem",
-				ABILITY_ENEMY_RED_ACTION: "fire_gem",
-				ABILITY_BLUE_DAMAGED: "fire_gem",
-				ABILITY_BLACK_DEATH: "fire_gem",
-			},
-		},
-		Constants.GEM_ICE: {
-			"display_name_key": "gem.ice.name",
-			"symbol_key": "gem.ice.symbol",
-			"symbol": "冰",
-			"color": Color(0.6, 0.9, 1.0),
-			"rarity": "uncommon",
-			"ability_profiles": {
-					ABILITY_UNIT_RED_ACTIVE: "ice",
-				ABILITY_ENEMY_RED_ACTION: "ice",
-				ABILITY_BLUE_DAMAGED: "ice",
-				ABILITY_BLACK_DEATH: "ice",
-			},
-		},
-		Constants.GEM_SPLIT: {
-			"display_name_key": "gem.split.name",
-			"symbol_key": "gem.split.symbol",
-			"symbol": "裂",
-			"color": Color(0.85, 0.5, 1.0),
-			"rarity": "epic",
-			"allow_random_pool": true,
-			"ability_profiles": {
-				ABILITY_UNIT_RED_ACTIVE: "split",
-				ABILITY_ENEMY_RED_ACTION: "split",
-				ABILITY_BLUE_DAMAGED: "split",
-				ABILITY_BLACK_DEATH: "split",
-			},
-		},
-		Constants.GEM_LIGHT: {
-			"display_name_key": "gem.light.name",
-			"symbol_key": "gem.light.symbol",
-			"symbol": "光",
-			"color": Color(1.0, 0.94, 0.55),
-			"rarity": "rare",
-			"ability_profiles": {
-				ABILITY_UNIT_RED_ACTIVE: "light",
-				ABILITY_ENEMY_RED_ACTION: "light",
-				ABILITY_BLUE_DAMAGED: "light",
-				ABILITY_BLACK_DEATH: "light",
-			},
-		},
-		Constants.GEM_COUNTER: {
-			"display_name_key": "gem.counter.name",
-			"symbol_key": "gem.counter.symbol",
-			"symbol": "反",
-			"color": Color(0.95, 0.72, 0.35),
-			"rarity": "rare",
-			"ability_profiles": {
-				ABILITY_UNIT_RED_ACTIVE: "counter",
-				ABILITY_ENEMY_RED_ACTION: "counter",
-				ABILITY_BLUE_DAMAGED: "counter",
-				ABILITY_BLACK_DEATH: "counter",
-			},
-		},
-		Constants.GEM_ECHO: {
-			"display_name_key": "gem.echo.name",
-			"symbol_key": "gem.echo.symbol",
-			"symbol": "响",
-			"color": Color(0.7, 0.55, 1.0),
-			"rarity": "epic",
-			"ability_profiles": {
-				ABILITY_UNIT_RED_ACTIVE: "echo",
-				ABILITY_ENEMY_RED_ACTION: "echo",
-				ABILITY_BLUE_DAMAGED: "echo",
-				ABILITY_BLACK_DEATH: "echo",
-			},
-		},
-	}
-
-
-func _register_unit_defs() -> void:
-	_unit_defs = {
-		"unit_player": {
-			"display_name_key": "unit.player.name",
-			"max_hp": 60,
-			"move_points": 3,
-			"speed": 12,
-			"base_attack": 10,
-			"ai_profile_id": "player",
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_bomb_rat": {
-			"display_name_key": "unit.bomb_rat.name",
-			"max_hp": 10,
-			"hp_roll_max": Constants.BOMB_RAT_HP_ROLL_MAX,
-			"move_points": 4,
-			"speed": 13,
-			"base_attack": 4,
-			"ai_profile_id": "bomb_rat",
-			"behavior_id": "bomb_rat",
-			"spawn_gem_slots": [Constants.SLOT_BLACK],
-			"tags": [Constants.TAG_UNIT_BOMB_RAT, Constants.TAG_UNIT_MOBILE],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_patrol_guard": {
-			"display_name_key": "unit.patrol_guard.name",
-			"max_hp": 24,
-			"hp_roll_max": Constants.PATROL_GUARD_HP_ROLL_MAX,
-			"move_points": 3,
-			"speed": 9,
-			"base_attack": 6,
-			"ai_profile_id": "melee_chase",
-			"behavior_id": "patrol_guard",
-			"balance": {
-				"rampage_move_bonus": Constants.PATROL_GUARD_RAMPAGE_MOVE_BONUS,
-				"charge_bonus": Constants.PATROL_GUARD_CHARGE_BONUS,
-				"charge_min_steps": Constants.PATROL_GUARD_CHARGE_MIN_STEPS,
-			},
-			"tags": [Constants.TAG_UNIT_PATROL_GUARD],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_stone_bow_guard": {
-			"display_name_key": "unit.stone_bow_guard.name",
-			"max_hp": 14,
-			"hp_roll_max": Constants.STONE_BOW_HP_ROLL_MAX,
-			"move_points": 2,
-			"speed": 8,
-			"base_attack": 4,
-			"ai_profile_id": "stone_bow",
-			"behavior_id": "stone_bow_guard",
-			"balance": {
-				"attack_range": Constants.STONE_BOW_ATTACK_RANGE,
-				"deploy_range_bonus": Constants.STONE_BOW_DEPLOY_RANGE_BONUS,
-				"faulty_miss_chance": Constants.STONE_BOW_FAULTY_MISS_CHANCE,
-				"faulty_damage_bonus": Constants.STONE_BOW_FAULTY_DAMAGE_BONUS,
-				"kite_ideal_range": Constants.STONE_BOW_KITE_IDEAL_RANGE,
-				"kite_min_range": Constants.STONE_BOW_KITE_MIN_RANGE,
-				"ranged_damage_score_mult": 10.0,
-				"kill_bonus": 150.0,
-				"move_step_cost": 0.35,
-				"ideal_range_penalty": 14.0,
-				"too_close_extra_penalty": 18.0,
-				"max_range_bonus": 4.0,
-				"hold_position_bonus": 120.0,
-				"deploy_hold_bonus": 12.0,
-				"move_when_shooting_penalty": 45.0,
-				"closer_when_shooting_penalty": 80.0,
-				"emergency_retreat_bonus_per_tile": 32.0,
-				"extra_distance_penalty_per_tile": 8.0,
-				"closer_to_gain_shot_bonus_per_tile": 6.0,
-				"setup_deploy_bonus": 6.0,
-				"approach_progress_score": 45.0,
-				"approach_distance_cost": 0.5,
-				"approach_too_close_penalty": 40.0,
-				"approach_ideal_band_bonus": 25.0,
-				"retreat_bonus_per_tile": 22.0,
-				"retreat_ideal_range_penalty": 6.0,
-				"retreat_too_close_penalty": 30.0,
-				"line_unreachable_penalty": -18.0,
-				"line_setup_bonus": 34.0,
-				"line_setup_distance_cost": 1.2,
-				"line_progress_bonus_per_step": 28.0,
-				"line_no_progress_penalty": -4.0,
-				"wait_score": -5.0,
-			},
-			"tags": [Constants.TAG_UNIT_STONE_BOW_GUARD, Constants.TAG_UNIT_RANGED],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK},
-			],
-		},
-		"unit_fission_slime": {
-			"display_name_key": "unit.fission_slime.name",
-			"max_hp": 22,
-			"hp_roll_max": Constants.FISSION_SLIME_HP_ROLL_MAX,
-			"move_points": 2,
-			"speed": 7,
-			"base_attack": 4,
-			"ai_profile_id": "melee_chase",
-			"behavior_id": "fission_slime",
-			"balance": {
-				"split_stat_ratio": Constants.FISSION_SLIME_SPLIT_STAT_RATIO,
-				"slam_push_steps": Constants.FISSION_SLIME_SLAM_PUSH_STEPS,
-				"trample_damage": Constants.FISSION_SLIME_TRAMPLE_DAMAGE,
-			},
-			"footprint_size": Vector2i(2, 2),
-			"tags": [Constants.TAG_UNIT_FISSION_SLIME],
-			"slots": [
-				{"slot_type": Constants.SLOT_RED},
-				{"slot_type": Constants.SLOT_BLUE},
-				{"slot_type": Constants.SLOT_BLACK, "gem_id": Constants.GEM_SPLIT},
-			],
-		},
-	}
-
-
-func _register_encounters() -> void:
-	_encounters = {
-		"tutorial_001": {
-			"player_spawn": Vector2i(3, 2),
-			"enemies": [
-				{"def_id": "unit_bomb_rat", "pos": Vector2i(2, 4)},
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(3, 5)},
-			],
-			"entities": [
-				{"pos": Vector2i(2, 5), "entity_id": Constants.ENTITY_SPIKE},
-				{"pos": Vector2i(4, 3), "entity_id": Constants.ENTITY_PROP},
-				{"pos": Vector2i(5, 2), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "Statue1_0"},
-				{"pos": Vector2i(1, 4), "entity_id": Constants.ENTITY_PROP},
-			],
-		},
-		"bomb_rat_test": {
-			"player_spawn": Vector2i(3, 2),
-			"enemies": [
-				{"def_id": "unit_bomb_rat", "pos": Vector2i(1, 4)},
-			],
-		},
-		"patrol_guard_test": {
-			"player_spawn": Vector2i(3, 2),
-			"enemies": [
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(0, 2)},
-			],
-		},
-		"stone_bow_test": {
-			"player_spawn": Vector2i(1, 2),
-			"enemies": [
-				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(5, 2)},
-			],
-		},
-		"fission_slime_test": {
-			"player_spawn": Vector2i(0, 2),
-			"enemies": [
-				{"def_id": "unit_fission_slime", "pos": Vector2i(4, 3)},
-			],
-		},
-		"template_a": {
-			"player_spawn": Vector2i(1, 6),
-			"enemies": [
-				{"def_id": "unit_bomb_rat", "pos": Vector2i(4, 2)},
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 4)},
-				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 6)},
-			],
-			"entities": [
-				{"pos": Vector2i(3, 5), "entity_id": Constants.ENTITY_SPIKE},
-				{"pos": Vector2i(6, 3), "entity_id": Constants.ENTITY_SPIKE},
-			],
-			"tiles": [
-				{"pos": Vector2i(7, 5), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
-			],
-		},
-		"template_b": {
-			"player_spawn": Vector2i(1, 6),
-			"enemies": [
-				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 2)},
-				{"def_id": "unit_fission_slime", "pos": Vector2i(3, 3)},
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(5, 5)},
-			],
-			"entities": [
-				{"pos": Vector2i(4, 4), "entity_id": Constants.ENTITY_SPIKE},
-				{"pos": Vector2i(5, 4), "entity_id": Constants.ENTITY_SPIKE},
-				{"pos": Vector2i(6, 4), "entity_id": Constants.ENTITY_SPIKE},
-			],
-			"tiles": [
-				{"pos": Vector2i(2, 2), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
-			],
-		},
-		"template_c": {
-			"player_spawn": Vector2i(1, 6),
-			"enemies": [
-				{"def_id": "unit_bomb_rat", "pos": Vector2i(5, 2)},
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(4, 6)},
-				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 4)},
-				{"def_id": "unit_fission_slime", "pos": Vector2i(3, 3)},
-			],
-			"tiles": [
-				{"pos": Vector2i(3, 4), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(4, 4), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(3, 5), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(4, 5), "tile_id": Constants.TILE_WATER},
-			],
-			"entities": [
-				{"pos": Vector2i(2, 3), "entity_id": Constants.ENTITY_PROP},
-				{"pos": Vector2i(6, 2), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "LargeRock2_1"},
-				{"pos": Vector2i(5, 5), "entity_id": Constants.ENTITY_PROP},
-				{"pos": Vector2i(3, 6), "entity_id": Constants.ENTITY_PROP, "prop_sprite": "Post2_0"},
-			],
-		},
-		"template_d": {
-			"player_spawn": Vector2i(1, 6),
-			"enemies": [
-				{"def_id": "unit_stone_bow_guard", "pos": Vector2i(6, 1)},
-				{"def_id": "unit_bomb_rat", "pos": Vector2i(5, 3)},
-				{"def_id": "unit_patrol_guard", "pos": Vector2i(4, 4)},
-				{"def_id": "unit_fission_slime", "pos": Vector2i(2, 2)},
-			],
-			"entities": [
-				{"pos": Vector2i(5, 6), "entity_id": Constants.ENTITY_SPIKE},
-				{"pos": Vector2i(6, 6), "entity_id": Constants.ENTITY_SPIKE},
-			],
-			"tiles": [
-				{"pos": Vector2i(2, 3), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(3, 3), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(2, 4), "tile_id": Constants.TILE_WATER},
-				{"pos": Vector2i(7, 3), "tile_id": Constants.TILE_PILLAR, "slots": [ {"slot_type": Constants.SLOT_BLUE}]},
-			],
-		},
-	}
-
-
 func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
 	var gem_id := _gem_id_from_ref(gem_ref)
 	var base: Dictionary = _gem_defs.get(gem_id, {}).duplicate(true)
@@ -1694,6 +1321,41 @@ func _translate_key(key: String, params: Dictionary = {}, fallback: String = "")
 	return translated
 
 
+func _gem_effect_level_summary_params(level_def: Dictionary, level: int) -> Dictionary:
+	var params: Dictionary = {"level": level}
+	for raw_field_id in level_def.keys():
+		var field_id := str(raw_field_id)
+		params[field_id] = _format_gem_effect_level_summary_value(field_id, level_def[raw_field_id])
+	var offsets: Variant = level_def.get("light_direction_offsets", [])
+	if offsets is Array:
+		params["shot_count"] = (offsets as Array).size()
+	if bool(level_def.get("strike_all_targets", false)):
+		params["strike_targets"] = _translate_key("gem.level.target.all", {}, "all")
+	elif level_def.has("strike_count"):
+		params["strike_targets"] = _format_gem_effect_level_summary_value("strike_count", level_def["strike_count"])
+	return params
+
+
+func _format_gem_effect_level_summary_value(field_id: String, value: Variant) -> String:
+	if value is bool:
+		return _translate_key("gem.level.bool.%s" % ("true" if value else "false"), {}, "yes" if value else "no")
+	if field_id == "blast_pattern" or field_id == "fog_pattern":
+		return _translate_key("gem.level.pattern.%s" % str(value), {}, str(value))
+	if field_id == "redirect_mode":
+		return _translate_key("gem.level.split.redirect.%s" % str(value), {}, str(value))
+	if _GEM_EFFECT_LEVEL_PERCENT_FIELDS.has(field_id):
+		return "%s%%" % _format_gem_effect_level_number(float(value) * 100.0)
+	if value is int or value is float:
+		return _format_gem_effect_level_number(float(value))
+	return str(value)
+
+
+func _format_gem_effect_level_number(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return str(int(roundf(value)))
+	return "%.2f" % value
+
+
 func _gem_id_from_ref(gem_ref: Variant) -> String:
 	if gem_ref is GemState:
 		return (gem_ref as GemState).gem_id
@@ -1736,93 +1398,91 @@ func _resolve_relic_numeric_field(payload: Dictionary, field_id: String, fallbac
 func _load_gem_defs_from_json() -> void:
 	var path := "res://resources/gems/gem_defs.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
+	var errors := BalanceConfigValidator.validate_gem_defs(raw, _key_set(_gem_effect_profiles.keys()))
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_gem_defs = {}
+	if not errors.is_empty():
 		return
 	for gem_id in raw.keys():
-		var entry: Dictionary = raw[gem_id]
+		var entry: Dictionary = (raw[gem_id] as Dictionary).duplicate(true)
 		if entry.has("color"):
 			var c: Array = entry["color"]
 			entry["color"] = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]) if c.size() > 3 else 1.0)
-		if _gem_defs.has(gem_id):
-			_gem_defs[gem_id] = _deep_merge_dict(_gem_defs[gem_id], entry)
-		else:
-			_gem_defs[gem_id] = entry
+		_gem_defs[gem_id] = entry
 
 
 func _load_gem_effect_levels_from_json() -> void:
 	var path := "res://resources/gems/gem_effect_levels.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
+	var errors := BalanceConfigValidator.validate_gem_effect_levels(raw)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_gem_effect_levels = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_gem_effect_levels(raw))
 	_gem_effect_levels = raw.duplicate(true)
 
 
 func _load_gem_pools_from_json() -> void:
 	var path := "res://resources/gems/gem_pools.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
-		_gem_pools = {
-			"global": {
-				"source_tier": 99,
-				"rarity_weights": _RARITY_WEIGHTS.duplicate(true),
-			},
-		}
+	var known_tags: Dictionary = {}
+	for gem_id in get_gem_ids():
+		known_tags[get_gem_tag(gem_id)] = true
+	var errors := BalanceConfigValidator.validate_gem_pools(raw, known_tags)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_gem_pools = {}
+	_gem_teaching_boosts = {}
+	if not errors.is_empty():
 		return
-	if raw.has("teaching_boosts"):
-		_gem_teaching_boosts = (raw["teaching_boosts"] as Dictionary).duplicate(true)
-		raw.erase("teaching_boosts")
-	_gem_pools = raw
-	if not _gem_pools.has("global"):
-		_gem_pools["global"] = {
-			"source_tier": 99,
-			"rarity_weights": _RARITY_WEIGHTS.duplicate(true),
-		}
+	_gem_teaching_boosts = (raw["teaching_boosts"] as Dictionary).duplicate(true)
+	_gem_pools = raw.duplicate(true)
+	_gem_pools.erase("teaching_boosts")
 
 
 func _load_relic_numeric_refs_from_json() -> void:
 	var path := "res://resources/relics/relic_numeric_refs.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
-		_relic_numeric_refs = {}
+	var errors := BalanceConfigValidator.validate_relic_numeric_refs(raw)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_relic_numeric_refs = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_numeric_refs(raw))
 	_relic_numeric_refs = raw.duplicate(true)
 
 
 func _load_relic_source_weights_from_json() -> void:
 	var path := "res://resources/adventure/relic_source_weights.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
-		_relic_source_weights = {}
+	var errors := BalanceConfigValidator.validate_relic_source_weights(raw)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_relic_source_weights = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_source_weights(raw))
 	_relic_source_weights = raw.duplicate(true)
 
 
 func _load_reward_offer_config_from_json() -> void:
 	var path := "res://resources/adventure/reward_offer_config.json"
-	if not FileAccess.file_exists(path):
-		AdventureConfigValidator.ensure_valid(path, ["reward_offer_config file missing"])
-		return
 	var raw := _read_json_file(path)
-	AdventureConfigValidator.ensure_valid(
-		path,
-		AdventureConfigValidator.validate_reward_offer_config(raw, _key_set(get_relic_source_ids()))
+	var errors := AdventureConfigValidator.validate_reward_offer_config(
+		raw,
+		_key_set(get_relic_source_ids())
 	)
+	AdventureConfigValidator.ensure_valid(path, errors)
+	_reward_offer_config = {}
+	if not errors.is_empty():
+		return
 	_reward_offer_config = raw.duplicate(true)
 
 
 func _load_battle_reward_ui_config_from_json() -> void:
 	var path := "res://resources/ui/battle_reward_ui_config.json"
-	if not FileAccess.file_exists(path):
-		AdventureConfigValidator.ensure_valid(path, ["battle_reward_ui_config file missing"])
-		return
 	var raw := _read_json_file(path)
-	AdventureConfigValidator.ensure_valid(
-		path,
-		AdventureConfigValidator.validate_battle_reward_ui_config(raw)
-	)
+	var errors := AdventureConfigValidator.validate_battle_reward_ui_config(raw)
+	AdventureConfigValidator.ensure_valid(path, errors)
+	_battle_reward_ui_config = {}
+	if not errors.is_empty():
+		return
 	_battle_reward_ui_config = raw.duplicate(true)
 
 
@@ -1844,42 +1504,92 @@ func _validate_shop_pools_source_refs() -> void:
 func _load_enemy_slot_curves_from_json() -> void:
 	var path := "res://resources/adventure/enemy_slot_curves.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
-		_enemy_slot_curves = {}
+	var errors := BalanceConfigValidator.validate_enemy_slot_curves(raw)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_enemy_slot_curves = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_enemy_slot_curves(raw))
 	_enemy_slot_curves = raw.duplicate(true)
+
+
+func _validate_adventure_progression_refs() -> void:
+	var path := AdventureProgressionConfig.CONFIG_PATH
+	var event_defs := _read_json_file("res://resources/adventure/event_defs.json")
+	AdventureConfigValidator.ensure_valid(
+		path,
+		AdventureConfigValidator.validate_adventure_progression(
+			AdventureProgressionConfig.get_config(),
+			_key_set(get_encounter_ids()),
+			_key_set(event_defs.keys())
+		)
+	)
 
 
 func _load_unit_defs_from_json() -> void:
 	var path := "res://resources/units/unit_defs.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
+	var known_ai_profile_ids := _key_set(AIProfiles.get_profile_ids())
+	known_ai_profile_ids["player"] = true
+	known_ai_profile_ids["training_dummy"] = true
+	var errors := BalanceConfigValidator.validate_unit_defs(
+		raw,
+		_key_set(get_gem_ids()),
+		_key_set(BehaviorRegistry.get_behavior_ids()),
+		known_ai_profile_ids
+	)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_unit_defs = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_unit_balance_defs(raw))
-	for unit_id in raw.keys():
-		var entry: Dictionary = raw[unit_id]
-		if _unit_defs.has(unit_id):
-			_unit_defs[unit_id] = _deep_merge_dict(_unit_defs[unit_id], entry)
-		else:
-			_unit_defs[unit_id] = entry
+	_unit_defs = raw.duplicate(true)
 
 
 func _load_encounters_from_json() -> void:
-	var dir := DirAccess.open("res://resources/encounters/")
+	_encounters = {}
+	var production_dir := "res://resources/encounters/"
+	var loaded_count := _load_encounters_from_dir(production_dir)
+	if loaded_count <= 0:
+		AdventureConfigValidator.ensure_valid(production_dir, ["no valid encounter definitions loaded"])
+	if OS.is_debug_build():
+		_load_encounters_from_dir("res://tests/fixtures/encounters/")
+
+
+func _load_encounters_from_dir(dir_path: String) -> int:
+	var dir := DirAccess.open(dir_path)
 	if dir == null:
-		return
+		return 0
+	var file_names: Array[String] = []
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while not file_name.is_empty():
 		if not dir.current_is_dir() and file_name.ends_with(".json"):
-			var encounter_id := file_name.get_basename()
-			var path := "res://resources/encounters/" + file_name
-			var raw := _read_json_file(path)
-			if not raw.is_empty():
-				_encounters[encounter_id] = _parse_encounter_json(raw)
+			file_names.append(file_name)
 		file_name = dir.get_next()
 	dir.list_dir_end()
+	file_names.sort()
+	var loaded_count := 0
+	for catalog_file_name in file_names:
+		var encounter_id := catalog_file_name.get_basename()
+		var path := dir_path.path_join(catalog_file_name)
+		var raw := _read_json_file(path)
+		var errors := AdventureConfigValidator.validate_encounter_def(
+			encounter_id,
+			raw,
+			_unit_defs,
+			_key_set(get_tile_ids()),
+			_key_set(get_entity_ids()),
+			_key_set(get_overlay_ids()),
+			_key_set(get_gem_ids()),
+			Constants.BOARD_SIZE
+		)
+		if _encounters.has(encounter_id):
+			errors.append("encounters.%s duplicates an already loaded id" % encounter_id)
+		AdventureConfigValidator.ensure_valid(path, errors)
+		if not errors.is_empty():
+			continue
+		_encounters[encounter_id] = _parse_encounter_json(raw)
+		loaded_count += 1
+	return loaded_count
 
 
 func _parse_encounter_json(raw: Dictionary) -> Dictionary:
@@ -2017,9 +1727,11 @@ func _enemy_total_slot_weights(chapter: int, room_type: String) -> Array[float]:
 func _load_relic_defs_from_json() -> void:
 	var path := "res://resources/relics/relic_defs.json"
 	var raw := _read_json_file(path)
-	if raw.is_empty():
+	var errors := BalanceConfigValidator.validate_relic_defs(raw, _relic_numeric_refs)
+	BalanceConfigValidator.ensure_valid(path, errors)
+	_relic_defs = {}
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(path, BalanceConfigValidator.validate_relic_defs(raw, _relic_numeric_refs))
 	for relic_id in raw.keys():
 		var entry: Dictionary = (raw[relic_id] as Dictionary).duplicate(true)
 		if entry.has("desc"):
@@ -2218,7 +1930,7 @@ func _read_json_file(path: String) -> Dictionary:
 	return {}
 
 
-func _key_set(ids: Array[String]) -> Dictionary:
+func _key_set(ids: Array) -> Dictionary:
 	var result := {}
 	for id in ids:
 		result[str(id)] = true

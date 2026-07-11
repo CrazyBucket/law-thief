@@ -82,7 +82,7 @@ static func sync_all_units_standing_ground(state: GameState) -> void:
 
 
 ## 单位进入格子时（主动移动与强制位移共用）
-## opts.forced / opts.source_uid：强制位移踩入地刺时附加易伤
+## opts.forced / opts.source_uid / opts.damage_context：传递强制位移来源与致死伤害标签
 ## opts.skip_overlay：为 true 时跳过 overlay 进入效果（已由 on_unit_moved_through 处理过的最终格使用）
 static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2i, opts: Dictionary = {}) -> void:
 	sync_standing_ground_effects(state, unit)
@@ -95,9 +95,14 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 
 
 ## 单位经过某格时触发（移动路径中间格）
-static func on_unit_moved_through(state: GameState, unit: UnitState, pos: Vector2i) -> void:
+static func on_unit_moved_through(
+	state: GameState,
+	unit: UnitState,
+	pos: Vector2i,
+	opts: Dictionary = {}
+) -> void:
 	sync_standing_ground_effects(state, unit)
-	EntityRules.on_unit_entered(state, unit, {})
+	EntityRules.on_unit_entered(state, unit, opts)
 	_apply_enter_effects_for_occupied_cells(state, unit)
 
 	GemEffects.run_unit_hooks(
@@ -171,7 +176,7 @@ static func create_overlay(
 			create_fire(state, pos, duration if duration > 0 else CombatConfig.fire_duration())
 			return {"ok": true}
 		Constants.TILE_MOD_TOXIC_SMOKE:
-			create_toxic_smoke(state, pos, duration if duration > 0 else 1)
+			create_toxic_smoke(state, pos, duration)
 			return {"ok": true}
 		Constants.TILE_MOD_POISON_PUDDLE:
 			if not BoardUtils.in_bounds(state, pos):
@@ -180,7 +185,8 @@ static func create_overlay(
 			if not tile.has_ground_tag(Constants.GROUND_TAG_WATER):
 				return {"ok": false, "message": "poison_puddle requires a water tile at %s" % pos}
 			tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
-			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, duration if duration > 0 else 2, payload)
+			var puddle_duration := duration if duration > 0 else CombatConfig.poison_puddle_duration()
+			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, puddle_duration, payload)
 			_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 			return {"ok": true}
 	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
@@ -229,7 +235,7 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 		EntityRules.damage_barrel(state, barrel, barrel.hp, "", ev)
 
 
-static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 1) -> void:
+static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = -1) -> void:
 	if not BoardUtils.in_bounds(state, pos):
 		return
 	var tile := state.get_tile(pos)
@@ -247,7 +253,8 @@ static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 
 		tile.modifiers[i] = merged
 		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
-	tile.add_modifier(Constants.TILE_MOD_TOXIC_SMOKE, duration)
+	var resolved_duration := duration if duration > 0 else CombatConfig.toxic_smoke_duration()
+	tile.add_modifier(Constants.TILE_MOD_TOXIC_SMOKE, resolved_duration)
 	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 
@@ -381,7 +388,7 @@ static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_t
 
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
-	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_fog_duration())
+	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_puddle_duration())
 	_queue_or_apply_enter_effects_to_occupant(state, tile.pos, tile)
 
 

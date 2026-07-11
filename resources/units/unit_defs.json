@@ -119,7 +119,8 @@
     "balance": {
       "split_stat_ratio": 0.5,
       "slam_push_steps": 1,
-      "trample_damage": 3
+      "trample_damage": 3,
+      "trample_collision_damage": 1
     },
     "footprint_size": [2, 2],
     "tags": ["unit:fission_slime"],

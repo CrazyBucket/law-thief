@@ -1,5 +1,35 @@
 {
   "default_profile": "melee_chase",
+  "profile_defaults": {
+    "w_damage": 10.0,
+    "w_kill_player": 200.0,
+    "w_self_sacrifice": 0.0,
+    "w_self_damage": 8.0,
+    "w_friendly_fire": 30.0,
+    "w_approach": 5.0,
+    "w_move_cost": 0.5,
+    "w_pull": 15.0,
+    "w_poison": 8.0,
+    "w_status": 6.0,
+    "w_deploy_bonus": 0.0,
+    "w_keep_distance": 3.0,
+    "wait_score": -10.0,
+    "path_base_step_cost": 1.0,
+    "path_spike_damage_weight": 2.0,
+    "path_water_cost_bias": 0.0,
+    "can_extract": false,
+    "prefer_distance": false,
+    "guard_ally": false,
+    "can_ranged_attack": false,
+    "ranged_only": false,
+    "allow_partial_path": true
+  },
+  "path_defaults": {
+    "base_step_cost": 1.0,
+    "spike_damage_weight": 0.4,
+    "water_cost_bias": 0.0,
+    "allow_partial_path": true
+  },
   "aliases": {
     "bomb_rat": "bomb_rat",
     "stone_bow": "stone_bow",

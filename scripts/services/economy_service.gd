@@ -19,36 +19,37 @@ func get_balance(resource_id: String = "gold") -> int:
 
 
 func get_starting_gold() -> int:
-	return int(_config.get("starting_gold", 0))
+	return int(_required_config_value("starting_gold"))
 
 
 func get_combat_reward(room_type: String) -> int:
 	match room_type:
 		"ELITE_COMBAT":
-			return int(_config.get("elite_combat_gold", 20))
+			return int(_required_config_value("elite_combat_gold"))
 		"END":
-			return int(_config.get("boss_combat_gold", 40))
+			return int(_required_config_value("boss_combat_gold"))
 		_:
-			return int(_config.get("normal_combat_gold", 10))
+			return int(_required_config_value("normal_combat_gold"))
 
 
 func get_base_price(item_type: String) -> int:
 	match item_type:
 		"relic":
-			return int(_config.get("relic_base_price", 30))
+			return int(_required_config_value("relic_base_price"))
 		_:
-			return int(_config.get("gem_base_price", 15))
+			return int(_required_config_value("gem_base_price"))
 
 
 func has_amount_ref(ref_id: String) -> bool:
 	return (_config.get("amount_refs", {}) as Dictionary).has(ref_id)
 
 
-func get_amount_ref(ref_id: String, fallback: float = 0.0) -> float:
+func get_amount_ref(ref_id: String) -> float:
 	var amount_refs := _config.get("amount_refs", {}) as Dictionary
 	if not amount_refs.has(ref_id):
-		return fallback
-	return _amount_ref_value(amount_refs.get(ref_id), fallback)
+		push_error("EconomyService: unknown amount ref: %s" % ref_id)
+		return 0.0
+	return _amount_ref_value(amount_refs[ref_id])
 
 
 func get_amount_ref_def(ref_id: String) -> Dictionary:
@@ -71,9 +72,9 @@ func get_amount_refs() -> Dictionary:
 	return (_config.get("amount_refs", {}) as Dictionary).duplicate(true)
 
 
-func resolve_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> Dictionary:
+func resolve_numeric_field(payload: Dictionary, field_id: String) -> Dictionary:
 	if payload.has(field_id):
-		return {"ok": true, "value": float(payload.get(field_id, fallback))}
+		return {"ok": true, "value": float(payload[field_id])}
 	var ref_id := str(payload.get("%s_ref" % field_id, ""))
 	if ref_id.is_empty():
 		return {
@@ -90,7 +91,7 @@ func resolve_numeric_field(payload: Dictionary, field_id: String, fallback: floa
 			"field": field_id,
 			"amount_ref": ref_id,
 		}
-	return {"ok": true, "value": get_amount_ref(ref_id, fallback), "amount_ref": ref_id}
+	return {"ok": true, "value": get_amount_ref(ref_id), "amount_ref": ref_id}
 
 
 func can_afford(cost: Dictionary) -> bool:
@@ -190,8 +191,17 @@ func format_entry(entry: Dictionary) -> String:
 
 
 func _load_config() -> void:
-	_config = _load_json(CONFIG_PATH)
-	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_economy_config(_config))
+	var raw := _load_json(CONFIG_PATH)
+	var errors := _Validator.validate_economy_config(raw)
+	_Validator.ensure_valid(CONFIG_PATH, errors)
+	_config = raw.duplicate(true) if errors.is_empty() else {}
+
+
+func _required_config_value(key: String) -> Variant:
+	if _config.has(key):
+		return _config[key]
+	push_error("EconomyService: required config value missing: %s" % key)
+	return 0
 
 
 func _load_json(path: String) -> Dictionary:
@@ -247,9 +257,10 @@ func _find_ledger_entry(transaction_id: String) -> Dictionary:
 	return {}
 
 
-func _amount_ref_value(raw_ref: Variant, fallback: float = 0.0) -> float:
+func _amount_ref_value(raw_ref: Variant) -> float:
 	if raw_ref is int or raw_ref is float:
 		return float(raw_ref)
 	if raw_ref is Dictionary:
-		return float((raw_ref as Dictionary).get("value", fallback))
-	return fallback
+		return float((raw_ref as Dictionary).get("value", 0.0))
+	push_error("EconomyService: malformed amount ref")
+	return 0.0

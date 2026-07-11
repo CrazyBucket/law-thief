@@ -1,5 +1,7 @@
 extends SceneTree
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -44,7 +46,7 @@ func _test_explosion_diagonal() -> void:
 	assert(BoardUtils.manhattan(rat.pos, player.pos) == 2, "setup diagonal adjacency")
 	assert(BoardUtils.chebyshev(rat.pos, player.pos) == 1, "player should be in blast radius")
 	var hp_before := player.hp
-	GemEffects.explode_at(state, rat.pos, Constants.EXPLOSION_DAMAGE, rat.uid)
+	GemEffects.explode_at(state, rat.pos, CombatConfig.explosion_damage(), rat.uid)
 	assert(player.hp < hp_before, "diagonal explosion should still damage player")
 	print("  [OK] diagonal explosion (%d -> %d)" % [hp_before, player.hp])
 
@@ -56,9 +58,9 @@ func _test_armor_blocks_explosion() -> void:
 	var rat := _find(state, "unit_bomb_rat")
 	var player := state.get_player()
 	rat.pos = player.pos + Vector2i(1, 1)
-	StatusRules.apply_armor(state, player, Constants.EXPLOSION_DAMAGE, 1)
+	StatusRules.apply_armor(state, player, CombatConfig.explosion_damage(), 1)
 	var hp_before := player.hp
-	GemEffects.explode_at(state, player.pos, Constants.EXPLOSION_DAMAGE, rat.uid)
+	GemEffects.explode_at(state, player.pos, CombatConfig.explosion_damage(), rat.uid)
 	assert(player.hp == hp_before, "armor should fully block explosion damage")
 	var blocked := false
 	for line in state.combat_log:

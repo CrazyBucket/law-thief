@@ -13,10 +13,11 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	print("=== Gem Echo Test ===")
 	_test_resolve_echo_skips_self()
+	_test_echo_pick_count_uses_level_config()
 	_test_resolve_echo_depth_guard()
 	_test_blue_echo_once_per_turn()
 	_test_blue_echo_level_three_empowers_first_tag()
-	_test_black_echo_respects_death_chain_guard()
+	_test_black_echo_replays_inside_death_chain()
 	if _failed:
 		push_error("GEM_ECHO_TEST_FAIL")
 		quit(1)
@@ -28,7 +29,7 @@ func _run_tests() -> void:
 func _test_resolve_echo_skips_self() -> void:
 	var state := _create_state()
 	var player := state.get_player()
-	player.pos = Vector2i(2, 3)
+	state.move_unit(player, Vector2i(2, 3))
 	_mount_gems(state, player, Constants.SLOT_RED, ["gem_echo", Constants.GEM_FIRE])
 	var result := AttackPipeline.execute_aimed(state, player, Vector2i(5, 3), [AttackPipeline.TAG_RANGED])
 	_expect(result.get("ok", false), "red echo attack should succeed")
@@ -36,6 +37,20 @@ func _test_resolve_echo_skips_self() -> void:
 	_expect(_count_events(events, "gem_flash") >= 1, "red echo should emit gem_flash")
 	_expect(_count_events(events, "fire_burst") >= 1, "red echo should not pick itself and should replay fire")
 	print("  [OK] resolve echo skips self")
+
+
+func _test_echo_pick_count_uses_level_config() -> void:
+	var state := _create_state()
+	var registry: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	for level in [1, 2, 3]:
+		var level_def: Dictionary = registry.get_gem_effect_level_def("echo", Constants.SLOT_RED, level)
+		var picked := GemEchoRules.resolve_echo_tags(state, {
+			"tags": ["echo", "fire", "poison", "arc"],
+			"tag_levels": {"echo": level},
+			"effect_level_scope": Constants.SLOT_RED,
+		}, "echo_pick_count_%d" % level)
+		_expect(picked.size() == int(level_def.get("echo_tag_count", 0)), "echo level %d should pick configured tag count" % level)
+	print("  [OK] echo pick count uses level config")
 
 
 func _test_resolve_echo_depth_guard() -> void:
@@ -76,7 +91,7 @@ func _test_blue_echo_level_three_empowers_first_tag() -> void:
 	print("  [OK] blue echo level 3 empowers first tag")
 
 
-func _test_black_echo_respects_death_chain_guard() -> void:
+func _test_black_echo_replays_inside_death_chain() -> void:
 	var state := _create_state()
 	var victim := _spawn_unit(state, "echo_black_victim", Vector2i(4, 3), Constants.TEAM_ENEMY, 20)
 	var neighbor := _spawn_unit(state, "echo_black_neighbor", Vector2i(5, 3), Constants.TEAM_ENEMY, 80)
@@ -86,8 +101,8 @@ func _test_black_echo_respects_death_chain_guard() -> void:
 	_expect(_count_events(events, "poison_burst") == 0, "level 1 poison echoed from black slot should not create poison burst")
 	_expect(neighbor.has_status(Constants.STATUS_SLOWED), "black echo should replay poison payload")
 	var slowed := neighbor.get_status(Constants.STATUS_SLOWED)
-	_expect(slowed != null and slowed.stacks == 2, "death chain guard should prevent duplicate black echo replay")
-	print("  [OK] black echo death chain guard")
+	_expect(slowed != null and slowed.stacks == 4, "black echo should intentionally replay the selected death tag once")
+	print("  [OK] black echo replays selected tag inside the real death chain")
 
 
 func _create_state() -> GameState:

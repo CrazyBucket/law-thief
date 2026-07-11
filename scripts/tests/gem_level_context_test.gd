@@ -1,6 +1,8 @@
 extends SceneTree
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+const BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
+const BattleHudPresenter = preload("res://scripts/ui/battle_hud_presenter.gd")
 
 var _failed := false
 
@@ -12,6 +14,8 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	print("=== Gem Level Context Test ===")
 	_test_effect_level_config_lookup()
+	_test_hud_level_summary_uses_slot_config()
+	_test_query_preview_uses_slot_config()
 	_test_blue_poison_contact_uses_level_config()
 	_test_blue_pillar_poison_uses_level_config()
 	_test_blue_pillar_explosion_uses_level_config()
@@ -50,13 +54,70 @@ func _test_effect_level_config_lookup() -> void:
 	_expect(int(blue_explosion_l1.get("pillar_damage", 0)) == 1, "blue explosion should define pillar damage")
 	var blue_gravity_l1: Dictionary = reg.get_gem_effect_level_def("gravity", Constants.SLOT_BLUE, 1)
 	_expect(int(blue_gravity_l1.get("pillar_pull_radius", 0)) == 2, "blue gravity should define pillar pull radius")
+	var blue_ice_l2: Dictionary = reg.get_gem_effect_level_def("ice", Constants.SLOT_BLUE, 2)
+	_expect(int(blue_ice_l2.get("contact_slowed_stacks", 0)) == 2, "blue ice level 2 should define two contact slow stacks")
+	_expect(int(blue_ice_l2.get("slowed_min_move_points", -1)) == 0, "blue ice level 2 should author the zero movement floor")
 	var black_split_l2: Dictionary = reg.get_gem_effect_level_def("split", Constants.SLOT_BLACK, 2)
 	_expect(abs(float(black_split_l2.get("stat_ratio", 0.0)) - 0.5) < 0.001, "black split level 2 stat ratio should come from config")
 	var black_poison_l3: Dictionary = reg.get_gem_effect_level_def("poison", Constants.SLOT_BLACK, 3)
 	_expect(int(black_poison_l3.get("debuff_spread_radius", 0)) == 1, "black poison should define debuff spread radius")
 	var black_light_l3: Dictionary = reg.get_gem_effect_level_def("light", Constants.SLOT_BLACK, 3)
 	_expect(bool(black_light_l3.get("blind_on_survive", false)), "black light level 3 should define blind-on-survive in config")
+	var black_arc_l1: Dictionary = reg.get_gem_effect_level_def("arc", Constants.SLOT_BLACK, 1)
+	_expect(int(black_arc_l1.get("strike_radius", 0)) == 1, "black conductive should own its strike radius")
+	var black_explosion_l3: Dictionary = reg.get_gem_effect_level_def("explosion", Constants.SLOT_BLACK, 3)
+	_expect(float(black_explosion_l3.get("damage_multiplier", 0.0)) == 2.0, "black explosion level 3 should own its damage multiplier")
+	var black_ice_l3: Dictionary = reg.get_gem_effect_level_def("ice", Constants.SLOT_BLACK, 3)
+	_expect(int(black_ice_l3.get("death_radius", 0)) == 1, "black ice should own its death radius")
+	_expect(int(black_ice_l3.get("slowed_stacks", 0)) == 1, "black ice level 3 should define its slow stacks")
+	_expect(int(black_ice_l3.get("freeze_duration", 0)) == 1, "black ice level 3 should define its intended freeze duration")
+	var black_fire_l3: Dictionary = reg.get_gem_effect_level_def("fire", Constants.SLOT_BLACK, 3)
+	_expect(int(black_fire_l3.get("death_fire_radius", 0)) == 2, "black fire level 3 should define its absolute death radius")
+	_expect(int(black_fire_l3.get("death_fire_count", 0)) == 7, "black fire level 3 should define its absolute fire count")
+	_expect(int(black_fire_l3.get("death_fire_duration", 0)) == 3, "black fire level 3 should define its absolute fire duration")
 	print("  [OK] effect level config lookup")
+
+
+func _test_hud_level_summary_uses_slot_config() -> void:
+	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	var split_level_two: String = str(reg.get_gem_effect_level_summary("split", Constants.SLOT_RED, 2))
+	var split_level_three: String = str(reg.get_gem_effect_level_summary("split", Constants.SLOT_RED, 3))
+	var gravity_blue: String = str(reg.get_gem_effect_level_summary("gravity", Constants.SLOT_BLUE, 1))
+	var fire_black: String = str(reg.get_gem_effect_level_summary("fire", Constants.SLOT_BLACK, 3))
+	var arc_black: String = str(reg.get_gem_effect_level_summary("arc", Constants.SLOT_BLACK, 3))
+	var explosion_black: String = str(reg.get_gem_effect_level_summary("explosion", Constants.SLOT_BLACK, 3))
+	var counter_red: String = str(reg.get_gem_effect_level_summary("counter", Constants.SLOT_RED, 3))
+	_expect(split_level_two.find("50%") >= 0, "red split level 2 summary should render configured 50% ratio")
+	_expect(split_level_two.find("70%") < 0, "red split level 2 summary should not retain stale 70% copy")
+	_expect(split_level_three.find("30%") >= 0, "red split level 3 summary should render configured 30% ratio")
+	_expect(gravity_blue.find("50%") >= 0, "blue gravity summary should render configured deflect chance")
+	_expect(fire_black.find("7") >= 0 and fire_black.find("3") >= 0, "black fire summary should render configured absolute count and duration")
+	_expect(fire_black.find("+2") < 0 and fire_black.find("+1") < 0, "black fire summary should not expose obsolete additive values")
+	_expect(not arc_black.is_empty() and arc_black.find("999") < 0 and arc_black.find("{") < 0, "black conductive all-target summary should not expose a count sentinel or unresolved token")
+	_expect(explosion_black.find("×2") >= 0 and explosion_black.find("{") < 0, "black explosion summary should render the configured damage multiplier")
+	_expect(counter_red.find("1") >= 0 and counter_red.find("{") < 0, "red counter summary should render its configured duration and semantic flags")
+	var state := _create_state()
+	var player := state.get_player()
+	_mount_gems(state, player, Constants.SLOT_RED, [Constants.GEM_SPLIT, Constants.GEM_SPLIT])
+	var slot: SlotState = player.slots_accepting(Constants.SLOT_RED)[0]
+	var gem: GemState = state.gems.get(slot.gem_uid, null)
+	var presenter := BattleHudPresenter.new()
+	var detail_lines: Array[String] = presenter._slot_chip_detail_lines(gem, slot, player, state)
+	_expect(_lines_contain(detail_lines, "50%"), "battle HUD should render the slot-scoped split summary")
+	_expect(not _lines_contain(detail_lines, "70%"), "battle HUD should not render stale split ratio copy")
+	print("  [OK] HUD level summary uses slot config")
+
+
+func _test_query_preview_uses_slot_config() -> void:
+	var state := _create_state()
+	var player := state.get_player()
+	_mount_gems(state, player, Constants.SLOT_RED, [Constants.GEM_SPLIT, Constants.GEM_SPLIT])
+	var slot: SlotState = player.slots_accepting(Constants.SLOT_RED)[0]
+	var query := BattleQueryService.new()
+	var preview: String = query._slot_preview_line(state, player, slot)
+	_expect(preview.find("50%") >= 0, "battle query preview should render configured split ratio")
+	_expect(preview.find("70%") < 0, "battle query preview should not render stale split ratio copy")
+	print("  [OK] query preview uses slot config")
 
 
 func _test_blue_poison_contact_uses_level_config() -> void:
@@ -254,6 +315,13 @@ func _count_events(events: Array, event_type: String) -> int:
 		if str(ev.get("type", "")) == event_type:
 			total += 1
 	return total
+
+
+func _lines_contain(lines: Array[String], needle: String) -> bool:
+	for line in lines:
+		if line.find(needle) >= 0:
+			return true
+	return false
 
 
 func _first_event(events: Array, event_type: String) -> Dictionary:

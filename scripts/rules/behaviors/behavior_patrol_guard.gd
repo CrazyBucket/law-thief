@@ -46,6 +46,9 @@ static func on_lawless_recovered(unit: UnitState) -> void:
 
 static func build_melee_intent(state: GameState, unit: UnitState, move_path: Array[Vector2i], intent: IntentState) -> void:
 	var target_pos := _target_pos(state, intent.target_uid)
+	intent.base_damage = CombatRules.attack_damage(state, unit) + PatrolGuardRules.charge_bonus(
+		state, unit, unit.pos, move_path
+	)
 	intent.damage = PatrolGuardRules.melee_damage_preview(state, unit, unit.pos, move_path, target_pos)
 	var bonus: int = PatrolGuardRules.charge_bonus(state, unit, unit.pos, move_path)
 	var label := "冲锋" if bonus > 0 else "近战"

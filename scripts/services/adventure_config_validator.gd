@@ -55,6 +55,18 @@ const AMOUNT_REF_KINDS := [
 	"legacy",
 ]
 
+const ENCOUNTER_FIELDS := {
+	"catalog_visible": true,
+	"player_spawn": true,
+	"enemies": true,
+	"enemy_groups": true,
+	"random_enemies": true,
+	"tiles": true,
+	"entities": true,
+}
+
+const ENCOUNTER_SLOT_TYPES := ["red", "blue", "black"]
+
 
 static func ensure_valid(file_path: String, errors: Array[String]) -> void:
 	if errors.is_empty():
@@ -65,16 +77,264 @@ static func ensure_valid(file_path: String, errors: Array[String]) -> void:
 		assert(false, message)
 
 
+static func validate_adventure_progression(
+	config: Dictionary,
+	known_encounters: Dictionary = {},
+	known_events: Dictionary = {}
+) -> Array[String]:
+	var errors: Array[String] = []
+	var top_fields := ["chapter_count", "chapter_seed_stride", "map", "combat_encounters", "boss_encounters"]
+	for field_id in config.keys():
+		if str(field_id) not in top_fields:
+			errors.append("adventure_progression.%s is unknown" % field_id)
+	for field_id in top_fields:
+		if not config.has(field_id):
+			errors.append("adventure_progression.%s missing" % field_id)
+	var chapter_count: Variant = config.get("chapter_count", null)
+	if not _is_positive_integer(chapter_count):
+		errors.append("adventure_progression.chapter_count should be a positive integer")
+	var seed_stride: Variant = config.get("chapter_seed_stride", null)
+	if not _is_positive_integer(seed_stride):
+		errors.append("adventure_progression.chapter_seed_stride should be a positive integer")
+	var raw_map: Variant = config.get("map", null)
+	if not raw_map is Dictionary:
+		errors.append("adventure_progression.map should be object")
+	else:
+		errors.append_array(_validate_progression_map(raw_map as Dictionary, known_events))
+	var combat_pools: Variant = config.get("combat_encounters", null)
+	if not combat_pools is Dictionary:
+		errors.append("adventure_progression.combat_encounters should be object")
+	else:
+		for room_type in ["NORMAL_COMBAT", "ELITE_COMBAT"]:
+			var pool: Variant = (combat_pools as Dictionary).get(room_type, null)
+			errors.append_array(_validate_progression_id_pool(
+				"adventure_progression.combat_encounters.%s" % room_type,
+				pool,
+				known_encounters
+			))
+		for room_type in (combat_pools as Dictionary).keys():
+			if str(room_type) not in ["NORMAL_COMBAT", "ELITE_COMBAT"]:
+				errors.append("adventure_progression.combat_encounters.%s is unknown" % room_type)
+	var bosses: Variant = config.get("boss_encounters", null)
+	errors.append_array(_validate_progression_id_pool("adventure_progression.boss_encounters", bosses, known_encounters))
+	if bosses is Array and _is_positive_integer(chapter_count) and (bosses as Array).size() != int(chapter_count):
+		errors.append("adventure_progression.boss_encounters should contain one entry per chapter")
+	return errors
+
+
+static func _validate_progression_map(config: Dictionary, known_events: Dictionary) -> Array[String]:
+	var errors: Array[String] = []
+	var fields := ["grid_size", "fallback_room_type", "room_rules", "event_pool"]
+	for field_id in config.keys():
+		if str(field_id) not in fields:
+			errors.append("adventure_progression.map.%s is unknown" % field_id)
+	for field_id in fields:
+		if not config.has(field_id):
+			errors.append("adventure_progression.map.%s missing" % field_id)
+	var grid_size: Variant = config.get("grid_size", null)
+	if not _is_positive_integer(grid_size) or int(grid_size) < 2:
+		errors.append("adventure_progression.map.grid_size should be an integer of at least 2")
+	var rules: Variant = config.get("room_rules", null)
+	if not rules is Dictionary:
+		errors.append("adventure_progression.map.room_rules should be object")
+	else:
+		for room_type in ROOM_TYPES:
+			if not (rules as Dictionary).has(room_type):
+				errors.append("adventure_progression.map.room_rules.%s missing" % room_type)
+		for room_type in (rules as Dictionary).keys():
+			if str(room_type) not in ROOM_TYPES:
+				errors.append("adventure_progression.map.room_rules.%s is unknown" % room_type)
+				continue
+			var raw_rule: Variant = (rules as Dictionary)[room_type]
+			if not raw_rule is Dictionary:
+				errors.append("adventure_progression.map.room_rules.%s should be object" % room_type)
+				continue
+			errors.append_array(_validate_progression_room_rule(str(room_type), raw_rule as Dictionary))
+		var fallback_room := str(config.get("fallback_room_type", ""))
+		if fallback_room.is_empty() or not (rules as Dictionary).has(fallback_room):
+			errors.append("adventure_progression.map.fallback_room_type should reference a room rule")
+	errors.append_array(_validate_progression_id_pool("adventure_progression.map.event_pool", config.get("event_pool", null), known_events))
+	return errors
+
+
+static func _validate_progression_room_rule(room_type: String, rule: Dictionary) -> Array[String]:
+	var errors: Array[String] = []
+	var fields := ["fixed_layer", "weight", "min_layer", "max_layer", "no_consecutive"]
+	for field_id in rule.keys():
+		if str(field_id) not in fields:
+			errors.append("adventure_progression.map.room_rules.%s.%s is unknown" % [room_type, field_id])
+	if rule.has("fixed_layer"):
+		if str(rule["fixed_layer"]) not in ["start", "end"]:
+			errors.append("adventure_progression.map.room_rules.%s.fixed_layer should be start or end" % room_type)
+		elif room_type == "START" and str(rule["fixed_layer"]) != "start":
+			errors.append("adventure_progression.map.room_rules.START.fixed_layer should be start")
+		elif room_type == "END" and str(rule["fixed_layer"]) != "end":
+			errors.append("adventure_progression.map.room_rules.END.fixed_layer should be end")
+		elif room_type not in ["START", "END"]:
+			errors.append("adventure_progression.map.room_rules.%s should not use fixed_layer" % room_type)
+	if not rule.has("weight") or not _is_positive_integer(rule["weight"]):
+		errors.append("adventure_progression.map.room_rules.%s.weight should be a positive integer" % room_type)
+	for field_id in ["min_layer", "max_layer"]:
+		if rule.has(field_id) and (
+			not (rule[field_id] is int or rule[field_id] is float)
+			or int(rule[field_id]) != float(rule[field_id])
+			or int(rule[field_id]) < 0
+		):
+			errors.append("adventure_progression.map.room_rules.%s.%s should be a non-negative integer" % [room_type, field_id])
+	if rule.has("no_consecutive") and not rule["no_consecutive"] is bool:
+		errors.append("adventure_progression.map.room_rules.%s.no_consecutive should be bool" % room_type)
+	return errors
+
+
+static func _validate_progression_id_pool(prefix: String, raw_pool: Variant, known_ids: Dictionary) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_pool is Array or (raw_pool as Array).is_empty():
+		errors.append("%s should be a non-empty array" % prefix)
+		return errors
+	var seen: Dictionary = {}
+	for raw_id in raw_pool as Array:
+		var id := str(raw_id)
+		if not raw_id is String or id.is_empty():
+			errors.append("%s should contain non-empty strings" % prefix)
+		elif seen.has(id):
+			errors.append("%s contains duplicate id: %s" % [prefix, id])
+		elif not known_ids.is_empty() and not known_ids.has(id):
+			errors.append("%s references unknown id: %s" % [prefix, id])
+		seen[id] = true
+	return errors
+
+
+static func validate_encounter_def(
+	encounter_id: String,
+	encounter: Dictionary,
+	unit_defs: Dictionary,
+	known_tile_ids: Dictionary,
+	known_entity_ids: Dictionary,
+	known_overlay_ids: Dictionary,
+	known_gem_ids: Dictionary,
+	board_size: Vector2i
+) -> Array[String]:
+	var errors: Array[String] = []
+	var prefix := "encounters.%s" % encounter_id
+	if encounter.is_empty():
+		errors.append("%s should not be empty" % prefix)
+		return errors
+	for field_id in encounter.keys():
+		if not ENCOUNTER_FIELDS.has(str(field_id)):
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	if encounter.has("catalog_visible") and not encounter["catalog_visible"] is bool:
+		errors.append("%s.catalog_visible should be bool" % prefix)
+	if not encounter.has("player_spawn"):
+		errors.append("%s.player_spawn missing" % prefix)
+	else:
+		errors.append_array(_validate_grid_position("%s.player_spawn" % prefix, encounter["player_spawn"], board_size))
+	var authored_enemy_count := 0
+	var enemies: Variant = encounter.get("enemies", [])
+	if not enemies is Array:
+		errors.append("%s.enemies should be array" % prefix)
+	else:
+		authored_enemy_count += (enemies as Array).size()
+		for index in range((enemies as Array).size()):
+			errors.append_array(_validate_encounter_enemy(
+				"%s.enemies[%d]" % [prefix, index],
+				(enemies as Array)[index],
+				unit_defs,
+				board_size
+			))
+	var groups: Variant = encounter.get("enemy_groups", [])
+	if not groups is Array:
+		errors.append("%s.enemy_groups should be array" % prefix)
+	else:
+		var total_group_weight := 0.0
+		for group_index in range((groups as Array).size()):
+			var group_prefix := "%s.enemy_groups[%d]" % [prefix, group_index]
+			var raw_group: Variant = (groups as Array)[group_index]
+			if not raw_group is Dictionary:
+				errors.append("%s should be object" % group_prefix)
+				continue
+			var group := raw_group as Dictionary
+			for field_id in group.keys():
+				if str(field_id) not in ["weight", "enemies"]:
+					errors.append("%s.%s is unknown" % [group_prefix, field_id])
+			var weight: Variant = group.get("weight", null)
+			if not weight is int and not weight is float or float(weight) <= 0.0:
+				errors.append("%s.weight should be positive" % group_prefix)
+			else:
+				total_group_weight += float(weight)
+			var group_enemies: Variant = group.get("enemies", null)
+			if not group_enemies is Array or (group_enemies as Array).is_empty():
+				errors.append("%s.enemies should be a non-empty array" % group_prefix)
+				continue
+			authored_enemy_count += (group_enemies as Array).size()
+			for enemy_index in range((group_enemies as Array).size()):
+				errors.append_array(_validate_encounter_enemy(
+					"%s.enemies[%d]" % [group_prefix, enemy_index],
+					(group_enemies as Array)[enemy_index],
+					unit_defs,
+					board_size
+				))
+		if not (groups as Array).is_empty() and total_group_weight <= 0.0:
+			errors.append("%s.enemy_groups should have positive total weight" % prefix)
+	var random_enemies: Variant = encounter.get("random_enemies", [])
+	if not random_enemies is Array:
+		errors.append("%s.random_enemies should be array" % prefix)
+	else:
+		authored_enemy_count += (random_enemies as Array).size()
+		for slot_index in range((random_enemies as Array).size()):
+			errors.append_array(_validate_random_enemy_slot(
+				"%s.random_enemies[%d]" % [prefix, slot_index],
+				(random_enemies as Array)[slot_index],
+				unit_defs,
+				board_size
+			))
+	if authored_enemy_count <= 0:
+		errors.append("%s should author at least one enemy" % prefix)
+	var tiles: Variant = encounter.get("tiles", [])
+	if not tiles is Array:
+		errors.append("%s.tiles should be array" % prefix)
+	else:
+		for index in range((tiles as Array).size()):
+			errors.append_array(_validate_encounter_tile(
+				"%s.tiles[%d]" % [prefix, index],
+				(tiles as Array)[index],
+				known_tile_ids,
+				known_overlay_ids,
+				known_gem_ids,
+				board_size
+			))
+	var entities: Variant = encounter.get("entities", [])
+	if not entities is Array:
+		errors.append("%s.entities should be array" % prefix)
+	else:
+		for index in range((entities as Array).size()):
+			errors.append_array(_validate_encounter_entity(
+				"%s.entities[%d]" % [prefix, index],
+				(entities as Array)[index],
+				known_entity_ids,
+				board_size
+			))
+	return errors
+
+
 static func validate_economy_config(config: Dictionary) -> Array[String]:
 	var errors: Array[String] = []
-	for key in ["starting_gold", "normal_combat_gold", "elite_combat_gold", "boss_combat_gold", "gem_base_price", "relic_base_price"]:
+	var required_fields := ["starting_gold", "normal_combat_gold", "elite_combat_gold", "boss_combat_gold", "gem_base_price", "relic_base_price", "amount_refs"]
+	for key in config.keys():
+		if str(key) not in required_fields:
+			errors.append("economy_config.%s is unknown" % key)
+	for key in required_fields:
 		if not config.has(key):
 			errors.append("economy_config.%s missing" % key)
+	for key in ["starting_gold", "normal_combat_gold", "elite_combat_gold", "boss_combat_gold", "gem_base_price", "relic_base_price"]:
+		if not config.has(key):
+			continue
 		elif not config[key] is int and not config[key] is float:
 			errors.append("economy_config.%s should be number" % key)
+		elif int(config[key]) != float(config[key]) or int(config[key]) < 0:
+			errors.append("economy_config.%s should be a non-negative integer" % key)
 	var amount_refs: Variant = config.get("amount_refs", {})
-	if not amount_refs is Dictionary:
-		errors.append("economy_config.amount_refs should be object")
+	if not amount_refs is Dictionary or (amount_refs as Dictionary).is_empty():
+		errors.append("economy_config.amount_refs should be a non-empty object")
 	else:
 		for ref_id in (amount_refs as Dictionary).keys():
 			var raw_ref: Variant = (amount_refs as Dictionary)[ref_id]
@@ -340,6 +600,231 @@ static func validate_map_rule_defs(defs: Dictionary) -> Array[String]:
 			if not effect.has("value"):
 				errors.append("map_rule_defs.%s.effects[%d].value missing" % [rule_id, i])
 	return errors
+
+
+static func _validate_encounter_enemy(
+	prefix: String,
+	raw_enemy: Variant,
+	unit_defs: Dictionary,
+	board_size: Vector2i
+) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_enemy is Dictionary:
+		errors.append("%s should be object" % prefix)
+		return errors
+	var enemy := raw_enemy as Dictionary
+	for field_id in enemy.keys():
+		if str(field_id) not in ["def_id", "pos"]:
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	var def_id := str(enemy.get("def_id", ""))
+	if not enemy.get("def_id", null) is String or def_id.is_empty():
+		errors.append("%s.def_id should be a non-empty string" % prefix)
+	elif not unit_defs.has(def_id):
+		errors.append("%s.def_id references unknown unit: %s" % [prefix, def_id])
+	var footprint := _unit_footprint(unit_defs.get(def_id, {}))
+	if not enemy.has("pos"):
+		errors.append("%s.pos missing" % prefix)
+	else:
+		errors.append_array(_validate_grid_position("%s.pos" % prefix, enemy["pos"], board_size, footprint))
+	return errors
+
+
+static func _validate_random_enemy_slot(
+	prefix: String,
+	raw_slot: Variant,
+	unit_defs: Dictionary,
+	board_size: Vector2i
+) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_slot is Dictionary:
+		errors.append("%s should be object" % prefix)
+		return errors
+	var slot := raw_slot as Dictionary
+	for field_id in slot.keys():
+		if str(field_id) not in ["pos", "candidates"]:
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	var candidates: Variant = slot.get("candidates", null)
+	if not candidates is Array or (candidates as Array).is_empty():
+		errors.append("%s.candidates should be a non-empty array" % prefix)
+		return errors
+	var total_weight := 0.0
+	for index in range((candidates as Array).size()):
+		var candidate_prefix := "%s.candidates[%d]" % [prefix, index]
+		var raw_candidate: Variant = (candidates as Array)[index]
+		var def_id := ""
+		var weight := 1.0
+		if raw_candidate is String:
+			def_id = str(raw_candidate)
+		elif raw_candidate is Dictionary:
+			var candidate := raw_candidate as Dictionary
+			for field_id in candidate.keys():
+				if str(field_id) not in ["def_id", "weight"]:
+					errors.append("%s.%s is unknown" % [candidate_prefix, field_id])
+			def_id = str(candidate.get("def_id", ""))
+			var raw_weight: Variant = candidate.get("weight", 1.0)
+			if not raw_weight is int and not raw_weight is float or float(raw_weight) <= 0.0:
+				errors.append("%s.weight should be positive" % candidate_prefix)
+				weight = 0.0
+			else:
+				weight = float(raw_weight)
+		else:
+			errors.append("%s should be a unit id or object" % candidate_prefix)
+			continue
+		if def_id.is_empty():
+			errors.append("%s.def_id should be a non-empty string" % candidate_prefix)
+		elif not unit_defs.has(def_id):
+			errors.append("%s.def_id references unknown unit: %s" % [candidate_prefix, def_id])
+		elif slot.has("pos"):
+			errors.append_array(_validate_grid_position(
+				"%s.pos" % prefix,
+				slot["pos"],
+				board_size,
+				_unit_footprint(unit_defs.get(def_id, {}))
+			))
+		total_weight += weight
+	if not slot.has("pos"):
+		errors.append("%s.pos missing" % prefix)
+	if total_weight <= 0.0:
+		errors.append("%s.candidates should have positive total weight" % prefix)
+	return errors
+
+
+static func _validate_encounter_tile(
+	prefix: String,
+	raw_tile: Variant,
+	known_tile_ids: Dictionary,
+	known_overlay_ids: Dictionary,
+	known_gem_ids: Dictionary,
+	board_size: Vector2i
+) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_tile is Dictionary:
+		errors.append("%s should be object" % prefix)
+		return errors
+	var tile := raw_tile as Dictionary
+	for field_id in tile.keys():
+		if str(field_id) not in ["pos", "tile_id", "slots", "overlays"]:
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	var tile_id := str(tile.get("tile_id", ""))
+	if tile_id.is_empty():
+		errors.append("%s.tile_id should be a non-empty string" % prefix)
+	elif not known_tile_ids.is_empty() and not known_tile_ids.has(tile_id):
+		errors.append("%s.tile_id references unknown tile: %s" % [prefix, tile_id])
+	if not tile.has("pos"):
+		errors.append("%s.pos missing" % prefix)
+	else:
+		errors.append_array(_validate_grid_position("%s.pos" % prefix, tile["pos"], board_size))
+	var slots: Variant = tile.get("slots", [])
+	if not slots is Array:
+		errors.append("%s.slots should be array" % prefix)
+	else:
+		for index in range((slots as Array).size()):
+			errors.append_array(_validate_encounter_slot("%s.slots[%d]" % [prefix, index], (slots as Array)[index], known_gem_ids))
+	var overlays: Variant = tile.get("overlays", [])
+	if not overlays is Array:
+		errors.append("%s.overlays should be array" % prefix)
+	else:
+		for index in range((overlays as Array).size()):
+			var overlay_prefix := "%s.overlays[%d]" % [prefix, index]
+			var raw_overlay: Variant = (overlays as Array)[index]
+			if not raw_overlay is Dictionary:
+				errors.append("%s should be object" % overlay_prefix)
+				continue
+			var overlay := raw_overlay as Dictionary
+			for field_id in overlay.keys():
+				if str(field_id) not in ["type", "duration"]:
+					errors.append("%s.%s is unknown" % [overlay_prefix, field_id])
+			var overlay_id := str(overlay.get("type", ""))
+			if overlay_id.is_empty():
+				errors.append("%s.type should be a non-empty string" % overlay_prefix)
+			elif not known_overlay_ids.is_empty() and not known_overlay_ids.has(overlay_id):
+				errors.append("%s.type references unknown overlay: %s" % [overlay_prefix, overlay_id])
+			if not _is_positive_integer(overlay.get("duration", null)):
+				errors.append("%s.duration should be a positive integer" % overlay_prefix)
+	return errors
+
+
+static func _validate_encounter_slot(prefix: String, raw_slot: Variant, known_gem_ids: Dictionary) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_slot is Dictionary:
+		errors.append("%s should be object" % prefix)
+		return errors
+	var slot := raw_slot as Dictionary
+	for field_id in slot.keys():
+		if str(field_id) not in ["slot_type", "gem_id"]:
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	var slot_type := str(slot.get("slot_type", ""))
+	if slot_type not in ENCOUNTER_SLOT_TYPES:
+		errors.append("%s.slot_type unknown: %s" % [prefix, slot_type])
+	if slot.has("gem_id"):
+		var gem_id := str(slot.get("gem_id", ""))
+		if gem_id.is_empty():
+			errors.append("%s.gem_id should be a non-empty string" % prefix)
+		elif not known_gem_ids.is_empty() and not known_gem_ids.has(gem_id):
+			errors.append("%s.gem_id references unknown gem: %s" % [prefix, gem_id])
+	return errors
+
+
+static func _validate_encounter_entity(
+	prefix: String,
+	raw_entity: Variant,
+	known_entity_ids: Dictionary,
+	board_size: Vector2i
+) -> Array[String]:
+	var errors: Array[String] = []
+	if not raw_entity is Dictionary:
+		errors.append("%s should be object" % prefix)
+		return errors
+	var entity := raw_entity as Dictionary
+	for field_id in entity.keys():
+		if str(field_id) not in ["entity_id", "pos", "prop_sprite"]:
+			errors.append("%s.%s is unknown" % [prefix, field_id])
+	var entity_id := str(entity.get("entity_id", ""))
+	if entity_id.is_empty():
+		errors.append("%s.entity_id should be a non-empty string" % prefix)
+	elif not known_entity_ids.is_empty() and not known_entity_ids.has(entity_id):
+		errors.append("%s.entity_id references unknown entity: %s" % [prefix, entity_id])
+	if not entity.has("pos"):
+		errors.append("%s.pos missing" % prefix)
+	else:
+		errors.append_array(_validate_grid_position("%s.pos" % prefix, entity["pos"], board_size))
+	if entity.has("prop_sprite") and (not entity["prop_sprite"] is String or str(entity["prop_sprite"]).is_empty()):
+		errors.append("%s.prop_sprite should be a non-empty string" % prefix)
+	return errors
+
+
+static func _validate_grid_position(
+	prefix: String,
+	value: Variant,
+	board_size: Vector2i,
+	footprint: Vector2i = Vector2i.ONE
+) -> Array[String]:
+	var errors: Array[String] = []
+	if not value is Array or (value as Array).size() != 2:
+		errors.append("%s should contain 2 integers" % prefix)
+		return errors
+	var coords := value as Array
+	for coord in coords:
+		if not coord is int and not coord is float or int(coord) != float(coord):
+			errors.append("%s should contain 2 integers" % prefix)
+			return errors
+	var pos := Vector2i(int(coords[0]), int(coords[1]))
+	if pos.x < 0 or pos.y < 0 or pos.x + footprint.x > board_size.x or pos.y + footprint.y > board_size.y:
+		errors.append("%s is outside %dx%d board for %dx%d footprint" % [prefix, board_size.x, board_size.y, footprint.x, footprint.y])
+	return errors
+
+
+static func _unit_footprint(raw_unit_def: Variant) -> Vector2i:
+	if not raw_unit_def is Dictionary:
+		return Vector2i.ONE
+	var raw_footprint: Variant = (raw_unit_def as Dictionary).get("footprint_size", [1, 1])
+	if not raw_footprint is Array or (raw_footprint as Array).size() != 2:
+		return Vector2i.ONE
+	return Vector2i(int((raw_footprint as Array)[0]), int((raw_footprint as Array)[1]))
+
+
+static func _is_positive_integer(value: Variant) -> bool:
+	return (value is int or value is float) and int(value) == float(value) and int(value) > 0
 
 
 static func _validate_effects(prefix: String, effects: Array, amount_refs: Dictionary = {}) -> Array[String]:

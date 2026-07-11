@@ -193,7 +193,7 @@ func get_player_run_snapshot() -> Dictionary:
 		return {}
 	var max_hp := _run.player_max_hp
 	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
 	var hp := _run.player_hp
 	if hp < 0:
 		hp = max_hp
@@ -256,7 +256,7 @@ func heal_player_percent(ratio: float) -> Dictionary:
 		return {}
 	var max_hp := _run.player_max_hp
 	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
 	var current_hp := _run.player_hp
 	if current_hp < 0:
 		current_hp = max_hp
@@ -279,7 +279,7 @@ func heal_player_amount(amount: int) -> Dictionary:
 		return {}
 	var max_hp := _run.player_max_hp
 	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
 	var current_hp := _run.player_hp
 	if current_hp < 0:
 		current_hp = max_hp
@@ -300,7 +300,7 @@ func damage_player_amount(amount: int) -> Dictionary:
 		return {}
 	var max_hp := _run.player_max_hp
 	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player").get("max_hp", 1))
+		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
 	var current_hp := _run.player_hp
 	if current_hp < 0:
 		current_hp = max_hp

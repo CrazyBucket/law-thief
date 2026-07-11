@@ -208,8 +208,8 @@ func _merge_ctx(base: Dictionary, patch: Dictionary) -> Dictionary:
 	return result
 
 
-func _resolve_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> Dictionary:
-	return EconomyService.resolve_numeric_field(payload, field_id, fallback)
+func _resolve_numeric_field(payload: Dictionary, field_id: String) -> Dictionary:
+	return EconomyService.resolve_numeric_field(payload, field_id)
 
 
 func _load_room_defs() -> void:

@@ -1,0 +1,7 @@
+{
+  "catalog_visible": false,
+  "player_spawn": [3, 2],
+  "enemies": [
+    {"def_id": "unit_patrol_guard", "pos": [0, 2]}
+  ]
+}

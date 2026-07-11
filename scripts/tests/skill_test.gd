@@ -294,7 +294,13 @@ func _test_counter_red_preempts_incoming_attack() -> void:
 	})
 	builder.clear_slots(enemy)
 	var state := builder.finish()
-	StatusRules.apply_counter_mark(state, enemy, player.uid, 1, player.uid)
+	StatusRules.apply_counter_mark(state, enemy, player.uid, {
+		"mark_duration": 1,
+		"retaliation_with_tags": false,
+		"grant_extra_attack_on_kill": false,
+	}, player.uid)
+	var legacy_mark: StatusInstance = enemy.get_status(Constants.STATUS_COUNTER_MARK)
+	legacy_mark.payload["watchers"] = [{"uid": player.uid, "level": 1}]
 	var hp_before := player.hp
 	CombatRules.apply_damage(state, player, 4, enemy.uid, "ranged_attack")
 	assert(not enemy.alive, "enemy should be killed by preemptive counter")
@@ -316,7 +322,11 @@ func _test_counter_red_level_three_enemy_grants_extra_action() -> void:
 	})
 	builder.clear_slots(enemy)
 	var state := builder.finish()
-	StatusRules.apply_counter_mark(state, player, enemy.uid, 3, enemy.uid)
+	StatusRules.apply_counter_mark(state, player, enemy.uid, {
+		"mark_duration": 1,
+		"retaliation_with_tags": true,
+		"grant_extra_attack_on_kill": true,
+	}, enemy.uid)
 	CombatRules.apply_damage(state, enemy, 1, player.uid, "ranged_attack")
 	assert(not player.alive, "level 3 counter retaliate should kill the player in this setup")
 	assert(StatusRules.has_extra_attack(enemy), "enemy should gain one extra attack status")

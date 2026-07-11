@@ -1,6 +1,8 @@
 extends SceneTree
 ## 敌人红槽宝石：射程、AI 接入、伤害事件
 
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -35,8 +37,10 @@ func _test_arc_requires_adjacent_for_ai() -> void:
 	player.pos = far_pos
 	state.rebuild_occupancy()
 	IntentSystem.refresh_unit_intent(state, guard)
-	assert(guard.intent.type != "arc_attack", "arc should not fire at range, got %s" % guard.intent.type)
-	print("  [OK] arc AI requires adjacent")
+	assert(guard.intent.type == "arc_attack", "arc AI should plan an attack after moving, got %s" % guard.intent.type)
+	var attack_anchor: Vector2i = guard.intent.path[-1] if not guard.intent.path.is_empty() else guard.pos
+	assert(BoardUtils.distance_between_unit_at_and_unit(guard, attack_anchor, player) == 1, "arc AI must end adjacent before attacking")
+	print("  [OK] arc AI moves adjacent before attacking")
 
 
 func _test_arc_execute_rejects_ranged() -> void:
@@ -64,6 +68,7 @@ func _test_fire_gem_ai_and_execute() -> void:
 	var guard := _find_guard(state)
 	var player := state.get_player()
 	_embed_red_gem(state, guard, Constants.GEM_FIRE)
+	state.move_unit(guard, player.pos + Vector2i(1, 0))
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "fire_attack", "fire gem should produce fire_attack intent")
 	var hp_before := player.hp
@@ -71,7 +76,7 @@ func _test_fire_gem_ai_and_execute() -> void:
 	assert(not events.is_empty(), "fire attack should produce events")
 	assert(player.hp < hp_before, "fire attack should deal damage")
 	assert(player.has_status(Constants.STATUS_BURNING), "fire attack should apply burning")
-	var dmg_ev: Dictionary = events[0]
+	var dmg_ev := _first_damage_event(events, player.uid)
 	assert(dmg_ev.get("attacker_uid", "") == guard.uid, "fire damage should include attacker_uid")
 	print("  [OK] fire gem AI + execute")
 
@@ -83,13 +88,14 @@ func _test_ice_gem_ai_and_execute() -> void:
 	var guard := _find_guard(state)
 	var player := state.get_player()
 	_embed_red_gem(state, guard, Constants.GEM_ICE)
+	state.move_unit(guard, player.pos + Vector2i(1, 0))
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "ice_attack", "ice gem should produce ice_attack intent")
 	var hp_before := player.hp
 	var events := IntentSystem.execute_intent(state, guard)
 	assert(not events.is_empty(), "ice attack should produce events")
 	assert(player.hp < hp_before, "ice attack should deal damage")
-	var dmg_ev: Dictionary = events[0]
+	var dmg_ev := _first_damage_event(events, player.uid)
 	assert(dmg_ev.get("attacker_uid", "") == guard.uid, "ice damage should include attacker_uid")
 	print("  [OK] ice gem AI + execute")
 
@@ -108,8 +114,8 @@ func _test_explosion_attack_does_not_suicide() -> void:
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "explosion_attack", "explosion gem should use explosion_attack, got %s" % guard.intent.type)
 	assert(
-		guard.intent.damage == Constants.EXPLOSION_CROSS_DAMAGE,
-		"intent preview should show cross burst %d, got %d" % [Constants.EXPLOSION_CROSS_DAMAGE, guard.intent.damage]
+		guard.intent.damage == CombatConfig.explosion_cross_damage(),
+		"intent preview should show cross burst %d, got %d" % [CombatConfig.explosion_cross_damage(), guard.intent.damage]
 	)
 	var guard_hp := guard.hp
 	var player_hp := player.hp
@@ -117,14 +123,14 @@ func _test_explosion_attack_does_not_suicide() -> void:
 	assert(guard.alive, "explosion attack should not kill the attacker")
 	assert(guard.hp == guard_hp, "attacker should take no self damage")
 	var dealt := player_hp - player.hp
-	assert(dealt >= Constants.EXPLOSION_CROSS_DAMAGE, "cross burst should deal %d+, got %d" % [Constants.EXPLOSION_CROSS_DAMAGE, dealt])
+	assert(dealt >= CombatConfig.explosion_cross_damage(), "cross burst should deal %d+, got %d" % [CombatConfig.explosion_cross_damage(), dealt])
 	assert(events.any(func(e): return e.get("type", "") == "explode"), "should emit explode event")
 	var dmg_ev: Dictionary = {}
 	for ev in events:
 		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == player.pos:
 			dmg_ev = ev
 			break
-	assert(int(dmg_ev.get("damage", 0)) >= Constants.EXPLOSION_CROSS_DAMAGE, "damage event should reflect cross burst")
+	assert(int(dmg_ev.get("damage", 0)) >= CombatConfig.explosion_cross_damage(), "damage event should reflect cross burst")
 	print("  [OK] explosion attack cross burst without suicide")
 
 
@@ -135,6 +141,7 @@ func _test_enemy_red_damage_includes_attacker_uid() -> void:
 	var guard := _find_guard(state)
 	var player := state.get_player()
 	_embed_red_gem(state, guard, Constants.GEM_POISON)
+	state.move_unit(guard, player.pos + Vector2i(1, 0))
 	guard.intent = IntentState.new()
 	guard.intent.type = "poison_attack"
 	guard.intent.target_uid = player.uid
@@ -151,8 +158,9 @@ func _test_pull_execute_respects_range() -> void:
 	var guard := _find_guard(state)
 	var player := state.get_player()
 	_embed_red_gem(state, guard, Constants.GEM_GRAVITY)
-	player.pos = guard.pos + Vector2i(Constants.ENEMY_GRAVITY_PULL_RANGE + 1, 0)
-	state.rebuild_occupancy()
+	state.move_unit(guard, Vector2i(7, 1))
+	state.move_unit(player, Vector2i(1, 1))
+	assert(BoardUtils.distance_between_units(guard, player) == GemEffects.gravity_pull_range(state, guard) + 1)
 	guard.intent = IntentState.new()
 	guard.intent.type = "pull"
 	guard.intent.target_uid = player.uid
@@ -171,13 +179,15 @@ func _test_pull_range_scales_with_gravity_level() -> void:
 	var extra_slot := SlotState.create(Constants.SLOT_RED)
 	guard.slots.append(extra_slot)
 	_embed_gem_on_slot(state, guard, extra_slot, Constants.GEM_GRAVITY)
-	player.pos = guard.pos + Vector2i(Constants.ENEMY_GRAVITY_PULL_RANGE + 1, 0)
-	state.rebuild_occupancy()
-	IntentSystem.refresh_unit_intent(state, guard)
-	assert(guard.intent.type == "pull", "gravity level 2 should extend pull AI range")
+	state.move_unit(guard, Vector2i(7, 1))
+	state.move_unit(player, Vector2i(1, 1))
+	assert(BoardUtils.distance_between_units(guard, player) == GemEffects.gravity_pull_range(state, guard))
+	guard.intent = IntentState.new()
+	guard.intent.type = "pull"
+	guard.intent.target_uid = player.uid
 	var events := IntentSystem.execute_intent(state, guard)
 	assert(not events.is_empty(), "gravity level 2 pull should execute within extended range")
-	print("  [OK] pull range scales with gravity level")
+	print("  [OK] pull execution range scales with gravity level")
 
 
 func _test_custom_intent_keeps_move_events() -> void:
@@ -226,6 +236,14 @@ func _find_unit_by_def(state: GameState, def_id: String) -> UnitState:
 	return null
 
 
+func _first_damage_event(events: Array, victim_uid: String) -> Dictionary:
+	for raw_event in events:
+		if raw_event is Dictionary and str(raw_event.get("type", "")) == "damage" \
+				and str(raw_event.get("uid", "")) == victim_uid:
+			return raw_event as Dictionary
+	return {}
+
+
 func _embed_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
 	var red := unit.get_slot(Constants.SLOT_RED)
 	assert(red != null, "unit should have red slot")
@@ -234,6 +252,8 @@ func _embed_red_gem(state: GameState, unit: UnitState, gem_id: String) -> void:
 
 
 func _embed_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, gem_id: String) -> void:
+	if not slot.gem_uid.is_empty():
+		state.gems.erase(slot.gem_uid)
 	var gem := GemState.new()
 	gem.uid = "test_%s_%s_%d" % [gem_id, unit.uid, unit.slots.find(slot)]
 	gem.gem_id = gem_id

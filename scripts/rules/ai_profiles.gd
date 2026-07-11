@@ -1,70 +1,24 @@
 class_name AIProfiles
 extends RefCounted
-## AI 鎬ф牸閰嶇疆 鈥斺€?鏁版嵁椹卞姩鐨勬潈閲嶇郴缁?
+## Data-authored utility weights and pathfinding preferences.
 
 const BalanceConfigValidator = preload("res://scripts/services/balance_config_validator.gd")
 const CONFIG_PATH := "res://resources/combat/ai_profiles.json"
 
 static var _loaded := false
-static var _default_profile_id := "melee_chase"
-static var _aliases: Dictionary = {
-	"bomb_rat": "bomb_rat",
-	"stone_bow": "stone_bow",
-	"patrol_guard": "melee_chase",
-	"fission_slime": "melee_chase",
-}
-static var _tuning: Dictionary = {
-	"ranged_keep_distance_scale": 0.3,
-	"explosion_adjacent_bonus_mult": 2.0,
-	"pull_base_bonus": 8.0,
-	"pull_damage_bonus_mult": 0.5,
-	"pull_distance_score_mult": 1.2,
-	"arc_chain_bonus_mult": 0.5,
-	"approach_progress_floor": 0.25,
-	"path_self_damage_ratio": 0.25,
-}
-static var _profiles: Dictionary = {
-	"melee_chase": {
-		"w_damage": 10.0,
-		"w_kill_player": 150.0,
-		"w_self_sacrifice": -20.0,
-		"w_self_damage": 8.0,
-		"w_friendly_fire": 30.0,
-		"w_approach": 6.0,
-		"w_move_cost": 0.5,
-		"w_pull": 0.0,
-		"w_poison": 0.0,
-		"wait_score": -10.0,
-		"can_extract": false,
-		"prefer_distance": false,
-		"guard_ally": false,
-	},
-	"stone_bow": {
-		"w_damage": 10.0,
-		"w_kill_player": 150.0,
-		"w_self_sacrifice": -25.0,
-		"w_self_damage": 8.0,
-		"w_friendly_fire": 25.0,
-		"w_approach": 2.0,
-		"w_move_cost": 0.4,
-		"w_deploy_bonus": 14.0,
-		"w_keep_distance": 5.0,
-		"wait_score": 2.0,
-		"can_ranged_attack": true,
-		"prefer_distance": true,
-		"can_extract": false,
-		"guard_ally": false,
-	},
-	"bomb_rat": {
-		"w_approach": 10.0,
-		"wait_score": -50.0,
-		"can_extract": false,
-	},
-}
-
+static var _default_profile_id := ""
+static var _aliases: Dictionary = {}
+static var _tuning: Dictionary = {}
+static var _path_defaults: Dictionary = {}
+static var _profiles: Dictionary = {}
 
 static func reload() -> void:
 	_loaded = false
+	_default_profile_id = ""
+	_aliases = {}
+	_tuning = {}
+	_path_defaults = {}
+	_profiles = {}
 	_ensure_loaded()
 
 
@@ -81,11 +35,29 @@ static func get_tuning() -> Dictionary:
 	return _tuning.duplicate(true)
 
 
-static func get_tuning_value(key: String, fallback: Variant = null) -> Variant:
+static func get_tuning_value(key: String) -> Variant:
 	_ensure_loaded()
 	if _tuning.has(key):
-		return _tuning.get(key)
-	return fallback
+		return _tuning[key]
+	push_error("AIProfiles: required tuning value missing: %s" % key)
+	return 0.0
+
+
+static func get_path_defaults() -> Dictionary:
+	_ensure_loaded()
+	return _path_defaults.duplicate(true)
+
+
+static func get_profile_ids() -> Array[String]:
+	_ensure_loaded()
+	var ids: Array[String] = []
+	for profile_id in _profiles.keys():
+		ids.append(str(profile_id))
+	for alias_id in _aliases.keys():
+		if str(alias_id) not in ids:
+			ids.append(str(alias_id))
+	ids.sort()
+	return ids
 
 
 static func _ensure_loaded() -> void:
@@ -93,19 +65,20 @@ static func _ensure_loaded() -> void:
 		return
 	_loaded = true
 	var raw := _load_json(CONFIG_PATH)
-	if raw.is_empty():
+	var errors := BalanceConfigValidator.validate_ai_profiles(raw)
+	BalanceConfigValidator.ensure_valid(CONFIG_PATH, errors)
+	if not errors.is_empty():
 		return
-	BalanceConfigValidator.ensure_valid(CONFIG_PATH, BalanceConfigValidator.validate_ai_profiles(raw))
-	_default_profile_id = str(raw.get("default_profile", _default_profile_id))
-	var aliases: Variant = raw.get("aliases", {})
-	if aliases is Dictionary:
-		_aliases = (aliases as Dictionary).duplicate(true)
-	var tuning: Variant = raw.get("tuning", {})
-	if tuning is Dictionary:
-		_tuning = _merge_dict(_tuning, tuning as Dictionary)
-	var profiles: Variant = raw.get("profiles", {})
-	if profiles is Dictionary:
-		_profiles = (profiles as Dictionary).duplicate(true)
+	_default_profile_id = str(raw["default_profile"])
+	_aliases = (raw["aliases"] as Dictionary).duplicate(true)
+	_tuning = (raw["tuning"] as Dictionary).duplicate(true)
+	_path_defaults = (raw["path_defaults"] as Dictionary).duplicate(true)
+	var profile_defaults := raw["profile_defaults"] as Dictionary
+	for profile_id in (raw["profiles"] as Dictionary).keys():
+		_profiles[profile_id] = _merge_dict(
+			profile_defaults,
+			(raw["profiles"] as Dictionary)[profile_id] as Dictionary
+		)
 
 
 static func _load_json(path: String) -> Dictionary:

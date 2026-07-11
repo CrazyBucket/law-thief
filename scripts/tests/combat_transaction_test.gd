@@ -12,6 +12,7 @@ func _run_tests() -> void:
 	_test_damage_unit_preserves_existing_event_sink()
 	_test_begin_from_state_reuses_existing_event_sink()
 	_test_bound_move_sink_captures_spike_damage()
+	_test_damage_context_tags_are_normalized()
 	_test_event_validator_requires_damage_identity()
 	print("COMBAT_TRANSACTION_TEST_PASS")
 	quit()
@@ -122,6 +123,22 @@ func _test_bound_move_sink_captures_spike_damage() -> void:
 	print("  [OK] bound move sink captures spike damage")
 
 
+func _test_damage_context_tags_are_normalized() -> void:
+	var state := _make_state()
+	var attacker := _make_unit(state, "tag_attacker", Constants.TEAM_PLAYER, Vector2i(1, 1), 10)
+	var victim := _make_unit(state, "tag_victim", Constants.TEAM_ENEMY, Vector2i(2, 1), 10)
+	var events: Array[Dictionary] = []
+	var tx := CombatTransaction.begin(state, events)
+	tx.damage_unit(victim, 3, attacker.uid, "tag_test", {
+		"damage_tags": ["poison", "fire", "poison", "not_a_gem_tag"],
+	})
+	assert(events.size() == 1, "tagged damage should emit one event")
+	assert(events[0].get("damage_tags", []) == ["fire", "poison"], "damage tags should be known, unique, and canonical")
+	_assert_events_valid(events, "damage_context_tags")
+	tx.finish("combat_transaction_test.damage_context_tags")
+	print("  [OK] damage context tags are normalized")
+
+
 func _test_event_validator_requires_damage_identity() -> void:
 	var violations := EventValidator.validate_events([
 		{"type": "damage", "pos": Vector2i(1, 1), "damage": 1, "is_crit": false},
@@ -131,6 +148,18 @@ func _test_event_validator_requires_damage_identity() -> void:
 		violations.any(func(v: String) -> bool: return v.find("uid") >= 0),
 		"damage identity violation should mention uid: %s" % str(violations)
 	)
+	var duplicate_tag_violations := EventValidator.validate_events([{
+		"type": "damage",
+		"uid": "victim",
+		"victim_uid": "victim",
+		"pos": Vector2i(1, 1),
+		"damage": 1,
+		"is_crit": false,
+		"damage_tags": ["fire", "fire"],
+	}])
+	assert(duplicate_tag_violations.any(
+		func(v: String) -> bool: return v.find("duplicate damage tag") >= 0
+	), "event validator should reject duplicate damage tags")
 	print("  [OK] event validator requires damage identity")
 
 

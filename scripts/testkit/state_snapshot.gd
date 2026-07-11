@@ -174,7 +174,11 @@ static func _intent(intent: IntentState) -> Variant:
 		"target_pos": _vec(intent.target_pos),
 		"path": _json_safe(intent.path),
 		"affected_cells": _json_safe(intent.affected_cells),
+		"base_damage": intent.base_damage,
 		"damage": intent.damage,
+		"damage_components": _json_safe(intent.damage_components.map(
+			func(component: IntentDamageComponent): return component.to_dict()
+		)),
 		"preview_text": intent.preview_text,
 	}
 

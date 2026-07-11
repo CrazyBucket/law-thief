@@ -23,10 +23,11 @@ func _test_diagonal_pull_collision() -> void:
 	var hp_before := target.hp
 	var puller_hp_before := puller.hp
 	var events := GemEffects.pull_unit_toward_with_events(state, target, puller.pos, 2, puller.uid)
-	assert(target.pos == Vector2i(1, 1), "diagonal target should stay put on collision")
+	assert(target.pos == Vector2i(2, 1), "diagonal pull should stop one cell before the blocker")
 	assert(target.hp < hp_before, "pulled unit should take collision damage")
 	assert(puller.hp < puller_hp_before, "puller should take collision damage")
 	assert(not events.is_empty(), "collision should emit events")
+	assert(BattleInvariantChecker.assert_valid(state, "diagonal_pull_collision"))
 	print("  [OK] diagonal pull collision")
 
 
@@ -34,12 +35,17 @@ func _test_pull_into_spike_applies_vulnerable() -> void:
 	var state := _make_state()
 	var puller := _make_unit(state, "puller", Constants.TEAM_ENEMY, Vector2i(3, 3))
 	var target := _make_unit(state, "target", Constants.TEAM_PLAYER, Vector2i(1, 3))
+	target.hp = 20
+	target.max_hp = 20
 	state.add_entity(EntityState.create("spike_0", Constants.ENTITY_SPIKE, Vector2i(2, 3)))
 	var hp_before := target.hp
 	GemEffects.pull_unit_toward_with_events(state, target, puller.pos, 1, puller.uid)
 	assert(target.pos == Vector2i(2, 3), "target should land on spike")
 	assert(StatusRules.is_vulnerable(target), "forced pull onto spike should apply vulnerable")
-	assert(target.hp < hp_before, "pull onto spike should deal damage")
+	assert(
+		target.hp == hp_before - CombatConfig.spike_collision_damage(),
+		"pull onto spike should deal configured collision damage exactly once"
+	)
 	print("  [OK] gravity pull onto spike: vulnerable + damage")
 
 
@@ -67,5 +73,5 @@ func _make_unit(state: GameState, uid: String, team: String, pos: Vector2i) -> U
 	unit.hp = 6
 	unit.max_hp = 6
 	unit.alive = true
-	state.units[uid] = unit
+	state.register_unit(unit)
 	return unit

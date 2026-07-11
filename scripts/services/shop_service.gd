@@ -144,11 +144,11 @@ func _ensure_shop_snapshot(room_id: String) -> Dictionary:
 	var shop_state: Dictionary = snapshot.get("shop", {}).duplicate(true) if snapshot.get("shop", {}) is Dictionary else {}
 	if shop_state.has("offers"):
 		return shop_state
-	var pool: Dictionary = (_config.get("default", {}) as Dictionary).duplicate(true) if _config.get("default", {}) is Dictionary else {}
-	var gem_count := int(pool.get("gem_offer_count", 2))
-	var relic_count := int(pool.get("relic_offer_count", 1))
-	var gem_source := str(pool.get("gem_source", "shop"))
-	var relic_source := str(pool.get("relic_source", "shop"))
+	var pool := _config["default"] as Dictionary
+	var gem_count := int(pool["gem_offer_count"])
+	var relic_count := int(pool["relic_offer_count"])
+	var gem_source := str(pool["gem_source"])
+	var relic_source := str(pool["relic_source"])
 	var gem_offer: Array[String] = RunService.get_or_roll_gem_offer("%s:shop_gems" % room_id, gem_source, gem_count)
 	var relic_offer: Array[String] = RunService.get_or_roll_relic_offer("%s:shop_relics" % room_id, relic_source, relic_count)
 	var offers: Array[Dictionary] = []
@@ -190,8 +190,10 @@ func _display_name(item_type: String, item_id: String) -> String:
 
 
 func _load_config() -> void:
-	_config = _load_json(CONFIG_PATH)
-	_Validator.ensure_valid(CONFIG_PATH, _Validator.validate_shop_pools(_config))
+	var raw := _load_json(CONFIG_PATH)
+	var errors := _Validator.validate_shop_pools(raw)
+	_Validator.ensure_valid(CONFIG_PATH, errors)
+	_config = raw.duplicate(true) if errors.is_empty() else {}
 
 
 func _load_json(path: String) -> Dictionary:

@@ -270,12 +270,12 @@ func _test_iron_boots_player_only_forced_move_immune() -> void:
 	var player := _make_unit(state, "player", Constants.TEAM_PLAYER, Vector2i(2, 3))
 	state.player_uid = player.uid
 	var enemy := _make_unit(state, "enemy", Constants.TEAM_ENEMY, Vector2i(2, 5))
+	var adventure_svc: Node = Engine.get_main_loop().root.get_node("AdventureService")
+	adventure_svc.start_new_run(20260711)
 	var run_svc: Node = Engine.get_main_loop().root.get_node("RunService")
-	var saved_relics: Array = []
 	var run: RunState = run_svc.get_run()
-	if run != null:
-		saved_relics = run.owned_relics.duplicate()
-		run.owned_relics = ["relic_iron_boots"]
+	assert(run != null, "iron boots test requires an active run")
+	run.owned_relics = ["relic_iron_boots"]
 	var player_events: Array[Dictionary] = []
 	Displacement.knockback(state, player, Vector2i(0, 3), 2, "", player_events)
 	assert(player.pos == Vector2i(2, 3), "player with iron boots should ignore knockback")
@@ -286,8 +286,6 @@ func _test_iron_boots_player_only_forced_move_immune() -> void:
 	assert(enemy.pos == Vector2i(4, 5), "enemy should still be knocked back, got %s" % enemy.pos)
 	assert(enemy.pos != enemy_start, "enemy should move under knockback")
 	assert(enemy_events.size() == 2, "enemy knockback should emit 2 move_step events")
-	if run != null:
-		run.owned_relics = saved_relics
 	print("  [OK] iron boots forced move immune (player only)")
 
 

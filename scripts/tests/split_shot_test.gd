@@ -2,6 +2,7 @@ extends SceneTree
 
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 var _failed := false
 
@@ -106,7 +107,7 @@ func _test_preview_matches_resolve_shot() -> void:
 	_mount_split_red(state, player)
 	player.pos = Vector2i(1, 2)
 	var aim := Vector2i(3, 3)
-	if not BoardUtils.can_unit_attack_cell(player, state, aim, Constants.ATTACK_RANGE):
+	if not BoardUtils.can_unit_attack_cell(player, state, aim, CombatConfig.attack_range()):
 		_fail("test setup: aim out of attack range")
 		return
 	var expected: Array = SplitShotRules.resolve_shot(player, aim).cells
@@ -134,7 +135,7 @@ func _create_test_state() -> GameState:
 func _preview_split_cells(state: GameState, player: UnitState, target_pos: Vector2i) -> Array:
 	if target_pos == player.pos:
 		return []
-	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, Constants.ATTACK_RANGE):
+	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, CombatConfig.attack_range()):
 		return []
 	var shot := SplitShotRules.resolve_shot(player, target_pos)
 	var cells: Array = []
@@ -172,7 +173,7 @@ func _test_aim_empty_cell_hits_wings() -> void:
 	var guard := _spawn_guard(state, Vector2i(1, 3))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
+		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("split aim on empty should succeed")
@@ -194,7 +195,7 @@ func _test_wing_damage_ignores_front_obstacle() -> void:
 	var guard := _spawn_guard(state, Vector2i(1, 3))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
+		state, player, aim, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("split with front obstacle should succeed")
@@ -215,7 +216,7 @@ func _test_main_target_ignores_front_obstacle() -> void:
 	var guard := _spawn_guard(state, Vector2i(3, 2))
 	var hp_before := guard.hp
 	var result := AttackPipeline.execute_aimed(
-		state, player, guard.pos, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, Constants.ATTACK_RANGE
+		state, player, guard.pos, [AttackPipeline.TAG_RANGED, AttackPipeline.TAG_SPLIT_SHOT], {}, CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("split main target through obstacle should succeed")
@@ -238,7 +239,7 @@ func _test_red_split_level_two_four_shots() -> void:
 		_spawn_guard(state, Vector2i(3, 2)),
 		_spawn_guard(state, Vector2i(3, 3)),
 	]
-	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE)
+	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, CombatConfig.attack_range())
 	if not result.get("ok", false):
 		_fail("level 2 split attack should succeed")
 		return
@@ -270,7 +271,7 @@ func _test_red_split_level_three_five_shots() -> void:
 		_spawn_guard(state, Vector2i(3, 3)),
 		_spawn_guard(state, Vector2i(5, 3)),
 	]
-	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE)
+	var result := AttackPipeline.execute_aimed(state, player, Vector2i(4, 3), [AttackPipeline.TAG_RANGED], {}, CombatConfig.attack_range())
 	if not result.get("ok", false):
 		_fail("level 3 split attack should succeed")
 		return

@@ -14,9 +14,6 @@ const DIR8: Array[Vector2i] = [
 	Vector2i(1, -1),
 ]
 
-const BOARD_MIN := 0
-const BOARD_MAX := 7
-
 const WING_OFFSETS_LUT := {
 	Vector2i(1, 0): [Vector2i(-1, 1), Vector2i(-1, -1)],
 	Vector2i(1, 1): [Vector2i(-1, 0), Vector2i(0, -1)],
@@ -30,7 +27,7 @@ const WING_OFFSETS_LUT := {
 
 
 static func is_inside_board(pos: Vector2i) -> bool:
-	return pos.x >= BOARD_MIN and pos.x <= BOARD_MAX and pos.y >= BOARD_MIN and pos.y <= BOARD_MAX
+	return pos.x >= 0 and pos.y >= 0 and pos.x < Constants.BOARD_SIZE.x and pos.y < Constants.BOARD_SIZE.y
 
 
 static func compute_forward_step(origin_pos: Vector2i, aim_pos: Vector2i) -> Vector2i:

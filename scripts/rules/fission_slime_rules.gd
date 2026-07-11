@@ -8,22 +8,44 @@ static func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("DataRegistry")
 
 
-static func _balance_int(unit_def_id: String, key: String, fallback: int) -> int:
+static func _balance_int(unit_def_id: String, key: String) -> int:
 	var registry := _data_registry()
 	if registry == null:
-		return fallback
-	return int(registry.get_unit_balance_value(unit_def_id, key, fallback))
+		push_error("FissionSlimeRules: DataRegistry unavailable")
+		return 0
+	var value: Variant = registry.get_unit_balance_value(unit_def_id, key, null)
+	if value == null:
+		push_error("FissionSlimeRules: required balance missing: %s.%s" % [unit_def_id, key])
+		return 0
+	return int(value)
 
 
-static func _balance_float(unit_def_id: String, key: String, fallback: float) -> float:
+static func _balance_float(unit_def_id: String, key: String) -> float:
 	var registry := _data_registry()
 	if registry == null:
-		return fallback
-	return float(registry.get_unit_balance_value(unit_def_id, key, fallback))
+		push_error("FissionSlimeRules: DataRegistry unavailable")
+		return 0.0
+	var value: Variant = registry.get_unit_balance_value(unit_def_id, key, null)
+	if value == null:
+		push_error("FissionSlimeRules: required balance missing: %s.%s" % [unit_def_id, key])
+		return 0.0
+	return float(value)
 
 
 static func split_stat_ratio(_unit: UnitState) -> float:
-	return _balance_float(_unit.unit_def_id, "split_stat_ratio", Constants.FISSION_SLIME_SPLIT_STAT_RATIO)
+	return _balance_float(_unit.unit_def_id, "split_stat_ratio")
+
+
+static func trample_damage(unit: UnitState) -> int:
+	return _balance_int(unit.unit_def_id, "trample_damage")
+
+
+static func trample_collision_damage(unit: UnitState) -> int:
+	return _balance_int(unit.unit_def_id, "trample_collision_damage")
+
+
+static func trample_total_damage(unit: UnitState) -> int:
+	return trample_damage(unit) + trample_collision_damage(unit)
 
 
 static func should_trigger_split_blue(_unit: UnitState, reason: String) -> bool:
@@ -79,7 +101,8 @@ static func compute_intent(
 		trample_intent.target_uid = player.uid
 		trample_intent.path = []
 		trample_intent.target_pos = unit.pos
-		trample_intent.damage = _balance_int(unit.unit_def_id, "trample_damage", Constants.FISSION_SLIME_TRAMPLE_DAMAGE)
+		trample_intent.base_damage = trample_damage(unit)
+		trample_intent.damage = trample_total_damage(unit)
 		trample_intent.preview_text = "践踏 (%d)" % trample_intent.damage
 		return trample_intent
 
@@ -131,7 +154,7 @@ static func execute_slam(
 			state,
 			target,
 			origin,
-			_balance_int(unit.unit_def_id, "slam_push_steps", Constants.FISSION_SLIME_SLAM_PUSH_STEPS),
+			_balance_int(unit.unit_def_id, "slam_push_steps"),
 			unit.uid,
 			events
 		)
@@ -230,10 +253,12 @@ static func execute_trample(
 
 	events.append({"type": "trample_start", "uid": unit.uid, "target_uid": target.uid, "pos": target.pos})
 
-	# 技能伤害 = FISSION_SLIME_TRAMPLE_DAMAGE + 1 点碰撞保底
-	var total_skill_dmg := _balance_int(unit.unit_def_id, "trample_damage", Constants.FISSION_SLIME_TRAMPLE_DAMAGE) + 1
+	# Initial impact composes the authored trample and collision components.
+	var total_skill_dmg := trample_total_damage(unit)
 	# star_relocate 内部会先施加 skill_damage，然后搜索落点并结算落点地形
-	Displacement.star_relocate(state, target, target.pos, unit.uid, events, total_skill_dmg)
+	Displacement.star_relocate(state, target, target.pos, unit.uid, events, {
+		"initial_damage": total_skill_dmg,
+	})
 
 	return events
 

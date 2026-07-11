@@ -14,207 +14,206 @@ static func reload() -> void:
 	_ensure_loaded()
 
 
-static func split_attack_damage_ratio() -> float:
-	return float_value("split_attack_damage_ratio", Constants.SPLIT_ATTACK_DAMAGE_RATIO)
-
-
 static func attack_range() -> int:
-	return int_value("attack_range", Constants.ATTACK_RANGE)
+	return int_value("attack_range")
 
 
 static func extract_range() -> int:
-	return int_value("extract_range", Constants.EXTRACT_RANGE)
+	return int_value("extract_range")
 
 
 static func insert_range() -> int:
-	return int_value("insert_range", Constants.INSERT_RANGE)
+	return int_value("insert_range")
 
 
 static func trigger_range() -> int:
-	return int_value("trigger_range", Constants.TRIGGER_RANGE)
+	return int_value("trigger_range")
 
 
 static func split_attack_range() -> int:
-	return int_value("split_attack_range", Constants.SPLIT_ATTACK_RANGE)
-
-
-static func split_damage_redirect_ratio() -> float:
-	return float_value("split_damage_redirect_ratio", Constants.SPLIT_DAMAGE_REDIRECT_RATIO)
-
-
-static func split_surround_radius() -> int:
-	return int_value("split_surround_radius", Constants.SPLIT_SURROUND_RADIUS)
-
-
-static func split_black_stat_ratio() -> float:
-	return float_value("split_black_stat_ratio", Constants.SPLIT_STAT_RATIO)
+	return int_value("split_attack_range")
 
 
 static func explosion_damage() -> int:
-	return int_value("explosion_damage", Constants.EXPLOSION_DAMAGE)
+	return int_value("explosion_damage")
 
 
 static func explosion_radius() -> int:
-	return int_value("explosion_radius", Constants.EXPLOSION_RADIUS)
+	return int_value("explosion_radius")
 
 
 static func explosion_cross_damage() -> int:
-	return int_value("explosion_cross_damage", Constants.EXPLOSION_CROSS_DAMAGE)
+	return int_value("explosion_cross_damage")
 
 
 static func explosion_death_radius() -> int:
-	return int_value("explosion_death_radius", Constants.EXPLOSION_DEATH_RADIUS)
+	return int_value("explosion_death_radius")
 
 
 static func charge_explode_dash_range() -> int:
-	return int_value("charge_explode_dash_range", Constants.CHARGE_EXPLODE_DASH_RANGE)
+	return int_value("charge_explode_dash_range")
 
 
 static func knockback_collision_damage() -> int:
-	return int_value("knockback_collision_damage", Constants.KNOCKBACK_COLLISION_DAMAGE)
+	return int_value("knockback_collision_damage")
+
+
+static func star_relocation_max_distance() -> int:
+	return maxi(1, int_value("star_relocation_max_distance"))
+
+
+static func star_relocation_squeeze_damage_per_tile() -> int:
+	return maxi(0, int_value("star_relocation_squeeze_damage_per_tile"))
 
 
 static func spike_damage() -> int:
-	return int_value("spike_damage", Constants.SPIKE_DAMAGE)
+	return int_value("spike_damage")
 
 
 static func spike_collision_damage() -> int:
-	return int_value("spike_collision_damage", Constants.SPIKE_COLLISION_DAMAGE)
+	return int_value("spike_collision_damage")
 
 
 static func barrel_explosion_damage() -> int:
-	return int_value("barrel_explosion_damage", Constants.BARREL_EXPLOSION_DAMAGE)
+	return int_value("barrel_explosion_damage")
+
+
+static func barrel_explosion_radius() -> int:
+	return int_value("barrel_explosion_radius")
 
 
 static func barrel_hp() -> int:
-	return int_value("barrel_hp", Constants.BARREL_HP)
+	return int_value("barrel_hp")
 
 
 static func gravity_collision_damage() -> int:
-	return int_value("gravity_collision_damage", Constants.GRAVITY_COLLISION_DAMAGE)
+	return int_value("gravity_collision_damage")
 
 
 static func enemy_gravity_pull_range() -> int:
-	return int_value("enemy_gravity_pull_range", Constants.ENEMY_GRAVITY_PULL_RANGE)
+	return int_value("enemy_gravity_pull_range")
 
 
 static func poison_fog_damage() -> int:
-	return int_value("poison_fog_damage", Constants.POISON_FOG_DAMAGE)
+	return int_value("poison_fog_damage")
 
 
 static func poison_fog_duration() -> int:
-	return int_value("poison_fog_duration", Constants.POISON_FOG_DURATION)
+	return int_value("poison_fog_duration")
+
+
+static func toxic_smoke_duration() -> int:
+	return int_value("toxic_smoke_duration")
+
+
+static func poison_puddle_duration() -> int:
+	return int_value("poison_puddle_duration")
+
+
+static func water_move_cost_extra() -> float:
+	return float_value("water_move_cost_extra")
 
 
 static func arc_proc_chance() -> float:
-	return float_value("arc_proc_chance", Constants.ARC_PROC_CHANCE)
+	return float_value("arc_proc_chance")
 
 
 static func arc_paralysis_chance() -> float:
-	return float_value("arc_paralysis_chance", Constants.ARC_PARALYSIS_CHANCE)
+	return float_value("arc_paralysis_chance")
 
 
 static func arc_chain_damage_ratio() -> float:
-	return float_value("arc_chain_damage_ratio", Constants.ARC_CHAIN_DAMAGE_RATIO)
+	return float_value("arc_chain_damage_ratio")
 
 
 static func arc_chain_range() -> int:
-	return int_value("arc_chain_range", Constants.ARC_CHAIN_RANGE)
-
-
-static func arc_hit_damage() -> int:
-	return int_value("arc_hit_damage", Constants.ARC_HIT_DAMAGE)
+	return int_value("arc_chain_range")
 
 
 static func lightning_death_damage() -> int:
-	return int_value("lightning_death_damage", Constants.LIGHTNING_DEATH_DAMAGE)
-
-
-static func fire_death_fire_count() -> int:
-	return int_value("fire_death_fire_count", Constants.FIRE_DEATH_FIRE_COUNT)
-
-
-static func fire_death_radius() -> int:
-	return int_value("fire_death_radius", Constants.FIRE_DEATH_RADIUS)
-
-
-static func ice_death_radius() -> int:
-	return int_value("ice_death_radius", Constants.ICE_DEATH_RADIUS)
+	return int_value("lightning_death_damage")
 
 
 static func split_death_hp_merge_divisor() -> int:
-	return maxi(1, int_value("split_death_hp_merge_divisor", Constants.SPLIT_DEATH_HP_MERGE_DIVISOR))
+	return maxi(1, int_value("split_death_hp_merge_divisor"))
 
 
 static func overload_gem_op_damage_amount() -> int:
-	return int_value("overload_gem_op_damage_amount", Constants.OVERLOAD_GEM_OP_DAMAGE_AMOUNT)
+	return int_value("overload_gem_op_damage_amount")
 
 
 static func overload_ai_control_min_chapter() -> int:
-	return int_value("overload_ai_control_min_chapter", 1)
+	return int_value("overload_ai_control_min_chapter")
 
 
 static func overload_ai_control_max_chapter() -> int:
-	return int_value("overload_ai_control_max_chapter", 45)
+	return int_value("overload_ai_control_max_chapter")
 
 
 static func overload_ai_control_base_percent() -> float:
-	return float_value("overload_ai_control_base_percent", 75.0)
+	return float_value("overload_ai_control_base_percent")
 
 
 static func overload_ai_control_chapter_baseline() -> int:
-	return int_value("overload_ai_control_chapter_baseline", 3)
+	return int_value("overload_ai_control_chapter_baseline")
 
 
 static func overload_ai_control_chapter_penalty() -> float:
-	return float_value("overload_ai_control_chapter_penalty", 1.0)
+	return float_value("overload_ai_control_chapter_penalty")
 
 
 static func overload_ai_control_gem_baseline() -> int:
-	return int_value("overload_ai_control_gem_baseline", 9)
+	return int_value("overload_ai_control_gem_baseline")
 
 
 static func overload_ai_control_gem_penalty() -> float:
-	return float_value("overload_ai_control_gem_penalty", 7.0)
+	return float_value("overload_ai_control_gem_penalty")
 
 
 static func overload_ai_control_min_probability() -> float:
-	return float_value("overload_ai_control_min_probability", 0.0)
+	return float_value("overload_ai_control_min_probability")
 
 
 static func overload_ai_control_max_probability() -> float:
-	return float_value("overload_ai_control_max_probability", 0.95)
+	return float_value("overload_ai_control_max_probability")
 
 
 static func fire_duration() -> int:
-	return int_value("fire_duration", Constants.FIRE_DURATION)
+	return int_value("fire_duration")
 
 
 static func fire_spread_chance() -> float:
-	return float_value("fire_spread_chance", Constants.FIRE_SPREAD_CHANCE)
+	return float_value("fire_spread_chance")
 
 
 static func grass_grow_chance() -> float:
-	return float_value("grass_grow_chance", Constants.GRASS_GROW_CHANCE)
+	return float_value("grass_grow_chance")
 
 
-static func int_value(key: String, fallback: int) -> int:
-	_ensure_loaded()
-	return int(_config.get(key, fallback))
+static func int_value(key: String) -> int:
+	return int(_required_value(key))
 
 
-static func float_value(key: String, fallback: float) -> float:
-	_ensure_loaded()
-	return float(_config.get(key, fallback))
+static func float_value(key: String) -> float:
+	return float(_required_value(key))
 
 
 static func _ensure_loaded() -> void:
 	if _loaded:
 		return
 	_loaded = true
-	_config = _load_json(CONFIG_PATH)
-	if not _config.is_empty():
-		BalanceConfigValidator.ensure_valid(CONFIG_PATH, BalanceConfigValidator.validate_combat_config(_config))
+	var raw := _load_json(CONFIG_PATH)
+	var errors := BalanceConfigValidator.validate_combat_config(raw)
+	BalanceConfigValidator.ensure_valid(CONFIG_PATH, errors)
+	_config = raw.duplicate(true) if errors.is_empty() else {}
+
+
+static func _required_value(key: String) -> Variant:
+	_ensure_loaded()
+	if _config.has(key):
+		return _config[key]
+	push_error("CombatConfig: required value missing: %s" % key)
+	return 0
 
 
 static func _load_json(path: String) -> Dictionary:

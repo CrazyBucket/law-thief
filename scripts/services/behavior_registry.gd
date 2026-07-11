@@ -16,3 +16,11 @@ static func get_behavior(behavior_id: String) -> GDScript:
 	if _MAP.has(behavior_id):
 		return _MAP[behavior_id]
 	return _MAP[_DEFAULT_BEHAVIOR_ID]
+
+
+static func get_behavior_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for behavior_id in _MAP.keys():
+		ids.append(str(behavior_id))
+	ids.sort()
+	return ids

@@ -1,0 +1,29 @@
+{
+  "chapter_count": 3,
+  "chapter_seed_stride": 9973,
+  "map": {
+    "grid_size": 8,
+    "fallback_room_type": "NORMAL_COMBAT",
+    "room_rules": {
+      "START": {"fixed_layer": "start", "weight": 10},
+      "END": {"fixed_layer": "end", "weight": 10},
+      "NORMAL_COMBAT": {"weight": 50},
+      "ELITE_COMBAT": {"weight": 12, "min_layer": 4, "no_consecutive": true},
+      "REST_SITE": {"weight": 12, "no_consecutive": true},
+      "SHOP": {"weight": 8, "no_consecutive": true},
+      "EVENT": {"weight": 20}
+    },
+    "event_pool": ["event_debug_cache", "event_debug_relief"]
+  },
+  "combat_encounters": {
+    "NORMAL_COMBAT": [
+      "crossfire_courtyard", "rat_run", "flooded_crossing", "spike_corridor",
+      "burning_storehouse", "poison_marsh", "frozen_gallery", "barrel_maze",
+      "shifting_quarry", "split_sanctum"
+    ],
+    "ELITE_COMBAT": [
+      "enforcer_gate", "law_beast_arena", "toxic_furnace", "storm_pillars"
+    ]
+  },
+  "boss_encounters": ["boss_chapter_1", "boss_chapter_2", "boss_chapter_3"]
+}

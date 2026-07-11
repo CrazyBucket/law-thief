@@ -793,10 +793,12 @@ func _slot_state_tooltip_spec(display_name: String, body: String, color: Color) 
 
 func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> Array[String]:
 	var lines: Array[String] = []
-	var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
-	if not effect.is_empty():
-		lines.append(effect)
+	if state == null:
+		var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
+		if not effect.is_empty():
+			lines.append(effect)
 	if state != null:
+		var registry := _data_registry()
 		var ctx := GemTagResolver.build_context(state, unit, slot.slot_type, GemEffects.TIMING_ACTIVE)
 		var tag_levels: Dictionary = ctx.get("tag_levels", {})
 		var combo_levels: Dictionary = ctx.get("combo_levels", {})
@@ -805,9 +807,10 @@ func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, st
 				var lvl := int(tag_levels[tag])
 				if lvl <= 0:
 					continue
-				var level_key := "gem.level.%s.%d" % [str(tag), lvl]
-				var level_desc: String = TranslationServer.translate(level_key)
-				if level_desc != level_key:
+				var level_desc := ""
+				if registry != null:
+					level_desc = registry.get_gem_effect_level_summary(str(tag), slot.slot_type, lvl)
+				if not level_desc.is_empty():
 					lines.append(level_desc)
 				else:
 					var tag_sym_key := "gem.%s.symbol" % str(tag)
@@ -1093,9 +1096,9 @@ func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
 		outline.name = "HoverTextureOutline"
 		outline.visible = false
 		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		outline.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		outline.texture = _render_relic_texture(icon_tex, icon_size, true)
 		outline.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		outline.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		outline.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		outline.stretch_mode = TextureRect.STRETCH_SCALE
 		root.add_child(outline)

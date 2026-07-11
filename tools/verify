@@ -110,12 +110,23 @@ for test_name in "${TESTS[@]}"; do
   rm -rf "$user_root"
   mkdir -p "$user_root"
   save_root="$(godot_host_path "$user_root/save")"
-  if WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" LAW_THIEF_SAVE_ROOT="$save_root" "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$REPORT_DIR/${log_name}.log" 2>&1; then
+  test_log="$REPORT_DIR/${log_name}.log"
+  if WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" LAW_THIEF_SAVE_ROOT="$save_root" \
+    "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$test_log" 2>&1; then
+    test_exit=0
+  else
+    test_exit=$?
+  fi
+  if [[ "$test_exit" -eq 0 ]] && ! grep -Fq 'SCRIPT ERROR:' "$test_log"; then
     echo "VERIFY_PASS $test_name" | tee -a "$REPORT_DIR/verify.log"
     passed=$((passed + 1))
   else
-    echo "VERIFY_FAIL $test_name (see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
-    tail -40 "$REPORT_DIR/${log_name}.log"
+    failure_reason="exit=$test_exit"
+    if grep -Fq 'SCRIPT ERROR:' "$test_log"; then
+      failure_reason="script error"
+    fi
+    echo "VERIFY_FAIL $test_name ($failure_reason; see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
+    tail -40 "$test_log"
     failed=$((failed + 1))
   fi
 done

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
 const PROFILES: Array[String] = [
 	"explosion",
@@ -72,12 +73,18 @@ func _run_combo_case(profiles: Array) -> void:
 		MAIN_AIM,
 		[AttackPipeline.TAG_RANGED],
 		{},
-		Constants.ATTACK_RANGE
+		CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("[%s] attack failed: %s" % [label, result.get("reason", "")])
 		return
 	var events: Array = result.get("events", [])
+	if not EventValidator.assert_valid(events, "attack_tag_combo.%s" % label):
+		_fail("[%s] emitted invalid combat events" % label)
+		return
+	if not BattleInvariantChecker.assert_valid(state, "attack_tag_combo.%s" % label):
+		_fail("[%s] violated battle invariants" % label)
+		return
 	if not _assert_combo(label, profiles, events, arena, player):
 		return
 	print("  [OK] %s" % label)
@@ -89,10 +96,10 @@ func _test_dual_color_slot_mount() -> void:
 	var dual_slot := player.get_slot(Constants.SLOT_BLUE)
 	dual_slot.dual_type = Constants.SLOT_RED
 	_mount_red_gem_on_slot(state, player, dual_slot, Constants.GEM_FIRE)
-	player.pos = PLAYER_POS
+	state.move_unit(player, PLAYER_POS)
 	var main := _spawn_guard(state, MAIN_AIM, 60)
 	var result := AttackPipeline.execute_aimed(
-		state, player, MAIN_AIM, [AttackPipeline.TAG_RANGED], {}, Constants.ATTACK_RANGE
+		state, player, MAIN_AIM, [AttackPipeline.TAG_RANGED], {}, CombatConfig.attack_range()
 	)
 	if not result.get("ok", false):
 		_fail("[dual_slot] attack failed")
@@ -180,7 +187,7 @@ func _assert_combo(
 
 
 func _setup_arena(state: GameState, player: UnitState, profiles: Array) -> Dictionary:
-	player.pos = PLAYER_POS
+	state.move_unit(player, PLAYER_POS)
 	player.base_attack = 8
 	var arena := {}
 	arena["main"] = _spawn_guard(state, MAIN_AIM, 60)

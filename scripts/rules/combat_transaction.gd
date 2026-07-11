@@ -4,6 +4,7 @@ extends RefCounted
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 const _EventValidator = preload("res://scripts/debug/event_validator.gd")
 const _InvariantChecker = preload("res://scripts/debug/battle_invariant_checker.gd")
+const DamageContext = preload("res://scripts/rules/damage_context.gd")
 
 var state: GameState = null
 var events: Array[Dictionary] = []
@@ -54,12 +55,13 @@ func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: Strin
 	var had_event_sink := state.has_combat_event_sink()
 	if not had_event_sink:
 		state.bind_combat_events(events)
-	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason)
+	var damage_context := DamageContext.from_options(source_uid, reason, opts)
+	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason, damage_context)
 	if not had_event_sink:
 		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
-	var event_opts := _damage_event_opts(unit, source_uid, reason, opts)
+	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
 	append_event(_EventBuilder.damage(unit, dealt, event_opts))
 	return dealt
 
@@ -70,12 +72,13 @@ func true_damage_unit(unit: UnitState, amount: int, source_uid: String, reason: 
 	var had_event_sink := state.has_combat_event_sink()
 	if not had_event_sink:
 		state.bind_combat_events(events)
-	var dealt := CombatRules.apply_true_damage(state, unit, amount, source_uid, reason)
+	var damage_context := DamageContext.from_options(source_uid, reason, opts)
+	var dealt := CombatRules.apply_true_damage(state, unit, amount, source_uid, reason, damage_context)
 	if not had_event_sink:
 		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
-	var event_opts := _damage_event_opts(unit, source_uid, reason, opts)
+	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
 	append_event(_EventBuilder.damage(unit, dealt, event_opts))
 	return dealt
 
@@ -103,11 +106,18 @@ func finish(context: String = "") -> Array[Dictionary]:
 	return events
 
 
-func _damage_event_opts(unit: UnitState, source_uid: String, reason: String, opts: Dictionary) -> Dictionary:
+func _damage_event_opts(
+	unit: UnitState,
+	source_uid: String,
+	reason: String,
+	opts: Dictionary,
+	damage_context: Dictionary
+) -> Dictionary:
 	var event_opts := opts.duplicate(true)
 	event_opts["attacker_uid"] = source_uid
 	event_opts["source_uid"] = source_uid
 	event_opts["reason"] = reason
 	event_opts["lethal"] = not unit.alive
 	event_opts["remaining_hp"] = unit.hp
+	event_opts["damage_tags"] = DamageContext.tags(damage_context)
 	return event_opts
