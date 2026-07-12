@@ -5,11 +5,14 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
-var _ctrl: BattleController
+var _ctrl_ref: WeakRef
+var _ctrl: BattleController:
+	get:
+		return _ctrl_ref.get_ref() as BattleController if _ctrl_ref != null else null
 
 
 func setup(controller: BattleController) -> void:
-	_ctrl = controller
+	_ctrl_ref = weakref(controller)
 
 
 func _c() -> BattleController:

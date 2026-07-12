@@ -771,10 +771,8 @@ func _load_generated_texture(path: String) -> Texture2D:
 
 
 func _load_generated_image(path: String) -> Image:
-	var image := Image.load_from_file(path)
-	if image == null:
-		return null
-	return image
+	var texture := load(path) as Texture2D
+	return texture.get_image() if texture != null else null
 
 
 func _clear_water_visuals() -> void:

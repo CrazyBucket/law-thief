@@ -31,10 +31,10 @@ func _run() -> void:
 			var sprite := overlay_viewport.get_child(0) as Sprite2D
 			_require(sprite != null and sprite.material is ShaderMaterial, "%s must use a shader material" % overlay_viewport.name)
 	var board_source := FileAccess.get_file_as_string("res://scripts/ui/isometric_board.gd")
-	var unit_body_draw := board_source.find("\t\t\t_draw_unit_body(unit)\n")
-	var front_overlay_draw := board_source.find("\t\t\t_draw_front_tile_overlay_at(grid, true)\n", unit_body_draw)
-	var unit_ui_draw := board_source.find("\t\t\t_draw_unit_ui(unit)\n", front_overlay_draw)
-	var highlight_draw := board_source.find("\t\t_draw_highlight_outlines()\n", front_overlay_draw)
+	var unit_body_draw := board_source.find("\t\t\t_draw_unit_body(unit)")
+	var front_overlay_draw := board_source.find("\t\t\t_draw_front_tile_overlay_at(grid, true)", unit_body_draw)
+	var unit_ui_draw := board_source.find("\t\t\t_draw_unit_ui(unit)", front_overlay_draw)
+	var highlight_draw := board_source.find("\t\t_draw_highlight_outlines()", front_overlay_draw)
 	_require(unit_body_draw >= 0 and front_overlay_draw > unit_body_draw, "front overlay pass must render after unit bodies")
 	_require(board_source.find("func _draw_front_tile_overlays") < 0, "front overlays must not be drawn as a global post-unit pass")
 	_require(unit_ui_draw > front_overlay_draw, "unit UI must render above front overlays")
@@ -47,10 +47,12 @@ func _run() -> void:
 		for failure in _failures:
 			push_error(failure)
 		battle.queue_free()
+		await process_frame
 		quit(1)
 		return
 	print("OVERLAY_RENDER_CONTRACT_TEST_PASS")
 	battle.queue_free()
+	await process_frame
 	quit(0)
 
 

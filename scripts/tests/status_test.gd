@@ -17,6 +17,7 @@ func _run_tests() -> void:
 	_test_default_status_values_from_config()
 	_test_status_combat_multipliers_from_config()
 	_test_disarm_blocks_one_action()
+	_test_paralyzed_consumes_at_action_window()
 	_test_relic_numeric_refs_runtime()
 	print("STATUS_TEST_PASS")
 	quit()
@@ -161,6 +162,26 @@ func _test_disarm_blocks_one_action() -> void:
 	assert(StatusRules.consume_disarm(unit), "ending the unit action should consume one disarm stack")
 	assert(StatusRules.can_attack(unit), "unit should be able to attack after its disarm stack is consumed")
 	print("  [OK] disarm blocks one action")
+
+
+func _test_paralyzed_consumes_at_action_window() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 8042)
+	var state := controller.state
+	var player := state.get_player()
+	var enemy: UnitState = state.get_alive_enemies()[0]
+	StatusRules.apply_paralyzed(state, player, 1, enemy.uid)
+	assert(not controller.can_use_action(Constants.ACTION_MOVE), "paralyzed player should not offer movement")
+	assert(not controller.can_use_action(Constants.ACTION_ATTACK), "paralyzed player should not offer attacks")
+	assert(not controller.can_use_action(Constants.ACTION_EXTRACT), "paralyzed player should not offer extraction")
+	assert(not controller.can_use_action(Constants.ACTION_INSERT), "paralyzed player should not offer insertion")
+	var attack := controller.try_attack_cell(enemy.pos)
+	assert(not attack.get("ok", false) and attack.get("reason", "") == "被麻痹，无法行动", "paralyzed player attack should be rejected")
+	var extract := controller.try_extract(enemy.uid, 0)
+	assert(not extract.get("ok", false) and extract.get("reason", "") == "被麻痹，无法行动", "paralyzed player extraction should be rejected")
+	controller.begin_enemy_phase()
+	assert(not player.has_status(Constants.STATUS_PARALYZED), "paralysis should clear after the skipped player action window")
+	print("  [OK] paralysis blocks and consumes one player action window")
 
 
 func _test_relic_numeric_refs_runtime() -> void:

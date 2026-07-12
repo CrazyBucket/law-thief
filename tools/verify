@@ -14,6 +14,21 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
+# Per-test logs are evidence for one verifier run only.  Keeping old logs beside
+# a new report makes a broad artifact search report failures that no longer belong
+# to the current run.
+find "$REPORT_DIR" -maxdepth 1 -type f -name '*.log' -delete
+
+# CSV changes are not imported by a headless test run.  Build the generated
+# Translation resources first so every localization-backed assertion observes the
+# source being reviewed.
+TRANSLATION_LOG="$REPORT_DIR/localization_translation_build.log"
+if ! "$GODOT" --headless --path "$ROOT" --script res://scripts/tools/build_localization_translations.gd >"$TRANSLATION_LOG" 2>&1; then
+  echo "VERIFY_FAIL localization_translation_build (see artifacts/verify/localization_translation_build.log)"
+  tail -40 "$TRANSLATION_LOG"
+  exit 1
+fi
+
 FAST_TESTS=(
   balance_config_test
   combat_transaction_test
@@ -101,6 +116,7 @@ failed=0
 start="$(date +%s)"
 : > "$REPORT_DIR/verify.log"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
+echo "VERIFY_TRANSLATIONS_BUILT" | tee -a "$REPORT_DIR/verify.log"
 
 for test_name in "${TESTS[@]}"; do
   echo "VERIFY_RUN $test_name" | tee -a "$REPORT_DIR/verify.log"

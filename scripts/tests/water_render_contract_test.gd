@@ -26,9 +26,9 @@ func _run() -> void:
 	_require(not board.has_node("WaterFrontEdgeLayer"), "legacy front shore layer must be removed")
 	_require(fill.material is ShaderMaterial, "water fill must have a shader")
 	var source := FileAccess.get_file_as_string("res://scripts/ui/isometric_board.gd")
-	var entities_at := source.find("\t\t_draw_entity_at_grid(grid, drawn_entities)\n")
-	var unit_body_at := source.find("\t\t\t_draw_unit_body(unit)\n")
-	var unit_ui_at := source.find("\t\t\t_draw_unit_ui(unit)\n")
+	var entities_at := source.find("\t\t_draw_entity_at_grid(grid, drawn_entities)")
+	var unit_body_at := source.find("\t\t\t_draw_unit_body(unit)")
+	var unit_ui_at := source.find("\t\t\t_draw_unit_ui(unit)")
 	_require(entities_at >= 0 and unit_body_at >= 0 and unit_ui_at >= 0, "failed to locate entity/unit draw commands")
 	_require(entities_at < unit_body_at, "entities must draw before unit bodies")
 	_require(unit_body_at < unit_ui_at, "unit UI must draw above unit bodies")
@@ -41,12 +41,14 @@ func _run() -> void:
 		for failure in failures:
 			push_error(failure)
 		battle.queue_free()
+		await process_frame
 		quit(1)
 		return
 	print("  [OK] order: board texture < shader fill < cached shore < every entity/unit")
 	print("  [OK] performance: 2 cached water nodes, 0 per-tile nodes")
 	print("WATER_RENDER_CONTRACT_TEST_PASS")
 	battle.queue_free()
+	await process_frame
 	quit()
 
 

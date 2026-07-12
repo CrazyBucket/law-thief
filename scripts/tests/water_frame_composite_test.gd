@@ -6,7 +6,7 @@ const WaterLayerClass := preload("res://scripts/map/water_layer.gd")
 const FRAME_SIZE := Vector2i(128, 64)
 const CANVAS_SIZE := Vector2i(640, 384)
 const ORIGIN := Vector2i(320, 96)
-const OUTPUT_DIR := "/tmp/law_thief_water_frames"
+const OUTPUT_DIR := "user://water_frame_contract"
 const EDGE_POINTS := [
 	[Vector2(64, 0), Vector2(128, 32)],
 	[Vector2(128, 32), Vector2(64, 64)],
@@ -24,13 +24,13 @@ var failures: Array[String] = []
 
 
 func _initialize() -> void:
-	DirAccess.make_dir_recursive_absolute(OUTPUT_DIR)
-	sheet_top = Image.load_from_file("res://assets/tiles/waterEdgeTop.generated.png")
-	sheet_right = Image.load_from_file("res://assets/tiles/waterEdgeRight.generated.png")
-	source_top = Image.load_from_file("res://assets/tiles/waterEdge1.png")
-	source_right = Image.load_from_file("res://assets/tiles/waterEdge2.png")
-	mask_top = Image.load_from_file("res://assets/tiles/waterMaskTop.generated.png")
-	mask_right = Image.load_from_file("res://assets/tiles/waterMaskRight.generated.png")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT_DIR))
+	sheet_top = _load_image("res://assets/tiles/waterEdgeTop.generated.png")
+	sheet_right = _load_image("res://assets/tiles/waterEdgeRight.generated.png")
+	source_top = _load_image("res://assets/tiles/waterEdge1.png")
+	source_right = _load_image("res://assets/tiles/waterEdge2.png")
+	mask_top = _load_image("res://assets/tiles/waterMaskTop.generated.png")
+	mask_right = _load_image("res://assets/tiles/waterMaskRight.generated.png")
 	_require(
 		sheet_top != null and sheet_right != null and source_top != null and source_right != null
 			and mask_top != null and mask_right != null,
@@ -98,6 +98,7 @@ func _verify_single_tile_uses_top_pair() -> void:
 	var bottom := _frame(sheet_top, 5)
 	bottom.flip_y()
 	_blit_opaque(expected, bottom)
+	expected = WaterLayerClass._apply_diamond_alpha(expected)
 	var mismatches := 0
 	for y in range(FRAME_SIZE.y):
 		for x in range(FRAME_SIZE.x):
@@ -165,6 +166,11 @@ func _blit_opaque(target: Image, source: Image) -> void:
 
 func _frame(sheet: Image, frame_index: int) -> Image:
 	return sheet.get_region(Rect2i(frame_index * FRAME_SIZE.x, 0, FRAME_SIZE.x, FRAME_SIZE.y))
+
+
+func _load_image(path: String) -> Image:
+	var texture := load(path) as Texture2D
+	return texture.get_image() if texture != null else null
 
 
 func _screen_center(pos: Vector2i) -> Vector2i:

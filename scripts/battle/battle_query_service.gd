@@ -8,7 +8,10 @@ const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd"
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
-var _ctrl: BattleController
+var _ctrl_ref: WeakRef
+var _ctrl: BattleController:
+	get:
+		return _ctrl_ref.get_ref() as BattleController if _ctrl_ref != null else null
 var _reachable_cache: Array = []
 var _reachable_cache_key: Array = []
 var _attack_range_cache: Array = []
@@ -16,7 +19,7 @@ var _attack_range_cache_key: Array = []
 
 
 func setup(controller: BattleController) -> void:
-	_ctrl = controller
+	_ctrl_ref = weakref(controller)
 	invalidate_highlight_cache()
 
 

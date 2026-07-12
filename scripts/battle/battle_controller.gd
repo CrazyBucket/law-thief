@@ -76,23 +76,35 @@ func start_encounter(encounter_id: String, seed_value: int = 0, room_id: String 
 
 ## 统一在信号层连接遗物事件触发，避免分散在各规则文件
 func _connect_relic_signals(s: GameState) -> void:
+	# GameState owns its signal callbacks. Capture only a weak controller so a
+	# completed battle releases its state and delegated services together.
+	var controller_ref: WeakRef = weakref(self)
 	s.on_battle_start.connect(func() -> void:
-		_fire_relic_event("battle_start", s)
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null and controller.state != null:
+			controller._fire_relic_event("battle_start", controller.state)
 	)
 	s.on_turn_start.connect(func(turn_index: int) -> void:
-		_fire_relic_event("turn_start", s, {"turn_index": turn_index})
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null and controller.state != null:
+			controller._fire_relic_event("turn_start", controller.state, {"turn_index": turn_index})
 	)
 	s.on_turn_end.connect(func(turn_index: int) -> void:
-		_fire_relic_event("turn_end", s, {"turn_index": turn_index})
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null and controller.state != null:
+			controller._fire_relic_event("turn_end", controller.state, {"turn_index": turn_index})
 	)
 	s.on_unit_die.connect(func(unit_uid: String, killer_uid: String, reason: String) -> void:
-		_fire_relic_event("unit_die", s, {
-			"unit_uid": unit_uid, "killer_uid": killer_uid, "reason": reason
-		})
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null and controller.state != null:
+			controller._fire_relic_event("unit_die", controller.state, {
+				"unit_uid": unit_uid, "killer_uid": killer_uid, "reason": reason
+			})
 	)
 	s.on_battle_end.connect(func(result: String) -> void:
-		if result == "win":
-			_fire_relic_event("battle_win", s, {"encounter_id": s.encounter_id})
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if result == "win" and controller != null and controller.state != null:
+			controller._fire_relic_event("battle_win", controller.state, {"encounter_id": controller.state.encounter_id})
 	)
 
 
@@ -197,13 +209,15 @@ func can_use_action(action: String) -> bool:
 		return false
 	if editor_unlimited_actions_enabled() and action in [Constants.ACTION_MOVE, Constants.ACTION_ATTACK]:
 		return true
+	var player := state.get_player()
+	if action != Constants.ACTION_END_TURN and (player == null or not StatusRules.can_act(player)):
+		return false
 	if OverloadRules.blocks_player_manual_actions(state) and action != Constants.ACTION_END_TURN:
 		return false
 	match action:
 		Constants.ACTION_MOVE:
 			return not state.player_moved or StatusRules.has_extra_move(state.get_player())
 		Constants.ACTION_ATTACK:
-			var player := state.get_player()
 			return player != null \
 				and StatusRules.can_attack(player) \
 				and (not state.player_acted or StatusRules.has_extra_attack(player))

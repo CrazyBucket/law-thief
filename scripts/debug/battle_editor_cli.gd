@@ -1,11 +1,14 @@
 class_name BattleEditorCli
 extends RefCounted
 
-var _ctrl: BattleController
+var _ctrl_ref: WeakRef
+var _ctrl: BattleController:
+	get:
+		return _ctrl_ref.get_ref() as BattleController if _ctrl_ref != null else null
 
 
 func setup(controller: BattleController) -> void:
-	_ctrl = controller
+	_ctrl_ref = weakref(controller)
 
 
 func run(raw_command: String) -> Dictionary:

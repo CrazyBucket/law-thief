@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DESIGN_ROOT="${DESIGN_ROOT:-/Users/jinhuiwu/code/learning-notes/game/design/law-thief}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LEGACY_DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
+
+if [[ -n "${DESIGN_ROOT:-}" ]]; then
+  DESIGN_ROOT="$DESIGN_ROOT"
+else
+  LOCAL_DESIGN_ROOT="$ROOT/../learning-notes/game/design/law-thief"
+  if [[ -d "$LOCAL_DESIGN_ROOT" ]]; then
+    DESIGN_ROOT="$LOCAL_DESIGN_ROOT"
+  else
+    DESIGN_ROOT="$LEGACY_DESIGN_ROOT"
+  fi
+fi
 QUERY="${*:-宝石|倍率|伤害|叠加|取整}"
 
 cat <<EOF

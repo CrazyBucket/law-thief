@@ -3,7 +3,7 @@ extends SceneTree
 const Snapshot = preload("res://scripts/testkit/state_snapshot.gd")
 const SnapshotDiff = preload("res://scripts/testkit/state_diff.gd")
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
-const DESIGN_ROOT := "/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
+const LEGACY_DESIGN_ROOT := "/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
 const DEFAULT_OUTPUT := "res://artifacts/verify/snapshot.json"
 
 
@@ -60,16 +60,17 @@ func _run() -> void:
 			if not slots.is_empty():
 				GemEffects.trigger_gem(state, actor.uid, slots[0], events, target.uid, target.pos)
 	var snapshot := Snapshot.capture(state, events)
+	var design_root := _design_root()
 	snapshot["before"] = before
 	snapshot["diff"] = SnapshotDiff.between(before, snapshot)
 	snapshot["calculation_trace"] = Snapshot.json_safe(calculation_trace)
 	snapshot["design_context"] = {
-		"root": DESIGN_ROOT,
+		"root": design_root,
 		"authority_order": [
-			"%s/详细设计/宝石/宝石_v1.md" % DESIGN_ROOT,
-			"%s/详细设计/数值/数值设计_v1.md" % DESIGN_ROOT,
-			"%s/GDD.md" % DESIGN_ROOT,
-			"%s/Technical_Architecture.md" % DESIGN_ROOT,
+			"%s/详细设计/宝石/宝石_v1.md" % design_root,
+			"%s/详细设计/数值/数值设计_v1.md" % design_root,
+			"%s/GDD.md" % design_root,
+			"%s/Technical_Architecture.md" % design_root,
 		],
 		"warning": "设计文档可能互相冲突；修改语义前必须指出冲突，并以详细设计优先。",
 	}
@@ -80,6 +81,16 @@ func _run() -> void:
 		return
 	print("AI_SNAPSHOT_OK ", ProjectSettings.globalize_path(output))
 	quit(0)
+
+
+func _design_root() -> String:
+	var configured := OS.get_environment("DESIGN_ROOT")
+	if not configured.is_empty():
+		return configured
+	var local_root := ProjectSettings.globalize_path("res://../learning-notes/game/design/law-thief")
+	if DirAccess.dir_exists_absolute(local_root):
+		return local_root
+	return LEGACY_DESIGN_ROOT
 
 
 func _parse_args(args: PackedStringArray) -> Dictionary:

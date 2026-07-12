@@ -314,7 +314,8 @@ static var _DEFS: Dictionary = {
 		"type": TYPE_DEBUFF,
 		"color": UiPalette.PARALYZE_YELLOW,
 		"stack_rule": STACK_REPLACE,
-		"tick_phase": TICK_TURN_START,
+		# 麻痹在持有者的行动窗口消耗，不能在另一方回合结束时抢先过期。
+		"tick_phase": TICK_NONE,
 		"blocks_movement": true,
 		"blocks_action": true,
 	},

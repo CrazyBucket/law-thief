@@ -16,19 +16,6 @@
 - Phase 41 使该生成器的进度数值由数据驱动，但有意不替换其拓扑模型。
 - 影响：房间流调优现在很简单，但精心设计的节奏节拍、有保障的教学序列和刻意的路线权衡仍然需要在生成器之上有一个模板/目录层。
 
-### 在此 Windows 工作区上设计根路径查找已损坏
-
-- `./tools/context ...` 报告 `DESIGN_ROOT_MISSING /Users/jinhuiwu/code/learning-notes/game/design/law-thief`。
-- 实际设计文档在本地 `D:/code/learning-notes/game/design/law-thief` 下可用。
-- 影响：在路径解析修复之前，设计查找工具的可信度不如源文档本身。
-
-### 多个通过的测试仍然以资源泄漏警告退出
-
-- `stone_bow_guard_test.gd` 当前通过，但退出时带有 `ObjectDB instances leaked at exit` 和 `resources still in use at exit`。
-- `overload_test.gd` 在通过后产生相同的警告。
-- 额外的快速套件运行在 `battle_renderer_timing_test.gd`、`bomb_rat_test.gd`、`explosion_test.gd` 和 `intent_consistency_contract_test.gd` 中显示同类警告。
-- 影响：测试信号的噪音超出应有水平，真正的生命周期回归可能更容易被遗漏。
-
 ### 文本编码诊断可能产生误导
 
 - UTF-8 读取显示，之前怀疑的 `gem_effects.gd`、`attack_pipeline.gd`、`contact_resolver.gd`、`overload_rules.gd` 和运行时日志中的损坏大多是由 Windows PowerShell 的默认解码引起的，而非源文本损坏。
@@ -141,12 +128,6 @@
 - Phase 29 有意将三个红色冰冻合约和黑色冰冻 Lv3 用例降级为实现观察，而非声称设计覆盖。
 - 影响：潮湿目标红色冰冻、红色 Lv3 和黑色 Lv3 在行为上不完整，不能仅通过更改数字使其成为权威。
 
-### 玩家和敌人路径之间的麻痹回合消耗不一致
-
-- 敌人执行在跳过其行动前显式检查并移除 `paralyzed`。
-- 全局回合开始计时可以在下一个玩家阶段前使一回合麻痹过期，而玩家攻击和槽位操作服务不持续在 `StatusRules.can_act()` 上设置门控。
-- 影响：麻痹和当前的冻结占位符在跳过回合语义对双方可信之前，需要专门的回合流测试和单一状态消耗路径。
-
 ### 电弧伤害存在竞争或未使用的数值权威
 
 - Phase 35 移除了未使用的 `arc_hit_damage` 配置/访问器/回退，并使验证器拒绝它，因此平衡表面不再暴露没有运行时效果的值。
@@ -165,31 +146,6 @@
 - 直接 `./tools/verify changed` 在此工作区中运行 Godot 之前会发出 WSL 启动噪音。
 - 该命令仍可成功完成，但启动噪音使日志看起来比实际测试结果更可怕。
 - 影响：验证仍可用，但信号的噪音超出应有水平。
-
-### 验证不会自动重新导入更改的 CSV 翻译
-
-- 编辑 `localization/strings.csv` 后，`./tools/verify` 仍可能运行较旧的已生成 `.translation` 资源，因此错过或失败新的运行时文本。
-- 以无界面编辑器模式运行 Godot 一次可重新导入 CSV 并刷新实际的运行时资源。
-- 影响：本地化支持的数值文本测试在验证工具拥有该准备工作之前需要显式的导入步骤。
-
-### 验证产物日志可能包含过时的失败
-
-- `artifacts/verify/report.json` 和 `artifacts/verify/verify.log` 描述了最新的 `verify` 运行，但旧的每测试日志可能保留在它们旁边。
-- 对 `artifacts/verify/*.log` 的广泛 grep 因此可能显示不属于当前运行的历史失败。
-- 影响：从产物进行调试需要在将任何每测试日志视为当前证据之前检查最新的 `verify.log` 测试列表。
-
-### `battle_scene.tscn` 仍有无效的 ext_resource UID
-
-- `battle_renderer_timing_test` 发出警告，称 `res://scenes/battle/battle_scene.tscn` 中的多个 ext_resource UID 无效，Godot 正在回退到文本路径。
-- 影响：场景仍能加载，但资源引用存在编辑器级别的完整性债务，可能产生嘈杂的警告和脆弱的场景元数据。
-
-### 完整视觉合约套件当前存在叠加/水域失败
-
-- 2026-07-11 的严格 `./tools/verify all` 通过了 67 个测试，失败了相同的 3 个视觉测试；所有新暴露的战斗、装置、编辑器路径和普通 UI 断言失败已在 Phase 30 中修复。
-- `overlay_render_contract_test` 失败于层顺序断言：前叠加通道、单位 UI 和选择轮廓不在预期的通道之上。
-- `water_frame_composite_test` 失败于 `/tmp/law_thief_water_frames/` 下的 PNG 保存尝试，并报告单瓦片帧不匹配。
-- `water_render_contract_test` 未能定位实体/单位绘制命令，并报告实体和单位 UI 的绘制顺序断言。
-- 影响：数值驱动和变更套件证据是干净的，但完整的视觉合约健康状况仍然明确为红色，需要一个单独的视觉/渲染阶段。
 
 ### 仅调试的种子显示边界需要审计
 

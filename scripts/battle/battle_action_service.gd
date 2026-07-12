@@ -6,11 +6,14 @@ const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
-var _ctrl: BattleController
+var _ctrl_ref: WeakRef
+var _ctrl: BattleController:
+	get:
+		return _ctrl_ref.get_ref() as BattleController if _ctrl_ref != null else null
 
 
 func setup(controller: BattleController) -> void:
-	_ctrl = controller
+	_ctrl_ref = weakref(controller)
 
 
 func _c() -> BattleController:
@@ -39,6 +42,8 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	if not unlimited and not StatusRules.can_act(player):
+		return _fail(StatusRules.action_block_reason(player))
 	var consume_bonus_move := false
 	if not unlimited and state.player_moved:
 		if not StatusRules.has_extra_move(player):
@@ -125,6 +130,8 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 	var player: UnitState = state.get_player()
 	if player == null:
 		return _fail("玩家不存在")
+	if not unlimited and not StatusRules.can_act(player):
+		return _fail(StatusRules.action_block_reason(player))
 	if not unlimited and not StatusRules.can_attack(player):
 		return _fail(StatusRules.attack_block_reason(player))
 	var consume_bonus_attack := false
@@ -189,6 +196,9 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
 		return _fail("目标无效")
@@ -215,6 +225,9 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
 		return _fail("目标无效")
@@ -240,6 +253,9 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var target: UnitState = ctrl.state.units.get(target_uid, null)
 	if target == null:
 		return _fail("目标无效")
@@ -273,6 +289,9 @@ func try_extract_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():
 		return _fail("该地块没有槽位")
@@ -299,6 +318,9 @@ func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():
 		return _fail("该地块没有槽位")
@@ -324,6 +346,9 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
 		return _fail("AI 已接管本回合")
 	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
 	var tile: TileState = ctrl.state.get_tile(tile_pos)
 	if tile == null or not tile.has_slots():
 		return _fail("该地块没有槽位")
@@ -350,6 +375,16 @@ func _ok(payload: Dictionary = {}) -> Dictionary:
 
 func _fail(reason: String) -> Dictionary:
 	return {"ok": false, "reason": reason}
+
+
+func _player_action_block_reason(ctrl: BattleController, player: UnitState) -> String:
+	if ctrl.state.phase != Constants.PHASE_PLAYER:
+		return "不是玩家回合"
+	if player == null:
+		return "玩家不存在"
+	if not ctrl.editor_unlimited_actions_enabled() and not StatusRules.can_act(player):
+		return StatusRules.action_block_reason(player)
+	return ""
 
 
 func _validated_events(events: Array[Dictionary], context: String) -> Array[Dictionary]:

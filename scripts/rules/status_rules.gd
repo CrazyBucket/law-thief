@@ -192,6 +192,13 @@ static func attack_block_reason(unit: UnitState) -> String:
 	return ""
 
 
+static func action_block_reason(unit: UnitState) -> String:
+	if unit != null and unit.has_status(Constants.STATUS_PARALYZED):
+		var text := TranslationServer.translate("status.paralyzed.block")
+		return "被麻痹，无法行动" if text == "status.paralyzed.block" else text
+	return ""
+
+
 static func get_armor_bonus(unit: UnitState) -> int:
 	return get_shield(unit)
 

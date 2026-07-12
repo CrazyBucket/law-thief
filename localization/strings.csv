@@ -231,3 +231,4 @@ status.disarmed.name,缴械,Disarmed
 status.disarmed.short,械{stacks},Disarm {stacks}
 status.disarmed.tooltip,缴械：无法攻击，剩余 {stacks} 次行动,Disarmed: cannot attack for {stacks} action(s)
 status.disarmed.block,被缴械，无法攻击,Disarmed: cannot attack
+status.paralyzed.block,被麻痹，无法行动,Paralyzed: cannot act

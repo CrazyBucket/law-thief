@@ -1,11 +1,11 @@
 [gd_scene format=3 uid="uid://cg8o4uq31gdtc"]
 
-[ext_resource type="Script" uid="uid://bb6wt1jjivgvq" path="res://scripts/ui/battle_scene.gd" id="1_battle"]
-[ext_resource type="Script" uid="uid://chb4cupng0hjl" path="res://scripts/ui/isometric_board.gd" id="2_board"]
-[ext_resource type="Shader" uid="uid://540nrqv3p687" path="res://scenes/battle/battle_scene.gdshader" id="3_ugm31"]
+[ext_resource type="Script" uid="uid://c00fcc02rspie" path="res://scripts/ui/battle_scene.gd" id="1_battle"]
+[ext_resource type="Script" uid="uid://di7egbdiwgetb" path="res://scripts/ui/isometric_board.gd" id="2_board"]
+[ext_resource type="Shader" uid="uid://bb8atwtjfdvgm" path="res://scenes/battle/battle_scene.gdshader" id="3_ugm31"]
 [ext_resource type="Texture2D" uid="uid://c2o6gixvb7ktb" path="res://assets/ui/tiles.png" id="4_o3k7m"]
-[ext_resource type="Texture2D" uid="uid://dbhu7wturwbha" path="res://assets/ui/background.png" id="5_o3k7m"]
-[ext_resource type="Script" uid="uid://byvifom8o4uo8" path="res://scripts/ui/combined_hp_bar.gd" id="6_hpbar"]
+[ext_resource type="Texture2D" uid="uid://crkkjqn85j8r8" path="res://assets/ui/background.png" id="5_o3k7m"]
+[ext_resource type="Script" uid="uid://b68wtoaip2jfl" path="res://scripts/ui/combined_hp_bar.gd" id="6_hpbar"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_lbt8a"]
 shader = ExtResource("3_ugm31")
