@@ -317,7 +317,13 @@ func _check_battle_end() -> void:
 
 
 func _emit_changed() -> void:
+	invalidate_highlight_cache()
 	state_changed.emit()
+
+
+func invalidate_highlight_cache() -> void:
+	_ensure_services()
+	_query_svc.invalidate_highlight_cache()
 
 
 func _ok(payload: Dictionary = {}) -> Dictionary:

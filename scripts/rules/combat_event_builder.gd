@@ -15,6 +15,25 @@ static func move_step(uid: String, from_pos: Vector2i, to_pos: Vector2i, opts: D
 	return ev
 
 
+static func displacement_impact(
+	uid: String,
+	from_pos: Vector2i,
+	contact_pos: Vector2i,
+	opts: Dictionary = {}
+) -> Dictionary:
+	var ev := {
+		"type": "displacement_impact",
+		"uid": uid,
+		"from": from_pos,
+		"contact": contact_pos,
+		"forced": true,
+	}
+	_copy_optional(ev, opts, [
+		"source_uid", "reason", "blocker_kind", "blocker_uid", "entity_id"
+	])
+	return ev
+
+
 static func damage(unit: UnitState, amount: int, opts: Dictionary = {}) -> Dictionary:
 	var pos: Vector2i = opts.get("pos", unit.pos if unit != null else Vector2i.ZERO)
 	var uid := unit.uid if unit != null else str(opts.get("uid", opts.get("victim_uid", "")))

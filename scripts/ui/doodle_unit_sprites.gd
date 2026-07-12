@@ -6,6 +6,7 @@ extends RefCounted
 const KNIGHT_ROOT := "res://assets/demo/doodle-rpg/ALL SPRITES/Knight/"
 const WALK_SUBPATH := "Walking w Sword/"
 const SWING_SUBPATH := "Sword Swing/"
+const HURT_SUBPATH := "hurt%d.png"
 
 var _texture_cache: Dictionary = {}
 
@@ -54,6 +55,18 @@ func texture_walk(facing: String, frame: int) -> Texture2D:
 func texture_sword_swing(facing: String, frame: int) -> Texture2D:
 	var fi := clampi(frame, 0, 2)
 	return _ensure_texture("%s%s%s%d.png" % [KNIGHT_ROOT, SWING_SUBPATH, facing, fi])
+
+
+func texture_hurt(facing: String) -> Texture2D:
+	var hurt_index := 1
+	match facing:
+		"Left", "UL":
+			hurt_index = 2
+		"Up":
+			hurt_index = 3
+		"Right", "UR":
+			hurt_index = 4
+	return _ensure_texture("%s%s" % [KNIGHT_ROOT, HURT_SUBPATH % hurt_index])
 
 
 func texture_shadow() -> Texture2D:

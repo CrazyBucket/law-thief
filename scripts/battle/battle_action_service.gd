@@ -81,6 +81,7 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	ctrl._check_battle_end()
 	if state.phase != Constants.PHASE_ENDED:
 		IntentSystem.refresh_all_intents(state)
+	ctrl.invalidate_highlight_cache()
 	# 注意：不调用 _emit_changed()，由 UI 层在动画播完后手动刷新
 	# 避免动画开始前 queue_redraw 把单位画到终点导致闪烁
 	var result := _ok()
@@ -165,6 +166,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_ATTACK)
 	ctrl._check_battle_end()
 	IntentSystem.refresh_all_intents(state)
+	ctrl.invalidate_highlight_cache()
 	return _ok({
 		"from_pos": from_pos,
 		"to_pos": to_pos,
@@ -253,6 +255,7 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 		result["events"] = _validated_events(events, "BattleActionService.try_trigger")
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
+		ctrl.invalidate_highlight_cache()
 	return result
 
 
@@ -336,6 +339,7 @@ func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 		result["events"] = _validated_events(events, "BattleActionService.try_trigger_tile")
 		result["presentation_state"] = presentation_state
 		ctrl._check_battle_end()
+		ctrl.invalidate_highlight_cache()
 	return result
 
 

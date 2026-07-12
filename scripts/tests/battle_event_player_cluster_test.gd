@@ -8,6 +8,8 @@ class DummyBoard:
 	var projectile_batches: Array = []
 	var lightning_bolts: Array = []
 	var damage_effects: Array = []
+	var parallel_moves: Array = []
+	var hit_units: Array[String] = []
 	var operations: Array[String] = []
 	var redraw_count: int = 0
 
@@ -54,6 +56,14 @@ class DummyBoard:
 		damage_effects.append({"pos": pos, "damage": damage})
 		operations.append("damage")
 
+	func animate_unit_motions_parallel(moves: Array) -> float:
+		parallel_moves.append(moves.duplicate(true))
+		operations.append("move")
+		return 0.0
+
+	func play_unit_hit(uid: String) -> void:
+		hit_units.append(uid)
+
 	func queue_redraw() -> void:
 		redraw_count += 1
 
@@ -71,11 +81,18 @@ func _run_test() -> void:
 	player.setup(host, board, null, Callable(), func(_seconds: float) -> float: return 0.0)
 	await player.play_events([
 		{"type": "explode", "pos": Vector2i(4, 4)},
+		{"type": "damage", "pos": Vector2i(4, 5), "damage": 3, "uid": "missing_target", "victim_uid": "missing_target", "is_crit": false},
+		{"type": "move_step", "uid": "missing_target", "from": Vector2i(4, 5), "to": Vector2i(4, 6)},
+		{"type": "displacement_impact", "uid": "missing_target", "from": Vector2i(4, 6), "contact": Vector2i(4, 7)},
 		{"type": "split_spawn", "pos": Vector2i(4, 5), "uid": "missing_clone"},
 	])
 	assert(board.explosions.size() == 1, "blast cluster should play the explosion")
 	assert(board.flashes.size() == 1, "split spawn should be presented inside the blast cluster")
 	assert(board.flashes[0] == Vector2i(4, 5), "split spawn flash should use the clone position")
+	assert(board.parallel_moves.size() == 1, "blast knockback should start as one parallel impact motion")
+	assert(board.parallel_moves[0].size() == 2, "movement and blocked contact should use one motion sequence")
+	assert(board.hit_units == ["missing_target"], "every damage event should trigger the unit hit presentation")
+	assert(board.operations == ["explode", "damage", "move"], "blast damage and knockback must start together at impact")
 	board.operations.clear()
 	await player.play_events([
 		{"type": "projectile", "from": Vector2i(1, 1), "to": Vector2i(5, 1)},

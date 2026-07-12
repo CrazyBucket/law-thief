@@ -37,12 +37,16 @@ func _test_blast_damage_is_an_impact() -> void:
 	var result := Planner.build([
 		{"type": "explode", "pos": Vector2i(4, 4)},
 		_damage("blast_target", Vector2i(4, 4), 12),
+		{"type": "move_step", "uid": "blast_target", "from": Vector2i(4, 4), "to": Vector2i(5, 4)},
+		{"type": "displacement_impact", "uid": "blast_target", "from": Vector2i(5, 4), "contact": Vector2i(6, 4)},
 	])
 	assert(result.violations.is_empty())
 	assert(result.beats.size() == 1)
 	assert(result.beats[0].kind == "blast")
 	assert(result.beats[0].visuals.size() == 1)
 	assert(result.beats[0].impacts.size() == 1)
+	assert(result.beats[0].impact_motions.size() == 2, "blast movement and collision must share the impact frame")
+	assert(result.beats[0].aftermath.is_empty(), "blast knockback is impact motion, not post-explosion aftermath")
 
 
 func _test_arc_hop_is_parallel_and_impacts_after_visuals() -> void:

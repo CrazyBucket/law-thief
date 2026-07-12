@@ -46,6 +46,7 @@ class BoardAnimationHostState:
 	var move_path_segment_facings: Dictionary = {}
 	var particles: Array[Dictionary] = []
 	var strike_elapsed: Dictionary = {}
+	var hit_elapsed: Dictionary = {}
 	var walk_phase: Dictionary = {}
 	var idle_phase: Dictionary = {}
 	var active_projectiles: Array = []
@@ -62,6 +63,7 @@ class BoardAnimationHostState:
 		walk_phase.clear()
 		idle_phase.clear()
 		strike_elapsed.clear()
+		hit_elapsed.clear()
 
 	func clear_gem_visuals() -> void:
 		held_gem_visual.clear()
@@ -114,6 +116,10 @@ var _water_fill_layer: Node2D = null
 var _water_edge_layer: Node2D = null
 var _water_visual_signature: int = -1
 var _overlay_shader_viewports: Array[SubViewport] = []
+var _last_continuous_redraw_tick: int = -1
+var _sorted_cells_cache: Array[Vector2i] = []
+var _sorted_cells_cache_size: Vector2i = Vector2i(-1, -1)
+var _sorted_cells_cache_invert: bool = false
 
 # ─── 动画系统 ─────────────────────────────────────────────────────────────
 var _anim := BoardAnimationHostState.new()
@@ -166,6 +172,11 @@ const _SLIME_STRIKE_FRAMES := 6
 const _SLIME_STRIKE_DURATION := 0.36
 const _PUFF_FRAME_PATH := "res://assets/demo/doodle-rpg/ALL SPRITES/Particles/Puff_%d.png"
 const _INVALID_GRID := Vector2i(-9999, -9999)
+const _MOVE_DURATION := 0.35
+const _COLLISION_LUNGE_DURATION := 0.11
+const _COLLISION_RECOIL_DURATION := 0.13
+const _COLLISION_CONTACT_RATIO := 0.42
+const _HIT_DURATION := 0.24
 const _GEM_LIFT_DURATION := 0.48
 const _GEM_INSERT_DURATION := 0.38
 const _GEM_ORBIT_SPEED := 1.9
@@ -173,6 +184,7 @@ const _GEM_ORBIT_RADIUS_X := 20.0
 const _GEM_ORBIT_RADIUS_Y := 7.5
 const _GEM_BOB_SPEED := 1.7
 const _GEM_BOB_AMPLITUDE := 1.0
+const _CONTINUOUS_REDRAW_FPS := 60.0
 const _GEM_DRAW_SIZE := 18.0
 const _GEM_SLOT_SOURCE_OFFSET := Vector2(0.0, -28.0)
 ## 等距棋盘仅四斜向（由 grid_to_screen 校准）
@@ -302,6 +314,15 @@ func _process(delta: float) -> void:
 			strike_done.append(str(stk))
 	for stk_rem in strike_done:
 		_anim.strike_elapsed.erase(stk_rem)
+	var hit_done: Array[String] = []
+	for hit_uid in _anim.hit_elapsed.keys():
+		var next_hit_t := float(_anim.hit_elapsed[hit_uid]) + scaled_dt
+		_anim.hit_elapsed[hit_uid] = next_hit_t
+		visuals_dirty = true
+		if next_hit_t >= _HIT_DURATION:
+			hit_done.append(str(hit_uid))
+	for hit_uid in hit_done:
+		_anim.hit_elapsed.erase(hit_uid)
 
 	var needs_redraw: bool = false
 	var i: int = _anim.particles.size() - 1
@@ -322,8 +343,16 @@ func _process(delta: float) -> void:
 		needs_redraw = true
 		i -= 1
 	var gem_dirty := _update_gem_visuals(scaled_dt)
-	if needs_redraw or visuals_dirty or gem_dirty:
+	if (needs_redraw or visuals_dirty or gem_dirty) and _continuous_redraw_due():
 		queue_redraw()
+
+
+func _continuous_redraw_due() -> bool:
+	var redraw_tick := floori(_anim.pulse_time * _CONTINUOUS_REDRAW_FPS)
+	if redraw_tick == _last_continuous_redraw_tick:
+		return false
+	_last_continuous_redraw_tick = redraw_tick
+	return true
 
 
 func _has_animated_tile_overlays() -> bool:
@@ -494,7 +523,6 @@ func _step_unit_fade(store: Dictionary, target_uids: Array[String], delta: float
 
 func set_battle_state(new_state: GameState) -> void:
 	state = new_state
-	queue_redraw()
 
 
 func init_unit_orientations() -> void:
@@ -557,6 +585,8 @@ func set_highlights(new_highlights: Dictionary) -> void:
 
 
 func set_hover(cell: Vector2i) -> void:
+	if hover_cell == cell:
+		return
 	hover_cell = cell
 	queue_redraw()
 
@@ -573,11 +603,15 @@ func clear_editor_preview() -> void:
 
 
 func set_timeline_hover_unit(uid: String) -> void:
+	if timeline_hover_unit_uid == uid:
+		return
 	timeline_hover_unit_uid = uid
 	queue_redraw()
 
 
 func set_active_turn_unit(uid: String) -> void:
+	if active_turn_unit_uid == uid:
+		return
 	active_turn_unit_uid = uid
 	queue_redraw()
 
@@ -593,7 +627,12 @@ func _board_size() -> Vector2i:
 
 
 func _sorted_cells() -> Array[Vector2i]:
-	return IsoCoordinates.sorted_cells(_board_size(), invert_origin)
+	var size := _board_size()
+	if _sorted_cells_cache.is_empty() or size != _sorted_cells_cache_size or invert_origin != _sorted_cells_cache_invert:
+		_sorted_cells_cache = IsoCoordinates.sorted_cells(size, invert_origin)
+		_sorted_cells_cache_size = size
+		_sorted_cells_cache_invert = invert_origin
+	return _sorted_cells_cache
 
 
 func _draw() -> void:
@@ -1323,6 +1362,13 @@ func _unit_draw_context(unit: UnitState) -> Dictionary:
 	center += offset
 	var facing := unit.facing
 	var tint := UnitLooks.sprite_modulate_for_unit(unit.team, unit.unit_def_id)
+	if _anim.hit_elapsed.has(unit.uid):
+		var hit_progress := clampf(
+			float(_anim.hit_elapsed[unit.uid]) / _HIT_DURATION,
+			0.0,
+			1.0
+		)
+		tint = tint.lerp(Color(1.0, 0.58, 0.58, 1.0), (1.0 - hit_progress) * 0.72)
 	var pose: Dictionary = _resolve_unit_pose(unit, facing)
 	var pose_tex: Texture2D = pose.get("texture", null)
 	var sprite_size: Vector2 = pose.get("sprite_size", Vector2.ZERO)
@@ -1474,7 +1520,10 @@ func _resolve_player_pose(unit_uid: String, facing: String) -> Dictionary:
 	var anim := "Idle"
 	var idle_t: float = float(_anim.idle_phase.get(unit_uid, 0.0))
 	var frame := int(idle_t * _PLAYER_IDLE_FPS) % _PLAYER_IDLE_FRAMES
-	if _anim.strike_elapsed.has(unit_uid):
+	if _anim.hit_elapsed.has(unit_uid):
+		anim = "Dash"
+		frame = 6
+	elif _anim.strike_elapsed.has(unit_uid):
 		anim = "Dash"
 		var st: float = float(_anim.strike_elapsed[unit_uid])
 		frame = clampi(
@@ -1505,7 +1554,10 @@ func _resolve_slime_pose(unit: UnitState, facing: String) -> Dictionary:
 	var anim := "Idle"
 	var idle_t: float = float(_anim.idle_phase.get(unit.uid, 0.0))
 	var frame := int(idle_t * _SLIME_IDLE_FPS) % _SLIME_IDLE_FRAMES
-	if _anim.strike_elapsed.has(unit.uid):
+	if _anim.hit_elapsed.has(unit.uid):
+		anim = "Strike"
+		frame = 4
+	elif _anim.strike_elapsed.has(unit.uid):
 		anim = "Strike"
 		var st: float = float(_anim.strike_elapsed[unit.uid])
 		frame = clampi(
@@ -1547,7 +1599,9 @@ func _resolve_knight_pose(unit: UnitState, facing: String) -> Dictionary:
 	var tex: Texture2D = null
 	if _knight_sprites == null:
 		return {}
-	if _anim.strike_elapsed.has(unit.uid):
+	if _anim.hit_elapsed.has(unit.uid):
+		tex = _knight_sprites.texture_hurt(facing)
+	elif _anim.strike_elapsed.has(unit.uid):
 		var st: float = float(_anim.strike_elapsed[unit.uid])
 		var fidx := clampi(int(st / (0.28 / 3.0)), 0, 2)
 		tex = _knight_sprites.texture_sword_swing(facing, fidx)
@@ -2276,6 +2330,13 @@ func start_strike_effect(attacker_uid: String, victim_cell: Vector2i) -> void:
 	queue_redraw()
 
 
+func play_unit_hit(unit_uid: String) -> void:
+	if state == null or not state.units.has(unit_uid):
+		return
+	_anim.hit_elapsed[unit_uid] = 0.0
+	queue_redraw()
+
+
 ## 播放移动动画：单位从 from_pos 滑动到 to_pos
 func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_finished: bool = true) -> void:
 	if state != null:
@@ -2297,7 +2358,7 @@ func animate_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, emit_f
 	var tween: Tween = create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUAD)
-	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(0.35))
+	tween.tween_method(_set_move_offset.bind(unit_uid), from_offset, to_offset, _scaled_duration(_MOVE_DURATION))
 	tween.tween_callback(_on_move_anim_done.bind(unit_uid, to_offset, emit_finished))
 
 
@@ -2355,15 +2416,86 @@ func animate_move_path_task(unit_uid: String, path: Array) -> void:
 
 
 ## 多单位同时位移（爆炸击退等）
-func animate_moves_parallel(moves: Array) -> void:
-	if moves.is_empty():
+func animate_moves_parallel(moves: Array) -> float:
+	return animate_unit_motions_parallel(moves)
+
+
+func animate_unit_motions_parallel(motions: Array) -> float:
+	if motions.is_empty():
 		animation_finished.emit()
 		move_animation_finished.emit()
+		return 0.0
+	var sequences: Dictionary = {}
+	for motion in motions:
+		var uid := str(motion.get("uid", ""))
+		if uid.is_empty():
+			continue
+		if not sequences.has(uid):
+			sequences[uid] = []
+		(sequences[uid] as Array).append(motion)
+	if sequences.is_empty():
+		animation_finished.emit()
+		move_animation_finished.emit()
+		return 0.0
+	_anim.parallel_move_remaining = sequences.size()
+	var max_duration := 0.0
+	for uid in sequences.keys():
+		max_duration = maxf(max_duration, _animate_unit_motion_sequence(str(uid), sequences[uid]))
+	return max_duration
+
+
+func _animate_unit_motion_sequence(unit_uid: String, motions: Array) -> float:
+	var unit: UnitState = state.units.get(unit_uid, null) if state != null else null
+	var final_motion: Dictionary = motions[-1]
+	var logical_pos: Vector2i = unit.pos if unit != null else final_motion.get("to", final_motion.get("from", Vector2i.ZERO))
+	var logical_screen := grid_to_screen(logical_pos)
+	var first_from: Vector2i = motions[0].get("from", logical_pos)
+	var current_offset := grid_to_screen(first_from) - logical_screen
+	_anim.move_offsets[unit_uid] = current_offset
+	_anim.walk_phase[unit_uid] = 0.0
+	var tween := create_tween()
+	var total_duration := 0.0
+	for motion in motions:
+		match str(motion.get("type", "move_step")):
+			"displacement_impact":
+				var motion_from: Vector2i = motion.get("from", logical_pos)
+				var contact: Vector2i = motion.get("contact", motion_from)
+				var contact_offset := current_offset + (
+					grid_to_screen(contact) - grid_to_screen(motion_from)
+				) * _COLLISION_CONTACT_RATIO
+				tween.tween_method(
+					_set_move_offset.bind(unit_uid),
+					current_offset,
+					contact_offset,
+					_scaled_duration(_COLLISION_LUNGE_DURATION)
+				).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+				tween.tween_method(
+					_set_move_offset.bind(unit_uid),
+					contact_offset,
+					current_offset,
+					_scaled_duration(_COLLISION_RECOIL_DURATION)
+				).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+				total_duration += _scaled_duration(_COLLISION_LUNGE_DURATION + _COLLISION_RECOIL_DURATION)
+			_:
+				var to_pos: Vector2i = motion.get("to", motion.get("from", logical_pos))
+				var to_offset := grid_to_screen(to_pos) - logical_screen
+				tween.tween_method(
+					_set_move_offset.bind(unit_uid),
+					current_offset,
+					to_offset,
+					_scaled_duration(_MOVE_DURATION)
+				).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+				current_offset = to_offset
+				total_duration += _scaled_duration(_MOVE_DURATION)
+	tween.tween_callback(_on_move_anim_done.bind(unit_uid, current_offset, false))
+	return total_duration
+
+
+func animate_unit_motions_parallel_task(motions: Array) -> void:
+	if motions.is_empty():
 		return
-	_anim.parallel_move_remaining = moves.size()
-	for mv in moves:
-		var uid := str(mv.get("uid", ""))
-		animate_move(uid, mv.get("from", Vector2i.ZERO), mv.get("to", Vector2i.ZERO), false)
+	animate_unit_motions_parallel(motions)
+	await move_animation_finished
 
 
 func animate_moves_parallel_task(moves: Array) -> void:

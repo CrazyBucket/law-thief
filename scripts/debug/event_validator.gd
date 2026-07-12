@@ -11,6 +11,7 @@ const _PresentationPlanner = preload("res://scripts/ui/battle_presentation_plann
 ## 凡是这里列出的字段，出现在对应类型事件中时必须非空/非 null。
 const _REQUIRED_FIELDS: Dictionary = {
 	"move_step": ["uid", "from", "to"],
+	"displacement_impact": ["uid", "from", "contact"],
 	"damage":    ["uid", "victim_uid", "pos", "damage", "is_crit"],
 	"explode":   ["pos"],
 	"projectile": ["from", "to"],
@@ -92,6 +93,8 @@ static func _check_type_specific(
 	match ev_type:
 		"move_step":
 			_check_move_step(ev, index, out)
+		"displacement_impact":
+			_check_displacement_impact(ev, index, out)
 		"damage":
 			_check_damage(ev, index, out)
 		"heal":
@@ -105,6 +108,13 @@ static func _check_move_step(ev: Dictionary, index: int, out: Array[String]) -> 
 	var to = ev.get("to")
 	if from is Vector2i and to is Vector2i and from == to:
 		out.append("[%d] 'move_step' has identical 'from' and 'to': %s" % [index, from])
+
+
+static func _check_displacement_impact(ev: Dictionary, index: int, out: Array[String]) -> void:
+	var from = ev.get("from")
+	var contact = ev.get("contact")
+	if from is Vector2i and contact is Vector2i and from == contact:
+		out.append("[%d] 'displacement_impact' must move toward a distinct contact cell: %s" % [index, from])
 
 
 static func _check_damage(ev: Dictionary, index: int, out: Array[String]) -> void:

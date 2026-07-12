@@ -11,13 +11,34 @@ func _run() -> void:
 	root.add_child(battle_scene)
 	await process_frame
 	var board = battle_scene.get_node("BoardLayer/IsometricBoard")
+	var animation_state = board.get("_anim")
+	var player = board.state.get_player()
+	assert(player != null)
+	board.play_unit_hit(player.uid)
+	assert(animation_state.hit_elapsed.has(player.uid), "all unit renderers should enter a shared hit state")
+	var collision_duration: float = board.animate_unit_motions_parallel([{
+		"type": "displacement_impact",
+		"uid": player.uid,
+		"from": player.pos,
+		"contact": player.pos + Vector2i(1, 0),
+	}])
+	assert(collision_duration > 0.0, "blocked displacement should create a visible lunge and recoil")
+	assert(animation_state.move_offsets.has(player.uid), "blocked displacement should own a real visual offset")
+	await board.move_animation_finished
+	animation_state.pulse_time = 10.0
+	board.set("_last_continuous_redraw_tick", -1)
+	assert(board._continuous_redraw_due(), "continuous redraw should run for a new 60 Hz tick")
+	assert(not board._continuous_redraw_due(), "continuous redraw should be deduplicated inside one 60 Hz tick")
+	animation_state.pulse_time += 1.0 / 60.0
+	assert(board._continuous_redraw_due(), "continuous redraw should resume on the next 60 Hz tick")
+	assert(board._sorted_cells().size() == 64, "renderer should provide all board cells")
+	assert(board.get("_sorted_cells_cache").size() == 64, "renderer should cache the sorted board traversal")
 	var shots := [
 		{"from": Vector2i(1, 1), "to": Vector2i(5, 1)},
 		{"from": Vector2i(1, 1), "to": Vector2i(4, 0)},
 		{"from": Vector2i(1, 1), "to": Vector2i(4, 2)},
 	]
 	board.play_projectiles(shots)
-	var animation_state = board.get("_anim")
 	assert(animation_state.active_projectiles.size() == 3, "renderer must activate the full split volley in one frame")
 	await board.projectile_animation_finished
 	var blast_timing: Dictionary = board.play_explosion_batch([{"type": "explode", "pos": Vector2i(4, 3)}])

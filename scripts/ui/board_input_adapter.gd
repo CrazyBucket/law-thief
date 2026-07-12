@@ -2,6 +2,8 @@ class_name BoardInputAdapter
 extends RefCounted
 
 var _board = null
+var _last_hover_cell: Vector2i = Vector2i(-1, -1)
+var _has_last_hover_cell: bool = false
 
 
 func setup(board) -> void:
@@ -15,6 +17,8 @@ func setup(board) -> void:
 
 
 func teardown() -> void:
+	_last_hover_cell = Vector2i(-1, -1)
+	_has_last_hover_cell = false
 	if _board == null:
 		return
 	var input_cb := Callable(self, "_on_board_gui_input")
@@ -30,6 +34,10 @@ func _on_board_gui_input(event: InputEvent) -> void:
 		if _board.has_method("set_slot_hover"):
 			_board.set_slot_hover(event.position)
 		var hover_cell: Vector2i = _board.pick_cell(event.position)
+		if _has_last_hover_cell and hover_cell == _last_hover_cell:
+			return
+		_last_hover_cell = hover_cell
+		_has_last_hover_cell = true
 		_board.cell_hovered.emit(hover_cell, hover_cell.x >= 0)
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

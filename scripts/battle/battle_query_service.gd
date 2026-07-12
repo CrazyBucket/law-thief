@@ -9,10 +9,22 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 
 var _ctrl: BattleController
+var _reachable_cache: Array = []
+var _reachable_cache_key: Array = []
+var _attack_range_cache: Array = []
+var _attack_range_cache_key: Array = []
 
 
 func setup(controller: BattleController) -> void:
 	_ctrl = controller
+	invalidate_highlight_cache()
+
+
+func invalidate_highlight_cache() -> void:
+	_reachable_cache.clear()
+	_reachable_cache_key.clear()
+	_attack_range_cache.clear()
+	_attack_range_cache_key.clear()
 
 
 func _c() -> BattleController:
@@ -51,7 +63,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 		action = ""
 	var move_budget := ctrl.player_move_budget(player)
 	if action == Constants.ACTION_MOVE and (unlimited or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))):
-		var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
+		var reachable := _cached_reachable_cells(state, player, move_budget, unlimited)
 		result["reachable"] = reachable
 		_append_overlay(result, "move", reachable)
 		if hover_cell in reachable and hover_cell != player.pos:
@@ -72,7 +84,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	elif action == Constants.ACTION_ATTACK \
 		and (unlimited or StatusRules.can_attack(player)) \
 		and (unlimited or not state.player_acted or StatusRules.has_extra_attack(player)):
-		var attack_range := _attack_target_cells(state, player)
+		var attack_range := _cached_attack_target_cells(state, player, unlimited)
 		result["attack_range"] = attack_range
 		_append_overlay(result, "attack_range", attack_range)
 		if hover_cell.x >= 0 and BoardUtils.in_bounds(state, hover_cell):
@@ -353,17 +365,41 @@ func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
 func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
+	var uses_light := GemEffects.unit_has_red_light(state, player)
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
 			if pos == player.pos:
 				continue
-			if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, pos):
+			if uses_light and not GemEffects.is_valid_light_aim(player, pos):
 				continue
 			if not BoardUtils.can_unit_attack_cell(player, state, pos, max_range):
 				continue
 			cells.append(pos)
 	return cells
+
+
+func _cached_reachable_cells(
+	state: GameState,
+	player: UnitState,
+	move_budget: int,
+	unlimited: bool
+) -> Array:
+	var key := [state.get_instance_id(), player.uid, player.pos, move_budget, unlimited]
+	if key != _reachable_cache_key:
+		_reachable_cache_key = key
+		_reachable_cache = BoardUtils.reachable_cells(state, player.pos, move_budget)
+	return _reachable_cache.duplicate()
+
+
+func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited: bool) -> Array:
+	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
+	var uses_light := GemEffects.unit_has_red_light(state, player)
+	var key := [state.get_instance_id(), player.uid, player.pos, max_range, uses_light, unlimited]
+	if key != _attack_range_cache_key:
+		_attack_range_cache_key = key
+		_attack_range_cache = _attack_target_cells(state, player)
+	return _attack_range_cache.duplicate()
 
 
 func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:

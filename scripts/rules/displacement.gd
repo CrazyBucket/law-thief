@@ -133,6 +133,7 @@ static func _push_directional(
 
 		# ─── 越界撞墙 ───────────────────────────────────────────────────────
 		if not _footprint_in_bounds(state, unit, next):
+			_append_collision_motion(events, unit, next, source_uid, "wall_collision", "boundary")
 			var dmg := _resolve_collision_damage(collision_damage, i)
 			if dmg > 0:
 				_deal_unit_collision_damage(
@@ -143,6 +144,9 @@ static func _push_directional(
 		# ─── 撞静态实体（立即截停，按 max_hp 分单/双伤）───────────────────
 		var entity := _blocking_entity_at_anchor(state, unit, next)
 		if entity != null:
+			_append_collision_motion(
+				events, unit, next, source_uid, "entity_collision", "entity", entity.uid, entity.entity_id
+			)
 			var dmg := _resolve_collision_damage(collision_damage, i)
 			EntityRules.on_unit_collide_entity(
 				state, unit, entity, source_uid, events, dmg, damage_context
@@ -152,6 +156,9 @@ static func _push_directional(
 		# ─── 撞可位移单位（立即截停，A/B 同伤，不链推）─────────────────────
 		var blocker := _blocking_unit_at_anchor(state, unit, next)
 		if blocker != null:
+			_append_collision_motion(
+				events, unit, next, source_uid, "unit_collision", "unit", blocker.uid
+			)
 			var dmg := _resolve_collision_damage(collision_damage, i)
 			if dmg > 0:
 				_deal_unit_collision_damage(
@@ -201,6 +208,25 @@ static func _push_directional(
 		if not skip_gem_hooks:
 			GemEffects.on_forced_displacement(state, unit, events)
 	tx.finish("Displacement._push_directional")
+
+
+static func _append_collision_motion(
+	events: Array[Dictionary],
+	unit: UnitState,
+	contact_pos: Vector2i,
+	source_uid: String,
+	reason: String,
+	blocker_kind: String,
+	blocker_uid: String = "",
+	entity_id: String = ""
+) -> void:
+	events.append(_EventBuilder.displacement_impact(unit.uid, unit.pos, contact_pos, {
+		"source_uid": source_uid,
+		"reason": reason,
+		"blocker_kind": blocker_kind,
+		"blocker_uid": blocker_uid,
+		"entity_id": entity_id,
+	}))
 
 
 ## 星状震飞落位：将 unit 从当前位置强制迁移到最近的合法空格（践踏 / 空间挤压共用）

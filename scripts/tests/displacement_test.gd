@@ -55,6 +55,7 @@ func _test_knockback_wall_stop_with_formula_damage() -> void:
 	var steps_taken := unit.pos.x - 4  # = 3
 	var expected_dmg := maxi(1, steps_taken)
 	assert(unit.hp == hp_before - expected_dmg, "wall collision dmg should be max(1,3)=%d, got hp=%d" % [expected_dmg, unit.hp])
+	_assert_displacement_impact(events, unit.uid, Vector2i(8, 3), "boundary")
 	print("  [OK] knockback wall: damage = max(1, actual_steps)")
 
 
@@ -106,6 +107,7 @@ func _test_entity_no_hp_single_damage() -> void:
 	assert(unit.hp < hp_before, "unit should take collision damage")
 	assert(rock.hp == -1, "indestructible rock hp should remain -1, got %d" % rock.hp)
 	assert(rock.alive, "rock should still be alive")
+	_assert_displacement_impact(events, unit.uid, rock.pos, "entity")
 	print("  [OK] entity no-hp: only unit takes damage, rock unchanged")
 
 
@@ -135,6 +137,7 @@ func _test_wall_minimum_one_damage() -> void:
 	Displacement.knockback(state, unit, Vector2i(5, 3), 3, "", events)
 	assert(unit.pos == Vector2i(7, 3), "unit should stay at wall, got %s" % unit.pos)
 	assert(unit.hp == hp_before - 1, "should take minimum 1 collision damage even at 0 steps, hp=%d" % unit.hp)
+	_assert_displacement_impact(events, unit.uid, Vector2i(8, 3), "boundary")
 	print("  [OK] wall collision minimum 1 damage")
 
 
@@ -201,6 +204,7 @@ func _test_dash_toward_blocked() -> void:
 	Displacement.dash_toward(state, unit, target, 5, unit.uid, events, 0)
 	assert(unit.pos == Vector2i(3, 4), "dash should stop one step before blocker, got %s" % unit.pos)
 	assert(unit.hp == unit.max_hp, "dash collision_damage=0 should not deal damage")
+	_assert_displacement_impact(events, unit.uid, Vector2i(4, 4), "unit")
 	assert(BattleInvariantChecker.assert_valid(state, "dash_blocked"))
 	print("  [OK] dash_toward blocked (no collision damage)")
 
@@ -329,3 +333,21 @@ func _assert_damage_event_identity(events: Array, uid: String, reason: String) -
 		assert(ev.has("lethal"), "damage event should include lethal")
 		return
 	assert(false, "missing damage event for %s reason=%s events=%s" % [uid, reason, str(events)])
+
+
+func _assert_displacement_impact(
+	events: Array,
+	uid: String,
+	contact: Vector2i,
+	blocker_kind: String
+) -> void:
+	for ev in events:
+		if str(ev.get("type", "")) != "displacement_impact":
+			continue
+		if str(ev.get("uid", "")) != uid:
+			continue
+		assert(ev.get("contact", Vector2i.ZERO) == contact)
+		assert(str(ev.get("blocker_kind", "")) == blocker_kind)
+		assert(EventValidator.validate_events([ev]).is_empty())
+		return
+	assert(false, "missing displacement impact uid=%s contact=%s events=%s" % [uid, contact, str(events)])

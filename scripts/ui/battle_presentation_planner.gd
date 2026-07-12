@@ -16,6 +16,7 @@ const _POLICIES: Dictionary = {
 	"lightning": {"kind": "electrical", "mode": MODE_PARALLEL},
 	"damage": {"kind": "damage", "mode": MODE_PARALLEL},
 	"move_step": {"kind": "move", "mode": "auto"},
+	"displacement_impact": {"kind": "move", "mode": "auto"},
 	"poison_burst": {"kind": "area_fx", "mode": MODE_PARALLEL},
 	"fire_burst": {"kind": "area_fx", "mode": MODE_PARALLEL},
 	"frost_pulse": {"kind": "area_fx", "mode": MODE_PARALLEL},
@@ -74,7 +75,7 @@ static func build(events: Array) -> Dictionary:
 				beats.append(_beat("damage", MODE_PARALLEL, [], damages.items, [], i, damages.next_index))
 				i = damages.next_index
 			"move":
-				var moves := _collect_types(events, i, ["move_step"])
+				var moves := _collect_types(events, i, ["move_step", "displacement_impact"])
 				var move_mode := MODE_PARALLEL if _moves_are_parallel(moves.items) else MODE_SERIAL
 				beats.append(_beat("move", move_mode, moves.items, [], [], i, moves.next_index))
 				i = moves.next_index
@@ -130,6 +131,7 @@ static func _build_visual_impact_beat(
 static func _build_blast_beat(events: Array, start: int) -> Dictionary:
 	var visuals: Array = []
 	var impacts: Array = []
+	var impact_motions: Array = []
 	var aftermath: Array = []
 	var i := start
 	while i < events.size():
@@ -138,13 +140,15 @@ static func _build_blast_beat(events: Array, start: int) -> Dictionary:
 			visuals.append(events[i])
 		elif event_type == "damage":
 			impacts.append(events[i])
-		elif event_type in ["move_step", "poison_burst", "fire_burst", "frost_pulse", "split_spawn"]:
+		elif event_type in ["move_step", "displacement_impact"]:
+			impact_motions.append(events[i])
+		elif event_type in ["poison_burst", "fire_burst", "frost_pulse", "split_spawn"]:
 			aftermath.append(events[i])
 		else:
 			break
 		i += 1
 	return {
-		"beat": _beat("blast", MODE_PARALLEL, visuals, impacts, aftermath, start, i),
+		"beat": _beat("blast", MODE_PARALLEL, visuals, impacts, aftermath, start, i, impact_motions),
 		"next_index": i,
 	}
 
@@ -179,13 +183,15 @@ static func _beat(
 	impacts: Array,
 	aftermath: Array,
 	start: int,
-	next_index: int
+	next_index: int,
+	impact_motions: Array = []
 ) -> Dictionary:
 	return {
 		"kind": kind,
 		"mode": mode,
 		"visuals": visuals,
 		"impacts": impacts,
+		"impact_motions": impact_motions,
 		"aftermath": aftermath,
 		"source_start": start,
 		"source_end": next_index,

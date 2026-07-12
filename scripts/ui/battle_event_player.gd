@@ -139,8 +139,9 @@ func _play_beat(beat: Dictionary) -> void:
 			_play_damage_batch(impacts)
 			await _await_anim_delay(0.34)
 		"move":
-			if str(beat.get("mode", PresentationPlanner.MODE_SERIAL)) == PresentationPlanner.MODE_PARALLEL:
-				await _play_parallel_move_batch(visuals)
+			if _contains_displacement_impact(visuals) \
+					or str(beat.get("mode", PresentationPlanner.MODE_SERIAL)) == PresentationPlanner.MODE_PARALLEL:
+				await _play_parallel_motion_batch(visuals)
 			else:
 				await _play_move_path_batch(visuals)
 		"area_fx":
@@ -197,14 +198,12 @@ func _play_light_beam_cluster(cluster: Dictionary) -> void:
 func _play_blast_cluster(cluster: Dictionary) -> void:
 	var explode_batch: Array = cluster.get("visuals", [])
 	var damage_batch: Array = cluster.get("impacts", [])
+	var move_batch: Array = cluster.get("impact_motions", [])
 	var aftermath: Array = cluster.get("aftermath", [])
-	var move_batch: Array = []
 	var fx_batch: Array = []
 	var split_spawn_batch: Array = []
 	for event in aftermath:
 		match str(event.get("type", "")):
-			"move_step":
-				move_batch.append(event)
 			"poison_burst", "fire_burst", "frost_pulse":
 				fx_batch.append(event)
 			"split_spawn":
@@ -225,15 +224,15 @@ func _play_blast_cluster(cluster: Dictionary) -> void:
 	for explode_event in explode_batch:
 		_apply_event_state(explode_event)
 	_play_damage_batch(damage_batch)
+	var move_duration := _start_parallel_motion_batch(move_batch)
 	_apply_area_events_for_blast(fx_batch)
 	_play_split_spawn_batch(split_spawn_batch)
+	var recovery := 0.0
 	if timing.is_empty():
-		await _await_anim_delay(BLAST_RECOVERY_DELAY)
+		recovery = _scaled_anim_time(BLAST_RECOVERY_DELAY)
 	else:
-		var recovery := maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
-		await _await_real_delay(recovery)
-	if not move_batch.is_empty():
-		await _play_parallel_move_batch(move_batch)
+		recovery = maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
+	await _await_real_delay(maxf(recovery, move_duration))
 
 
 func _play_electrical_beat(visuals: Array, impacts: Array) -> void:
@@ -266,12 +265,7 @@ func _play_damage_batch(batch: Array) -> void:
 	for damage_event in batch:
 		_prime_event_state(damage_event)
 	for damage_event in batch:
-		var damage_pos: Vector2i = damage_event.get("pos", Vector2i.ZERO)
-		var damage_value: int = int(damage_event.get("damage", 1))
-		var is_crit: bool = bool(damage_event.get("is_crit", false))
-		_board.play_damage_effect(damage_pos, damage_value, is_crit)
-		if _spawn_damage_text.is_valid():
-			_spawn_damage_text.call(damage_pos, damage_value, is_crit, damage_event.get("reason", ""))
+		_play_damage_feedback(damage_event)
 	for damage_event in batch:
 		_apply_event_state(damage_event)
 
@@ -307,12 +301,39 @@ func _play_split_spawn_batch(batch: Array) -> void:
 		_board.play_gem_flash(split_event.get("pos", Vector2i.ZERO), Color(0.35, 0.88, 0.55))
 
 
-func _play_parallel_move_batch(batch: Array) -> void:
+func _play_parallel_motion_batch(batch: Array) -> void:
 	for step_event in batch:
 		_prime_event_state(step_event)
-	await _board.animate_moves_parallel_task(batch)
+	await _board.animate_unit_motions_parallel_task(batch)
 	for step_event in batch:
 		_apply_event_state(step_event)
+
+
+func _start_parallel_motion_batch(batch: Array) -> float:
+	if batch.is_empty():
+		return 0.0
+	for step_event in batch:
+		_prime_event_state(step_event)
+	return float(_board.animate_unit_motions_parallel(batch))
+
+
+func _contains_displacement_impact(batch: Array) -> bool:
+	for event in batch:
+		if str(event.get("type", "")) == "displacement_impact":
+			return true
+	return false
+
+
+func _play_damage_feedback(ev: Dictionary) -> void:
+	var victim_uid := str(ev.get("uid", ev.get("victim_uid", "")))
+	if not victim_uid.is_empty() and _board.has_method("play_unit_hit"):
+		_board.play_unit_hit(victim_uid)
+	var damage_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
+	var damage_value: int = int(ev.get("damage", 1))
+	var is_crit: bool = bool(ev.get("is_crit", false))
+	_board.play_damage_effect(damage_pos, damage_value, is_crit)
+	if _spawn_damage_text.is_valid():
+		_spawn_damage_text.call(damage_pos, damage_value, is_crit, ev.get("reason", ""))
 
 
 func _play_move_path_batch(batch: Array) -> void:
@@ -364,14 +385,10 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"damage":
 			var attacker_uid: String = str(ev.get("attacker_uid", ""))
 			var damage_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var damage_value: int = int(ev.get("damage", 1))
-			var is_crit: bool = bool(ev.get("is_crit", false))
 			if not attacker_uid.is_empty() and not bool(ev.get("keep_facing", false)):
 				_board.start_strike_effect(attacker_uid, damage_pos)
 				await _await_anim_delay(0.12)
-			_board.play_damage_effect(damage_pos, damage_value, is_crit)
-			if _spawn_damage_text.is_valid():
-				_spawn_damage_text.call(damage_pos, damage_value, is_crit, ev.get("reason", ""))
+			_play_damage_feedback(ev)
 			await _await_anim_delay(0.38)
 		"explode":
 			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
@@ -449,8 +466,7 @@ func _apply_event_state(ev: Dictionary) -> void:
 			if victim == null:
 				return
 			victim.hp = maxi(0, victim.hp - int(ev.get("damage", 0)))
-			if victim.hp <= 0:
-				victim.alive = false
+			# 致命伤仍保留单位到本段表现结束，让受击帧可见；最终状态切换时再移除。
 		"poison_burst":
 			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
 			var pattern := str(ev.get("pattern", ""))
