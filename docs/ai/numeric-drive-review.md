@@ -1,1027 +1,1028 @@
-# Numeric Drive Review
+# 数值驱动审查
 
 ## 2026-07-07 / Phase 01
 
-Scope reviewed:
+审查范围：
 
-- combat config, status config, AI profile config, gem effect level config
-- unit balance config for patrol guard, stone bow guard, fission slime
-- current overload numeric flow
+- 战斗配置、状态配置、AI 配置文件、宝石效果等级配置
+- 巡逻守卫、石弓守卫、裂变史莱姆的单位平衡配置
+- 当前过载数值流
 
-What is in a good place:
+状况良好的方面：
 
-- A real config -> validator -> test -> verify chain now exists for multiple balance layers.
-- Stone bow guard's utility scoring is no longer trapped in code constants; its behavior weights now live in `unit_defs.balance`.
-- Patrol guard already uses unit balance values for its main semantic knobs (`rampage_move_bonus`, `charge_bonus`, `charge_min_steps`).
+- 多个平衡层现在存在真正的 配置 -> 验证器 -> 测试 -> 验证 链条。
+- 石弓守卫的效用评分不再被困在代码常量中；其行为权重现在存在于 `unit_defs.balance` 中。
+- 巡逻守卫已将其主要语义参数（`rampage_move_bonus`、`charge_bonus`、`charge_min_steps`）使用单位平衡值。
 
-What still needed correction before calling the numeric-drive work "complete":
+在称数值驱动工作为"完成"之前仍需纠正的方面：
 
-- `OverloadRules.ai_control_probability()` still used a hard-coded formula before this phase's follow-up change.
-- Semantic contract coverage is still only 38 / 90, so many configurable gem semantics are not yet protected by executable design contracts.
-- Some tests still encode old constants directly instead of reading the balance surface they are meant to verify.
+- `OverloadRules.ai_control_probability()` 在此阶段的后续更改之前仍使用硬编码公式。
+- 语义合约覆盖率仍仅为 38 / 90，因此许多可配置宝石语义尚未受可执行设计合约保护。
+- 一些测试仍直接编码旧常量，而非读取其旨在验证的平衡表面。
 
-Direction check:
+方向检查：
 
-- Continue moving formulas into named config fields rather than only extracting isolated constants.
-- Prefer existing config surfaces (`combat_config`, `unit_defs.balance`, `status_config`, `ai_profiles`) over inventing a new one unless the domain truly needs its own schema.
-- Treat every new balance field as incomplete until validator coverage and at least one focused test are added.
+- 继续将公式移入命名的配置字段，而非仅提取孤立常量。
+- 优先使用现有配置表面（`combat_config`、`unit_defs.balance`、`status_config`、`ai_profiles`），而非发明新的表面，除非该领域确实需要自己的模式。
+- 将每个新的平衡字段视为不完整，直到添加了验证器覆盖和至少一个聚焦测试。
 
 ## 2026-07-07 / Phase 02
 
-Scope reviewed:
+审查范围：
 
-- overload backlash and AI-control probability flow
-- review hygiene: issue logging and phase review artifacts
+- 过载反冲和 AI 控制概率流
+- 审查规范：问题记录和阶段审查产物
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `OverloadRules.ai_control_probability()` now reads its clamp, baseline, penalty, and max-probability values from `combat_config`.
-- `balance_config_test` now covers the new overload fields and validates type safety for the new combat-config surface.
-- Overload tests were partially decoupled from fixed constants by reading `CombatConfig` for operation backlash damage.
+- `OverloadRules.ai_control_probability()` 现在从 `combat_config` 读取其限制、基线、惩罚和最大概率值。
+- `balance_config_test` 现在覆盖新的过载字段，并验证新战斗配置表面的类型安全。
+- 过载测试通过读取 `CombatConfig` 获取操作反冲伤害，部分解耦了与固定常量的耦合。
 
-Review judgment:
+审查结论：
 
-- Direction is still good. We are externalizing behavior formulas into existing balance surfaces rather than scattering new ad hoc config files.
-- The next phase should target semantic coverage and the remaining hard-coded reward/growth formulas, not another round of tiny constant extraction.
+- 方向仍然良好。我们正在将行为公式具体化到现有平衡表面中，而非分散新的临时配置文件。
+- 下一阶段应针对语义覆盖率和剩余的硬编码奖励/成长公式，而非另一轮微小的常量提取。
 
 ## 2026-07-07 / Phase 03
 
-Scope reviewed:
+审查范围：
 
-- event/economy numeric references
-- config validation versus runtime resolution
-- verify coverage for adventure-side numeric tests
+- 事件/经济数值引用
+- 配置验证与运行时解析
+- 冒险端数值测试的验证覆盖
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `economy_config.amount_refs` is now part of the validated balance surface rather than a loose JSON convention.
-- Event definitions can reference shared numeric values through `amount_ref`, and `RoomEffectExecutor` resolves those refs at runtime for both effects and resource-gate conditions.
-- `economy_service_test`, `room_effect_executor_test`, and `event_service_test` now help cover the adventure-side numeric path, and `tools/verify` runs the first two classes of checks more often.
-- The adventure-side numeric chain has fresh execution evidence from targeted tests plus a manual equivalent run of the current fast suite.
+- `economy_config.amount_refs` 现在是已验证平衡表面的一部分，而非松散的 JSON 约定。
+- 事件定义可以通过 `amount_ref` 引用共享数值，`RoomEffectExecutor` 在运行时为效果和资源门控条件解析这些引用。
+- `economy_service_test`、`room_effect_executor_test` 和 `event_service_test` 现在帮助覆盖冒险端数值路径，`tools/verify` 更频繁地运行前两类检查。
+- 冒险端数值链条具有来自针对性测试的全新执行证据，加上当前快速套件的手动等效运行。
 
-Review judgment:
+审查结论：
 
-- Direction remains healthy: this phase moved from "constants extracted into data" to "data is actually the execution authority".
-- One important gap remains outside pure mechanics: player-facing event copy is still free to duplicate numeric values by hand, so behavior and text can drift unless we add a templating/localization layer later.
-- Verification ergonomics are weaker than they should be on Windows because the wrapper scripts are currently less reliable than the native Godot test entrypoint.
+- 方向保持健康：此阶段从"提取常量到数据中"转向"数据实际上是执行权威"。
+- 一个重要的空白仍然存在于纯机制之外：面向玩家的事件文本仍然可以手动复制数值，因此行为和文本可能漂移，除非我们稍后添加模板/本地化层。
+- Windows 上的验证体验比应有的更弱，因为包装脚本目前不如原生 Godot 测试入口可靠。
 
 ## 2026-07-07 / Phase 04
 
-Scope reviewed:
+审查范围：
 
-- player-facing numeric copy for events and map rules
-- validator coverage for text tokens
-- changed-file verification routing for adventure-side services/resources
+- 面向玩家的事件和地图规则数值文本
+- 文本令牌的验证器覆盖
+- 冒险端服务/资源的变更文件验证路由
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Event and map-rule copy can now render numeric placeholders from the same data that drives behavior, through `NumericTextResolver`.
-- Debug event labels/body text no longer duplicate the toll, heal, and gold amounts by hand; they use `amount_ref` tokens backed by `economy_config.amount_refs`.
-- Map rule descriptions now render percent deltas from their actual modifier values, instead of spelling out `+10%`, `-20%`, or `+50%` separately from the effect payload.
-- `AdventureConfigValidator` now validates text tokens for known amount refs and known rule effect ids.
-- `tools/verify changed` now routes adventure resource/service changes through the broader fast suite, including `adventure_rule_registry_test` and `shop_service_test`.
+- 事件和地图规则文本现在可以通过 `NumericTextResolver` 从驱动行为的同一数据渲染数值占位符。
+- 调试事件标签/正文文本不再手动复制通行费、治疗和金币数量；它们使用由 `economy_config.amount_refs` 支持的 `amount_ref` 令牌。
+- 地图规则描述现在从其实际修正值渲染百分比增量，而非与效果载荷分开拼写 `+10%`、`-20%` 或 `+50%`。
+- `AdventureConfigValidator` 现在为已知数量引用和已知规则效果 ID 验证文本令牌。
+- `tools/verify changed` 现在将冒险资源/服务更改路由到更广泛的快速套件，包括 `adventure_rule_registry_test` 和 `shop_service_test`。
 
-Review judgment:
+审查结论：
 
-- Direction is good: the work is moving from numeric data driving only mechanics toward numeric data also driving player-visible choice text.
-- This is still intentionally lightweight. It is not a full localization system, but it removes the most dangerous current drift pattern while preserving the existing JSON authoring style.
-- Remaining risk: any new plain text that embeds numbers without tokens can still drift, so a future localization/schema pass should make numeric placeholders a stronger convention.
+- 方向良好：工作正从数值数据仅驱动机制转向数值数据也驱动玩家可见的选择文本。
+- 这仍然是有意轻量级的。它不是完整的本地化系统，但它移除了当前最危险的漂移模式，同时保留了现有的 JSON 编辑风格。
+- 剩余风险：任何嵌入数字但不带令牌的新纯文本仍可能漂移，因此未来的本地化/模式传递应将数值占位符变为更强的约定。
 
 ## 2026-07-07 / Phase 05
 
-Scope reviewed:
+审查范围：
 
-- REST_SITE heal ratio source
-- shared numeric reference resolution
-- validation of unknown `amount_ref` usage
+- REST_SITE 治疗比率来源
+- 共享数值引用解析
+- 未知 `amount_ref` 使用的验证
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `REST_SITE` no longer hard-codes its `0.2` heal ratio directly in `room_defs`; it now references `rest_site_heal_ratio` from `economy_config.amount_refs`.
-- `EconomyService.resolve_numeric_field()` is now the shared runtime path for inline `amount` and referenced `amount_ref` values.
-- `RoomEffectExecutor` and `RoomFlowService` both use the same resolver, so rest healing and event effects no longer maintain separate amount-ref logic.
-- `AdventureConfigValidator` now rejects unknown `amount_ref` values when a reference catalog is available.
-- `room_flow_service_test` and `full_run_contract_test` now assert that rest healing starts from the configured base ratio before modifiers are applied.
+- `REST_SITE` 不再在 `room_defs` 中直接硬编码其 `0.2` 治疗比率；它现在引用 `economy_config.amount_refs` 中的 `rest_site_heal_ratio`。
+- `EconomyService.resolve_numeric_field()` 现在是内联 `amount` 和引用 `amount_ref` 值的共享运行时路径。
+- `RoomEffectExecutor` 和 `RoomFlowService` 都使用相同的解析器，因此休息治疗和事件效果不再维护单独的数量引用逻辑。
+- `AdventureConfigValidator` 现在在引用目录可用时拒绝未知的 `amount_ref` 值。
+- `room_flow_service_test` 和 `full_run_contract_test` 现在断言休息治疗从已配置的基础比率开始，之后才应用修正。
 
-Review judgment:
+审查结论：
 
-- Direction remains aligned: we are removing isolated numeric literals from room behavior and folding them into the same config -> validator -> runtime -> test chain.
-- The shared resolver is a better shape than copying amount-ref parsing into each service.
-- New concern: `amount_refs` is now carrying both absolute quantities and ratios. It works mechanically, but future schema design should make units/types more explicit.
+- 方向保持一致：我们正在从房间行为中移除孤立的数值字面量，并将其折叠到相同的 配置 -> 验证器 -> 运行时 -> 测试 链条中。
+- 共享解析器比将数量引用解析复制到每个服务中更好。
+- 新关注点：`amount_refs` 现在同时承载绝对数量和比率。它在机制上可行，但未来的模式设计应使单位/类型更加明确。
 
 ## 2026-07-07 / Phase 06
 
-Scope reviewed:
+审查范围：
 
-- amount reference schema clarity
-- compatibility between legacy numeric refs and typed refs
-- text rendering and config validation after typed-ref migration
+- 数量引用模式清晰度
+- 旧版数值引用与类型化引用之间的兼容性
+- 类型化引用迁移后的文本渲染和配置验证
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `economy_config.amount_refs` now uses typed object refs for current data: each ref carries `value`, `kind`, and `unit`.
-- `EconomyService.get_amount_ref()` still accepts legacy numeric refs, while `get_amount_ref_def()` exposes metadata for typed refs.
-- `NumericTextResolver` can render both legacy numeric refs and typed object refs, so event copy stays tied to the same numeric source.
-- `AdventureConfigValidator` now validates typed amount refs and requires `value`, `kind`, and `unit` for object refs.
-- Tests now assert that `rest_site_heal_ratio` is a ratio with `max_hp` unit metadata, not just a raw `0.2`.
+- `economy_config.amount_refs` 现在为当前数据使用类型化对象引用：每个引用携带 `value`、`kind` 和 `unit`。
+- `EconomyService.get_amount_ref()` 仍然接受旧版数值引用，而 `get_amount_ref_def()` 为类型化引用暴露元数据。
+- `NumericTextResolver` 可以渲染旧版数值引用和类型化对象引用，因此事件文本保持与相同数值源的关联。
+- `AdventureConfigValidator` 现在验证类型化数量引用，并要求对象引用具有 `value`、`kind` 和 `unit`。
+- 测试现在断言 `rest_site_heal_ratio` 是一个具有 `max_hp` 单位元数据的比率，而非仅是原始的 `0.2`。
 
-Review judgment:
+审查结论：
 
-- This is a meaningful schema-quality improvement: references are no longer just an untyped bag of numbers.
-- Backward compatibility is preserved, which keeps the migration path sane while allowing current authored data to be more explicit.
-- Remaining risk: the validator checks that `kind` and `unit` exist, but it does not yet enforce action-specific unit compatibility such as preventing a `max_hp` ratio from being used as a gold cost.
+- 这是一个有意义的模式质量改进：引用不再仅仅是一个无类型的数据包。
+- 保留了向后兼容性，使迁移路径保持理智，同时允许当前已设定的数据更加明确。
+- 剩余风险：验证器检查 `kind` 和 `unit` 是否存在，但尚未强制执行特定于行动的单元兼容性，例如防止 `max_hp` 比率被用作金币消耗。
 
 ## 2026-07-08 / Phase 07
 
-Scope reviewed:
+审查范围：
 
-- action-specific `amount_ref` compatibility
-- resource-gate condition validation
-- validator error quality for malformed authored data
+- 特定于行动的 `amount_ref` 兼容性
+- 资源门控条件验证
+- 格式错误设定数据的验证器错误质量
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `AdventureConfigValidator` now binds typed amount refs to their use site:
-  - resource grants/costs and `resource_gte` require `flat/<resource_id>`
-  - direct heal/damage effects require `flat/hp`
-  - percent heal effects require `ratio/max_hp`
-- Resource effects and resource-gate conditions now report a missing `resource_id` explicitly.
-- Legacy numeric refs still pass compatibility checks as a migration path, while current typed refs get stricter validation.
-- `room_effect_executor_test` now covers wrong-kind and wrong-unit examples, including using a rest-heal ratio as a gold cost and using a flat HP ref as a percent heal.
+- `AdventureConfigValidator` 现在将类型化数量引用绑定到其使用点：
+  - 资源授予/消耗和 `resource_gte` 需要 `flat/<resource_id>`
+  - 直接治疗/伤害效果需要 `flat/hp`
+  - 百分比治疗效果需要 `ratio/max_hp`
+- 资源效果和资源门控条件现在显式报告缺失的 `resource_id`。
+- 旧版数值引用仍然通过兼容性检查作为迁移路径，而当前类型化引用获得更严格的验证。
+- `room_effect_executor_test` 现在覆盖错误种类和错误单位的示例，包括将休息治疗比率用作金币消耗，以及将 flat HP 引用用作百分比治疗。
 
-Review judgment:
+审查结论：
 
-- Direction is still aligned: the numeric surface is not only easier to edit, it is harder to wire into the wrong semantic slot.
-- This is higher-value than another round of constant extraction because it prevents whole classes of authoring mistakes before runtime.
-- Remaining risk: inline `amount` literals are still intentionally accepted and therefore do not carry unit metadata. That keeps compatibility easy, but authored content can still bypass the typed-ref safety net.
+- 方向保持一致：数值表面不仅更容易编辑，而且更难连接到错误的语义槽位。
+- 这比另一轮常量提取更有价值，因为它防止了整类编辑错误在运行时之前发生。
+- 剩余风险：内联 `amount` 字面量仍被有意接受，因此不携带单位元数据。这保持兼容性容易，但已设定的内容仍可绕过类型化引用安全网。
 
 ## 2026-07-08 / Phase 08
 
-Scope reviewed:
+审查范围：
 
-- authored adventure event/room numeric payloads
-- validator strictness for inline `amount`
-- remaining raw amount readers outside the adventure config path
+- 已设定的冒险事件/房间数值载荷
+- 对内联 `amount` 的验证器严格性
+- 冒险配置路径之外的剩余原始数量读取器
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Current authored adventure config already uses `amount_ref` for numeric room/event effects and conditions.
-- `AdventureConfigValidator` now rejects inline `amount` fields when an amount-ref catalog is supplied, so future authored event/room data cannot silently bypass typed refs.
-- `RoomEffectExecutor` still supports inline `amount` at runtime, preserving service-internal hydrated values such as modified rest healing after rule multipliers are applied.
-- `room_effect_executor_test` now covers authored inline amount rejection.
+- 当前已设定的冒险配置已对数值房间/事件效果和条件使用 `amount_ref`。
+- 当数量引用目录被提供时，`AdventureConfigValidator` 现在拒绝内联 `amount` 字段，因此未来已设定的事件/房间数据不能静默绕过类型化引用。
+- `RoomEffectExecutor` 在运行时仍支持内联 `amount`，保留服务内部的 hydrated 值，例如规则倍率应用后的修改后休息治疗。
+- `room_effect_executor_test` 现在覆盖已设定内联数量的拒绝。
 
-Review judgment:
+审查结论：
 
-- This is the right boundary: authored data is strict, runtime plumbing remains flexible.
-- The adventure-side amount-ref path now has a clearer contract: content authors edit named typed refs, not anonymous numbers hidden inside effects.
-- Remaining risk has moved outside this subsystem: relic effect registration still reads raw `amount` values directly, so the next high-value pass should bring relic numeric effects under a comparable config/validator/test chain.
+- 这是正确的边界：已设定数据是严格的，运行时管道保持灵活。
+- 冒险端数量引用路径现在具有更清晰的合约：内容作者编辑命名的类型化引用，而非隐藏在效果内部的匿名数字。
+- 剩余风险已移出此子系统：遗物效果注册仍直接读取原始 `amount` 值，因此下一个高价值传递应将遗物数值效果纳入可比较的 配置/验证器/测试 链条。
 
 ## 2026-07-08 / Phase 09
 
-Scope reviewed:
+审查范围：
 
-- relic action amount payloads
-- `DataRegistry` relic amount-ref loading
-- relic definition validation and runtime amount resolution
+- 遗物行动数量载荷
+- `DataRegistry` 遗物数量引用加载
+- 遗物定义验证和运行时数量解析
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `resources/relics/relic_numeric_refs.json` as the typed numeric surface for relic action amounts.
-- Migrated current relic action amounts from inline `amount` to named `amount_ref` entries:
-  - autopsy-log heal
-  - cracked-amulet shield
-  - pressure-valve temporary move
-  - reinforced-base shield
-- `DataRegistry` now loads, validates, and exposes relic amount refs before relic definitions are validated.
-- `RelicEffectRegistry` resolves `amount_ref` at runtime while keeping inline `amount` compatibility for direct/test calls.
-- `BalanceConfigValidator` now validates relic amount-ref schema and rejects authored inline amount fields when a ref catalog is available.
-- `balance_config_test` and `status_test` cover the new validator and runtime shield path.
+- 添加了 `resources/relics/relic_numeric_refs.json` 作为遗物行动数量的类型化数值表面。
+- 将当前遗物行动数量从内联 `amount` 迁移到命名的 `amount_ref` 条目：
+  - autopsy-log 治疗
+  - cracked-amulet 护盾
+  - pressure-valve 临时移动
+  - reinforced-base 护盾
+- `DataRegistry` 现在在遗物定义被验证之前加载、验证和暴露遗物数量引用。
+- `RelicEffectRegistry` 在运行时解析 `amount_ref`，同时为直接/测试调用保留内联 `amount` 兼容性。
+- `BalanceConfigValidator` 现在验证遗物数量引用模式，并在引用目录可用时拒绝设定的内联数量字段。
+- `balance_config_test` 和 `status_test` 覆盖新的验证器和运行时护盾路径。
 
-Review judgment:
+审查结论：
 
-- This removes the specific raw `effect.get("amount", 1)` debt from relic action amounts and gives designers one named place to tune these values.
-- The design is intentionally parallel to the adventure amount-ref path, which keeps authoring concepts consistent across systems.
-- Remaining risk: relic modifier values, ratio fields, and per-slot formulas still use raw fields such as `value`, `ratio`, and `per_empty_slot`. Those should be pulled into the same typed-ref/validator style in a later pass.
+- 这从遗物行动数量中移除了特定的原始 `effect.get("amount", 1)` 债务，并给设计师一个命名的位置来调整这些值。
+- 设计有意与冒险数量引用路径平行，使编辑概念在系统间保持一致。
+- 剩余风险：遗物修正值、比率字段和每槽位公式仍使用原始字段，如 `value`、`ratio` 和 `per_empty_slot`。这些应在后续传递中以相同的类型化引用/验证器风格纳入。
 
 ## 2026-07-08 / Phase 10
 
-Scope reviewed:
+审查范围：
 
-- relic modifier values
-- relic ratio and per-empty-slot formula inputs
-- verify routing for relic resource changes
+- 遗物修正值
+- 遗物比率和每空槽位公式输入
+- 遗物资源变更的验证路由
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `resources/relics/relic_numeric_refs.json` is now the shared typed numeric surface for relic action amounts, modifier values, ratios, and per-slot formula inputs.
-- Current relic effect numeric fields moved from inline authored values to refs:
-  - `value_ref` for numeric modifier values
-  - `ratio_ref` for max-HP reduction
-  - `per_empty_slot_ref` for empty-slot range bonuses
-- `RelicEffectRegistry` now resolves those refs through one `_resolve_number()` path.
-- `BalanceConfigValidator` now validates expected `kind/unit` per relic field and rejects inline authored numeric values when refs are available.
-- `attack_miss_chance` now aggregates as a float instead of being truncated through the integer additive modifier path.
-- `tools/verify changed` now routes `resources/relics/` changes through the fast suite.
+- `resources/relics/relic_numeric_refs.json` 现在是遗物行动数量、修正值、比率和每槽位公式输入的共享类型化数值表面。
+- 当前遗物效果数值字段从内联设定值移至引用：
+  - 数值修正值使用 `value_ref`
+  - 最大 HP 减少使用 `ratio_ref`
+  - 空槽位范围加成使用 `per_empty_slot_ref`
+- `RelicEffectRegistry` 现在通过一个 `_resolve_number()` 路径解析这些引用。
+- `BalanceConfigValidator` 现在验证每个遗物字段的预期 `kind/unit`，并在引用可用时拒绝内联设定的数值。
+- `attack_miss_chance` 现在以浮点数聚合，而非通过整数累加修正路径被截断。
+- `tools/verify changed` 现在将 `resources/relics/` 更改路由到快速套件。
 
-Review judgment:
+审查结论：
 
-- This materially improves editability: most active relic effect numbers now live in one named, typed file rather than inside effect payloads.
-- The validator is doing useful semantic work, not just type checking; it catches using a damage ref as a chance, a shield ref as max-HP ratio, or an inline value where a ref is required.
-- Remaining risk: relic `weight_rules` still use raw thresholds and multipliers in `relic_defs`. Those are selection-balance numbers rather than effect execution numbers, but they should get their own typed config surface.
+- 这实质性地改进了可编辑性：大多数活跃遗物效果数字现在存在于一个命名的、类型化的文件中，而非在效果载荷内部。
+- 验证器正在进行有用的语义工作，而不仅仅是类型检查；它捕获将伤害引用用作概率、将护盾引用用作最大 HP 比率，或在需要引用处使用内联值。
+- 剩余风险：遗物 `weight_rules` 仍在 `relic_defs` 中使用原始阈值和倍率。这些是选择平衡数字而非效果执行数字，但它们应该获得自己的类型化配置表面。
 
 ## 2026-07-08 / Phase 11
 
-Scope reviewed:
+审查范围：
 
-- relic `weight_rules`
-- relic selection-weight thresholds and multipliers
-- runtime `compute_relic_weight()` path
+- 遗物 `weight_rules`
+- 遗物选择权重阈值和倍率
+- 运行时 `compute_relic_weight()` 路径
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Relic selection numbers now use the same typed numeric-ref surface as relic effects.
-- `weight_rules` now use:
-  - `value_ref` for numeric thresholds such as slot-count requirements
-  - `multiplier_ref` for selection-weight multipliers
-- String match values such as `gem_split`, `black`, and `relic_copper_wire` stay inline because they are ids, not numeric balance values.
-- `DataRegistry.compute_relic_weight()` resolves ref-backed thresholds and multipliers at runtime.
-- `BalanceConfigValidator` now validates weight-rule ref usage, including wrong threshold units and inline multiplier drift.
-- `balance_config_test` covers validator failures and runtime weight computation through refs.
+- 遗物选择数字现在使用与遗物效果相同的类型化数值引用表面。
+- `weight_rules` 现在使用：
+  - 数值阈值（如槽位数量要求）使用 `value_ref`
+  - 选择权重倍率使用 `multiplier_ref`
+- 字符串匹配值如 `gem_split`、`black` 和 `relic_copper_wire` 保持内联，因为它们是 ID 而非数值平衡值。
+- `DataRegistry.compute_relic_weight()` 在运行时解析引用支持的阈值和倍率。
+- `BalanceConfigValidator` 现在验证权重规则引用使用，包括错误的阈值单位和内联倍率漂移。
+- `balance_config_test` 覆盖验证器失败和通过引用的运行时权重计算。
 
-Review judgment:
+审查结论：
 
-- The relic side now has a much more coherent authoring model: effect numbers and selection-weight numbers are edited through named typed refs.
-- Keeping string ids inline is the right boundary; pushing ids into numeric refs would make the data less legible without improving balance editability.
-- Remaining risk has moved upward: player-facing relic descriptions still spell out numbers by hand, so text can drift from `relic_numeric_refs`.
+- 遗物端现在具有更连贯的编辑模型：效果数字和选择权重数字通过命名的类型化引用进行编辑。
+- 保持字符串 ID 内联是正确的边界；将 ID 推入数值引用会使数据可读性降低，而不会改善平衡可编辑性。
+- 剩余风险已向上移动：面向玩家的遗物描述仍手动拼写数字，因此文本可能与 `relic_numeric_refs` 漂移。
 
 ## 2026-07-08 / Phase 12
 
-Scope reviewed:
+审查范围：
 
-- player-facing relic description numbers
-- relic text token validation
-- `DataRegistry.get_relic_def()` description hydration path
+- 面向玩家的遗物描述数字
+- 遗物文本令牌验证
+- `DataRegistry.get_relic_def()` 描述 hydration 路径
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Relic descriptions can now render numeric placeholders from `resources/relics/relic_numeric_refs.json`.
-- Current relic descriptions that reference tunable effect/weight numbers now use `{relic_numeric_ref:...}`, `{relic_numeric_signed:...}`, or `{relic_numeric_percent:...}` tokens instead of duplicating values by hand.
-- `BalanceConfigValidator.validate_relic_defs()` now validates relic description tokens and rejects unknown numeric refs.
-- `DataRegistry` renders relic descriptions at load time, so existing UI call sites can keep reading `desc` without learning token semantics.
-- `get_relic_def()` now returns a duplicate, reducing accidental mutation of the loaded definition cache.
-- `balance_config_test` covers rendered description output and invalid description-token rejection.
+- 遗物描述现在可以从 `resources/relics/relic_numeric_refs.json` 渲染数值占位符。
+- 当前引用可调优效果/权重数字的遗物描述现在使用 `{relic_numeric_ref:...}`、`{relic_numeric_signed:...}` 或 `{relic_numeric_percent:...}` 令牌，而非手动复制值。
+- `BalanceConfigValidator.validate_relic_defs()` 现在验证遗物描述令牌并拒绝未知的数值引用。
+- `DataRegistry` 在加载时渲染遗物描述，因此现有 UI 调用点可以继续读取 `desc` 而无需了解令牌语义。
+- `get_relic_def()` 现在返回副本，减少对加载定义缓存的意外修改。
+- `balance_config_test` 覆盖渲染的描述输出和无效描述令牌拒绝。
 
-Review judgment:
+审查结论：
 
-- This closes the main behavior/text drift loop for current ref-backed relic numbers: designers tune the numeric ref and both mechanics and visible description follow it.
-- Keeping the resolver in `DataRegistry` is the right boundary for now because relic definitions are already consumed as hydrated data by UI and shop flows.
-- New issue exposed: `relic_painkiller` still describes a numeric damage cap, but the behavior is currently represented as a boolean `first_damage_absorb` modifier and hard-coded to cap incoming damage at 1 in `CombatRules.apply_damage()`.
+- 这关闭了当前引用支持的遗物数字的主要行为/文本漂移循环：设计师调整数值引用，机制和可见描述都跟随它。
+- 将解析器保留在 `DataRegistry` 中是当前的正确边界，因为遗物定义已被 UI 和商店流作为 hydrated 数据消费。
+- 暴露的新问题：`relic_painkiller` 仍描述数值伤害上限，但其行为当前表示为布尔值 `first_damage_absorb` 修正，并在 `CombatRules.apply_damage()` 中硬编码为将承受伤害上限设为 1。
 
 ## 2026-07-08 / Phase 13
 
-Scope reviewed:
+审查范围：
 
-- `relic_painkiller` first-damage cap behavior
-- relic numeric refs for damage-cap modifiers
-- runtime damage application path in `CombatRules.apply_damage()`
+- `relic_painkiller` 首次伤害上限行为
+- 伤害上限修正的遗物数值引用
+- `CombatRules.apply_damage()` 中的运行时伤害应用路径
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `relic_painkiller_damage_cap` to `resources/relics/relic_numeric_refs.json`.
-- `relic_painkiller` now uses the same numeric token system for its description and exposes a `first_damage_cap` modifier backed by that ref.
-- `CombatRules.apply_damage()` no longer hard-codes `incoming = 1`; it queries `first_damage_cap` and applies it as an upper bound.
-- `BalanceConfigValidator` now validates `first_damage_cap` as `flat/damage`, so shield or chance refs cannot be wired into that slot.
-- `status_test` now verifies that painkiller caps only the first incoming damage event and that the cap is driven through relic numeric refs.
+- 将 `relic_painkiller_damage_cap` 添加到 `resources/relics/relic_numeric_refs.json`。
+- `relic_painkiller` 现在对其描述使用相同的数值令牌系统，并暴露由该引用支持的 `first_damage_cap` 修正。
+- `CombatRules.apply_damage()` 不再硬编码 `incoming = 1`；它查询 `first_damage_cap` 并将其作为上限应用。
+- `BalanceConfigValidator` 现在验证 `first_damage_cap` 为 `flat/damage`，因此护盾或概率引用不能被连接到该槽位。
+- `status_test` 现在验证止痛药仅限制首次承受伤害事件，且上限通过遗物数值引用驱动。
 
-Review judgment:
+审查结论：
 
-- Splitting `first_damage_absorb` from `first_damage_cap` is cleaner than changing the existing boolean modifier into a number; the former answers "can it trigger?" and the latter answers "what number does it use?"
-- The cap is applied with `min(incoming, cap)`, preserving cap semantics even if future tuning raises the value above small incoming hits.
-- This removes the last known raw numeric value from current relic descriptions and brings the corresponding behavior under the same typed-ref chain.
+- 将 `first_damage_absorb` 与 `first_damage_cap` 分开比将现有布尔修正改为数字更清晰；前者回答"它能触发吗？"，后者回答"它使用什么数字？"
+- 上限通过 `min(incoming, cap)` 应用，即使未来调优将值提高到小承受命中之上，也保留上限语义。
+- 这从当前遗物描述中移除了最后一个已知的原始数值，并将相应行为纳入相同的类型化引用链条。
 
 ## 2026-07-09 / Phase 14
 
-Scope reviewed:
+审查范围：
 
-- shop offer counts and shop-pool config authority
-- adventure map-rule modifier allow-list
-- old shop room resolution path
+- 商店提供数量和商店池配置权威
+- 冒险地图规则修正允许列表
+- 旧商店房间解析路径
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Removed obsolete `shop_offer_count` from `resources/adventure/economy_config.json`; shop item counts now live only in `resources/adventure/shop_pools.json`.
-- `AdventureConfigValidator.validate_shop_pools()` now validates shop offer counts as integer, non-negative values and requires non-empty source ids.
-- The validator also rejects a shop pool that would offer zero total items.
-- `RoomFlowService` no longer pre-rolls `RunService.get_or_roll_gem_offer(room_id, "shop", 3)` in the resolved SHOP branch; shop offers are generated by `ShopService` from `shop_pools.json`.
-- `AdventureConfigValidator.MODIFIER_IDS` now only allows modifiers that `AdventureRuleRegistry.query_modifier()` actually handles: `gold_gain_mult`, `shop_price_mult`, and `rest_heal_mult`.
-- Tests cover valid/invalid shop pool config and reject the previously allowed-but-unhandled `shop_offer_count_bonus` modifier.
-- `docs/game-completion-engineering-spec.md` was updated so the engineering spec no longer presents unimplemented modifiers or obsolete `shop_offer_count` as active config.
+- 从 `resources/adventure/economy_config.json` 中移除过时的 `shop_offer_count`；商店物品数量现在仅存在于 `resources/adventure/shop_pools.json` 中。
+- `AdventureConfigValidator.validate_shop_pools()` 现在验证商店提供数量为整数、非负值，并要求非空来源 ID。
+- 验证器还拒绝提供零总物品的商店池。
+- `RoomFlowService` 不再在已解析的 SHOP 分支中预先生成 `RunService.get_or_roll_gem_offer(room_id, "shop", 3)`；商店提供由 `ShopService` 从 `shop_pools.json` 生成。
+- `AdventureConfigValidator.MODIFIER_IDS` 现在仅允许 `AdventureRuleRegistry.query_modifier()` 实际处理的修正：`gold_gain_mult`、`shop_price_mult` 和 `rest_heal_mult`。
+- 测试覆盖有效/无效商店池配置，并拒绝之前允许但未处理的 `shop_offer_count_bonus` 修正。
+- `docs/game-completion-engineering-spec.md` 已更新，因此工程规范不再将未实现的修正或过时的 `shop_offer_count` 呈现为活跃配置。
 
-Review judgment:
+审查结论：
 
-- This phase reduces config authority drift rather than adding another knob: designers now have one place to edit shop offer composition.
-- Tightening the modifier allow-list is important for numeric-drive quality because a "valid" number that runtime ignores is worse than a missing feature.
-- Remaining broader risk: reward/offer counts outside shop flows still need a fuller pass, especially battle reward option counts and relic offer counts requested from UI call sites.
+- 此阶段减少配置权威漂移而非添加另一个参数：设计师现在有一个位置来编辑商店提供组合。
+- 收紧修正允许列表对数值驱动质量很重要，因为运行时忽略的"有效"数字比缺失的功能更糟糕。
+- 剩余更广泛的风险：商店流之外的奖励/提供数量仍需更全面的传递，特别是战斗奖励选项数量和从 UI 调用点请求的遗物提供数量。
 
 ## 2026-07-09 / Phase 15
 
-Scope reviewed:
+审查范围：
 
-- non-shop battle reward relic offer counts
-- battle reward relic source selection
-- `RunService` offer API defaults
+- 非商店战斗奖励遗物提供数量
+- 战斗奖励遗物来源选择
+- `RunService` 提供 API 默认值
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `resources/adventure/reward_offer_config.json` as the authored config for battle reward relic sources and offer counts.
-- `DataRegistry` now loads, validates, and exposes battle reward offer config by room type.
-- `BattleScene` no longer owns `_ENCOUNTER_RELIC_SOURCE` or passes fixed `3` counts into battle reward relic offers.
-- `AdventureConfigValidator.validate_reward_offer_config()` validates non-empty relic sources and integer, non-negative offer counts.
-- `balance_config_test` covers valid reward config, room-type lookup, default fallback lookup, and invalid reward config.
-- `RunService.get_or_roll_relic_offer()` and `RunService.get_or_roll_gem_offer()` no longer have hidden `count = 3` defaults, forcing call sites to pass an explicit count.
-- `docs/game-completion-engineering-spec.md` now lists the battle reward offer config surface.
+- 添加了 `resources/adventure/reward_offer_config.json` 作为战斗奖励遗物来源和提供数量的已设定配置。
+- `DataRegistry` 现在按房间类型加载、验证和暴露战斗奖励提供配置。
+- `BattleScene` 不再拥有 `_ENCOUNTER_RELIC_SOURCE` 或向战斗奖励遗物提供传递固定的 `3` 数量。
+- `AdventureConfigValidator.validate_reward_offer_config()` 验证非空遗物来源和整数、非负提供数量。
+- `balance_config_test` 覆盖有效奖励配置、房间类型查找、默认回退查找和无效奖励配置。
+- `RunService.get_or_roll_relic_offer()` 和 `RunService.get_or_roll_gem_offer()` 不再具有隐藏的 `count = 3` 默认值，强制调用点传递显式数量。
+- `docs/game-completion-engineering-spec.md` 现在列出战斗奖励提供配置表面。
 
-Review judgment:
+审查结论：
 
-- This closes the current non-shop battle reward count drift: designers can tune battle relic offer count and source in one JSON file instead of editing UI code.
-- Moving the room-type source map out of `BattleScene` is the right ownership boundary; UI now presents the reward and services/config decide what the reward is.
-- Removing `RunService` count defaults is a useful guardrail because future reward flows cannot accidentally inherit the old hard-coded count.
-- Remaining risk: `DataRegistry` still has a defensive fallback if the reward config is missing, so validation must remain part of normal startup/test coverage rather than relying on fallback behavior as an authoring path.
+- 这关闭了当前非商店战斗奖励数量漂移：设计师可以在一个 JSON 文件中调整战斗遗物提供数量和来源，而非编辑 UI 代码。
+- 将房间类型来源映射移出 `BattleScene` 是正确的所有权边界；UI 现在呈现奖励，服务/配置决定奖励是什么。
+- 移除 `RunService` 数量默认值是有用的护栏，因为未来的奖励流不会意外继承旧的硬编码数量。
+- 剩余风险：如果奖励配置缺失，`DataRegistry` 仍有防御性回退，因此验证必须保持为正常启动/测试覆盖的一部分，而非依赖回退行为作为编辑路径。
 
 ## 2026-07-09 / Phase 16
 
-Scope reviewed:
+审查范围：
 
-- battle reward `relic_source` references
-- shop `gem_source` / `relic_source` references
-- source-id ownership between reward config, gem pools, and relic source weights
+- 战斗奖励 `relic_source` 引用
+- 商店 `gem_source` / `relic_source` 引用
+- 奖励配置、宝石池和遗物来源权重之间的来源 ID 所有权
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `AdventureConfigValidator.validate_reward_offer_config()` can now validate battle reward relic sources against a known relic-source set.
-- `AdventureConfigValidator.validate_shop_pools()` can now validate shop gem and relic sources against known gem/relic source sets.
-- `DataRegistry` now exposes `get_gem_pool_source_ids()` and `get_relic_source_ids()`.
-- `DataRegistry` performs cross-config validation for `resources/adventure/shop_pools.json` after gem pools and relic source weights are loaded.
-- `DataRegistry` validates `resources/adventure/reward_offer_config.json` against loaded relic source ids.
-- `balance_config_test` now verifies source ids are loaded and rejects unknown shop/reward source references.
+- `AdventureConfigValidator.validate_reward_offer_config()` 现在可以针对已知遗物来源集验证战斗奖励遗物来源。
+- `AdventureConfigValidator.validate_shop_pools()` 现在可以针对已知宝石/遗物来源集验证商店宝石和遗物来源。
+- `DataRegistry` 现在暴露 `get_gem_pool_source_ids()` 和 `get_relic_source_ids()`。
+- `DataRegistry` 在宝石池和遗物来源权重加载后为 `resources/adventure/shop_pools.json` 执行跨配置验证。
+- `DataRegistry` 针对加载的遗物来源 ID 验证 `resources/adventure/reward_offer_config.json`。
+- `balance_config_test` 现在验证来源 ID 已加载，并拒绝未知的商店/奖励来源引用。
 
-Review judgment:
+审查结论：
 
-- This is a high-leverage data-driven guardrail: a mistyped reward source now fails validation instead of silently changing rarity behavior.
-- Keeping cross-config validation in `DataRegistry` is the right boundary because `ShopService` loads before `DataRegistry` in autoload order and should not depend on registry state during its own `_ready()`.
-- Remaining risk: runtime lookup methods still have permissive fallbacks for unknown source ids, so authored configs are protected but arbitrary future runtime call sites can still bypass strictness.
+- 这是一个高杠杆的数据驱动护栏：输入错误的奖励来源现在在验证时失败，而非静默更改稀有度行为。
+- 将跨配置验证保留在 `DataRegistry` 中是正确的边界，因为 `ShopService` 在自动加载顺序中在 `DataRegistry` 之前加载，不应在其自己的 `_ready()` 期间依赖注册表状态。
+- 剩余风险：运行时查找方法对未知来源 ID 仍有宽松回退，因此已设定的配置受到保护，但任意的未来运行时调用点仍可绕过严格性。
 
 ## 2026-07-09 / Phase 17
 
-Scope reviewed:
+审查范围：
 
-- runtime gem pool lookup fallback
-- runtime relic source weight fallback
-- offer generation behavior for unknown source ids
+- 运行时宝石池查找回退
+- 运行时遗物来源权重回退
+- 未知来源 ID 的提供生成行为
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `DataRegistry.get_gem_pool_def()` now returns an empty dictionary for unknown gem sources instead of falling back to `global`.
-- `DataRegistry.get_relic_source_weights()` now returns an empty dictionary for unknown relic sources instead of falling back to `{"common": 100.0}`.
-- Added `has_gem_pool_source()` and `has_relic_source()` helper APIs for explicit source checks.
-- `get_spawnable_gem_ids_for_source()` and `roll_spawnable_gem_id()` now return empty results for unknown gem sources.
-- `get_relic_pool()` and `roll_relic_for_source()` now return empty results for unknown relic sources.
-- `roll_gem_offer()` now returns empty offer slots for unknown gem sources instead of accidentally drawing from a default pool.
-- `balance_config_test` covers unknown gem and relic source runtime behavior.
+- `DataRegistry.get_gem_pool_def()` 现在对未知宝石来源返回空字典，而非回退到 `global`。
+- `DataRegistry.get_relic_source_weights()` 现在对未知遗物来源返回空字典，而非回退到 `{"common": 100.0}`。
+- 添加了 `has_gem_pool_source()` 和 `has_relic_source()` 辅助 API 用于显式来源检查。
+- `get_spawnable_gem_ids_for_source()` 和 `roll_spawnable_gem_id()` 现在对未知宝石来源返回空结果。
+- `get_relic_pool()` 和 `roll_relic_for_source()` 现在对未知遗物来源返回空结果。
+- `roll_gem_offer()` 现在对未知宝石来源返回空提供槽位，而非意外地从默认池抽取。
+- `balance_config_test` 覆盖未知宝石和遗物来源的运行时行为。
 
-Review judgment:
+审查结论：
 
-- This closes the gap left by Phase 16: source typos are no longer hidden either by authored config validation or by lower-level runtime fallbacks.
-- Returning empty/placeholder reward results is preferable to substituting another pool because it preserves the existing UI failure shape while making the data problem visible to tests and QA.
-- The change intentionally keeps the public debug query path usable: unknown sources produce no candidates rather than causing a hard crash.
+- 这关闭了 Phase 16 留下的空白：来源拼写错误不再被设定的配置验证或更底层的运行时回退隐藏。
+- 返回空/占位奖励结果比替换另一个池更可取，因为它保留了现有的 UI 失败形态，同时使数据问题对测试和 QA 可见。
+- 该更改有意保持公共调试查询路径可用：未知来源不产生候选项而非导致硬崩溃。
 
 ## 2026-07-09 / Phase 18
 
-Scope reviewed:
+审查范围：
 
-- battle reward config loading
-- battle reward default entry semantics
-- `DataRegistry` battle reward source/count helpers
+- 战斗奖励配置加载
+- 战斗奖励默认条目语义
+- `DataRegistry` 战斗奖励来源/数量辅助函数
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `resources/adventure/reward_offer_config.json` is now required when loading battle reward offer config.
-- `DataRegistry._load_reward_offer_config_from_json()` no longer fabricates a `normal_chest` / `3` fallback when the file is missing or unreadable.
-- `DataRegistry.get_battle_reward_offer_config()` no longer fabricates a reward entry if loaded config is empty.
-- `get_battle_relic_offer_source()` and `get_battle_relic_offer_count()` no longer carry their own `normal_chest` / `3` defaults.
-- `balance_config_test` verifies that an authored `battle_rewards.default` entry is required, while unknown room types still use the configured default.
+- 加载战斗奖励提供配置时，`resources/adventure/reward_offer_config.json` 现在是必需的。
+- `DataRegistry._load_reward_offer_config_from_json()` 在文件缺失或不可读时不再制造 `normal_chest` / `3` 回退。
+- `DataRegistry.get_battle_reward_offer_config()` 在加载的配置为空时不再制造奖励条目。
+- `get_battle_relic_offer_source()` 和 `get_battle_relic_offer_count()` 不再携带自己的 `normal_chest` / `3` 默认值。
+- `balance_config_test` 验证已设定的 `battle_rewards.default` 条目是必需的，而未知房间类型仍使用已配置的默认值。
 
-Review judgment:
+审查结论：
 
-- This makes the battle reward offer config a real authority instead of a best-effort override over code defaults.
-- Keeping the room-type fallback to the authored `default` entry is still useful: it supports future room types without reintroducing hidden numeric values.
-- The failure mode is now cleaner for data work: missing config fails validation, while incomplete room-specific coverage falls back only to explicitly authored data.
+- 这使战斗奖励提供配置成为真正的权威，而非对代码默认值的最佳努力覆盖。
+- 保留房间类型到已设定 `default` 条目的回退仍然有用：它支持未来的房间类型，而不会重新引入隐藏的数值。
+- 数据工作的失败模式现在更清晰：缺失配置在验证时失败，而不完整的房间特定覆盖仅回退到显式设定的数据。
 
 ## 2026-07-09 / Phase 19
 
-Scope reviewed:
+审查范围：
 
-- authored adventure event player copy
-- authored map-rule player copy
-- authored relic descriptions
-- numeric text token validation
+- 已设定的冒险事件玩家文本
+- 已设定的地图规则玩家文本
+- 已设定的遗物描述
+- 数值文本令牌验证
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `NumericTextResolver` now exposes `strip_tokens()` and `has_literal_number_outside_tokens()` so validators can distinguish token ids from visible copy.
-- `AdventureConfigValidator` rejects Arabic/full-width numeric literals in event titles, event bodies, option labels, map-rule names, and map-rule descriptions.
-- `BalanceConfigValidator` rejects Arabic/full-width numeric literals in relic descriptions.
-- Numeric tokens such as `{amount_ref:event_1_gold}` remain valid even when the token id contains a digit.
-- `balance_config_test` covers valid tokenized copy and invalid literal-number copy for events, map rules, and relic descriptions.
+- `NumericTextResolver` 现在暴露 `strip_tokens()` 和 `has_literal_number_outside_tokens()`，因此验证器可以区分令牌 ID 和可见文本。
+- `AdventureConfigValidator` 拒绝事件标题、事件正文、选项标签、地图规则名称和地图规则描述中的阿拉伯/全角数字字面量。
+- `BalanceConfigValidator` 拒绝遗物描述中的阿拉伯/全角数字字面量。
+- 数值令牌如 `{amount_ref:event_1_gold}` 即使令牌 ID 包含数字也保持有效。
+- `balance_config_test` 覆盖事件、地图规则和遗物描述的有效令牌化文本和无效字面数字文本。
 
-Review judgment:
+审查结论：
 
-- This turns a style rule into an executable data contract: future visible numbers in these config-backed text surfaces must come from the same numeric refs as behavior.
-- Limiting the first check to Arabic/full-width digits is intentional. It catches the highest-risk drift pattern without rejecting natural Chinese copy such as "一个" or "一种".
-- Remaining risk: other player-facing text surfaces outside these authored config files can still embed numbers manually and should be audited separately.
+- 这将风格规则转化为可执行的数据合约：这些配置支持的文本表面中未来的可见数字必须来自与行为相同的数值引用。
+- 将首次检查限制为阿拉伯/全角数字是有意的。它捕获最高风险的漂移模式，而不会拒绝自然的中文文本如"一个"或"一种"。
+- 剩余风险：这些已设定配置文件之外的其他面向玩家的文本表面仍可手动嵌入数字，应单独审计。
 
 ## 2026-07-09 / Phase 20
 
-Scope reviewed:
+审查范围：
 
-- normal save-slot summary copy
-- internal seed/coordinate leakage in player UI
-- code-authored numeric player copy outside JSON configs
+- 普通存档位摘要文本
+- 玩家 UI 中的内部种子/坐标泄漏
+- JSON 配置之外的代码编写的数值玩家文本
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `SaveService._build_slot_summary()` no longer reads `current_map_pos` to build the normal active-run subtitle.
-- Active run slots no longer show `map_seed` or map coordinates.
-- Active run slots now show player-facing progress: current chapter and owned relic count.
-- `run_save_corruption_recovery_test` verifies that active slot summaries do not contain seed or coordinate text and do contain player-facing progress.
-- A separate open issue records that `adventure_map_scene.gd` still displays `调试种子 %d`, which appears debug-facing and needs a boundary audit.
+- `SaveService._build_slot_summary()` 不再读取 `current_map_pos` 来构建普通活跃运行副标题。
+- 活跃运行槽位不再显示 `map_seed` 或地图坐标。
+- 活跃运行槽位现在显示面向玩家的进度：当前章节和拥有的遗物数量。
+- `run_save_corruption_recovery_test` 验证活跃槽位摘要不包含种子或坐标文本，并包含面向玩家的进度。
+- 一个单独的未解决问题记录了 `adventure_map_scene.gd` 仍显示 `调试种子 %d`，这看起来是面向调试的，需要边界审计。
 
-Review judgment:
+审查结论：
 
-- This removes a concrete normal-UI leak called out by the working agreement: seed and coordinate details belong behind debug/editor UI, not in the save selector.
-- The replacement copy still uses dynamic numbers, but they describe player-facing progress rather than hidden deterministic state.
-- `./tools/verify changed` passed. `./tools/verify all` also proved the new run-save assertion, but exposed unrelated overlay/water visual contract failures that are now tracked separately.
+- 这移除了工作协议所指出的具体普通 UI 泄漏：种子和坐标细节应属于调试/编辑器 UI，而非存档选择器。
+- 替换文本仍使用动态数字，但它们描述的是面向玩家的进度，而非隐藏的确定性状态。
+- `./tools/verify changed` 通过。`./tools/verify all` 也证明了新的运行存档断言，但暴露了不相关的叠加/水域视觉合约失败，现已单独跟踪。
 
 ## 2026-07-10 / Phase 21
 
-Scope reviewed:
+审查范围：
 
-- semantic validation for `resources/gems/gem_effect_levels.json`
-- malformed numeric data as an authoring failure mode
-- runtime/player-copy boundaries exposed by the gem-level audit
+- `resources/gems/gem_effect_levels.json` 的语义验证
+- 格式错误的数值数据作为编辑失败模式
+- 宝石等级审计暴露的运行时/玩家文本边界
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `BalanceConfigValidator.validate_gem_effect_levels()` now checks known slot and tag ids in addition to field names and primitive types.
-- Enumerated effect shapes are constrained to supported values (`cross`/`square`, `single`/`cross`).
-- Discrete counts and radii must be non-negative integers; chances and ratios must remain in `[0, 1]`; multipliers and visual dimensions must stay positive.
-- Split direction offsets must be non-empty and unique, preventing duplicate projectiles created solely by malformed data.
-- `balance_config_test` verifies each validation class with deliberately malformed authoring data.
+- `BalanceConfigValidator.validate_gem_effect_levels()` 现在除字段名称和原始类型外，还检查已知的槽位和标签 ID。
+- 枚举效果形状被限制为支持的值（`cross`/`square`、`single`/`cross`）。
+- 离散数量和半径必须为非负整数；概率和比率必须保持在 `[0, 1]` 范围内；倍率和视觉尺寸必须为正。
+- 分裂方向偏移必须非空且唯一，防止仅因格式错误数据而产生的重复投射物。
+- `balance_config_test` 用故意格式错误的编辑数据验证每个验证类别。
 
-Review judgment:
+审查结论：
 
-- This is the correct responsibility boundary for a data-driven combat system: runtime behavior may remain procedural, but authored numeric data must fail early when it cannot describe a meaningful legal state.
-- The constraints are deliberately field-semantic rather than tag-specific behavior rules, so adding a new gem mechanic still requires an explicit schema change instead of silently accepting arbitrary numbers.
-- The audit uncovered a larger unresolved problem: `battle_hud_presenter.gd` shows slot-agnostic `gem.level.{tag}.{level}` localization strings containing hard-coded numbers. The current split Lv2/Lv3 strings disagree with configured ratios. This is recorded as an open issue and should be the next player-facing numeric-drive phase.
+- 这是数据驱动战斗系统的正确责任边界：运行时行为可以保持过程化，但已设定的数值数据在无法描述有意义的合法状态时必须尽早失败。
+- 约束是有意按字段语义而非特定于标签的行为规则设定的，因此添加新的宝石机制仍需要显式的模式更改，而非静默接受任意数字。
+- 审计揭示了一个更大的未解决问题：`battle_hud_presenter.gd` 显示与槽位无关的 `gem.level.{tag}.{level}` 本地化字符串，其中包含硬编码数字。当前分裂 Lv2/Lv3 字符串与已配置的比率不一致。这被记录为未解决问题，并应成为下一个面向玩家的数值驱动阶段。
 
 ## 2026-07-10 / Phase 22
 
-Scope reviewed:
+审查范围：
 
-- battle HUD gem-level tooltip copy
-- slot-specific gem effect level config
-- localization template ownership for player-visible numbers
+- 战斗 HUD 宝石等级工具提示文本
+- 特定于槽位的宝石效果等级配置
+- 玩家可见数字的本地化模板所有权
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `DataRegistry.get_gem_effect_level_summary(tag, slot_type, level)`, which selects the effective configured level and formats its values for localized display.
-- Added slot-scoped localization templates such as `gem.level.red.split`; templates contain semantic text and placeholders, while ratios, counts, patterns, and booleans are resolved from the current JSON definition.
-- `BattleHudPresenter` now uses the summary API whenever it has battle state. It no longer renders the old tag-only `gem.level.{tag}.{level}` strings or the generic baseline description alongside it.
-- Removed the old tag-only numeric localization keys, including the split Lv2/Lv3 70% strings that contradicted the active 50%/30% config.
-- `gem_level_context_test` exercises the registry and the presenter itself, proving the visible red split values follow the configured level definitions.
+- 添加了 `DataRegistry.get_gem_effect_level_summary(tag, slot_type, level)`，选择有效的已配置等级并为其格式化值以供本地化显示。
+- 添加了槽位范围的本地化模板，如 `gem.level.red.split`；模板包含语义文本和占位符，而比率、数量、模式和布尔值从当前 JSON 定义解析。
+- `BattleHudPresenter` 现在在有战斗状态时使用摘要 API。它不再渲染旧的仅标签 `gem.level.{tag}.{level}` 字符串或与其并列的通用基线描述。
+- 移除了旧的仅标签数值本地化键，包括与活跃的 50%/30% 配置相矛盾的 splits Lv2/Lv3 70% 字符串。
+- `gem_level_context_test` 测试了注册表和呈现器本身，证明可见的红色分裂值遵循已配置的等级定义。
 
-Review judgment:
+审查结论：
 
-- Giving the registry ownership of parameter formatting keeps the UI thin: the presenter asks for player-ready copy and does not need to understand every gem field.
-- Slot-scoped templates are the necessary minimum for correctness because the same tag has different red/blue/black mechanics. Keeping one template per slot/tag is a much smaller and safer text surface than duplicating every level's numbers.
-- The remaining design debt is explicit: `BattleQueryService` still uses context-free generic descriptions for previews. It should move to a context-aware summary path instead of inheriting the HUD implementation ad hoc.
-- Verification also showed that the current `verify` command does not force CSV translation reimport; this toolchain gap is recorded separately rather than treating the first stale-resource failure as a product failure.
+- 赋予注册表参数格式化的所有权使 UI 保持薄层：呈现器请求玩家就绪的文本，无需了解每个宝石字段。
+- 槽位范围的模板是正确的必要最低限度，因为同一标签具有不同的红色/蓝色/黑色机制。为每个槽位/标签保留一个模板是比复制每个等级的数字更小且更安全的文本表面。
+- 剩余的设计债务是明确的：`BattleQueryService` 仍对预览使用无上下文的通用描述。它应转向上下文感知的摘要路径，而非临时继承 HUD 实现。
+- 验证还显示当前的 `verify` 命令不强制 CSV 翻译重新导入；此工具链空白被单独记录，而非将首次过时资源失败视为产品失败。
 
 ## 2026-07-10 / Phase 23
 
-Scope reviewed:
+审查范围：
 
-- battle cell and death-preview gem copy
-- reuse of the slot-scoped HUD summary in a non-HUD presentation layer
+- 战斗单元格和死亡预览宝石文本
+- 在非 HUD 呈现层中重用槽位范围的 HUD 摘要
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `BattleQueryService` now derives a tag context from the actual state owner and slot before producing preview text.
-- Its unit, tile, and black-death preview paths all use the same `DataRegistry` level-summary API as the HUD.
-- The generic effect-description API remains only as a fallback when an effect has no authored level definition.
-- `gem_level_context_test` proves query text for red split Lv2 exposes the configured 50% ratio rather than stale 70% copy.
+- `BattleQueryService` 现在在生成预览文本之前从实际状态所有者和槽位派生标签上下文。
+- 其单位、瓦片和黑色死亡预览路径都使用与 HUD 相同的 `DataRegistry` 等级摘要 API。
+- 通用效果描述 API 仅在效果没有已设定等级定义时作为回退保留。
+- `gem_level_context_test` 证明红色分裂 Lv2 的查询文本暴露已配置的 50% 比率，而非过时的 70% 文本。
 
-Review judgment:
+审查结论：
 
-- This keeps the ownership clean: query code supplies context, the registry renders configured values, and neither presentation layer recreates gem-specific numeric text.
-- A fallback remains appropriate for intentionally configuration-free mechanics, but it is no longer the normal path for level-driven gems.
+- 这保持所有权清晰：查询代码提供上下文，注册表渲染已配置的值，两个呈现层都不重新创建特定于宝石的数值文本。
+- 回退对有意的无配置机制保持适当，但它不再是等级驱动宝石的常规路径。
 
 ## 2026-07-10 / Phase 24
 
-Scope reviewed:
+审查范围：
 
-- echo tag-selection count by level
-- red/blue/black echo config completeness
-- runtime selection and description consistency
+- 按等级的回响标签选择数量
+- 红色/蓝色/黑色回响配置完整性
+- 运行时选择和描述一致性
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `echo_tag_count` to each authored echo level: 1 at Lv1 and 2 at Lv2/Lv3 for every slot scope.
-- Red echo now has explicit Lv1/Lv2 config entries with a zero follow-up ratio, rather than relying on the absence of a definition to imply no extra damage.
-- `GemEchoRules.resolve_echo_tags()` reads `echo_tag_count` from the scope-specific level definition and returns no picks if the required data is absent.
-- Validator rules now recognize and require a positive integer echo count.
-- `gem_echo_test` directly verifies all red echo levels select exactly their configured count.
+- 将 `echo_tag_count` 添加到每个已设定的回响等级：每个槽位范围的 Lv1 为 1，Lv2/Lv3 为 2。
+- 红色回响现在具有显式的 Lv1/Lv2 配置条目，零后续比率，而非依赖定义的缺失来暗示无额外伤害。
+- `GemEchoRules.resolve_echo_tags()` 从范围特定的等级定义读取 `echo_tag_count`，如果所需数据缺失则返回无选择。
+- 验证器规则现在识别并要求正整数回响数量。
+- `gem_echo_test` 直接验证所有红色回响等级恰好选择其已配置的数量。
 
-Review judgment:
+审查结论：
 
-- This is a meaningful numerical ownership improvement, not a cosmetic JSON migration: the number of copied effects changes combat output and now has a single editable authority.
-- Treating missing echo count as no selection is intentionally strict. Authored data must fail validation during normal load; the runtime guard prevents an accidental fallback from changing combat behavior silently.
+- 这是一个有意义的数值所有权改进，而非表面的 JSON 迁移：复制效果的数量改变战斗输出，现在具有单一可编辑权威。
+- 将缺失的回响数量视为无选择是有意严格的。已设定数据必须在正常加载期间验证失败；运行时守卫防止意外回退静默改变战斗行为。
 
 ## 2026-07-10 / Phase 25
 
-Scope reviewed:
+审查范围：
 
-- blue explosion trigger shape by level
-- black explosion death/chain behavior by level
-- executable gem semantic-contract coverage
+- 按等级的蓝色爆炸触发器形状
+- 按等级的黑色爆炸死亡/连锁行为
+- 可执行宝石语义合约覆盖率
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added blue explosion contract cases for Lv1's non-detonating normal hit and burning detonation, Lv2's any-damage cross blast, and Lv3's any-damage 3x3 blast.
-- Added black explosion contract cases for the base death blast, Lv2's follow-up chain after an explosion kill, and Lv3's doubled main blast with the chain still using base damage.
-- The new blue Lv2 contract exposed that both blue trigger paths ignored `blast_pattern: cross` and always used the square explosion helper.
-- Added `_append_blue_explosion_by_pattern()` and routed both the damaged hook and forced-displacement hook through it.
-- Semantic-contract coverage increased from `38 / 90` to `44 / 90`.
+- 为蓝色爆炸添加了合约用例：Lv1 的不引爆普通命中和燃烧引爆，Lv2 的任何伤害十字爆炸，Lv3 的任何伤害 3x3 爆炸。
+- 为黑色爆炸添加了合约用例：基础死亡爆炸，Lv2 的爆炸击杀后的后续连锁，Lv3 的双倍主爆炸（连锁仍使用基础伤害）。
+- 新的蓝色 Lv2 合约暴露了两个蓝色触发器路径都忽略了 `blast_pattern: cross` 并始终使用方形爆炸辅助函数。
+- 添加了 `_append_blue_explosion_by_pattern()` 并将受伤害钩子和强制位移钩子都路由通过它。
+- 语义合约覆盖率从 `38 / 90` 增加到 `44 / 90`。
 
-Review judgment:
+审查结论：
 
-- The helper removes a particularly dangerous form of data-drive drift: the config field existed, passed validation, and even appeared in authored level data, but did not control runtime behavior.
-- Keeping the two trigger sources behind one helper prevents the same shape regression from reappearing only on forced movement.
-- Black explosion contracts deliberately position units away from board-edge collision outcomes, so they prove explosion/chain semantics rather than incidental knockback collision damage.
+- 该辅助函数移除了一种特别危险的数据驱动漂移形式：配置字段存在，通过验证，甚至出现在已设定的等级数据中，但不控制运行时行为。
+- 将两个触发来源保持在一个辅助函数后面防止相同的形状回归仅在强制移动上重新出现。
+- 黑色爆炸合约有意将单位放置在远离棋盘边缘碰撞结果的位置，因此它们证明爆炸/连锁语义而非附带的击退碰撞伤害。
 
 ## 2026-07-10 / Phase 26
 
-Scope reviewed:
+审查范围：
 
-- black gravity pull, slow, and root progression by level
-- semantic-contract coverage for black-slot death effects
-- blue gravity's conflicting trigger models
+- 按等级的黑色重力拉扯、减速和定身递进
+- 黑色槽位死亡效果的语义合约覆盖率
+- 蓝色重力的冲突触发模型
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added one executable contract per black gravity level, covering the configured one-tile pull, Lv2 slow, and Lv3 root.
-- Each case kills a mounted enemy through normal combat and asserts the nearby unit's final board position and resulting status state.
-- Semantic-contract coverage increased from `44 / 90` to `47 / 90`.
-- The audit found that blue gravity has two incompatible runtime interpretations: pre-hit projectile deflection follows the detailed design, while a separate damaged hook redirects damage and applies slow/root.
-- The conflict is recorded in `docs/ai/semantic-conflicts.md`; no blue gravity behavior or contract was added under an unapproved interpretation.
+- 为每个黑色重力等级添加了一个可执行合约，覆盖已配置的一格拉扯、Lv2 减速和 Lv3 定身。
+- 每个用例通过普通战斗击杀装载的敌人，并断言附近单位的最终棋盘位置和结果状态。
+- 语义合约覆盖率从 `44 / 90` 增加到 `47 / 90`。
+- 审计发现蓝色重力有两种不兼容的运行时解释：命中前投射物偏转遵循详细设计，而一个单独的受伤害钩子重定向伤害并施加减速/定身。
+- 该冲突记录在 `docs/ai/semantic-conflicts.md` 中；没有在未批准的 interpretation 下添加蓝色重力行为或合约。
 
-Review judgment:
+审查结论：
 
-- Black gravity now has a useful numeric-drive boundary: `pull_steps`, `slow_on_pull`, and `root_on_pull` are authored fields whose level progression is validated through actual battle outcomes.
-- The root assertion intentionally expects one turn, matching the implementation and the detailed design's "add one root" language; the first failing draft expected two, which was a test-fixture error rather than a runtime bug.
-- Pausing blue gravity is the correct engineering decision. A contract would otherwise give false authority to one of the competing mechanics and make later product correction more expensive.
+- 黑色重力现在具有有用的数值驱动边界：`pull_steps`、`slow_on_pull` 和 `root_on_pull` 是已设定字段，其等级递进通过实际战斗结果得到验证。
+- 定身断言有意期望一回合，匹配实现和详细设计的"添加一个定身"措辞；首次失败的草稿期望两回合，这是测试装置错误而非运行时 bug。
+- 暂停蓝色重力是正确的工程决策。合约否则会赋予竞争机制之一虚假的权威，并使以后的产品修正更加昂贵。
 
 ## 2026-07-10 / Phase 27
 
-Scope reviewed:
+审查范围：
 
-- blue conductive rebound probability progression
-- black conductive death-strike target progression
-- ownership of arc damage values across conductive paths
+- 蓝色导电反弹概率递进
+- 黑色导电死亡打击目标递进
+- 跨导电路径的电弧伤害值所有权
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added fixed-seed contracts for blue conductive: Lv1 can miss its rebound roll, Lv2 can rebound, and Lv3 always rebounds.
-- Added black conductive contracts for one random strike, two unique strikes, and the Lv3 all-target strike in the death radius.
-- The black cases assert actual true damage and `lightning` events after a normal combat kill.
-- Semantic-contract coverage increased from `47 / 90` to `53 / 90`.
-- The audit found that `arc_hit_damage` is not consumed by the gem paths: red derives damage from the attack and a ratio, blue uses owner attack damage, and black uses `lightning_death_damage`.
+- 为蓝色导电添加了固定种子合约：Lv1 可能未通过其反弹判定，Lv2 可能反弹，Lv3 始终反弹。
+- 为黑色导电添加了合约：一次随机打击、两次唯一打击和死亡半径内的 Lv3 全目标打击。
+- 黑色用例在普通战斗击杀后断言实际真实伤害和 `lightning` 事件。
+- 语义合约覆盖率从 `47 / 90` 增加到 `53 / 90`。
+- 审计发现 `arc_hit_damage` 未被宝石路径消耗：红色从攻击和比率派生伤害，蓝色使用所有者攻击伤害，黑色使用 `lightning_death_damage`。
 
-Review judgment:
+审查结论：
 
-- The level fields are now meaningfully executable: blue `rebound_chance` controls a seeded chance roll, while black `strike_count` and `strike_all_targets` control target cardinality and selection behavior.
-- The blue tests deliberately use deterministic trigger and non-trigger seeds. They prove the gameplay branches without pretending that two samples statistically validate a probability distribution; the configured interval and type remain protected by the balance validator.
-- Damage consolidation must wait for numeric/product intent. Rewiring all conductive effects to `arc_hit_damage` would be a behavioral change with no design authority, so the unused configuration and divergent damage sources are recorded rather than silently normalized.
+- 等级字段现在是有意义可执行的：蓝色 `rebound_chance` 控制种子概率判定，而黑色 `strike_count` 和 `strike_all_targets` 控制目标基数选择行为。
+- 蓝色测试有意使用确定性触发和非触发种子。它们证明游戏分支，而不假装两个样本统计验证概率分布；已配置的区间和类型仍受平衡验证器保护。
+- 伤害合并必须等待数值/产品意图。将所有导电效果重新连接到 `arc_hit_damage` 将是没有设计权威的行为更改，因此未使用的配置和发散的伤害来源被记录而非静默归一化。
 
 ## 2026-07-10 / Phase 28
 
-Scope reviewed:
+审查范围：
 
-- blue fire contact, created-overlay, doubling, and once-per-turn semantics
-- black fire death radius, target priority, count, and duration progression
-- ownership and validation of black-fire numeric values
-- reliability of per-case semantic-contract reporting
+- 蓝色火焰接触、创建叠加、加倍和每回合一次语义
+- 黑色火焰死亡半径、目标优先级、数量和持续时间递进
+- 黑色火焰数值的所有权和验证
+- 每用例语义合约报告的可靠性
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added four blue-fire and three black-fire executable cases. They cover all six design rows, including the blue Lv3 once-per-turn limit and black Lv2 occupied-cell priority.
-- Confirmed the intentional cross-system composition for blue fire: creating or refreshing fire under an occupant immediately applies the overlay's enter effect. Lv2 therefore adds two burning stacks in total, and Lv3 doubles after both additions.
-- Replaced black fire's global base plus level-bonus calculation with complete absolute `death_fire_radius`, `death_fire_count`, and `death_fire_duration` values on every level row.
-- Removed the obsolete black-fire combat-config keys, accessors, and constants. Player-facing level summaries now render the same absolute values used by execution.
-- Added required-field and integer/positivity validation for black-fire rows, and made combat config reject unknown keys.
-- Fixed the semantic runner's per-case accounting so later failures cannot be printed or counted as passes after an earlier failure.
-- Semantic coverage increased from `53 / 90` to `59 / 90`.
+- 添加了四个蓝色火焰和三个黑色火焰可执行用例。它们覆盖了所有六个设计行，包括蓝色 Lv3 每回合一次限制和黑色 Lv2 占据单元格优先级。
+- 确认了蓝色火焰的有意跨系统组合：在占据者脚下创建或刷新火焰会立即应用叠加的进入效果。因此 Lv2 总共添加两层燃烧，Lv3 在两次添加后翻倍。
+- 用每个等级行上的完整绝对 `death_fire_radius`、`death_fire_count` 和 `death_fire_duration` 值替换了黑色火焰的全局基础加等级加成计算。
+- 移除了过时的黑色火焰战斗配置键、访问器和常量。面向玩家的等级摘要现在渲染与执行相同的绝对值。
+- 为黑色火焰行添加了必需字段和整数/正值验证，并使战斗配置拒绝未知键。
+- 修复了语义运行器的每用例计数，使后续失败在较早失败后不能被打印或计数为通过。
+- 语义覆盖率从 `53 / 90` 增加到 `59 / 90`。
 
-Review judgment:
+审查结论：
 
-- Absolute level rows are the right editing surface here. A designer can now change one black-fire tier without reconstructing a base-plus-delta formula spread across two files.
-- The blue stack totals are not a hidden duplicate trigger: they are the documented contact effect composed with the separately documented fire-overlay enter effect. The contracts make that interaction visible and preserve the once-per-turn doubling boundary.
-- Required-field enforcement is still incomplete across the rest of `gem_effect_levels.json`. Black fire is now strict, but other families can still lose fields and fall back silently; that remains an explicit next-stage schema task.
+- 绝对等级行是此处正确的编辑表面。设计师现在可以更改一个黑色火焰等级，而无需重新构建分布在两个文件中的基础加增量公式。
+- 蓝色堆叠总数不是隐藏的重复触发器：它们是记录的接触效果与单独记录的火焰叠加进入效果组合的结果。合约使该交互可见，并保留每回合一次翻倍的边界。
+- `gem_effect_levels.json` 其余部分的必需字段强制执行仍不完整。黑色火焰现在是严格的，但其他族仍可能丢失字段并静默回退；这仍然是一个明确的下一阶段模式任务。
 
 ## 2026-07-10 / Phase 29
 
-Scope reviewed:
+审查范围：
 
-- red/blue ice movement floors and contact progression
-- black ice radius, sluggish, slow, and freeze progression
-- shared radius ownership between black ice and black conductive
-- all-target representation for black conductive
-- reliability of referenced relic numeric branches and the verification harness
+- 红色/蓝色冰冻移动力下限和接触递进
+- 黑色冰冻半径、迟缓、减速和冻结递进
+- 黑色冰冻和黑色导电之间的共享半径所有权
+- 黑色导电的全目标表示
+- 引用遗物数值分支和验证工具的可靠性
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added explicit `slowed_min_move_points` values to red/blue ice. Lv1 keeps the global floor of 1; Lv2/Lv3 can reduce movement to 0 as stated by the detailed gem design.
-- Slow status instances now preserve the strongest lower movement floor across later stacks without changing ordinary slow sources.
-- Added complete blue-ice contracts for one-stack contact, two-stack zero-floor contact, and both sides of the Lv3 “already slowed” condition.
-- Added black-ice Lv1/Lv2 design contracts plus a separate Lv3 implementation-observation case. The latter records current paralysis behavior without counting it as authored freeze.
-- Moved `ice_death_radius` out of global combat config. Black ice now owns `death_radius`; black conductive owns `strike_radius`.
-- Removed black conductive's `strike_count: 999` sentinel and added conditional validation for counted versus all-target modes. Summaries render “all targets”.
-- Fixed `per_empty_slot_ref`, `empty_slot_mult_ref`, and `rng_chance_ref` branch guards in relic modifier evaluation.
-- Expanded strict required-field schemas to red/blue ice, black ice, and black conductive.
-- Semantic coverage is now `61 / 90 = 67.77%`: five newly verified ice rows were added, while three previously overstated red-freeze rows were removed from the verified set.
+- 为红色/蓝色冰冻添加了显式的 `slowed_min_move_points` 值。Lv1 保留全局下限 1；Lv2/Lv3 可以如详细宝石设计所述将移动力降至 0。
+- 减速状态实例现在在不同堆叠间保留最强的较低移动力下限，而不更改普通减速来源。
+- 添加了完整的蓝色冰冻合约：一层接触、两层零下限接触，以及 Lv3 "已被减速"条件的两种情况。
+- 添加了黑色冰冻 Lv1/Lv2 设计合约以及单独的 Lv3 实现观察用例。后者记录当前麻痹行为，而不将其计为已设定的冻结。
+- 将 `ice_death_radius` 移出全局战斗配置。黑色冰冻现在拥有 `death_radius`；黑色导电拥有 `strike_radius`。
+- 移除了黑色导电的 `strike_count: 999` 哨兵值，并为计数与全目标模式添加了条件验证。摘要渲染"全目标"。
+- 修复了遗物修正评估中的 `per_empty_slot_ref`、`empty_slot_mult_ref` 和 `rng_chance_ref` 分支守卫。
+- 将严格的必需字段模式扩展到红色/蓝色冰冻、黑色冰冻和黑色导电。
+- 语义覆盖率现在为 `61 / 90 = 67.77%`：添加了五个新验证的冰冻行，同时从已验证集中移除了三个之前被夸大的红色冻结行。
 
-Review judgment:
+审查结论：
 
-- A source-specific slow floor belongs in status payload, not in the global slow definition. This keeps the detailed Lv2 exception data-driven without changing every other slow source.
-- Radius values belong with each gem level. The removed `ice_death_radius` name concealed cross-mechanic coupling and made one edit affect conductive behavior unexpectedly.
-- Removing three green coverage rows is a correctness improvement. Their tests proved placeholder paralysis, not the authored freeze/frostbite state machine.
-- Freeze cannot be finished responsibly until frostbite lifetime/removal is specified. The implementation gap and the related player/enemy paralysis lifecycle inconsistency remain explicit open issues.
-- `verify fast` still reports 23/23 while selected logs contain GDScript assertion failures. Direct Phase 29 evidence therefore comes from isolated, clean runs of the balance validator, status test, level-context test, and 78-case semantic contract suite in addition to the wrapper summary.
+- 来源特定的减速下限属于状态载荷，而非全局减速定义。这保持详细的 Lv2 例外由数据驱动，而不更改每个其他减速来源。
+- 半径值属于每个宝石等级。移除的 `ice_death_radius` 名称隐藏了跨机制耦合，使一次编辑意外影响导电行为。
+- 移除三个绿色覆盖行是正确性改进。它们的测试证明了占位麻痹，而非已设定的冻结/冻伤状态机。
+- 在冻伤持续时间/移除被指定之前，冻结无法负责任地完成。实现空白和相关的玩家/敌人麻痹生命周期不一致仍然是明确的未解决问题。
+- `verify fast` 仍报告 23/23，而选定的日志包含 GDScript 断言失败。Phase 29 的直接证据因此来自平衡验证器、状态测试、等级上下文测试和 78 用例语义合约套件的隔离、干净运行，此外还有包装器摘要。
 
 ## 2026-07-11 / Phase 30
 
-Scope reviewed:
+审查范围：
 
-- trustworthiness of `tools/verify` under Godot assertion behavior
-- stale gravity and explosion regression expectations
-- stone-bow intent damage versus attack-pipeline execution
-- explosion level ownership across normal attack, active trigger, black death, AI scoring, and player-facing summaries
+- Godot 断言行为下 `tools/verify` 的可信度
+- 过时的重力和爆炸回归预期
+- 石弓意图伤害与攻击管线执行
+- 跨普通攻击、活跃触发、黑色死亡、AI 评分和面向玩家摘要的爆炸等级所有权
 
-What improved in this phase:
+此阶段改进的方面：
 
-- `tools/verify` now fails a test on either a non-zero process exit or any `SCRIPT ERROR:` in its log. Hidden GDScript assertions can no longer produce a green wrapper result.
-- Non-zero exits are captured inside an `if/else`, preserving complete-suite execution even though the shared Godot helper enables `set -e`.
-- Gravity test units now use `GameState.register_unit()`, preserving occupancy invariants. The diagonal case verifies the shared cardinal path rule: move one cell, then stop before the blocker and damage both units.
-- Removed the obsolete “four explosions deal triple damage” expectation. Normal and active-trigger tests now prove counts above the authored maximum clamp to Lv3's 2x damage.
-- Centralized explosion blast-pattern and damage-multiplier resolution in `GemEffects`. Red/black level rows are strict, black Lv3 explicitly owns its 2x multiplier, and attack execution no longer duplicates the formula.
-- Ordinary attack previews and AI scoring use the same configured explosion amount. The deterministic stone-bow contract now proves a displayed 12-damage explosion matches the 12 damage delivered by execution and previews the affected cells.
-- Black explosion's HUD/query summary now displays its configured multiplier alongside chain behavior.
-- Strict full-suite auditing exposed and repaired five additional false-green fixtures/contracts: enemy extra attacks now use the status API, iron-boots immunity owns an active run fixture, enemy-red range tests stay in bounds, editor import uses `user://`, and normal/hover relic textures share initialization order.
-- Strict `verify fast` and `verify changed` both pass `23 / 23`; semantic coverage remains honestly unchanged at `61 / 90 = 67.77%` because this phase repaired evidence quality rather than claiming new design rows.
-- Strict `verify all` completes with `67 / 70`; only the three previously recorded overlay/water rendering contracts remain red.
+- `tools/verify` 现在在非零进程退出或日志中任何 `SCRIPT ERROR:` 时判定测试失败。隐藏的 GDScript 断言不能再产生绿色的包装器结果。
+- 非零退出在 `if/else` 内捕获，保留完整套件执行，尽管共享的 Godot 辅助函数启用了 `set -e`。
+- 重力测试单位现在使用 `GameState.register_unit()`，保留占用不变量。对角线用例验证共享的 cardinal 路径规则：移动一格，然后在阻挡者前停止并伤害两个单位。
+- 移除了过时的"四次爆炸造成三倍伤害"预期。普通和活跃触发器测试现在证明超过已设定最大值的数量限制到 Lv3 的 2x 伤害。
+- 在 `GemEffects` 中集中管理爆炸形状和伤害倍率解析。红色/黑色等级行是严格的，黑色 Lv3 明确拥有其 2x 倍率，攻击执行不再复制公式。
+- 普通攻击预览和 AI 评分使用相同的已配置爆炸量。确定性石弓合约现在证明显示的 12 伤害爆炸匹配执行交付的 12 伤害，并预览受影响的单元格。
+- 黑色爆炸的 HUD/查询摘要现在显示其已配置的倍率以及连锁行为。
+- 严格全套件审计暴露并修复了五个额外的虚假绿色装置/合约：敌人额外攻击现在使用状态 API，铁靴免疫拥有活跃运行装置，敌人红色测试保持在边界内，编辑器导入使用 `user://`，普通/悬停遗物纹理共享初始化顺序。
+- 严格 `verify fast` 和 `verify changed` 均通过 `23 / 23`；语义覆盖率诚实地保持不变为 `61 / 90 = 67.77%`，因为此阶段修复了证据质量而非声称新的设计行。
+- 严格 `verify all` 以 `67 / 70` 完成；仅三个之前记录的叠加/水域渲染合约保持红色。
 
-Review judgment:
+审查结论：
 
-- Checking logs in the runner is the correct minimum invariant for this test style. Requiring every legacy test to be rewritten before trusting any result would leave the suite falsely green in the meantime.
-- Explosion amount is now edited in one level row and observed by execution, preview, AI scoring, and UI summary. The remaining global base damage is a separate base parameter, not a competing level multiplier.
-- The preview helper intentionally handles only damage shapes representable by one scalar. Light, split, and echo combinations need a structured multi-component intent model; that limitation is recorded rather than hidden behind an invented total.
-- Full-suite evidence is now complete under the stricter verifier. Its remaining three visual failures are isolated in the issue ledger rather than being conflated with the green numeric-drive surface.
+- 在运行器中检查日志是此测试风格的正确最小不变量。要求在信任任何结果之前重写每个旧版测试会在期间使套件保持虚假绿色。
+- 爆炸量现在在一个等级行中编辑，并被执行、预览、AI 评分和 UI 摘要观察。剩余的全局基础伤害是一个单独的基础参数，而非竞争的等级倍率。
+- 预览辅助函数有意仅处理可由一个标量表示的伤害形状。光线、分裂和回响组合需要结构化的多组件意图模型；该限制被记录而非隐藏在发明的总数后面。
+- 全套件证据现在在更严格的验证器下是完整的。其剩余的三个视觉失败在问题账本中隔离，而非与绿色的数值驱动表面混淆。
 
 ## 2026-07-11 / Phase 31
 
-Scope reviewed:
+审查范围：
 
-- completeness and ownership of every gem-effect level row
-- validator behavior for missing, extra, and misplaced fields
-- black counter reflection, vulnerable, and disarm progression
-- attack blocking across player actions, enemy intent, and shared attack execution
+- 每个宝石效果等级行的完整性和所有权
+- 缺失、额外和错位字段的验证器行为
+- 黑色反击反射、脆弱和缴械递进
+- 跨玩家行动、敌人意图和共享攻击执行的攻击阻止
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Replaced partial required-field checks with an explicit schema for all 30 slot/tag groups. Every group must define levels 1/2/3, every level must contain its complete semantic field set, and fields declared for another group are rejected.
-- Added the missing black-counter level table: Lv1 reflects actual HP lost, Lv2 also applies one turn of vulnerable, and Lv3 also applies one stack of disarm.
-- Damage bookkeeping now records actual HP loss before death hooks run, so a 50-damage overkill against 7 HP reflects 7 rather than 50.
-- Added `disarmed` as a first-class status and routed attack permission through status rules, the shared attack pipeline, player action availability, battle queries, and enemy intent/execution.
-- Added validator mutation cases for a missing group, missing level, missing field, cross-group field, and extra level. Three black-counter semantic contracts cover all authored levels and prove that disarm rejects a real follow-up attack.
-- A field-to-read audit found at least one runtime consumer for every field currently authored in `gem_effect_levels.json`.
-- Current evidence is `verify fast/changed: 23 / 23`, direct semantic-contract execution: 81 cases passing, and executable design coverage: `64 / 90 = 71.11%`.
-- Strict `verify all` remains `67 / 70`; the only failures are the same three tracked overlay/water rendering contracts, with no new combat, numeric, status, AI, or semantic-contract regression.
+- 用所有 30 个槽位/标签组的显式模式替换了部分必需字段检查。每个组必须定义等级 1/2/3，每个等级必须包含其完整的语义字段集，为另一组声明的字段被拒绝。
+- 添加了缺失的黑色反击等级表：Lv1 反射实际 HP 损失，Lv2 还施加一回合脆弱，Lv3 还施加一层缴械。
+- 伤害记录现在在死亡钩子运行前记录实际 HP 损失，因此对 7 HP 的 50 伤害过量击杀反射 7 而非 50。
+- 添加了 `disarmed` 作为第一类状态，并通过状态规则、共享攻击管线、玩家行动可用性、战斗查询和敌人意图/执行路由攻击许可。
+- 添加了缺失组、缺失等级、缺失字段、跨组字段和额外等级的验证器变异用例。三个黑色反击语义合约覆盖所有已设定等级，并证明缴械拒绝真实的后续攻击。
+- 字段到读取审计发现 `gem_effect_levels.json` 中当前设定的每个字段至少有一个运行时消费者。
+- 当前证据为 `verify fast/changed: 23 / 23`，直接语义合约执行：81 个用例通过，可执行设计覆盖率：`64 / 90 = 71.11%`。
+- 严格 `verify all` 保持 `67 / 70`；仅有的失败是相同的三个跟踪的叠加/水域渲染合约，没有新的战斗、数值、状态、AI 或语义合约回归。
 
-Review judgment:
+审查结论：
 
-- This closes a high-risk data-drive failure mode: authored data can no longer disappear, drift into the wrong gem family, or exist without the black-counter runtime consuming it while validation stays green.
-- Black counter is now a genuinely level-driven mechanic. Its numbers are edited in one level row and exercised through normal death, status, and attack paths rather than an isolated calculation helper.
-- The new attack-block boundary is appropriately centralized in `StatusRules` and enforced again in `AttackPipeline`, so UI availability and AI planning cannot be the sole authority for legality.
-- Disarm's exact lifecycle is provisional because the detailed design specifies only “+1 disarm”. The current one-attack-opportunity convention is recorded in the issue ledger instead of being presented as settled product semantics.
+- 这关闭了一种高风险的数据驱动失败模式：设定的数据不能再消失、漂移到错误的宝石族，或在验证保持绿色的情况下存在而没有黑色反击运行时消费它。
+- 黑色反击现在是一个真正由等级驱动的机制。其数字在一个等级行中编辑，并通过普通死亡、状态和攻击路径进行测试，而非隔离的计算辅助函数。
+- 新的攻击阻止边界适当地集中在 `StatusRules` 中，并在 `AttackPipeline` 中再次强制执行，因此 UI 可用性和 AI 规划不能成为合法性的唯一权威。
+- 缴械的确切生命周期是临时的，因为详细设计仅指定"+1 缴械"。当前的一次攻击机会约定记录在问题账本中，而非呈现为已确定的产品语义。
 
 ## 2026-07-11 / Phase 32
 
-Scope reviewed:
+审查范围：
 
-- remaining high-value conflicts in freeze/frostbite, blue gravity, and conductive damage ownership
-- red-counter level data and status payload semantics
-- Lv2 tagged retaliation and Lv3 kill-refresh execution
+- 冻结/冻伤、蓝色重力和导电伤害所有权中的剩余高价值冲突
+- 红色反击等级数据和标记状态载荷语义
+- Lv2 标记报复和 Lv3 击杀刷新执行
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Replaced red counter's `mark_stacks: 1/2/3` level sentinel with three direct fields: `mark_duration`, `retaliation_with_tags`, and `grant_extra_attack_on_kill`.
-- Counter marks now snapshot those semantic flags in their watcher payload. The damage resolver consumes the flags directly instead of reconstructing behavior from `level >= 2/3`.
-- Reapplying a mark preserves the stronger semantic flags and the longer duration. Legacy payloads with the former `level` field remain readable without allowing new config to author that field.
-- Removed the now-unused `counter_mark.default_level` status fallback and updated the dynamic HUD/query summary to render the same direct fields used by execution.
-- Added executable contracts for Lv2 and Lv3. Lv2 proves TAG propagation through fire's direct-plus-overlay composition; Lv3 proves a lethal retaliation grants one configured extra attack.
-- Direct evidence passes: balance config, skill behavior, level-context copy, and all 83 semantic contract cases. Executable design coverage is now `66 / 90 = 73.33%`.
-- Strict `verify changed` passes `23 / 23`; `verify all` remains `67 / 70`, with only the same three tracked overlay/water rendering contracts failing.
+- 用三个直接字段替换了红色反击的 `mark_stacks: 1/2/3` 等级哨兵值：`mark_duration`、`retaliation_with_tags` 和 `grant_extra_attack_on_kill`。
+- 反击标记现在在其监视者载荷中快照这些语义标志。伤害解析器直接消费这些标志，而非从 `level >= 2/3` 重建行为。
+- 重新应用标记保留更强的语义标志和更长的持续时间。具有旧 `level` 字段的旧版载荷保持可读，而不允许新配置设定该字段。
+- 移除了现在未使用的 `counter_mark.default_level` 状态回退，并更新了动态 HUD/查询摘要以渲染执行使用的相同直接字段。
+- 为 Lv2 和 Lv3 添加了可执行合约。Lv2 证明通过火焰的直接加叠加组合的 TAG 传播；Lv3 证明致命报复授予一次已配置的额外攻击。
+- 直接证据通过：平衡配置、技能行为、等级上下文文本和所有 83 个语义合约用例。可执行设计覆盖率现在为 `66 / 90 = 73.33%`。
+- 严格 `verify changed` 通过 `23 / 23`；`verify all` 保持 `67 / 70`，仅相同的三个跟踪的叠加/水域渲染合约失败。
 
-Review judgment:
+审查结论：
 
-- The new table is a substantially better editing surface: each value says what it changes, and changing a boolean cannot accidentally masquerade as adding status stacks.
-- Storing resolved semantics on the mark is appropriate because the mark is the delayed gameplay state. It also makes save/debug inspection explain itself without requiring the original gem count.
-- The audit correctly did not force progress on ambiguous areas. Frostbite lifetime, blue gravity's duplicate trigger model, and conductive damage ownership remain product decisions rather than engineering defaults.
-- Red counter's pre-hit ordering was exposed as a separate conflict. Phase 32 preserves it intentionally; changing both data representation and lethal-trade behavior in one phase would make review evidence ambiguous.
+- 新表是实质上更好的编辑表面：每个值说明它改变什么，更改布尔值不能意外伪装成添加状态堆叠。
+- 在标记上存储已解析的语义是适当的，因为标记是延迟的游戏状态。它还使存档/调试检查自解释，无需原始宝石数量。
+- 审计正确地在模糊领域没有强推进展。冻伤持续时间、蓝色重力的重复触发模型和导电伤害所有权仍然是产品决策而非工程默认值。
+- 红色反击的命中前顺序被暴露为单独的冲突。Phase 32 有意保留它；在一个阶段中同时更改数据表示和致死交易行为会使审查证据模糊。
 
 ## 2026-07-11 / Phase 33
 
-Scope reviewed:
+审查范围：
 
-- red, blue, and black split ownership across all level rows
-- red split execution and AI scoring
-- blue damage sharing and temporary-clone creation/lifetime boundaries
-- black clone stats, slot/gem inheritance, enemy drops, player control, and presentation state
-- fission-slime unit override and split-specific relic overrides
+- 跨所有等级行的红色、蓝色和黑色分裂所有权
+- 红色分裂执行和 AI 评分
+- 蓝色伤害共享和临时克隆体创建/生命周期边界
+- 黑色克隆体属性、槽位/宝石继承、敌人掉落、玩家控制和呈现状态
+- 裂变史莱姆单位覆盖和特定于分裂的遗物覆盖
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Replaced blue split's two ordinal booleans with explicit `redirect_mode`, `redirect_ratio`, `redirect_radius`, `temp_clone_count`, `temp_clone_hp`, `temp_clone_stat_ratio`, `temp_clone_duration`, and `temp_clone_per_turn_limit` fields. Black split now also authors `clone_count` beside `stat_ratio`.
-- Removed the four competing split globals for red damage ratio, blue redirect ratio/radius, and black stat ratio. Red execution and enemy AI now resolve the same level-row damage ratio; blue and black runtime paths read their complete active rows.
-- Added cross-field validation so inactive temporary-clone rows cannot carry convincing non-zero knobs, active rows require positive values, redirect ratios stay in `(0, 1]`, and clone counts remain positive integers. Mutation tests reject the obsolete `spawn_temp_clone` sentinel and malformed split rows.
-- Blue Lv3 now spawns after actual surviving HP loss, uses its configured HP/stat/count/duration/cap, inherits no slots, and is excluded from black split control and merge lifecycle.
-- Black death clones now scale attack, armor, movement, speed, and max HP with upward rounding. Slots and gems are round-robin partitioned exactly once; only inherited split gems are disabled/locked, and inherited enemy originals are consumed rather than duplicated as drops.
-- The fission-slime 50% override now affects Lv1 as authored, while higher black levels keep their stronger 50%/80% rows. Player-only split relic modifiers no longer alter enemies.
-- Added executable contracts for blue split Lv1/Lv2 and black split Lv1-Lv3. They prove exact damage shares, two-clone counts, all-stat ratios, total slot/gem conservation, disabled split counts, and zero duplicate drops.
-- Evidence passes: direct balance validation, the fission-slime split assertions, all 88 semantic contract cases, `verify changed: 23 / 23`, and `verify all: 67 / 70`. The full-suite failures remain the same three recorded overlay/water visual contracts. Executable design coverage is now `71 / 90 = 78.88%`.
+- 用显式的 `redirect_mode`、`redirect_ratio`、`redirect_radius`、`temp_clone_count`、`temp_clone_hp`、`temp_clone_stat_ratio`、`temp_clone_duration` 和 `temp_clone_per_turn_limit` 字段替换了蓝色分裂的两个序数布尔值。黑色分裂现在也在 `stat_ratio` 旁边设定了 `clone_count`。
+- 移除了红色伤害比率、蓝色重定向比率/半径和黑色属性比率的四个竞争分裂全局变量。红色执行和敌人 AI 现在解析相同的等级行伤害比率；蓝色和黑色运行时路径读取其完整的活跃行。
+- 添加了跨字段验证，使非活跃临时克隆体行不能携带令人信服的非零参数，活跃行需要正值，重定向比率保持在 `(0, 1]` 范围内，克隆体数量保持正整数。变异测试拒绝过时的 `spawn_temp_clone` 哨兵值和格式错误的分裂行。
+- 蓝色 Lv3 现在在实际存活的 HP 损失后生成，使用其已配置的 HP/属性/数量/持续时间/上限，不继承槽位，并被排除在黑色分裂控制和合并生命周期之外。
+- 黑色死亡克隆体现在以向上取整缩放攻击、护甲、移动、速度和最大 HP。槽位和宝石恰好被轮询分区一次；仅继承的分裂宝石被禁用/锁定，继承的敌人原始单位被消耗而非作为重复掉落。
+- 裂变史莱姆的 50% 覆盖现在按设定影响 Lv1，而更高的黑色等级保留其更强的 50%/80% 行。仅玩家的分裂遗物修正不再改变敌人。
+- 为蓝色分裂 Lv1/Lv2 和黑色分裂 Lv1-Lv3 添加了可执行合约。它们证明确切的伤害份额、两个克隆体数量、全属性比率、总槽位/宝石守恒、已禁用的分裂数量和零重复掉落。
+- 证据通过：直接平衡验证、裂变史莱姆分裂断言、所有 88 个语义合约用例、`verify changed: 23 / 23` 和 `verify all: 67 / 70`。全套件失败保持相同的三个记录的叠加/水域视觉合约。可执行设计覆盖率现在为 `71 / 90 = 78.88%`。
 
-Review judgment:
+审查结论：
 
-- Split tuning is now a coherent editing surface: a designer changes one level row and sees the same values in execution, AI scoring where applicable, validation, and HUD/query summaries. Unit and relic modifiers are explicit override layers rather than hidden alternative bases.
-- The black clone rewrite follows the highest-authority detailed design and removes real state multiplication, not merely cosmetic duplication. Slot/gem conservation is now an executable invariant.
-- Blue Lv3 is intentionally not counted as design-covered. Its numeric behavior is wired and observed, but player control and phase-relative lifetime require a product decision.
-- The 60% Slime Crown blue override does not meaningfully affect equal-sharing levels; this is recorded as a relic/gem interaction conflict rather than papered over with a new formula.
-- The independent fission-slime suite exposed trample overlap errors in `_cell_occupancy`. They predate and do not invalidate the split contracts, but remain a real state-model issue and a verifier blind spot.
-- No external design document was changed because Phase 33 implements the existing authoritative split table. Newly discovered ambiguities are recorded here and in `semantic-conflicts.md` instead of inventing product semantics.
+- 分裂调优现在是一个连贯的编辑表面：设计师更改一个等级行，并在执行、AI 评分（适用时）、验证和 HUD/查询摘要中看到相同的值。单位和遗物修正是显式的覆盖层，而非隐藏的替代基础。
+- 黑色克隆体重写遵循最高权威的详细设计，并移除了真正的状态复制，而不仅仅是表面的重复。槽位/宝石守恒现在是可执行的不变量。
+- 蓝色 Lv3 被有意不计为设计覆盖。其数值行为已被连接和观察，但玩家控制和阶段相对生命周期需要产品决策。
+- 60% 史莱姆王冠蓝色覆盖对平等共享等级没有有意义的影响；这被记录为遗物/宝石交互冲突，而非用新公式掩盖。
+- 独立的裂变史莱姆套件在 `_cell_occupancy` 中暴露了践踏重叠错误。它们早于且不使分裂合约无效，但仍是真正的状态模型问题和验证器盲点。
+- 没有更改外部设计文档，因为 Phase 33 实现了现有的权威分裂表。新发现的模糊性记录在此处和 `semantic-conflicts.md` 中，而非发明产品语义。
 
 ## 2026-07-11 / Phase 34
 
-Scope reviewed:
+审查范围：
 
-- blue and black light level semantics, targeting, exposure lifetime, and black settlement
-- red/blue/black echo tag selection and Lv3 empowerment
-- black echo execution inside a real deferred/non-deferred death chain
-- trustworthiness of existing red-echo Lv3 and black-light Lv3 coverage claims
+- 蓝色和黑色光线等级语义、瞄准、暴露持续时间和黑色结算
+- 红色/蓝色/黑色回响标签选择和 Lv3 强化
+- 真实延迟/非延迟死亡链内的黑色回响执行
+- 现有红色回响 Lv3 和黑色光线 Lv3 覆盖声明的可信度
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Found that death-chain deduplication rejected every intended black-echo replay after the original tag had resolved. Echo-depth replays now bypass only that owner/tag dedupe; ordinary duplicate death hooks and recursive echo selection remain guarded.
-- `GemEchoRules` no longer uses `echo_level >= 3` to decide whether a selected tag should be moved into the empowered position. It reads direct blue strength and black repeat fields instead.
-- Validation now requires `first_tag_strength` and `first_tag_repeat_count` to be positive integers, with mutation tests for zero values.
-- Added real lethal-path contracts for black echo Lv1 and Lv2. Lv1 proves one selected explosion executes twice in total; Lv2 proves two distinct tags through two conductive strikes and two frost pulses.
-- Added a black echo Lv3 implementation-observation contract for its configured first-tag repeat, without claiming that repetition is the authored meaning of empowerment.
-- Downgraded red echo Lv3 and black light Lv3 from design coverage. The former is a generic follow-up-damage placeholder; the latter ignores lethal tags and Lv2 settlement strength.
-- The semantic suite now contains 91 passing cases. Honest executable design coverage remains `71 / 90 = 78.88%`: two new black-echo rows replace two overstated rows rather than inflating the headline.
-- Final evidence passes `verify changed: 23 / 23` and `verify all: 67 / 70`; the only full-suite failures remain the same three recorded overlay/water visual contracts.
+- 发现死亡链去重拒绝了原始标签已解析后的每次预期黑色回响重放。回响深度重放现在仅绕过该所有者/标签去重；普通重复死亡钩子和递归回响选择保持受保护。
+- `GemEchoRules` 不再使用 `echo_level >= 3` 来决定选定标签是否应移至强化位置。它改为读取直接的蓝色强度和黑色重复字段。
+- 验证现在要求 `first_tag_strength` 和 `first_tag_repeat_count` 为正整数，并对零值进行变异测试。
+- 为黑色回响 Lv1 和 Lv2 添加了真实致死路径合约。Lv1 证明一个选定的爆炸总共执行两次；Lv2 证明通过两次导电打击和两次冰霜脉冲的两个不同标签。
+- 为黑色回响 Lv3 添加了实现观察合约，针对其已配置的第一标签重复，而不声称重复是强化的设定含义。
+- 将红色回响 Lv3 和黑色光线 Lv3 从设计覆盖中降级。前者是通用的后续伤害占位符；后者忽略致死标签和 Lv2 结算强度。
+- 语义套件现在包含 91 个通过用例。诚实的可执行设计覆盖率保持 `71 / 90 = 78.88%`：两个新的黑色回响行替换了两个被夸大的行，而非膨胀标题数字。
+- 最终证据通过 `verify changed: 23 / 23` 和 `verify all: 67 / 70`；仅有的全套件失败保持相同的三个记录的叠加/水域视觉合约。
 
-Review judgment:
+审查结论：
 
-- Allowing explicit echo-depth replay is narrower and clearer than weakening death-chain deduplication globally. It fixes the intended mechanic without reopening duplicate black effects elsewhere.
-- Direct strength/repeat fields are the correct data boundary, but they do not make the product meaning of “empowered” self-evident. Lv3 remains unverified until that meaning is authored.
-- Black light cannot be repaired as a numeric-table exercise alone. It first needs lethal gem-tag transport and a defined mapping from each tag to settlement strength.
-- Blue echo should be replaced by a complete tag-effect registry rather than extending its current switch one tag at a time. Silent no-op selections are incompatible with trustworthy data-driven content.
-- Lowering false coverage while fixing black echo is a net quality gain. The review ledger now distinguishes values that are editable from semantics that are actually complete.
+- 允许显式的回响深度重放比全局削弱死亡链去重更窄且更清晰。它修复了预期的机制，而不在其他地方重新打开重复的黑色效果。
+- 直接的强度/重复字段是正确的数据边界，但它们不使"强化"的产品含义不言自明。Lv3 在该含义被设定之前保持未验证。
+- 黑色光线不能仅作为数值表练习来修复。它首先需要致死宝石标签传输和一个定义的从每个标签到结算强度的映射。
+- 蓝色回响应由完整的标签效果注册表替换，而非一次扩展其当前 switch 一个标签。静默的无操作选择与可信的数据驱动内容不兼容。
+- 在修复黑色回响的同时降低虚假覆盖率是净质量增益。审查账本现在区分可编辑的值和实际完整的语义。
 
 ## 2026-07-11 / Phase 35
 
-Scope reviewed:
+审查范围：
 
-- whether combat-config keys have real runtime consumers
-- scalar enemy-intent damage versus multi-hit/multi-target gem attacks
-- split/light execution formulas, geometry, intent copy, and Utility AI scoring
-- attack dispatch and disarm classification for red/custom enemy intents
+- 战斗配置键是否有真实的运行时消费者
+- 标量敌人意图伤害与多段命中/多目标宝石攻击
+- 分裂/光线执行公式、几何、意图文本和 Utility AI 评分
+- 红色/自定义敌人意图的攻击分发和缴械分类
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added typed `IntentDamageComponent` data carrying source, damage per hit, instance count, predicted target applications, affected cells, and certainty. `IntentState.damage` remains a compatibility view instead of the only representation.
-- Added pure `LightBeamRules`; execution and preview now share beam directions, blocker truncation, endpoints, and affected cells without making preview depend on the full execution pipeline.
-- Added shared `GemEffects.red_split_damage()` and `red_light_damage()` formulas. Execution, structured preview, dynamic intent text, and AI damage scoring now preserve the same configured ratios and floor order, including light + split's two-stage scaling.
-- Split intent copy no longer hard-codes `x3`; it renders the resolved shot count. Multi-beam light copy renders its configured/resolved beam count.
-- AI scoring for ordinary melee/ranged attacks and explosion/split/light red skills now reads predicted damage from the same structured profile instead of using raw attack, a fixed explosion base, or a hard-coded light `0.5`.
-- Removed the zero-consumer `arc_hit_damage` combat key/accessor/fallback and added a validator regression that rejects it as stale configuration.
-- Reconnected `counter_attack` and `echo_attack` to enemy execution, and classified slam, trample, lawless attack, and damaging plunder as attacks for disarm gating.
-- Added focused execution contracts for light Lv2, light + split, split Lv3 ranged geometry, multi-cell units hit by multiple split projectiles, counter/echo dispatch, and custom-intent disarm.
-- Final evidence passes `verify changed: 23 / 23` and `verify all: 67 / 70`. The only full-suite failures remain the same three tracked overlay/water visual contracts; semantic coverage remains honestly unchanged at `71 / 90 = 78.88%` because this phase adds preview/integration contracts rather than claiming new gem-design rows.
+- 添加了类型化的 `IntentDamageComponent` 数据，携带来源、每次命中伤害、实例数量、预测目标应用、影响单元格和确定性。`IntentState.damage` 保持为兼容性视图，而非唯一表示。
+- 添加了纯 `LightBeamRules`；执行和预览现在共享光束方向、阻挡者截断、端点和影响单元格，而不使预览依赖完整的执行管线。
+- 添加了共享的 `GemEffects.red_split_damage()` 和 `red_light_damage()` 公式。执行、结构化预览、动态意图文本和 AI 伤害评分现在保留相同的已配置比率和下限顺序，包括光线 + 分裂的两阶段缩放。
+- 分裂意图文本不再硬编码 `x3`；它渲染已解析的射击数量。多光束光线文本渲染其已配置/已解析的光束数量。
+- 普通近战/远程攻击和爆炸/分裂/光线红色技能的 AI 评分现在从相同的结构化配置文件读取预测伤害，而非使用原始攻击、固定的爆炸基础或硬编码的光线 `0.5`。
+- 移除了零消费者的 `arc_hit_damage` 战斗键/访问器/回退，并添加了将其作为过时配置拒绝的验证器回归。
+- 将 `counter_attack` 和 `echo_attack` 重新连接到敌人执行，并将猛击、践踏、无法者攻击和伤害掠夺分类为攻击用于缴械门控。
+- 为光线 Lv2、光线 + 分裂、分裂 Lv3 远程几何、被多个分裂投射物命中的多单元格单位、反击/回响分发和自定义意图缴械添加了聚焦执行合约。
+- 最终证据通过 `verify changed: 23 / 23` 和 `verify all: 67 / 70`。仅有的全套件失败保持相同的三个跟踪的叠加/水域视觉合约；语义覆盖率诚实地保持不变为 `71 / 90 = 78.88%`，因为此阶段添加预览/集成合约而非声称新的宝石设计行。
 
-Review judgment:
+审查结论：
 
-- The dependency direction is now healthy: execution, preview, and AI depend on small pure geometry/formula rules. The first implementation temporarily made preview depend on `AttackPipeline`; phase review caught and removed that coupling before broad verification.
-- Keeping the scalar field as a compatibility projection allows incremental migration without preserving its old ambiguity as the authoritative model.
-- The model is deliberately honest rather than exhaustive. Arc chains, random echo results, future status damage, defenses, and reactive redirects still need component producers.
-- Two runtime/design gaps were exposed instead of normalized: adjacent split loses its backward extra shot, and light endpoint explosions ignore explosion level semantics. Both are logged as conflicts rather than receiving invented placement/composition rules.
+- 依赖方向现在是健康的：执行、预览和 AI 依赖于小型的纯几何/公式规则。首个实现临时使预览依赖 `AttackPipeline`；阶段审查在广泛验证之前捕获并移除了该耦合。
+- 将标量字段保留为兼容性投影允许增量迁移，而不保留其旧的模糊性作为权威模型。
+- 模型是有意诚实的而非穷举的。电弧链、随机回响结果、未来状态伤害、防御和反应性重定向仍需要组件生产者。
+- 两个运行时/设计空白被暴露而非归一化：相邻分裂丢失其向后额外射击，光线端点爆炸忽略爆炸等级语义。两者都被记录为冲突，而非接收发明的放置/组合规则。
 
 ## 2026-07-11 / Phase 36
 
-Scope reviewed:
+审查范围：
 
-- lethal-damage metadata from attack execution through immediate and deferred death hooks
-- direct, redirected, elemental, collision, and forced-hazard damage attribution
-- displacement/spike settlement order and occupancy invariants
-- trustworthiness of combination and trample fixtures
+- 从攻击执行到立即和延迟死亡钩子的致死伤害元数据
+- 直接、重定向、元素、碰撞和强制危险伤害归属
+- 位移/尖刺结算顺序和占用不变量
+- 组合和践踏装置的可信度
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added canonical `DamageContext` data for source, reason, ordered unique gem tags, resolved gem context, and actual HP loss. `CombatTransaction`, normal/true damage, immediate death, and deferred death now preserve the same payload.
-- Damage events expose canonical `damage_tags`, and `EventValidator` rejects malformed or duplicate tag arrays. Legacy reason-only damage receives a narrow inferred tag only where the mechanism is unambiguous.
-- Primary red attacks carry their resolved active context. Split redirection preserves incoming context; arc damage, gravity collision, explosion collision, light reflection, and status ticks have explicit component-level attribution.
-- Extended context through wall/unit/entity collisions and forced tile entry. Enemy-specific gravity execution was found during static review and connected to the same path.
-- Corrected forced spike semantics: every traversed spike now uses configured collision damage and vulnerable, while final landing cleanup no longer settles the same entity twice.
-- Repaired transient trample occupancy after successful relocation and changed the all-blocked fixture so it really exhausts the radius-2 search and proves `space_squeeze` rather than passing on base skill damage.
-- Repaired the 128-case red-tag matrix, which directly assigned `player.pos`; every case now moves through `GameState` and explicitly validates event shape plus battle invariants.
-- Focused evidence passes for combat transactions, immediate/deferred black-light context, displacement, gravity, explosion, fission slime, enemy red gems, arc, status, 128 red combinations, 160 blue/black combinations, and 91 semantic cases.
-- Strict `verify changed` passes `23 / 23`; strict `verify all` remains `67 / 70`, with only the same three tracked overlay/water visual contracts failing. Executable design coverage remains honestly unchanged at `71 / 90 = 78.88%` because this phase completes transport and evidence quality rather than the still-undefined black-light settlement mapping.
+- 为来源、原因、有序唯一宝石标签、已解析宝石上下文和实际 HP 损失添加了规范的 `DamageContext` 数据。`CombatTransaction`、普通/真实伤害、立即死亡和延迟死亡现在保留相同的载荷。
+- 伤害事件暴露规范的 `damage_tags`，`EventValidator` 拒绝格式错误或重复的标签数组。旧版仅原因伤害仅在机制明确的地方接收窄推断标签。
+- 主要红色攻击携带其已解析的活跃上下文。分裂重定向保留传入上下文；电弧伤害、重力碰撞、爆炸碰撞、光线反射和状态持续伤害具有显式的组件级别归属。
+- 通过墙壁/单位/实体碰撞和强制瓦片进入扩展上下文。敌人特定的重力执行在静态审查期间被发现并连接到相同的路径。
+- 纠正了强制尖刺语义：每个穿过的尖刺现在使用已配置的碰撞伤害和脆弱，而最终着陆清理不再结算同一实体两次。
+- 修复了成功重定位后的瞬态践踏占用，并更改了全阻塞装置，使其真正穷举半径-2 搜索并证明 `space_squeeze`，而非在基础技能伤害上通过。
+- 修复了直接赋值 `player.pos` 的 128 用例红色标签矩阵；每个用例现在通过 `GameState` 移动，并显式验证事件形状和战斗不变量。
+- 聚焦证据通过：战斗事务、立即/延迟黑色光线上下文、位移、重力、爆炸、裂变史莱姆、敌人红色宝石、电弧、状态、128 红色组合、160 蓝色/黑色组合和 91 个语义用例。
+- 严格 `verify changed` 通过 `23 / 23`；严格 `verify all` 保持 `67 / 70`，仅相同的三个跟踪的叠加/水域视觉合约失败。可执行设计覆盖率诚实地保持不变为 `71 / 90 = 78.88%`，因为此阶段完成传输和证据质量，而非仍未被定义的黑色光线结算映射。
 
-Review judgment:
+审查结论：
 
-- `DamageContext` belongs at the transaction boundary. Death hooks no longer have to reverse-engineer semantics from a reason string, and secondary mechanisms can deliberately narrow or preserve tags at their point of creation.
-- Transport and product semantics are now cleanly separated. The code can deliver lethal tags reliably, but black light is not called complete until design defines what each tag settles and how Lv2 strength changes it.
-- Phase review prevented two false conclusions: the old trample squeeze test never reached squeeze, and the combination matrix was not invariant-clean despite its pass marker. Both now provide executable evidence instead of console optimism.
-- A survivable fully blocked trample remains incompatible with the single-occupant index. Likewise, redirected/hazard tag attribution is an authored-policy gap. Both remain explicit conflicts rather than receiving hidden assumptions.
-- The public displacement calls have accumulated positional policy arguments. The new context parameter is backward-compatible, but a later combat-transaction phase should replace those booleans and scalar tails with a typed/options object before adding more displacement policies.
+- `DamageContext` 属于事务边界。死亡钩子不再需要从原因字符串逆向工程语义，次级机制可以在其创建点故意缩小或保留标签。
+- 传输和产品语义现在被干净地分离。代码可以可靠地传递致死标签，但在设计定义每个标签结算什么以及 Lv2 强度如何改变它之前，黑色光线不被称为完成。
+- 阶段审查防止了两个错误结论：旧的践踏挤压测试从未到达挤压，组合矩阵尽管有通过标记但并非不变量干净。两者现在提供可执行证据而非控制台乐观主义。
+- 可幸存的全阻塞践踏仍然与单占用者索引不兼容。同样，重定向/危险标签归属是已设定策略的空白。两者保持为显式冲突，而非接收隐藏的假设。
+- 公共位移调用已积累了位置策略参数。新的上下文参数是向后兼容的，但后续的战斗事务阶段应在添加更多位移策略之前用类型化/选项对象替换那些布尔值和标量尾部。
 
 ## 2026-07-11 / Phase 37
 
-Scope reviewed:
+审查范围：
 
-- fission-slime trample damage composition and no-space squeeze tuning
-- star-relocation search geometry and its relationship to squeeze damage
-- player attack highlight geometry, lethal thresholds, and black-death preview
-- duplicate/no-op damage calculations in the attack pipeline
-- unit-balance and combat-config authoring safety
+- 裂变史莱姆践踏伤害组合和无空间挤压调优
+- 星形重定位搜索几何及其与挤压伤害的关系
+- 玩家攻击高亮几何、致死阈值和黑色死亡预览
+- 攻击管线中的重复/无操作伤害计算
+- 单位平衡和战斗配置编辑安全
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `trample_collision_damage` beside `trample_damage` in the fission-slime balance row. Intent copy now shows their configured total, while structured preview exposes separate skill and collision components and execution composes the same values.
-- Added configured star-relocation maximum distance and squeeze damage per tile. `BoardUtils` generates each outer square ring from that radius, and `Displacement` derives squeeze damage from the same fields rather than owning a second fixed `2`.
-- Unit-balance validation now rejects unknown fields and requires the complete fission-slime balance row. Combat-config validation requires positive integer relocation radius and non-negative integer squeeze damage.
-- Replaced `BattleQueryService`'s hand-written light/split/explosion preview with `IntentPreviewRules.build_red_attack_profile()`. Gravity range, multi-beam light, split geometry, explosion shapes, and endpoint compositions now share one preview source.
-- Added per-component post-mitigation prediction that consumes shield in hit order and applies vulnerable per hit. Black-death explosion cells are shown for structured lethal attacks at any HP, while blue split/gravity and active counter marks suppress an uncertain lethal claim.
-- Removed the unused `AttackContext.final_damage` shield calculation and unsupported `piercing` tag. Actual shield consumption remains solely in `CombatRules` instead of being traced through a value execution never used.
-- Added contracts for configured trample 3 + 1 preview/execution, dynamic radius-based squeeze setup, strict config mutation failures, and player hover at 10 damage versus 10 HP with/without 1 shield.
-- Direct targeted tests pass for balance config, intent consistency, fission slime, skill behavior, and displacement. Strict `verify changed` passes `23 / 23`; strict `verify all` remains `67 / 70`, with only the same three tracked overlay/water visual failures. Semantic coverage remains `71 / 90 = 78.88%`.
+- 在裂变史莱姆平衡行中的 `trample_damage` 旁边添加了 `trample_collision_damage`。意图文本现在显示其已配置的总和，而结构化预览暴露单独的技能和碰撞组件，执行组合相同的值。
+- 添加了已配置的星形重定位最大距离和每瓦片挤压伤害。`BoardUtils` 从该半径生成每个外方形环，`Displacement` 从相同字段派生挤压伤害，而非拥有第二个固定的 `2`。
+- 单位平衡验证现在拒绝未知字段并要求完整的裂变史莱姆平衡行。战斗配置验证要求正整数重定位半径和非负整数挤压伤害。
+- 用 `IntentPreviewRules.build_red_attack_profile()` 替换了 `BattleQueryService` 手写的光线/分裂/爆炸预览。重力范围、多光束光线、分裂几何、爆炸形状和端点组合现在共享一个预览来源。
+- 添加了每个组件的缓解后预测，按命中顺序消耗护盾并每次命中应用脆弱。黑色死亡爆炸单元格在任何 HP 下对结构化致死攻击显示，而蓝色分裂/重力和活跃的反击标记抑制不确定的致死声明。
+- 移除了未使用的 `AttackContext.final_damage` 护盾计算和不支持的 `piercing` 标签。实际护盾消耗仅保留在 `CombatRules` 中，而非通过执行从未使用的值进行跟踪。
+- 为已配置的践踏 3 + 1 预览/执行、基于动态半径的挤压设置、严格配置变异失败以及 10 伤害对 10 HP（有/无 1 护盾）的玩家悬停添加了合约。
+- 直接针对性测试通过：平衡配置、意图一致性、裂变史莱姆、技能行为和位移。严格 `verify changed` 通过 `23 / 23`；严格 `verify all` 保持 `67 / 70`，仅相同的三个跟踪的叠加/水域视觉失败。语义覆盖率保持 `71 / 90 = 78.88%`。
 
-Review judgment:
+审查结论：
 
-- Trample is now a useful editing surface: skill damage, collision contribution, search radius, and per-tile squeeze damage each have one named authority and validation. The UI no longer advertises 3 while execution silently deals 4.
-- Reusing structured profiles in player query code closes an important consumer gap left after Phase 35. A shared model is only valuable if enemy intent, AI, and player-facing previews all consume it.
-- Lethal preview deliberately stops at deterministic current-state mitigation. It does not claim to simulate probabilistic defenses, delayed statuses, arc chains, relic caps, or recursive black-death cascades; those gaps remain explicit.
-- Review surfaced two unresolved design issues rather than changing behavior: the detailed collision document calls a complete radius-2 ring “12 cells” although runtime has 16, and its no-space “nearest cell” instruction has no legal destination/tie-break after every candidate is blocked.
-- Removing the fake piercing path is preferable to retaining an API-shaped promise with no behavior. Future armor penetration should be modeled at the transaction mitigation boundary and verified through execution, preview, and event evidence together.
+- 践踏现在是一个有用的编辑表面：技能伤害、碰撞贡献、搜索半径和每瓦片挤压伤害各有一个命名的权威和验证。UI 不再显示 3 而执行静默造成 4。
+- 在玩家查询代码中重用结构化配置文件关闭了 Phase 35 之后留下的重要消费者空白。共享模型仅在敌人意图、AI 和面向玩家的预览都消费它时才有价值。
+- 致死预览有意停在确定性的当前状态缓解。它不声称模拟概率防御、延迟状态、电弧链、遗物上限或递归黑色死亡级联；这些空白保持显式。
+- 审查揭示了两个未解决的设计问题，而非更改行为：详细碰撞文档称完整的半径-2 环为"12 个单元格"，尽管运行时有 16 个，其无空间"最近单元格"指令在每个候选都被阻塞后没有合法目的地/平局规则。
+- 移除虚假的穿刺路径比保留没有行为的 API 形状承诺更可取。未来的护甲穿透应在事务缓解边界建模，并通过执行、预览和事件证据一起验证。
+
 ## 2026-07-12 / Phase 38
 
-Scope reviewed:
+审查范围：
 
-- `DataRegistry` startup ownership for gem, unit, and encounter catalogs
-- whole-file replacement versus hardcoded deep-merge fallback
-- schema completeness and cross-catalog references
-- production encounter enumeration versus test-only fixtures
+- 宝石、单位和遭遇目录的 `DataRegistry` 启动所有权
+- 整体文件替换与硬编码深度合并回退
+- 模式完整性和跨目录引用
+- 生产遭遇枚举与仅测试装置
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Removed the complete in-code gem, unit, and encounter catalogs from `DataRegistry`; JSON is now the sole runtime authority for those definitions.
-- Gem definitions now reject missing and unknown fields, invalid colors/levels/rarities, duplicate semantic tags, unknown combo tags, and unknown effect profiles before conversion to runtime colors.
-- Unit definitions now reject missing base stats, unknown fields, malformed slots/footprints, unknown initial gems, and unknown behavior ids. Patrol, stone-bow, and fission behaviors require their complete behavior-owned balance rows.
-- Encounter files now validate nested enemy groups, weighted random candidates, board bounds including large-unit footprints, tile/entity/overlay ids, tile slots, and unknown fields before any `Vector2i` hydration occurs.
-- Moved four behavior-test encounters to `tests/fixtures/encounters`. They load only in debug builds and are hidden from normal `get_encounter_ids()` enumeration while remaining directly loadable by tests.
-- Added regression evidence that runtime catalog ids exactly equal authored JSON ids and that omitted fields cannot be supplied by a hidden in-code definition.
+- 从 `DataRegistry` 中移除了完整的代码内宝石、单位和遭遇目录；JSON 现在是这些定义的唯一运行时权威。
+- 宝石定义现在在转换为运行时颜色之前拒绝缺失和未知字段、无效颜色/等级/稀有度、重复语义标签、未知组合标签和未知效果配置文件。
+- 单位定义现在拒绝缺失基础属性、未知字段、格式错误的槽位/覆盖区、未知初始宝石和未知行为 ID。巡逻、石弓和裂变行为要求其完整的行为拥有的平衡行。
+- 遭遇文件现在在任何 `Vector2i` hydration 发生之前验证嵌套敌人组、加权随机候选、包括大型单位覆盖区的棋盘边界、瓦片/实体/叠加 ID、瓦片槽位和未知字段。
+- 将四个行为测试遭遇移至 `tests/fixtures/encounters`。它们仅在调试构建中加载，并对普通 `get_encounter_ids()` 枚举隐藏，同时保持可由测试直接加载。
+- 添加了回归证据，证明运行时目录 ID 完全等于设定的 JSON ID，且省略的字段不能由隐藏的代码内定义提供。
 
-Problems surfaced and recorded:
+揭示并记录的问题：
 
-- `CombatConfig`, `StatusConfig`, and `AIProfiles` still own duplicate numeric fallback tables.
-- Gem-pool rarity weights, relic-source weights, and enemy slot curves still have `DataRegistry` fallback constants.
-- These are now a named open issue and the next single-authority cleanup target; Phase 38 does not claim that the entire numeric system is complete.
+- `CombatConfig`、`StatusConfig` 和 `AIProfiles` 仍拥有重复的数值回退表。
+- 宝石池稀有度权重、遗物来源权重和敌人槽位曲线仍具有 `DataRegistry` 回退常量。
+- 这些现在是命名的未解决问题和下一个单一权威清理目标；Phase 38 不声称整个数值系统已完成。
 
-Review judgment:
+审查结论：
 
-- Whole-catalog replacement is the correct boundary for primary authored content. Per-instance gem overrides still use deep merge intentionally because they are runtime modifiers, not a second base catalog.
-- Keeping behavior scripts in `BehaviorRegistry` is appropriate, but authored `behavior_id` values must be checked against that registry; Phase 38 adds this check so typo fallback cannot alter an enemy archetype silently.
-- Hiding test fixtures at enumeration time preserves existing deterministic behavior tests without polluting profile unlock flags or normal encounter selection.
-- No design-source conflict was introduced: this phase changes failure and authoring semantics for invalid data, not any valid battle formula.
+- 整体目录替换是主要内容设定数据的正确边界。每个实例的宝石覆盖仍有意使用深度合并，因为它们是运行时修正，而非第二个基础目录。
+- 将行为脚本保留在 `BehaviorRegistry` 中是适当的，但设定的 `behavior_id` 值必须针对该注册表进行检查；Phase 38 添加了此检查，因此拼写错误回退不能静默改变敌人原型。
+- 在枚举时隐藏测试装置保留了现有的确定性行为测试，而不污染配置文件解锁标志或普通遭遇选择。
+- 没有引入设计来源冲突：此阶段更改了无效数据的失败和编辑语义，而非任何有效的战斗公式。
 
-Verification at review point:
+审查点的验证：
 
-- headless editor import/compile passed
-- focused `balance_config_test` passed
-- focused `encounter_load_test` created all 22 production encounters successfully
-- strict `verify fast`: `23 / 23`
-- strict `verify changed`: `23 / 23`
-- strict `verify all`: `67 / 70`; only the same three tracked overlay/water visual contracts failed
-- semantic coverage unchanged at `71 / 90 = 78.88%`
+- 无界面编辑器导入/编译通过
+- 聚焦 `balance_config_test` 通过
+- 聚焦 `encounter_load_test` 成功创建了所有 22 个生产遭遇
+- 严格 `verify fast`：`23 / 23`
+- 严格 `verify changed`：`23 / 23`
+- 严格 `verify all`：`67 / 70`；仅相同的三个跟踪的叠加/水域视觉合约失败
+- 语义覆盖率不变为 `71 / 90 = 78.88%`
 
 ## 2026-07-12 / Phase 39
 
-Scope reviewed:
+审查范围：
 
-- combat/status/AI configuration ownership and missing-field behavior
-- behavior-owned unit balance rows
-- gem/relic pool weights, enemy slot curves, economy prices, and shop counts
-- release-build handling of invalid authored catalogs
+- 战斗/状态/AI 配置所有权和缺失字段行为
+- 行为拥有的单位平衡行
+- 宝石/遗物池权重、敌人槽位曲线、经济价格和商店数量
+- 无效设定目录的发布构建处理
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Removed the remaining combat numeric mirror from `Constants`. `CombatConfig` now loads a complete validated file and exposes required values without per-call balance fallbacks.
-- Replaced `StatusConfig`'s hardcoded deep-merge table with complete authored status rows. Defaults and status-specific multipliers now have one JSON authority and strict schema validation.
-- Added explicit AI profile defaults to JSON and removed in-code profile, alias, and tuning tables. Every resolved profile is complete, and unit definitions reject unknown profile ids.
-- Removed hardcoded global gem rarity weights, relic-source weights, enemy slot curves, behavior scores, economy prices, and shop offer counts. Their loaders use validated whole-file replacement.
-- Added missing barrel radius and smoke/puddle durations to the authored combat surface, then migrated runtime consumers and tests to those accessors.
-- Review caught several loaders that logged invalid data but still assigned it outside debug builds. Gem levels, relic refs/defs, reward offers, and reward UI now clear and reject invalid catalogs before assignment.
-- Repaired a false-green patrol test: it now supplies the authored unit identity and uses `GameState.move_unit()`, so behavior lookup and occupancy invariants are genuinely exercised.
+- 从 `Constants` 中移除了剩余的战斗数值镜像。`CombatConfig` 现在加载完整的已验证文件，并暴露所需值而不带每次调用的平衡回退。
+- 用完整设定的状态行替换了 `StatusConfig` 的硬编码深度合并表。默认值和特定于状态的倍率现在具有一个 JSON 权威和严格的模式验证。
+- 将显式的 AI 配置文件默认值添加到 JSON，并移除了代码内的配置文件、别名和调优表。每个解析的配置文件是完整的，单位定义拒绝未知配置文件 ID。
+- 移除了硬编码的全局宝石稀有度权重、遗物来源权重、敌人槽位曲线、行为分数、经济价格和商店提供数量。其加载器使用已验证的整体文件替换。
+- 将缺失的桶半径和烟雾/水坑持续时间添加到已设定的战斗表面，然后将运行时消费者和测试迁移到这些访问器。
+- 审查捕获了几个记录无效数据但在调试构建之外仍将其赋值的加载器。宝石等级、遗物引用/定义、奖励提供和奖励 UI 现在在赋值前清除并拒绝无效目录。
+- 修复了一个虚假绿色的巡逻测试：它现在提供设定的单位身份并使用 `GameState.move_unit()`，因此行为查找和占用不变量被真正测试。
 
-Review judgment:
+审查结论：
 
-- A data file is not authoritative merely because code reads it. Authority requires complete schema, whole-table replacement, no duplicate fallback values, and refusal to execute malformed content; the core loaders now follow that rule.
-- Zero remains an error sentinel at a few generic runtime/query boundaries, but it is no longer a second authored balance value. Structural board/render dimensions and algorithmic absence values are intentionally not classified as tunable combat balance.
-- The next residual audit should focus on consumer-side `.get(field, literal)` calls over already-complete gem level rows. Those literals can still hide a broken caller even though catalog validation guarantees valid startup data.
+- 数据文件不因为代码读取它就具有权威性。权威需要完整的模式、全表替换、无重复回退值以及拒绝执行格式错误的内容；核心加载器现在遵循该规则。
+- 零在少数通用运行时/查询边界保持为错误哨兵值，但它不再是第二个设定的平衡值。结构性的棋盘/渲染维度和算法缺失值被有意不分类为可调优的战斗平衡。
+- 下一次残留审计应关注对已完成宝石等级行的消费者端 `.get(field, literal)` 调用。尽管目录验证保证有效的启动数据，这些字面量仍可能隐藏损坏的调用者。
 
-Verification at review point:
+审查点的验证：
 
-- focused balance, status, AI, economy, shop, patrol, stone-bow, fission-slime, and pool tests passed
-- headless editor import/compile passed
-- strict `verify fast`: `23 / 23`
-- final snapshots and strict changed/all verification pending after the residual consumer audit
+- 聚焦平衡、状态、AI、经济、商店、巡逻、石弓、裂变史莱姆和池测试通过
+- 无界面编辑器导入/编译通过
+- 严格 `verify fast`：`23 / 23`
+- 最终快照和严格的变更/全部验证在残留消费者审计后待定
 
 ## 2026-07-12 / Phase 40
 
-Scope reviewed:
+审查范围：
 
-- every consumer of complete gem effect level rows
-- remaining combat/status/pathfinding literals
-- board-size-derived search and shot geometry
+- 完整宝石效果等级行的每个消费者
+- 剩余的战斗/状态/寻路字面量
+- 从棋盘尺寸派生的搜索和射击几何
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Removed hidden numeric defaults from red/blue/black gem-level consumers across attack, contact, damage, death, echo, clone, pillar, and beam paths.
-- Added authored blue-explosion turn-start damage and blue-gravity redirect radius; complete schema validation requires both on every level.
-- Moved lawless attack bonus, water movement cost, and generic navigation weights into status, combat, and AI data.
-- Replaced fixed split-shot board bounds and black-split spawn search radius with current board dimensions.
-- Removed the final hardcoded painkiller cap and empty-coffin ratio compatibility values from their active authored paths.
+- 从跨攻击、接触、伤害、死亡、回响、克隆体、柱和光束路径的红色/蓝色/黑色宝石等级消费者中移除了隐藏的数值默认值。
+- 添加了设定的蓝色爆炸回合开始伤害和蓝色重力重定向半径；完整模式验证在每个等级上要求两者。
+- 将无法者攻击加成、水域移动消耗和通用导航权重移入状态、战斗和 AI 数据。
+- 用当前棋盘尺寸替换了固定的分裂射击棋盘边界和黑色分裂生成搜索半径。
+- 从活跃设定路径中移除了最终的硬编码止痛药上限和空棺材比率兼容性值。
 
-Review judgment:
+审查结论：
 
-- Complete startup validation and required consumer reads now reinforce each other. A malformed row cannot enter runtime, and a wrong consumer scope can no longer restore an obsolete rule through a literal fallback.
-- Fixed collision `max(1, moved tiles)` remains code because the authority document explicitly defines it as an invariant formula, not a tuning table.
-- Blue explosion's turn-start aura conflicts with detailed gem design. Its amount is data-driven for honesty, while the trigger remains an explicit compatibility observation pending product resolution.
+- 完整的启动验证和所需的消费者读取现在相互加强。格式错误的行无法进入运行时，错误的消费者范围不能再通过字面量回退恢复过时的规则。
+- 固定的碰撞 `max(1, moved tiles)` 保留在代码中，因为权威文档明确将其定义为不变量公式，而非调优表。
+- 蓝色爆炸的回合开始光环与详细宝石设计冲突。其数量为诚实而由数据驱动，而触发器在等待产品解决之前保持为显式的兼容性观察。
 
-Verification at review point:
+审查点的验证：
 
-- headless compile passed
-- strict `verify fast`: `23 / 23`
-- semantic coverage unchanged at `71 / 90 = 78.88%`
+- 无界面编译通过
+- 严格 `verify fast`：`23 / 23`
+- 语义覆盖率不变为 `71 / 90 = 78.88%`
 
 ## 2026-07-12 / Phase 41
 
-Scope reviewed:
+审查范围：
 
-- adventure map dimensions and room distribution
-- chapter progression and encounter selection
-- relic catalog completeness and runtime selection defaults
-- deterministic seed compatibility and false-green map evidence
+- 冒险地图维度和房间分布
+- 章节进度和遭遇选择
+- 遗物目录完整性和运行时选择默认值
+- 确定性种子兼容性和虚假绿色地图证据
 
-What improved in this phase:
+此阶段改进的方面：
 
-- Added `adventure_progression.json` as the sole authority for chapter count, map size, chapter seed stride, room rules/weights, event pool, combat pools, and per-chapter Boss encounters.
-- The map generator derives its final layer from grid size and accepts the validated map config. Fixed start/end weights remain explicit so old seeds consume RNG in the same order.
-- Runtime cross-validates progression encounter and event references after production catalogs load.
-- Refactored `map_test` away from hardcoded 8/14/64 and from assertions that could print `PASS` after script errors. It now reads authored constraints and exits nonzero on failures.
-- Strengthened relic definitions to a complete schema and removed runtime `common/global/1` selection fallbacks. Placeholder empty-pool behavior is explicitly modeled.
+- 添加了 `adventure_progression.json` 作为章节数量、地图大小、章节种子步幅、房间规则/权重、事件池、战斗池和每章 Boss 遭遇的唯一权威。
+- 地图生成器从网格大小派生其最终层，并接受已验证的地图配置。固定的起点/终点权重保持显式，因此旧种子以相同顺序消耗 RNG。
+- 运行时在生产目录加载后交叉验证进度遭遇和事件引用。
+- 将 `map_test` 从硬编码的 8/14/64 和可能在脚本错误后打印 `PASS` 的断言中重构。它现在读取设定的约束并在失败时非零退出。
+- 将遗物定义加强为完整模式，并移除了运行时 `common/global/1` 选择回退。占位空池行为被显式建模。
 
-Review judgment:
+审查结论：
 
-- This is the highest-leverage authoring surface outside combat: adding a chapter, reweighting room flow, changing map size, or replacing encounter pools now happens in one file with reference validation.
-- The config preserves the existing fully generated map model. GDD's preference for hand-authored room templates is a product/content direction, not something this numeric migration should silently redesign.
-- Data edits are now easy enough that versioning becomes the next systemic risk. Active runs do not pin a balance catalog version, so the issue is recorded rather than hidden by deterministic seeds.
+- 这是战斗之外最高杠杆的编辑表面：添加章节、重新加权房间流、更改地图大小或替换遭遇池现在在一个文件中完成，并带有引用验证。
+- 配置保留了现有的完全生成地图模型。GDD 对手工制作房间模板的偏好是产品/内容方向，而非此数值迁移应静默重新设计的内容。
+- 数据编辑现在足够容易，版本控制成为下一个系统性风险。活跃运行不固定平衡目录版本，因此该问题被记录而非被确定性种子隐藏。
 
-Verification at review point:
+审查点的验证：
 
-- focused progression config validation passed
-- focused deterministic map topology/rule test passed
-- focused complete relic catalog validation passed
-- tutorial and three-red-explosion deterministic snapshots passed without invariant violations
-- strict `verify changed`: `23 / 23`
-- strict `verify all`: `67 / 70`; only the same tracked overlay/water visual contracts failed
-- semantic coverage remains `71 / 90 = 78.88%`; all 19 uncovered rows remain explicitly reported
+- 聚焦进度配置验证通过
+- 聚焦确定性地图拓扑/规则测试通过
+- 聚焦完整遗物目录验证通过
+- 教程和三次红色爆炸确定性快照通过，无不变量违规
+- 严格 `verify changed`：`23 / 23`
+- 严格 `verify all`：`67 / 70`；仅相同的跟踪的叠加/水域视觉合约失败
+- 语义覆盖率保持 `71 / 90 = 78.88%`；所有 19 个未覆盖行保持显式报告

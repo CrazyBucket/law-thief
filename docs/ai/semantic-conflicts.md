@@ -1,161 +1,156 @@
-# Known Semantic Conflicts
+# 已知语义冲突
 
-These conflicts must be surfaced when related behavior changes. Do not silently pick the current
-implementation merely because existing tests pass.
+当相关行为发生变化时，必须暴露这些冲突。不要仅仅因为现有测试通过就默认选择当前实现。
 
-## Explosion Stack Levels (Resolved In Phase 30)
+## 爆炸堆叠等级（已在 Phase 30 中解决）
 
-- Detailed gem design defines only levels 1/2/3: cross / 3x3 / 3x3 with 2x damage.
-- Runtime previously split authority: the normal attack pipeline used the authored level table, while an active-trigger helper derived `count - 1` and could turn a fourth stack into 3x damage. A stale test asserted that extension.
-- Phase 30 resolves the conflict in favor of the detailed design. Every execution path resolves the clamped tag level and reads shape/multiplier from `gem_effect_levels.json`; four or more copies remain at authored Lv3 behavior.
-- Dynamic localization now renders the configured multiplier rather than owning a separate doubled/tripled sentence.
+- 详细宝石设计仅定义等级 1/2/3：十字 / 3x3 / 3x3（2 倍伤害）。
+- 运行时之前存在双重权威：普通攻击管线使用已配置的等级表，而主动触发器辅助函数则推导出 `count - 1`，可能将第四个堆叠变成 3 倍伤害。一个过时的测试断言了该扩展行为。
+- Phase 30 按照详细设计解决了该冲突。每条执行路径都解析限制后的标签等级，并从 `gem_effect_levels.json` 读取形状/倍率；四个或更多复制品保持已配置的 Lv3 行为。
+- 动态本地化现在渲染已配置的倍率，而非维护单独的"双倍/三倍"描述。
 
-## Older MVP Numbers
+## 旧版 MVP 数值
 
-`Prototype_MVP.md` and parts of `Technical_Architecture.md` contain older prototype damage values,
-such as 2-point explosion examples. Current detailed gem and numeric design specify 12 damage.
+`Prototype_MVP.md` 和 `Technical_Architecture.md` 的部分内容包含较旧的原型伤害值，例如 2 点爆炸示例。当前详细宝石和数值设计规定为 12 点伤害。
 
-Default authority: detailed gem and numeric design.
+默认权威：详细宝石和数值设计。
 
-## Fire And Poison Fog Reaction
+## 火焰与毒雾反应
 
-- `详细设计/宝石/宝石_v1.md` says fire + poison creates toxic smoke for 1 turn, with both fire and poison fog effects.
-- `详细设计/地块/地块.md` says poison fog disappears when it encounters fire or explosion.
-- Product direction on 2026-06-17 explicitly expects fire to create toxic smoke when it meets poison fog.
-- `blue_black_combo_test.gd` currently expects some black-death `explosion+poison+fire_gem`
-  combinations to increase the raw `poison_fog` tile count, but the implementation converts those
-  cells to `toxic_smoke` when poison fog enters fire. This failure exists on `HEAD` before the
-  combat transaction damage refactor.
+- `详细设计/宝石/宝石_v1.md` 说明火焰 + 毒素会产生毒烟，持续 1 回合，同时具有火焰和毒雾效果。
+- `详细设计/地块/地块.md` 说明毒雾遇到火焰或爆炸时会消失。
+- 2026-06-17 的产品方向明确期望火焰遇到毒雾时产生毒烟。
+- `blue_black_combo_test.gd` 当前期望某些黑色死亡 `explosion+poison+fire_gem` 组合会增加原始 `poison_fog` 地块数量，但当毒雾进入火焰时，实现会将这些单元格转换为 `toxic_smoke`。该失败在战斗事务伤害重构之前就已存在于 `HEAD` 上。
 
-Default authority: detailed gem design plus current product direction. Current implementation treats fire entering poison fog and poison fog entering fire as the same reaction: consume fire/poison fog and create `toxic_smoke`. Water still takes precedence over this reaction.
+默认权威：详细宝石设计加上当前产品方向。当前实现将火焰进入毒雾和毒雾进入火焰视为相同的反应：消耗火焰/毒雾并创建 `toxic_smoke`。水仍然优先于此反应。
 
-## Blue Gravity Trigger Model
+## 蓝色重力触发模型
 
-- Detailed gem design defines blue gravity as ranged-projectile deflection: 50% at level 1, 75% at level 2 with enemy/ground targeting, and 100% at level 3.
-- `gem_effect_levels.json` additionally defines `slow_on_damaged` and `root_on_damaged` fields.
-- `AttackPipeline._try_deflect()` performs pre-hit projectile deflection using `deflect_chance` and `redirect_enemy_only`.
-- `GemEffects._run_unit_damaged_effect()` separately redirects damage to an adjacent unit and applies the slow/root fields after the target has already been damaged; this path does not read `deflect_chance` or `redirect_enemy_only`.
+- 详细宝石设计将蓝色重力定义为远程投射物偏转：等级 1 为 50%，等级 2 为 75%（可瞄准敌人/地面），等级 3 为 100%。
+- `gem_effect_levels.json` 还定义了 `slow_on_damaged` 和 `root_on_damaged` 字段。
+- `AttackPipeline._try_deflect()` 使用 `deflect_chance` 和 `redirect_enemy_only` 执行命中前投射物偏转。
+- `GemEffects._run_unit_damaged_effect()` 在目标已被伤害后将伤害重定向到相邻单位，并应用 slow/root 字段；此路径不读取 `deflect_chance` 或 `redirect_enemy_only`。
 
-Default authority: detailed gem design. Do not add blue-gravity semantic contracts or alter its behavior until product design decides whether the post-hit redirect/slow/root behavior is an intentional extension or implementation debt.
+默认权威：详细宝石设计。在产品设计决定命中后重定向/slow/root 行为是有意扩展还是实现债务之前，不要添加蓝色重力语义合约或更改其行为。
 
-## Ice Slow Minimum Movement
+## 冰冻减速最小移动力
 
-- `详细设计/宝石/宝石_v1.md` says red and blue ice at level 2 apply two slow stacks and may reduce movement to `0`.
-- `GDD.md` describes slow as having a minimum movement of `1`, and `详细设计/怪物/精英怪设计1.md` repeats that minimum for the elite's level-1 blue ice.
-- Runtime previously used the global `status_config.slowed.min_move_points = 1` for every slow source and therefore could not express the level-2 exception.
+- `详细设计/宝石/宝石_v1.md` 说明红色和蓝色冰冻在等级 2 时施加两层减速，可能将移动力降低至 `0`。
+- `GDD.md` 将减速描述为最小移动力为 `1`，`详细设计/怪物/精英怪设计1.md` 针对精英怪的等级 1 蓝色冰冻重申了该最小值。
+- 运行时之前对每个减速源使用全局 `status_config.slowed.min_move_points = 1`，因此无法表达等级 2 的例外情况。
 
-Default authority: the detailed gem design for level progression. Red/blue ice level 1 and non-ice slow sources retain the global minimum of 1; red/blue ice levels 2 and 3 author an explicit minimum of 0 in their level rows.
+默认权威：详细宝石设计的等级递进。红色/蓝色冰冻等级 1 和非冰冻减速源保留全局最小值 1；红色/蓝色冰冻等级 2 和 3 在其等级行中明确设置了最小值 0。
 
-## Freeze Is Not Paralysis
+## 冻结不是麻痹
 
-- `详细设计/宝石/宝石_v1.md` defines freeze as a distinct one-turn state: skip the unit's turn, take 25% extra damage, then have a 50% chance to gain frostbite on thaw.
-- The same source defines frostbite as 25% extra incoming damage and 25% lower outgoing damage, but does not state its duration or removal rule.
-- Current runtime maps every ice freeze branch to `paralyzed` plus slow. It does not apply the 25% frozen damage modifier, does not create frostbite, and presents the status as paralysis.
-- Existing red-ice semantic contracts only assert that placeholder paralysis and therefore do not prove the authored freeze rule.
+- `详细设计/宝石/宝石_v1.md` 将冻结定义为一个独特的单回合状态：跳过该单位的回合，承受 25% 额外伤害，然后在解冻时有 50% 的概率获得冻伤。
+- 同一来源将冻伤定义为 25% 额外承受伤害和 25% 降低输出伤害，但未说明其持续时间或移除规则。
+- 当前运行时将每个冰冻冻结分支映射为 `paralyzed` 加上减速。它不应用 25% 冻结伤害修正，不创建冻伤，并将状态显示为麻痹。
+- 现有的红色冰冻语义合约仅断言占位麻痹，因此不能证明已配置的冻结规则。
 
-Default authority: the detailed gem design. Treat the current paralysis path as an incomplete implementation, not verified freeze semantics. Do not count red ice rows or black ice level 3 as design-covered until freeze/frostbite are modeled and frostbite lifetime is decided.
+默认权威：详细宝石设计。将当前的麻痹路径视为不完整的实现，而非已验证的冻结语义。在冻结/冻伤被建模且冻伤持续时间被确定之前，不要将红色冰冻行或黑色冰冻等级 3 视为设计覆盖。
 
-## Red Counter Retaliation Ordering
+## 红色反击报复顺序
 
-- `详细设计/宝石/宝石_v1.md` says that after the marked target damages the watcher, the watcher adds a normal attack.
-- `CombatRules.apply_damage()` currently resolves the counter mark before applying the incoming damage. If the retaliation kills the damage source, the original damage returns zero and never reaches the watcher.
-- `skill_test.gd` explicitly asserts this preemptive kill and damage cancellation, while the ordinary counter test describes the effect as a follow-up.
-- Phase 32 removes the fake `mark_stacks` level sentinel but deliberately preserves this ordering conflict.
+- `详细设计/宝石/宝石_v1.md` 说明被标记目标伤害监视者后，监视者添加一次普通攻击。
+- `CombatRules.apply_damage()` 当前在应用承受伤害之前先解决反击标记。如果报复杀死了伤害来源，原始伤害返回零并且永远不会到达监视者。
+- `skill_test.gd` 明确断言了这种先发制人的击杀和伤害取消，而普通反击测试将该效果描述为后续攻击。
+- Phase 32 移除了伪造的 `mark_stacks` 等级哨兵值，但有意保留了此顺序冲突。
 
-Default authority: the detailed gem design suggests post-hit retaliation, but it does not explicitly define lethal-trade behavior. Do not reorder red counter or change whether lethal retaliation cancels incoming damage until product design resolves that edge case.
+默认权威：详细宝石设计暗示为命中后报复，但未明确定义致死交易行为。在产品设计解决该边缘情况之前，不要重新排序红色反击或更改致死报复是否取消承受伤害。
 
-## Black Split Slot Inheritance (Resolved In Phase 33)
+## 黑色分裂槽位继承（已在 Phase 33 中解决）
 
-- `详细设计/宝石/宝石_v1.md` says two death clones evenly partition the source slots and inherit gems in their assigned positions; inherited black split gems become disabled and locked.
-- Runtime previously copied the full slot outline to both clones, copied only selected gems, then forced a synthetic split gem into each clone's first black slot. This duplicated slots, could replace an unrelated inherited black gem, and allowed enemy source gems to drop after cloned copies had already been created.
-- Phase 33 resolves the conflict in favor of the detailed design. The children collectively inherit one copy of the source slot/gem set, and only an actually inherited split gem is disabled and locked. Enemy originals that were inherited are consumed instead of also dropping.
+- `详细设计/宝石/宝石_v1.md` 说明两个死亡克隆体均匀分配源槽位，并继承其分配位置的宝石；继承的黑色分裂宝石变为禁用和锁定状态。
+- 运行时之前将完整槽位轮廓复制到两个克隆体，仅复制选定的宝石，然后强制将合成分裂宝石放入每个克隆体的第一个黑色槽位。这复制了槽位，可能替换一个不相关的继承黑色宝石，并允许敌人源宝石在克隆复制品已创建后仍然掉落。
+- Phase 33 按照详细设计解决了该冲突。子单位集体继承一份源槽位/宝石集合，只有实际继承的分裂宝石才被禁用和锁定。被继承的敌人原始宝石被消耗而不是额外掉落。
 
-Default authority: detailed gem design. The former full-outline behavior and its regression assertion are obsolete.
+默认权威：详细宝石设计。之前的完整轮廓行为及其回归断言已过时。
 
-## Blue Split Temporary Clone Lifecycle
+## 蓝色分裂临时克隆体生命周期
 
-- `详细设计/宝石/宝石_v1.md` defines one 1-HP clone with 30% stats, a one-turn lifetime, and a once-per-turn trigger, but does not define player control or the exact phase boundary of that lifetime.
-- Current runtime creates a same-team clone after surviving damage. It is intentionally excluded from black split inheritance/merge and from the player split-clone fallback queue, but a player-owned clone is not otherwise given a controllable action.
-- Phase 33 verifies the numeric row and once-per-turn implementation as an observation, not as complete authored semantics.
+- `详细设计/宝石/宝石_v1.md` 定义了一个 1 HP、30% 属性的克隆体，持续一回合，每回合触发一次，但未定义玩家控制或该生命周期的确切阶段边界。
+- 当前运行时在承受伤害后创建一个同队克隆体。它被有意排除在黑色分裂继承/合并和玩家分裂克隆体回退队列之外，但玩家拥有的克隆体不会获得可控行动。
+- Phase 33 将数值行和每回合实现验证为观察结果，而非完整的已配置语义。
 
-Default authority: detailed gem design for the numeric values. Do not count blue split Lv3 as design-covered until product design specifies whether the clone acts and when its lifetime expires for each team.
+默认权威：详细宝石设计的数值。在产品设计明确克隆体是否行动及其生命周期对每方何时到期之前，不要将蓝色分裂 Lv3 计入设计覆盖。
 
-## Slime Crown Versus Blue Equal Sharing
+## 史莱姆王冠与蓝色平等共享
 
-- The relic description presents blue split as a 60% transfer override without limiting it to a level.
-- Blue split Lv2/Lv3 instead define full equal sharing among the owner and all nearby units. The current maximum-override rule leaves the 100% shared pool unchanged, so the relic affects Lv1 only.
+- 遗物描述将蓝色分裂呈现为 60% 转移覆盖，未限制等级。
+- 蓝色分裂 Lv2/Lv3 则定义所有者和所有附近单位之间的完全平等共享。当前的最大覆盖规则使 100% 共享池保持不变，因此遗物仅影响 Lv1。
 
-Default authority is unresolved. Product design must define whether the relic modifies the shared pool, share weights, or only random-transfer mode before changing runtime or player-facing copy.
+默认权威未确定。产品设计必须定义遗物是修改共享池、共享权重还是仅修改随机转移模式，之后才能更改运行时或玩家可见文本。
 
-## Black Light Settlement Model
+## 黑色光线结算模型
 
-- `详细设计/宝石/宝石_v1.md` defines black light as clearing all exposed targets and applying effects based on the lethal attack's tags. Lv2 adds one level of effect strength; Lv3 additionally blinds.
-- Phase 36 propagates canonical lethal gem tags and resolved gem context through immediate and deferred death hooks, including redirected, collision, and status damage. Diagnostic black-light beam events prove the tags arrive intact.
-- Runtime still deals direct damage from the dead owner's attack and exposure stacks, while Lv2 changes only beam width. No authored mapping defines what fire, poison, gravity, arc, split, or other lethal tags settle, or what “effect strength +1” means for each result.
-- The former black-light Lv3 contract proved the direct-damage placeholder and blind, not the authored tag settlement, so Phase 34 no longer counts it as design coverage.
+- `详细设计/宝石/宝石_v1.md` 将黑色光线定义为清除所有暴露目标，并根据致死攻击的标签应用效果。Lv2 增加一级效果强度；Lv3 额外附加致盲。
+- Phase 36 通过立即和延迟死亡钩子传播规范的致死宝石标签和已解析的宝石上下文，包括重定向、碰撞和状态伤害。诊断性的黑色光线光束事件证明标签完整到达。
+- 运行时仍然根据死亡所有者的攻击力和暴露堆叠数造成直接伤害，而 Lv2 仅改变光束宽度。没有已配置的映射定义火焰、毒素、重力、电弧、分裂或其他致死标签结算什么，或"效果强度 +1"对每个结果意味着什么。
+- 之前的黑色光线 Lv3 合约证明了直接伤害占位符和致盲，而非已配置的标签结算，因此 Phase 34 不再将其计入设计覆盖。
 
-Default authority: detailed gem design. Transport is complete, but do not add black-light design coverage or invent a settlement formula until per-tag and strength semantics are authored.
+默认权威：详细宝石设计。传输已完成，但在每个标签和强度语义被明确设定之前，不要添加黑色光线设计覆盖或发明结算公式。
 
-## Lethal Damage Tag Attribution
+## 致死伤害标签归属
 
-- The design requires black light to inspect lethal-damage tags but does not define attribution for composed secondary damage.
-- Phase 36 uses a documented implementation policy: primary red attack components carry all resolved active tags; arc and gravity secondary damage use their narrow mechanism tag; explosion-driven collision uses `explosion`; fire/poison ticks infer their status tag; split redirection preserves the incoming context.
-- Ambiguous cases remain: whether split redirection should also add `split`, whether dyed light retains every carried tag, and whether a spike kill reports the initiating displacement tag, a hazard tag, or both. The gem tag vocabulary currently has no spike/hazard tag.
-- Bomb-rat `black_suicide` intentionally remains untagged because detailed monster design says it force-triggers whichever black-slot abilities are mounted rather than defining the self-kill as explosion damage.
+- 设计要求黑色光线检查致死伤害标签，但未定义复合次级伤害的归属。
+- Phase 36 使用文档化的实现策略：主要红色攻击组件携带所有已解析的活跃标签；电弧和重力次级伤害使用其窄机制标签；爆炸驱动的碰撞使用 `explosion`；火焰/毒素持续伤害推断其状态标签；分裂重定向保留传入上下文。
+- 模糊情况仍然存在：分裂重定向是否也应添加 `split`，染色光线是否保留每个携带的标签，以及尖刺击杀是报告发起位移标签、危险标签还是两者。宝石标签词汇表目前没有尖刺/危险标签。
+- 炸弹鼠的 `black_suicide` 有意保持无标签，因为详细怪物设计说明它强制触发已装载的黑色槽位能力，而非将自爆定义为爆炸伤害。
 
-Default authority is incomplete. Preserve the Phase 36 policy as an explicit implementation convention, not product truth, until composition and hazard attribution are authored.
+默认权威不完整。保留 Phase 36 策略作为明确的实现约定而非产品真相，直到组合和危险归属被明确设定。
 
-## Fission-Slime Trample No-Space Fallback
+## 裂变史莱姆践踏无空间回退
 
-- `详细设计/机制/碰撞.md` says that when star relocation finds no legal cell, the target takes damage equal to the displacement distance and is then forcibly reset to the nearest cell. It does not define how a “nearest” cell can be chosen or occupied after every legal radius-2 candidate was declared blocked.
-- The same section calls the distance-2 outer ring “12 cells”, while a complete Chebyshev/square radius-2 perimeter has 16 cells. The former runtime scanned all 16, and Phase 37's configurable ring generator deliberately preserves that ordering and count.
-- Trample begins with the target inside the fission slime's 2x2 footprint, but `GameState._cell_occupancy` represents only one live unit per cell and the invariant checker forbids overlap.
-- Runtime currently applies a fixed 2-point squeeze penalty and leaves a survivor at the overlapped origin. Phase 36 repairs occupancy after successful relocation and verifies a lethal all-blocked fallback, but a surviving fallback cannot be represented faithfully.
+- `详细设计/机制/碰撞.md` 说明当星形重定位找不到合法单元格时，目标承受等于位移距离的伤害，然后被强制重置到最近的单元格。它未定义在所有合法的半径-2 候选单元格都被声明为阻塞后，如何选择或占据"最近"的单元格。
+- 同一章节将距离-2 外环称为"12 个单元格"，而完整的切比雪夫/方形半径-2 周长有 16 个单元格。之前的运行时扫描了全部 16 个，Phase 37 的可配置环生成器有意保留了该排序和数量。
+- 践踏开始时目标位于裂变史莱姆的 2x2 覆盖范围内，但 `GameState._cell_occupancy` 每个单元格仅表示一个活跃单位，且不变量检查器禁止重叠。
+- 运行时当前施加固定的 2 点挤压惩罚，并将幸存者留在重叠原点。Phase 36 在成功重定位后修复了占用，并验证了致命的全阻塞回退，但幸存回退无法被忠实地表示。
 
-Default authority: collision design for the intended penalty, but the outer-ring shape, final-cell rule, and architecture are unresolved. Do not remove four candidates, hide the overlap, evict an arbitrary blocker, silently move a survivor, or weaken occupancy invariants without authored geometry/tie-break rules and an explicit transaction design.
+默认权威：碰撞设计的预期惩罚，但外环形状、最终单元格规则和架构均未解决。在没有明确的几何/平局规则和明确的事务设计之前，不要移除四个候选单元格、隐藏重叠、驱逐任意阻挡者、静默移动幸存者或削弱占用不变量。
 
-## Exposure Lifetime
+## 暴露持续时间
 
-- `GDD.md` says exposure lasts until the end of the current turn.
-- The higher-authority detailed gem document does not specify duration, and runtime stores exposure with zero duration until black light removes it.
+- `GDD.md` 说明暴露持续到当前回合结束。
+- 更高权威的详细宝石文档未指定持续时间，运行时以零持续时间存储暴露，直到黑色光线移除它。
 
-Default authority is incomplete. Preserve the current lifetime only as an implementation observation until detailed design confirms end-of-turn expiry or persistent exposure.
+默认权威不完整。保留当前持续时间仅作为实现观察，直到详细设计确认回合结束过期或持久暴露。
 
-## Blue Light Extra-Beam Targeting
+## 蓝色光线额外光束瞄准
 
-- `GDD.md` says the reflected direction is opposite the incoming hit direction, which supports reflecting the first beam toward the attacker.
-- Detailed design says Lv2 reflects two beams and Lv3 reflects three while preferring enemy directions. Runtime targets enemy units for every available beam at all levels and emits fewer beams when there are too few units.
+- `GDD.md` 说明反射方向与传入命中方向相反，这支持将第一束光束反射向攻击者。
+- 详细设计说明 Lv2 反射两束光束，Lv3 反射三束，同时偏好敌人方向。运行时在所有等级为每个可用光束瞄准敌人单位，当单位不足时发出较少光束。
 
-Default authority: detailed gem design plus the GDD clarification for the first beam. Extra-beam direction selection and empty-ray behavior need explicit rules before blue-light rows are counted as fully covered.
+默认权威：详细宝石设计加上 GDD 对第一束光束的澄清。额外光束的方向选择和空射线行为需要明确的规则，之后蓝色光线行才能被视为完全覆盖。
 
-## Echo Lv3 Empowerment
+## 回响 Lv3 强化
 
-- Detailed design says one of the two selected tags is empowered, without defining what empowered means for each tag.
-- Runtime currently uses a generic 50% follow-up hit for red, strength 2 in a partial blue tag switch, and one extra execution for black.
-- Phase 34 removes red echo Lv3 from design coverage and keeps black echo Lv3 as an implementation observation. Black Lv1/Lv2 normal replay semantics are unaffected and executable.
+- 详细设计说明两个选定标签之一被强化，但未定义每个标签的强化含义。
+- 运行时当前对红色使用通用的 50% 后续命中，对蓝色在不完整的标签切换中使用强度 2，对黑色使用一次额外执行。
+- Phase 34 将红色回响 Lv3 从设计覆盖中移除，并将黑色回响 Lv3 保留为实现观察。黑色 Lv1/Lv2 的正常重放语义不受影响且可执行。
 
-Default authority: detailed gem design. Product design must define a generic empowerment rule or per-tag empowered effects before the three Lv3 echo rows can be made authoritative.
+默认权威：详细宝石设计。产品设计必须定义通用的强化规则或每个标签的强化效果，之后三个 Lv3 回响行才能成为权威。
 
-## Close-Range Split Shot Count
+## 近距离分裂射击数量
 
-- `详细设计/宝石/宝石_v1.md` requires red split to produce 3 / 4 / 5 shots.
-- The current geometry uses a backward extra shot at Lv2. For the enemy's adjacent-only split action, that shot lands on the attacker's occupied cell and is discarded, producing 3 / 3 / 4 resolved cells.
-- Ranged split can produce all 3 / 4 / 5 shots, so the conflict is specific to close-range placement rather than the level table.
+- `详细设计/宝石/宝石_v1.md` 要求红色分裂产生 3 / 4 / 5 发射击。
+- 当前几何在 Lv2 使用向后额外射击。对于敌人的仅相邻分裂行动，该射击落在攻击者占据的单元格上并被丢弃，产生 3 / 3 / 4 个已解析单元格。
+- 远程分裂可以产生全部 3 / 4 / 5 发射击，因此冲突特定于近距离放置而非等级表。
 
-Default authority: detailed gem design. Do not claim close-range Lv2/Lv3 shot-count coverage or choose a substitute direction until the intended four/five-shot formation is authored.
+默认权威：详细宝石设计。在预期的四/五发射击阵型被明确设定之前，不要声称近距离 Lv2/Lv3 射击数量覆盖或选择替代方向。
 
-## Light And Explosion Level Composition
+## 光线与爆炸等级组合
 
-- Red explosion levels author blast shape and damage multiplier for the explosion tag.
-- The light + explosion composition currently emits a fixed cross burst with base explosion damage at each beam endpoint, bypassing those level fields.
-- Existing design sources specify the individual tags but do not state whether a transported endpoint explosion keeps its full level semantics.
+- 红色爆炸等级为爆炸标签配置了爆炸形状和伤害倍率。
+- 光线 + 爆炸组合当前在每个光束终点发出固定十字爆裂，使用基础爆炸伤害，绕过这些等级字段。
+- 现有设计来源指定了各个标签，但未说明传输的终点爆炸是否保留其完整等级语义。
 
-Default authority is incomplete for the composition. Preview should remain honest to runtime, but design coverage and a behavior change require an explicit rule for transported explosion level/shape.
+默认权威对组合不完整。预览应对运行时保持诚实，但设计覆盖和行为更改需要明确的传输爆炸等级/形状规则。
 
-## Blue Explosion Turn-Start Aura
+## 蓝色爆炸回合开始光环
 
-- `详细设计/宝石/宝石_v1.md` defines blue explosion as reacting to fire or forced displacement at Lv1, then to any damage at Lv2, with a larger blast at Lv3.
-- `gem_defs.json` also assigns explosion to the legacy `blue_turn_start` ability slot, and runtime deals one point to the first adjacent enemy at the holder's turn start.
-- Phase 40 moves that existing one-point amount into the complete blue-explosion level rows as `turn_start_damage`, so it is no longer a hidden code literal. It deliberately does not remove the trigger or count it as authored semantics.
+- `详细设计/宝石/宝石_v1.md` 将蓝色爆炸定义为在 Lv1 时对火焰或强制位移做出反应，Lv2 时对任何伤害做出反应，Lv3 时爆炸范围更大。
+- `gem_defs.json` 还为爆炸分配了旧版 `blue_turn_start` 能力槽位，运行时在持有者回合开始时对第一个相邻敌人造成一点伤害。
+- Phase 40 将现有的一点伤害量移入完整的蓝色爆炸等级行作为 `turn_start_damage`，使其不再是隐藏的代码字面量。它有意不移除触发器或将其计为已配置的语义。
 
-Default authority: the detailed gem design does not support a turn-start aura. Preserve current behavior only as an explicit compatibility observation until product design either removes `blue_turn_start` from explosion or authors its targeting, damage scaling, and relationship to the reactive blast.
+默认权威：详细宝石设计不支持回合开始光环。保留当前行为仅作为明确的兼容性观察，直到产品设计要么从爆炸中移除 `blue_turn_start`，要么设定其瞄准、伤害缩放以及与反应性爆炸的关系。
