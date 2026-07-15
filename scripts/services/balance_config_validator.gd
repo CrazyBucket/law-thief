@@ -2,6 +2,9 @@ class_name BalanceConfigValidator
 extends RefCounted
 
 const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
+const GemDefValidator = preload("res://scripts/services/gem_def_validator.gd")
+const GemPoolValidator = preload("res://scripts/services/gem_pool_validator.gd")
+const StatusConfigValidator = preload("res://scripts/services/status_config_validator.gd")
 
 const ROOM_TYPE_KEYS := [
 	"NORMAL_COMBAT",
@@ -51,49 +54,6 @@ const UNIT_BALANCE_NUMERIC_KEYS := {
 	"trample_damage": true,
 	"trample_collision_damage": true,
 }
-
-const GEM_DEF_FIELDS := {
-	"display_name_key": true,
-	"symbol_key": true,
-	"symbol": true,
-	"color": true,
-	"tag": true,
-	"element": true,
-	"pool_tier": true,
-	"max_stack_level": true,
-	"combos": true,
-	"rarity": true,
-	"allow_random_pool": true,
-	"ability_profiles": true,
-}
-
-const GEM_DEF_REQUIRED_FIELDS := [
-	"display_name_key",
-	"symbol_key",
-	"symbol",
-	"color",
-	"tag",
-	"element",
-	"pool_tier",
-	"max_stack_level",
-	"combos",
-	"rarity",
-	"ability_profiles",
-]
-
-const GEM_ABILITY_PROFILE_KEYS := [
-	"player_skill",
-	"unit_red_active",
-	"enemy_red_action",
-	"blue_turn_start",
-	"blue_damaged",
-	"blue_move_through",
-	"black_death",
-	"tile_active",
-	"tile_turn_start",
-	"attack_bonus",
-	"armor_bonus",
-]
 
 const GEM_RARITIES := [
 	"common",
@@ -266,39 +226,6 @@ const AI_TUNING_NUMERIC_KEYS := {
 	"arc_chain_bonus_mult": true,
 	"approach_progress_floor": true,
 	"path_self_damage_ratio": true,
-}
-
-const STATUS_CONFIG_ENTRY_KEYS := {
-	"poison": true,
-	"burning": true,
-	"armor": true,
-	"shield": true,
-	"rooted": true,
-	"exposed": true,
-	"lawless": true,
-	"bomb_rat_plunder": true,
-	"paralyzed": true,
-	"slowed": true,
-	"wet": true,
-	"sluggish": true,
-	"vulnerable": true,
-	"disarmed": true,
-	"weak": true,
-	"light_exposed": true,
-	"blinded": true,
-	"counter_mark": true,
-	"extra_attack": true,
-	"extra_move": true,
-}
-
-const STATUS_CONFIG_FIELD_KEYS := {
-	"default_stacks": true,
-	"default_duration": true,
-	"damage_taken_mult": true,
-	"attack_damage_mult": true,
-	"min_move_points": true,
-	"firelike_stack_mult": true,
-	"attack_bonus": true,
 }
 
 const GEM_EFFECT_LEVEL_SLOT_KEYS := [
@@ -637,65 +564,7 @@ static func validate_relic_source_weights(config: Dictionary) -> Array[String]:
 
 
 static func validate_gem_pools(config: Dictionary, known_tags: Dictionary = {}) -> Array[String]:
-	var errors: Array[String] = []
-	if not config.has("global"):
-		errors.append("gem_pools.global missing")
-	if not config.has("teaching_boosts"):
-		errors.append("gem_pools.teaching_boosts missing")
-	for source_id in config.keys():
-		if str(source_id) == "teaching_boosts":
-			continue
-		var prefix := "gem_pools.%s" % source_id
-		var raw_pool: Variant = config[source_id]
-		if not raw_pool is Dictionary:
-			errors.append("%s should be object" % prefix)
-			continue
-		var pool := raw_pool as Dictionary
-		for field_id in pool.keys():
-			if str(field_id) not in ["source_tier", "rarity_weights", "tag_weights"]:
-				errors.append("%s.%s is unknown" % [prefix, field_id])
-		if not _is_positive_integer(pool.get("source_tier", null)):
-			errors.append("%s.source_tier should be a positive integer" % prefix)
-		var rarity_weights: Variant = pool.get("rarity_weights", null)
-		if not rarity_weights is Dictionary or (rarity_weights as Dictionary).is_empty():
-			errors.append("%s.rarity_weights should be a non-empty object" % prefix)
-		else:
-			errors.append_array(_validate_weight_map(
-				"%s.rarity_weights" % prefix,
-				rarity_weights as Dictionary,
-				_key_dictionary(GEM_RARITIES)
-			))
-		var tag_weights: Variant = pool.get("tag_weights", {})
-		if not tag_weights is Dictionary:
-			errors.append("%s.tag_weights should be object" % prefix)
-		elif not (tag_weights as Dictionary).is_empty():
-			errors.append_array(_validate_weight_map(
-				"%s.tag_weights" % prefix,
-				tag_weights as Dictionary,
-				known_tags
-			))
-	var teaching_boosts: Variant = config.get("teaching_boosts", null)
-	if not teaching_boosts is Dictionary:
-		errors.append("gem_pools.teaching_boosts should be object")
-	else:
-		for chapter_id in ["chapter_1", "chapter_2", "chapter_3"]:
-			if not (teaching_boosts as Dictionary).has(chapter_id):
-				errors.append("gem_pools.teaching_boosts.%s missing" % chapter_id)
-		for chapter_id in (teaching_boosts as Dictionary).keys():
-			if str(chapter_id) not in ["chapter_1", "chapter_2", "chapter_3"]:
-				errors.append("gem_pools.teaching_boosts.%s is unknown" % chapter_id)
-				continue
-			var boosts: Variant = (teaching_boosts as Dictionary)[chapter_id]
-			if not boosts is Dictionary or (boosts as Dictionary).is_empty():
-				errors.append("gem_pools.teaching_boosts.%s should be a non-empty object" % chapter_id)
-				continue
-			for tag in (boosts as Dictionary).keys():
-				var value: Variant = (boosts as Dictionary)[tag]
-				if not known_tags.is_empty() and not known_tags.has(str(tag)):
-					errors.append("gem_pools.teaching_boosts.%s.%s references unknown tag" % [chapter_id, tag])
-				elif not _is_number(value) or float(value) <= 0.0:
-					errors.append("gem_pools.teaching_boosts.%s.%s should be positive" % [chapter_id, tag])
-	return errors
+	return GemPoolValidator.validate(config, known_tags)
 
 
 static func validate_relic_numeric_refs(config: Dictionary) -> Array[String]:
@@ -939,83 +808,7 @@ static func _validate_ai_profile_fields(prefix: String, profile: Dictionary, req
 	return errors
 
 static func validate_gem_defs(defs: Dictionary, known_profiles: Dictionary = {}) -> Array[String]:
-	var errors: Array[String] = []
-	if defs.is_empty():
-		errors.append("gem_defs should not be empty")
-		return errors
-	var known_tags: Dictionary = {}
-	for gem_id in defs.keys():
-		var raw_def: Variant = defs[gem_id]
-		if not raw_def is Dictionary:
-			continue
-		var tag := str((raw_def as Dictionary).get("tag", ""))
-		if tag.is_empty():
-			continue
-		if known_tags.has(tag):
-			errors.append("gem_defs.%s.tag duplicates %s" % [gem_id, known_tags[tag]])
-		else:
-			known_tags[tag] = str(gem_id)
-	for gem_id in defs.keys():
-		var prefix := "gem_defs.%s" % gem_id
-		var raw_def: Variant = defs[gem_id]
-		if not raw_def is Dictionary:
-			errors.append("%s should be object" % prefix)
-			continue
-		var gem_def := raw_def as Dictionary
-		for field_id in gem_def.keys():
-			if not GEM_DEF_FIELDS.has(str(field_id)):
-				errors.append("%s.%s is unknown" % [prefix, field_id])
-		for field_id in GEM_DEF_REQUIRED_FIELDS:
-			if not gem_def.has(field_id):
-				errors.append("%s.%s missing" % [prefix, field_id])
-		for field_id in ["display_name_key", "symbol_key", "symbol", "tag", "element"]:
-			if gem_def.has(field_id) and (not gem_def[field_id] is String or str(gem_def[field_id]).is_empty()):
-				errors.append("%s.%s should be a non-empty string" % [prefix, field_id])
-		var color: Variant = gem_def.get("color", null)
-		if not color is Array or (color as Array).size() not in [3, 4]:
-			errors.append("%s.color should contain 3 or 4 numbers" % prefix)
-		else:
-			for component in color as Array:
-				if not _is_number(component) or float(component) < 0.0 or float(component) > 1.0:
-					errors.append("%s.color components should be numbers in [0, 1]" % prefix)
-					break
-		for field_id in ["pool_tier", "max_stack_level"]:
-			var value: Variant = gem_def.get(field_id, null)
-			if not _is_positive_integer(value):
-				errors.append("%s.%s should be a positive integer" % [prefix, field_id])
-		var rarity := str(gem_def.get("rarity", ""))
-		if rarity not in GEM_RARITIES:
-			errors.append("%s.rarity unknown: %s" % [prefix, rarity])
-		if gem_def.has("allow_random_pool") and not gem_def["allow_random_pool"] is bool:
-			errors.append("%s.allow_random_pool should be bool" % prefix)
-		var combos: Variant = gem_def.get("combos", null)
-		if not combos is Array:
-			errors.append("%s.combos should be array" % prefix)
-		else:
-			var seen_combos: Dictionary = {}
-			for combo in combos as Array:
-				var combo_id := str(combo)
-				if not combo is String or combo_id.is_empty():
-					errors.append("%s.combos should contain non-empty strings" % prefix)
-				elif not known_tags.has(combo_id):
-					errors.append("%s.combos references unknown tag: %s" % [prefix, combo_id])
-				elif seen_combos.has(combo_id):
-					errors.append("%s.combos contains duplicate tag: %s" % [prefix, combo_id])
-				seen_combos[combo_id] = true
-		var profiles: Variant = gem_def.get("ability_profiles", null)
-		if not profiles is Dictionary or (profiles as Dictionary).is_empty():
-			errors.append("%s.ability_profiles should be a non-empty object" % prefix)
-		else:
-			for ability_slot in (profiles as Dictionary).keys():
-				var ability_slot_id := str(ability_slot)
-				var profile_id := str((profiles as Dictionary)[ability_slot])
-				if ability_slot_id not in GEM_ABILITY_PROFILE_KEYS:
-					errors.append("%s.ability_profiles.%s is unknown" % [prefix, ability_slot_id])
-				elif profile_id.is_empty():
-					errors.append("%s.ability_profiles.%s should be a non-empty string" % [prefix, ability_slot_id])
-				elif not known_profiles.is_empty() and not known_profiles.has(profile_id):
-					errors.append("%s.ability_profiles.%s references unknown profile: %s" % [prefix, ability_slot_id, profile_id])
-	return errors
+	return GemDefValidator.validate(defs, known_profiles)
 
 
 static func validate_unit_defs(
@@ -1230,56 +1023,7 @@ static func validate_gem_effect_levels(config: Dictionary) -> Array[String]:
 
 
 static func validate_status_config(config: Dictionary) -> Array[String]:
-	var errors: Array[String] = []
-	for required_entry_id in STATUS_CONFIG_ENTRY_KEYS.keys():
-		if not config.has(required_entry_id):
-			errors.append("status_config.%s missing" % required_entry_id)
-	for entry_id in config.keys():
-		if not STATUS_CONFIG_ENTRY_KEYS.has(str(entry_id)):
-			errors.append("status_config.%s is unknown" % str(entry_id))
-			continue
-		var entry: Variant = config[entry_id]
-		if not entry is Dictionary:
-			errors.append("status_config.%s should be object" % str(entry_id))
-			continue
-		for field_id in (entry as Dictionary).keys():
-			var key_id := str(field_id)
-			if not STATUS_CONFIG_FIELD_KEYS.has(key_id):
-				errors.append("status_config.%s.%s is unknown" % [str(entry_id), key_id])
-				continue
-			if not _is_number((entry as Dictionary)[field_id]):
-				errors.append("status_config.%s.%s should be number" % [str(entry_id), key_id])
-		for required_field_id in ["default_stacks", "default_duration"]:
-			if not (entry as Dictionary).has(required_field_id):
-				errors.append("status_config.%s.%s missing" % [str(entry_id), required_field_id])
-		var extra_required_fields: Array = []
-		match str(entry_id):
-			"burning":
-				extra_required_fields = ["firelike_stack_mult"]
-			"slowed":
-				extra_required_fields = ["min_move_points"]
-			"vulnerable":
-				extra_required_fields = ["damage_taken_mult"]
-			"weak":
-				extra_required_fields = ["attack_damage_mult"]
-			"lawless":
-				extra_required_fields = ["attack_bonus"]
-		for required_field_id in extra_required_fields:
-			if not (entry as Dictionary).has(required_field_id):
-				errors.append("status_config.%s.%s missing" % [str(entry_id), required_field_id])
-		for integer_field_id in ["default_stacks", "default_duration", "min_move_points", "attack_bonus"]:
-			if not (entry as Dictionary).has(integer_field_id):
-				continue
-			var integer_value: Variant = (entry as Dictionary)[integer_field_id]
-			if _is_number(integer_value) and not _is_non_negative_integer(integer_value):
-				errors.append("status_config.%s.%s should be a non-negative integer" % [str(entry_id), integer_field_id])
-		for multiplier_field_id in ["firelike_stack_mult", "damage_taken_mult", "attack_damage_mult"]:
-			if not (entry as Dictionary).has(multiplier_field_id):
-				continue
-			var multiplier: Variant = (entry as Dictionary)[multiplier_field_id]
-			if _is_number(multiplier) and float(multiplier) <= 0.0:
-				errors.append("status_config.%s.%s should be positive" % [str(entry_id), multiplier_field_id])
-	return errors
+	return StatusConfigValidator.validate(config)
 
 
 static func _validate_relic_weight_rule(prefix: String, rule: Dictionary, numeric_refs: Dictionary) -> Array[String]:

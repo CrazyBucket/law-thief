@@ -4,6 +4,7 @@ const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
 const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 
 func _initialize() -> void:
@@ -345,12 +346,14 @@ func _test_player_query_uses_structured_lethal_prediction() -> void:
 	var state := ctrl.state
 	for current: UnitState in state.units.values().duplicate():
 		if current.team == Constants.TEAM_ENEMY:
+			for slot: SlotState in current.slots:
+				if slot != null and not slot.gem_uid.is_empty():
+					GemTransfer.remove(state, slot.gem_uid)
 			state.unregister_unit(current)
 	var player := state.get_player()
 	for slot: SlotState in player.slots:
 		if not slot.gem_uid.is_empty():
-			state.gems.erase(slot.gem_uid)
-			slot.gem_uid = ""
+			GemTransfer.remove(state, slot.gem_uid)
 	state.move_unit(player, Vector2i(2, 3))
 	player.base_attack = 10
 	var registry: Node = Engine.get_main_loop().root.get_node("DataRegistry")
@@ -370,10 +373,8 @@ func _test_player_query_uses_structured_lethal_prediction() -> void:
 		Constants.GEM_EXPLOSION,
 		{}
 	)
-	black_gem.owner_uid = victim.uid
-	black_gem.slot_index = victim.slots.find(black_slot)
 	state.gems[black_gem.uid] = black_gem
-	black_slot.gem_uid = black_gem.uid
+	assert(GemTransfer.to_unit_slot(state, black_gem, victim, black_slot))
 	ctrl.select_action(Constants.ACTION_ATTACK)
 	var death_neighbor := victim.pos + Vector2i(0, 1)
 	var lethal_highlights := ctrl.get_highlights(victim.pos)

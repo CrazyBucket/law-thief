@@ -38,7 +38,7 @@ var _drag_offset: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(340, 440)
+	custom_minimum_size = Vector2(340, 0)
 	add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
 	_build_ui()
 	if not _catalog.is_empty():

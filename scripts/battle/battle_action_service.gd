@@ -215,6 +215,29 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 	return result
 
 
+func try_extract_dropped(gem_uid: String) -> Dictionary:
+	var ctrl = _c()
+	if ctrl == null:
+		push_error("BattleActionService: _ctrl is null in try_extract_dropped")
+		return _fail("内部错误：controller 未初始化")
+	if ctrl.state == null:
+		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
+	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
+	var result := GemRules.extract_dropped(ctrl.state, player, gem_uid)
+	if result.get("ok", false):
+		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_EXTRACT)
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
+		ctrl.anim_gem_flash.emit(result.get("pos", player.pos), Color(1.0, 0.85, 0.3))
+		ctrl._check_battle_end()
+		ctrl._emit_changed()
+	return result
+
+
 func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 	var ctrl = _c()
 	if ctrl == null:

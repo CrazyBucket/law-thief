@@ -8,6 +8,8 @@ const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 
 static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
@@ -288,7 +290,7 @@ static func execute_custom_intent(
 		"lawless_extract":
 			var extract_events: Array[Dictionary] = []
 			if _execute_lawless_extract(state, unit, intent.target_uid):
-				extract_events.append({"type": "gem_flash", "pos": unit.pos, "color": Color(0.95, 0.25, 0.25)})
+				extract_events.append(_EventBuilder.gem_flash(unit.pos, {"color": Color(0.95, 0.25, 0.25)}))
 			return {
 				"handled": true,
 				"events": extract_events,
@@ -311,31 +313,27 @@ static func _execute_lawless_extract(state: GameState, unit: UnitState, target_u
 	if stolen_gem == null:
 		return false
 	if target.uid == state.player_uid and state.held_gem_uid == target_gem_uid:
-		state.held_gem_uid = ""
-		_restore_lawless_gem(unit, stolen_gem)
+		if not _restore_lawless_gem(state, unit, stolen_gem):
+			return false
 		on_gem_inserted(state, unit, stolen_gem.uid)
 		state.log("%s 夺回了失去的宝石" % unit.uid)
 		return true
 	for slot in target.slots:
 		if slot.gem_uid != target_gem_uid:
 			continue
-		slot.gem_uid = ""
-		_restore_lawless_gem(unit, stolen_gem)
+		if not _restore_lawless_gem(state, unit, stolen_gem):
+			return false
 		on_gem_inserted(state, unit, stolen_gem.uid)
 		state.log("%s 夺回了失去的宝石" % unit.uid)
 		return true
 	return false
 
 
-static func _restore_lawless_gem(unit: UnitState, gem: GemState) -> void:
+static func _restore_lawless_gem(state: GameState, unit: UnitState, gem: GemState) -> bool:
 	var red_slot := unit.get_slot(Constants.SLOT_RED)
 	if red_slot != null and red_slot.gem_uid.is_empty():
-		red_slot.gem_uid = gem.uid
-		gem.owner_uid = unit.uid
-		gem.slot_index = unit.slots.find(red_slot)
-		return
-	gem.owner_uid = unit.uid
-	gem.slot_index = -1
+		return _GemTransfer.to_unit_slot(state, gem, unit, red_slot)
+	return false
 
 
 static func _find_gem_carrier(state: GameState, gem: GemState) -> UnitState:
@@ -379,7 +377,7 @@ static func _execute_charge_explosion(state: GameState, unit: UnitState, target_
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null:
 		return events
-	events.append({"type": "explode", "pos": unit.pos, "radius": CombatConfig.explosion_radius()})
+	events.append(_EventBuilder.explode(unit.pos, CombatConfig.explosion_radius(), {"source_uid": unit.uid}))
 	events.append_array(GemEffects.explode_at(state, unit.pos, CombatConfig.explosion_damage(), unit.uid))
 	var tx := _CombatTransaction.begin(state, events)
 	tx.damage_unit(unit, unit.hp, unit.uid, "self_explosion")

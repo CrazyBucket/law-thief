@@ -1,5 +1,7 @@
 extends SceneTree
 
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
 const CombatRules = preload("res://scripts/rules/combat_rules.gd")
 const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
@@ -319,6 +321,10 @@ func _check_split_clone_expectations(
 	if bool(expect.get("source_gems_removed", false)):
 		for gem_uid in slotted_gems_before.get(origin.uid, []):
 			_check(not state.gems.has(gem_uid), label, "split source gem should not remain after inheritance: %s" % gem_uid)
+	if bool(expect.get("source_gems_preserved", false)):
+		for gem_uid in slotted_gems_before.get(origin.uid, []):
+			_check(state.gems.has(gem_uid), label, "split should preserve inherited gem identity: %s" % gem_uid)
+			_check(_GemTransfer.location_count(state, gem_uid) == 1, label, "inherited gem should have one location: %s" % gem_uid)
 
 
 func _check_status_expectations(unit: UnitState, expectations: Dictionary, label: String, unit_uid: String) -> void:

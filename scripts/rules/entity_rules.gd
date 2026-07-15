@@ -1,6 +1,8 @@
 class_name EntityRules
 extends RefCounted
 
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 
@@ -102,17 +104,19 @@ static func _damage_entity(
 			entity.take_damage(amount)
 			state.log("实体 %s 受到 %d 伤害，剩余 HP: %d" % [entity.uid, amount, entity.hp])
 			if not entity.alive:
-				events.append({"type": "entity_destroyed", "pos": entity.pos, "entity_id": entity.entity_id})
+				events.append(_EventBuilder.entity_destroyed(entity.pos, entity.entity_id, {"uid": entity.uid}))
 
 
 ## 检查指定格子的油桶是否处于火焰中，是则触发爆炸（回合结算时调用）
-static func tick_barrels_in_fire(state: GameState) -> void:
+static func tick_barrels_in_fire(
+	state: GameState,
+	events: Array[Dictionary] = []
+) -> void:
 	for entity in state.entities.values():
 		if not entity.alive or entity.entity_id != Constants.ENTITY_BARREL:
 			continue
 		var tile := state.get_tile(entity.pos)
 		if tile.has_modifier(Constants.TILE_MOD_FIRE) or tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-			var events: Array[Dictionary] = []
 			_explode_barrel(state, entity, "", events)
 
 
@@ -156,7 +160,7 @@ static func _explode_barrel(
 	entity.alive = false
 	state.log("油桶 %s 爆炸！" % entity.uid)
 	var explosion_radius := CombatConfig.barrel_explosion_radius()
-	events.append({"type": "explode", "pos": entity.pos, "radius": explosion_radius})
+	events.append(_EventBuilder.explode(entity.pos, explosion_radius, {"source_uid": entity.uid}))
 	var hit_uids: Dictionary = {}
 	var tx := _CombatTransaction.begin(state, events)
 	TileRules.begin_overlay_batch(state)
@@ -169,3 +173,4 @@ static func _explode_barrel(
 			tx.damage_unit(hit_unit, CombatConfig.barrel_explosion_damage(), source_uid, "barrel_explosion")
 		TileRules.create_fire(state, cell)
 	TileRules.end_overlay_batch(state)
+	events.append(_EventBuilder.entity_destroyed(entity.pos, entity.entity_id, {"uid": entity.uid}))

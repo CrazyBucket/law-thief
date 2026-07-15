@@ -4,6 +4,7 @@ extends RefCounted
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const _StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
 
@@ -159,11 +160,38 @@ static func set_bomb_rat_plunder_phase(unit: UnitState, phase: int) -> void:
 	status.payload["phase"] = phase
 
 
+static func apply_law_worm_incubating(state: GameState, unit: UnitState, ready_turn: int) -> void:
+	_apply(state, unit, Constants.STATUS_LAW_WORM_INCUBATING, {
+		"payload": {"ready_turn": ready_turn},
+	})
+
+
+static func law_worm_ready_turn(unit: UnitState) -> int:
+	var status: StatusInstance = unit.get_status(Constants.STATUS_LAW_WORM_INCUBATING)
+	return int(status.payload.get("ready_turn", -1)) if status != null else -1
+
+
+static func set_broodmother_next_split(state: GameState, unit: UnitState, next_split: bool) -> void:
+	_apply(state, unit, Constants.STATUS_BROODMOTHER_CYCLE, {
+		"payload": {"next_split": next_split},
+	})
+
+
+static func broodmother_next_split(unit: UnitState) -> bool:
+	var status: StatusInstance = unit.get_status(Constants.STATUS_BROODMOTHER_CYCLE)
+	return bool(status.payload.get("next_split", true)) if status != null else true
+
+
+static func sync_broodmother_crisis(state: GameState, unit: UnitState, active: bool) -> void:
+	if active:
+		if not unit.has_status(Constants.STATUS_BROODMOTHER_CRISIS):
+			_apply(state, unit, Constants.STATUS_BROODMOTHER_CRISIS, {})
+	else:
+		unit.remove_status(Constants.STATUS_BROODMOTHER_CRISIS)
+
+
 static func can_move(unit: UnitState) -> bool:
-	for status in unit.statuses:
-		if _StatusRegistry.blocks_movement(status.status_id):
-			return false
-	return true
+	return _StatusActionRules.can_move(unit)
 
 
 static func move_block_reason(unit: UnitState) -> String:
@@ -179,10 +207,7 @@ static func move_block_reason(unit: UnitState) -> String:
 
 
 static func can_attack(unit: UnitState) -> bool:
-	for status in unit.statuses:
-		if _StatusRegistry.blocks_attack(status.status_id):
-			return false
-	return true
+	return _StatusActionRules.can_attack(unit)
 
 
 static func attack_block_reason(unit: UnitState) -> String:
@@ -432,52 +457,32 @@ static func grant_extra_move(state: GameState, unit: UnitState, amount: int = -1
 
 
 static func has_extra_attack(unit: UnitState) -> bool:
-	if unit == null:
-		return false
-	var status: StatusInstance = unit.get_status(Constants.STATUS_EXTRA_ATTACK)
-	return status != null and status.stacks > 0
+	return _StatusActionRules.has_extra_attack(unit)
 
 
 static func has_extra_move(unit: UnitState) -> bool:
-	if unit == null:
-		return false
-	var status: StatusInstance = unit.get_status(Constants.STATUS_EXTRA_MOVE)
-	return status != null and status.stacks > 0
+	return _StatusActionRules.has_extra_move(unit)
 
 
 static func consume_extra_attack(unit: UnitState) -> bool:
-	if unit == null:
-		return false
-	return _consume_stack_status(unit, Constants.STATUS_EXTRA_ATTACK)
+	return _StatusActionRules.consume_extra_attack(unit)
 
 
 static func consume_extra_move(unit: UnitState) -> bool:
-	if unit == null:
-		return false
-	return _consume_stack_status(unit, Constants.STATUS_EXTRA_MOVE)
+	return _StatusActionRules.consume_extra_move(unit)
 
 
 static func clear_extra_action_statuses(unit: UnitState) -> void:
-	if unit == null:
-		return
-	unit.remove_status(Constants.STATUS_EXTRA_ATTACK)
-	unit.remove_status(Constants.STATUS_EXTRA_MOVE)
+	_StatusActionRules.clear_extra_actions(unit)
 
 
 ## 返回缓速扣减后的实际移动力；特定来源可在状态载荷中降低下限。
 static func effective_move_points(unit: UnitState, base: int) -> int:
-	var slow: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
-	if slow == null:
-		return base
-	var min_move_points := int(slow.payload.get("min_move_points", _config_int("slowed", "min_move_points")))
-	return maxi(min_move_points, base - slow.stacks)
+	return _StatusActionRules.effective_move_points(unit, base, _config_int("slowed", "min_move_points"))
 
 
 static func can_act(unit: UnitState) -> bool:
-	for status in unit.statuses:
-		if _StatusRegistry.blocks_action(status.status_id):
-			return false
-	return true
+	return _StatusActionRules.can_act(unit)
 
 
 static func is_wet(unit: UnitState) -> bool:
@@ -493,8 +498,46 @@ static func tick_turn_start(state: GameState) -> void:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		_apply_blue_turn_start_effects(state, unit)
-		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_START)
+		tick_unit_turn_start(state, unit)
+
+
+## Turn-bound statuses belong to their carrier's action window.
+static func tick_unit_turn_start(state: GameState, unit: UnitState) -> void:
+	if state == null or unit == null or not unit.alive:
+		return
+	_apply_blue_turn_start_effects(state, unit)
+	_tick_phase(state, unit, _StatusRegistry.TICK_TURN_START)
+
+
+## Resolve one carrier's completed action window. Ground stay is applied before
+## damage-over-time so ending a turn in a hazard has an immediate cost.
+static func tick_unit_turn_end(
+	state: GameState,
+	unit: UnitState,
+	events: Array[Dictionary] = []
+) -> void:
+	if state == null or unit == null or not unit.alive:
+		return
+	_tick_tile_stay(state, unit)
+	_pretick_overlay_status_modifiers(state, unit)
+	_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END, events)
+
+
+## Board-wide effects advance once after every unit has completed its own turn.
+static func tick_round_end_environment(
+	state: GameState,
+	events: Array[Dictionary] = []
+) -> void:
+	if state == null:
+		return
+	_ContactResolver.resolve_adjacent(state)
+	EntityRules.tick_barrels_in_fire(state, events)
+	for key in state.tiles.keys():
+		var tile: TileState = state.tiles[key]
+		tile.tick_modifiers()
+	TileRules.spread_fire(state)
+	_tick_grass_growth(state)
+	_apply_tile_pillar_auras(state)
 
 
 ## 分阶段 turn_end，严格执行以下顺序：
@@ -506,7 +549,7 @@ static func tick_turn_start(state: GameState) -> void:
 ## 6. 地块 modifier 倒计时
 ## 7. 火焰蔓延 + 草地生长
 ## 8. Pillar 光环
-static func tick_turn_end(state: GameState) -> void:
+static func tick_turn_end(state: GameState, events: Array[Dictionary] = []) -> void:
 	# 阶段 1：地块停留结算
 	for unit in state.units.values():
 		if not unit.alive:
@@ -526,10 +569,10 @@ static func tick_turn_end(state: GameState) -> void:
 	for unit in state.units.values():
 		if not unit.alive:
 			continue
-		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END)
+		_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END, events)
 
 	# 阶段 6：油桶着火检测
-	EntityRules.tick_barrels_in_fire(state)
+	EntityRules.tick_barrels_in_fire(state, events)
 
 	# 阶段 7：地块 modifier 倒计时
 	for key in state.tiles.keys():
@@ -601,13 +644,18 @@ static func _apply(state: GameState, unit: UnitState, status_id: String, params:
 	state.log("%s 获得状态 %s" % [unit.uid, _StatusRegistry.display_name(status_id)])
 
 
-static func _tick_phase(state: GameState, unit: UnitState, phase: String) -> void:
+static func _tick_phase(
+	state: GameState,
+	unit: UnitState,
+	phase: String,
+	events: Array[Dictionary] = []
+) -> void:
 	var next: Array[StatusInstance] = []
 	for status in unit.statuses:
 		if _StatusRegistry.tick_phase(status.status_id) != phase:
 			next.append(status)
 			continue
-		_resolve_tick(state, unit, status)
+		_resolve_tick(state, unit, status, events)
 		if status.duration > 0:
 			status.duration -= 1
 			if status.duration <= 0:
@@ -646,23 +694,18 @@ static func _on_status_expired(unit: UnitState, status: StatusInstance) -> void:
 	slot.unlock_until_turn = -1
 
 
-static func _consume_stack_status(unit: UnitState, status_id: String) -> bool:
-	var status: StatusInstance = unit.get_status(status_id)
-	if status == null or status.stacks <= 0:
-		return false
-	status.stacks -= 1
-	if status.stacks <= 0:
-		unit.remove_status(status_id)
-	return true
-
-
-static func _resolve_tick(state: GameState, unit: UnitState, status: StatusInstance) -> void:
+static func _resolve_tick(
+	state: GameState,
+	unit: UnitState,
+	status: StatusInstance,
+	events: Array[Dictionary] = []
+) -> void:
 	match status.status_id:
 		Constants.STATUS_POISON:
 			var poison_dmg := status.stacks * CombatConfig.poison_fog_damage()
-			_apply_tick_damage(state, unit, poison_dmg, status.source_uid, "poison")
+			_apply_tick_damage(state, unit, poison_dmg, status.source_uid, "poison", events)
 		Constants.STATUS_BURNING:
-			_apply_tick_damage(state, unit, status.stacks, status.source_uid, "burning")
+			_apply_tick_damage(state, unit, status.stacks, status.source_uid, "burning", events)
 
 
 static func _apply_tick_damage(
@@ -670,9 +713,10 @@ static func _apply_tick_damage(
 	unit: UnitState,
 	amount: int,
 	source_uid: String,
-	reason: String
+	reason: String,
+	events: Array[Dictionary] = []
 ) -> void:
-	var tx := _CombatTransaction.begin_from_state(state)
+	var tx := _CombatTransaction.begin(state, events)
 	tx.true_damage_unit(unit, amount, source_uid, reason)
 	tx.finish("StatusRules.%s_tick" % reason)
 

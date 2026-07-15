@@ -11,6 +11,8 @@ const _BODY_COLORS := {
 	"unit_patrol_guard": Color(0.55, 0.62, 0.78),
 	"unit_stone_bow_guard": Color(0.48, 0.52, 0.55),
 	"unit_fission_slime": Color(0.35, 0.88, 0.55),
+	"unit_law_worm": Color(0.72, 0.82, 0.32),
+	"unit_broodmother": Color(0.58, 0.34, 0.66),
 }
 
 var _face_texture_cache: Dictionary = {}

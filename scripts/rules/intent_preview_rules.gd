@@ -5,6 +5,7 @@ const IntentDamageComponentType = preload("res://scripts/data/intent_damage_comp
 const LightBeamRules = preload("res://scripts/rules/light_beam_rules.gd")
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
+const PreviewEffect = preload("res://scripts/data/intent_preview_effect.gd")
 
 const PIPELINE_ATTACK_TYPES: Array[String] = [
 	"melee_attack",
@@ -18,6 +19,7 @@ const PIPELINE_ATTACK_TYPES: Array[String] = [
 	"light_beam",
 	"counter_attack",
 	"echo_attack",
+	"broodmother_ranged_attack",
 ]
 
 
@@ -89,6 +91,54 @@ static func populate_damage(state: GameState, unit: UnitState, intent: IntentSta
 					[intent.target_uid],
 					intent.affected_cells
 				)])
+
+
+static func populate(state: GameState, unit: UnitState, intent: IntentState) -> void:
+	populate_damage(state, unit, intent)
+	populate_effects(intent)
+
+
+static func populate_effects(intent: IntentState) -> void:
+	if intent == null:
+		return
+	intent.preview_effects.clear()
+	if not intent.path.is_empty():
+		intent.preview_effects.append(PreviewEffect.create("movement", intent.path, {
+			"source_uid": intent.source_uid,
+		}))
+	for component in intent.damage_components:
+		intent.preview_effects.append(PreviewEffect.create("damage", component.affected_cells, {
+			"source_uid": intent.source_uid,
+			"target_uid": intent.target_uid,
+			"certainty": component.certainty,
+			"metadata": {
+				"source": component.source,
+				"damage_per_hit": component.damage_per_hit,
+				"instance_count": component.instance_count,
+			},
+		}))
+	match intent.type:
+		"broodmother_split":
+			intent.preview_effects.append(PreviewEffect.create("spawn", intent.affected_cells, {
+				"source_uid": intent.source_uid,
+				"metadata": {"unit_id": "unit_law_worm"},
+			}))
+		"law_worm_consume":
+			intent.preview_effects.append(PreviewEffect.create("gem_consume", [intent.target_pos], {
+				"source_uid": intent.source_uid,
+				"target_uid": intent.target_uid,
+			}))
+		"law_worm_transform":
+			intent.preview_effects.append(PreviewEffect.create("transform", [intent.target_pos], {
+				"source_uid": intent.source_uid,
+				"metadata": {"unit_id": "unit_broodmother"},
+			}))
+		"pull", "trample":
+			intent.preview_effects.append(PreviewEffect.create("displacement", intent.affected_cells, {
+				"source_uid": intent.source_uid,
+				"target_uid": intent.target_uid,
+				"certainty": PreviewEffect.CONDITIONAL,
+			}))
 
 
 static func build_red_attack_profile(

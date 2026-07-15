@@ -1,6 +1,8 @@
 class_name BattleInvariantChecker
 extends RefCounted
 
+const _GemLocation = preload("res://scripts/data/gem_location.gd")
+
 ## 系统级不变量校验器
 ## 校验规则只在调试/测试路径中被主动调用，不污染正常游戏逻辑。
 
@@ -14,6 +16,8 @@ static func check_all(state: GameState) -> Array[String]:
 	_check_occupancy_index_consistency(state, violations)
 	_check_all_units_in_bounds(state, violations)
 	_check_footprint_not_partially_out_of_bounds(state, violations)
+	_check_spawn_reward_consistency(state, violations)
+	_check_gem_location_consistency(state, violations)
 	return violations
 
 
@@ -30,6 +34,15 @@ static func assert_valid(state: GameState, context: String = "") -> bool:
 
 
 # ─── 具体校验规则 ──────────────────────────────────────────────────────────────
+
+static func _check_spawn_reward_consistency(state: GameState, out: Array[String]) -> void:
+	for unit: UnitState in state.units.values():
+		if unit.is_temporary_summon and unit.grants_death_rewards:
+			out.append("temporary unit '%s' cannot grant death rewards" % unit.uid)
+		if not unit.spawn_origin_uid.is_empty() and unit.spawn_origin_uid == unit.uid:
+			out.append("unit '%s' cannot spawn itself" % unit.uid)
+		if not unit.spawn_origin_uid.is_empty() and unit.reward_origin_uid.is_empty():
+			out.append("spawned unit '%s' is missing reward origin" % unit.uid)
 
 ## 死亡单位不得继续占格
 static func _check_dead_units_not_occupying(state: GameState, out: Array[String]) -> void:
@@ -144,3 +157,59 @@ static func _check_footprint_not_partially_out_of_bounds(state: GameState, out: 
 					"multi-cell unit '%s' (%s) footprint cell %s is out of bounds" \
 					% [uid, unit.unit_def_id, cell]
 				)
+
+
+## 宝石可以暂时脱离棋盘，但不能同时出现在多个容器；容器与 GemState 镜像必须一致。
+static func _check_gem_location_consistency(state: GameState, out: Array[String]) -> void:
+	var counts: Dictionary = {}
+	var expected: Dictionary = {}
+	if not state.held_gem_uid.is_empty():
+		_record_gem_location(state, state.held_gem_uid, "hand", counts, out)
+		expected[state.held_gem_uid] = _GemLocation.hand(state.player_uid)
+	for raw_uid in state.dropped_gems.keys():
+		var gem_uid := str(raw_uid)
+		_record_gem_location(state, gem_uid, "ground", counts, out)
+		var drop: Dictionary = state.dropped_gems.get(gem_uid, {})
+		expected[gem_uid] = _GemLocation.ground(drop.get("pos", Vector2i(-1, -1)))
+	for unit: UnitState in state.units.values():
+		for i in range(unit.slots.size()):
+			var slot: SlotState = unit.slots[i]
+			if slot == null or slot.gem_uid.is_empty():
+				continue
+			_record_gem_location(state, slot.gem_uid, "unit:%s:%d" % [unit.uid, i], counts, out)
+			expected[slot.gem_uid] = _GemLocation.unit_slot(unit.uid, i)
+	for tile: TileState in state.tiles.values():
+		for i in range(tile.slots.size()):
+			var slot: SlotState = tile.slots[i]
+			if slot == null or slot.gem_uid.is_empty():
+				continue
+			_record_gem_location(state, slot.gem_uid, "tile:%s:%d" % [tile.pos, i], counts, out)
+			expected[slot.gem_uid] = _GemLocation.tile_slot(tile.pos, i)
+	for raw_uid in state.gems.keys():
+		var gem_uid := str(raw_uid)
+		var count := int(counts.get(gem_uid, 0))
+		if count > 1:
+			out.append("gem '%s' exists in %d location containers" % [gem_uid, count])
+			continue
+		var gem: GemState = state.gems.get(gem_uid, null)
+		if gem == null:
+			continue
+		var expected_location = expected.get(gem_uid, _GemLocation.detached())
+		if not gem.location.is_valid():
+			out.append("gem '%s' has invalid location %s" % [gem_uid, gem.location.describe()])
+		elif not gem.location.equals(expected_location):
+			out.append("gem '%s' location '%s' expected '%s'" % [
+				gem_uid, gem.location.describe(), expected_location.describe()
+			])
+
+
+static func _record_gem_location(
+	state: GameState,
+	gem_uid: String,
+	location: String,
+	counts: Dictionary,
+	out: Array[String]
+) -> void:
+	counts[gem_uid] = int(counts.get(gem_uid, 0)) + 1
+	if not state.gems.has(gem_uid):
+		out.append("%s references missing gem '%s'" % [location, gem_uid])

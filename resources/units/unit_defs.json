@@ -130,6 +130,40 @@
       {"slot_type": "black", "gem_id": "gem_split"}
     ]
   },
+  "unit_law_worm": {
+    "display_name_key": "unit.law_worm.name",
+    "max_hp": 5,
+    "move_points": 1,
+    "speed": 7,
+    "base_attack": 1,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "law_worm",
+    "spawn_gem_slots": [],
+    "tags": ["unit:law_worm", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_broodmother": {
+    "display_name_key": "unit.broodmother.name",
+    "max_hp": 20,
+    "move_points": 0,
+    "speed": 6,
+    "base_attack": 4,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "broodmother",
+    "spawn_gem_slots": [],
+    "tags": ["unit:broodmother", "unit:ranged"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
   "unit_overload_enforcer": {
     "display_name_key": "unit.overload_enforcer.name",
     "max_hp": 32,

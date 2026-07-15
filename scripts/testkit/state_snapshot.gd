@@ -107,6 +107,10 @@ static func _unit(unit: UnitState) -> Dictionary:
 		"alive": unit.alive,
 		"facing": unit.facing,
 		"tags": unit.tags.duplicate(),
+		"spawn_origin_uid": unit.spawn_origin_uid,
+		"reward_origin_uid": unit.reward_origin_uid,
+		"grants_death_rewards": unit.grants_death_rewards,
+		"temporary_summon": unit.is_temporary_summon,
 		"slots": slots,
 		"statuses": statuses,
 		"intent": _intent(unit.intent),
@@ -119,6 +123,7 @@ static func _gem(gem: GemState) -> Dictionary:
 		"gem_id": gem.gem_id,
 		"owner_uid": gem.owner_uid,
 		"slot_index": gem.slot_index,
+		"location": _json_safe(gem.location.to_dict()),
 		"def_overrides": _json_safe(gem.def_overrides),
 	}
 
@@ -180,6 +185,7 @@ static func _intent(intent: IntentState) -> Variant:
 			func(component: IntentDamageComponent): return component.to_dict()
 		)),
 		"preview_text": intent.preview_text,
+		"action_plan": _json_safe(intent.action_plan.to_dict()) if intent.action_plan != null else null,
 	}
 
 

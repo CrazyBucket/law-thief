@@ -4,6 +4,7 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 signal slot_selected(unit_uid: String, slot_index: int)
 signal tile_slot_selected(tile_pos: Vector2i, slot_index: int)
+signal dropped_gem_selected(gem_uid: String)
 signal editor_unit_slot_selected(unit_uid: String, slot_index: int)
 signal editor_tile_slot_selected(tile_pos: Vector2i, slot_index: int)
 signal editor_unit_slot_added(unit_uid: String, slot_type: String)
@@ -13,6 +14,7 @@ signal cancelled
 var _target_uid: String = ""
 var _target_tile_pos: Vector2i = Vector2i(-1, -1)
 var _is_tile_mode: bool = false
+var _is_dropped_mode: bool = false
 var _panel: PanelContainer = null
 var _content: VBoxContainer = null
 var _title_label: Label = null
@@ -41,6 +43,7 @@ func show_for_unit(unit: UnitState, state: GameState, action: String, screen_pos
 	if visible and not _is_tile_mode and _target_uid == unit.uid and _current_action == action:
 		return
 	_is_tile_mode = false
+	_is_dropped_mode = false
 	_target_uid = unit.uid
 	_current_action = action
 	_title_label.text = _action_title(action)
@@ -53,6 +56,7 @@ func show_for_tile(tile: TileState, state: GameState, action: String, screen_pos
 	if visible and _is_tile_mode and _target_tile_pos == tile.pos and _current_action == action:
 		return
 	_is_tile_mode = true
+	_is_dropped_mode = false
 	_target_uid = ""
 	_target_tile_pos = tile.pos
 	_current_action = action
@@ -62,8 +66,36 @@ func show_for_tile(tile: TileState, state: GameState, action: String, screen_pos
 	_layout_panel(screen_pos)
 
 
+func show_for_dropped_gems(gem_uids: Array[String], state: GameState, screen_pos: Vector2, check_fn: Callable) -> void:
+	_is_tile_mode = false
+	_is_dropped_mode = true
+	_target_uid = ""
+	_current_action = Constants.ACTION_EXTRACT
+	_title_label.text = "选择地面宝石"
+	_clear_content()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	for gem_uid in gem_uids:
+		var gem: GemState = state.gems.get(gem_uid, null)
+		if gem == null:
+			continue
+		var check: Dictionary = check_fn.call(gem_uid)
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(104, 36)
+		button.text = _data_registry().get_gem_display_name(gem)
+		button.disabled = not check.get("ok", false)
+		BattleUiTheme.apply_button(button, "gem", false)
+		var selected_uid := gem_uid
+		button.pressed.connect(func() -> void: dropped_gem_selected.emit(selected_uid))
+		row.add_child(button)
+	_content.add_child(row)
+	visible = row.get_child_count() > 0
+	_layout_panel(screen_pos)
+
+
 func show_for_editor_unit(unit: UnitState, state: GameState, gem_id: String, screen_pos: Vector2) -> void:
 	_is_tile_mode = false
+	_is_dropped_mode = false
 	_target_uid = unit.uid
 	_current_action = "editor_gem"
 	_title_label.text = "选择宝石嵌入槽位"

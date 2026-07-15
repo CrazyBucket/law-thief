@@ -2,6 +2,7 @@ class_name IntentState
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const _ActionPlan = preload("res://scripts/data/action_plan.gd")
 
 var type: String = "wait"
 var source_uid: String = ""
@@ -12,7 +13,10 @@ var affected_cells: Array[Vector2i] = []
 var base_damage: int = 0
 var damage: int = 0
 var damage_components: Array[IntentDamageComponent] = []
+var preview_effects: Array = []
 var preview_text: String = ""
+var plan_metadata: Dictionary = {}
+var action_plan = null
 
 
 static func intent_icon(intent_type: String) -> String:
@@ -38,6 +42,11 @@ static func intent_icon(intent_type: String) -> String:
 		"black_suicide": return "💀"
 		"bomb_rat_plunder_wait": return "😶"
 		"bomb_rat_plunder_steal": return "💢"
+		"law_worm_seek": return "💎"
+		"law_worm_consume": return "💎"
+		"law_worm_transform": return "孵"
+		"broodmother_split": return "殖"
+		"broodmother_ranged_attack": return "🏹"
 		"wait":          return "…"
 	return "?"
 
@@ -72,7 +81,24 @@ func clone() -> IntentState:
 	intent.damage = damage
 	for component in damage_components:
 		intent.damage_components.append(component.clone())
+	for effect in preview_effects:
+		intent.preview_effects.append(effect.clone())
 	intent.preview_text = preview_text
+	intent.plan_metadata = plan_metadata.duplicate(true)
+	intent.action_plan = action_plan.clone() if action_plan != null else null
+	return intent
+
+
+func finalize_action_plan(turn_index: int, source_pos: Vector2i) -> void:
+	action_plan = _ActionPlan.capture(self, turn_index, source_pos)
+
+
+func execution_view(turn_index: int, source_pos: Vector2i) -> IntentState:
+	if action_plan == null:
+		finalize_action_plan(turn_index, source_pos)
+	var intent := clone()
+	action_plan.apply_to(intent)
+	intent.action_plan = action_plan.clone()
 	return intent
 
 

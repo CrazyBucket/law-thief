@@ -120,6 +120,12 @@ static func short_label(status: StatusInstance) -> String:
 			return "攻"
 		Constants.STATUS_EXTRA_MOVE:
 			return "移"
+		Constants.STATUS_LAW_WORM_INCUBATING:
+			return "孵"
+		Constants.STATUS_BROODMOTHER_CYCLE:
+			return "殖"
+		Constants.STATUS_BROODMOTHER_CRISIS:
+			return "危殖"
 	return display_name(status.status_id)
 
 
@@ -185,6 +191,12 @@ static func tooltip(status: StatusInstance) -> String:
 			return "额外攻击：本回合已攻击后，仍可再攻击 %d 次" % status.stacks
 		Constants.STATUS_EXTRA_MOVE:
 			return "额外移动：本回合已移动后，仍可再移动 %d 次" % status.stacks
+		Constants.STATUS_LAW_WORM_INCUBATING:
+			return "孵化：下次行动时进化为畸变蛆母"
+		Constants.STATUS_BROODMOTHER_CYCLE:
+			return "繁殖节律：在攻击与分裂之间交替"
+		Constants.STATUS_BROODMOTHER_CRISIS:
+			return "危机繁殖：全身空槽，每次行动分裂两只噬律蛆"
 	return display_name(status.status_id)
 
 
@@ -305,6 +317,30 @@ static var _DEFS: Dictionary = {
 		"display_name": "无律掠夺",
 		"type": TYPE_SYSTEM,
 		"color": UiPalette.PLUNDER_ORANGE,
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_LAW_WORM_INCUBATING: {
+		"display_name": "孵化",
+		"type": TYPE_SYSTEM,
+		"color": UiPalette.REVEAL_AMBER,
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_BROODMOTHER_CYCLE: {
+		"display_name": "繁殖节律",
+		"type": TYPE_SYSTEM,
+		"color": UiPalette.POISON_GREEN,
+		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_BROODMOTHER_CRISIS: {
+		"display_name": "危机繁殖",
+		"type": TYPE_SYSTEM,
+		"color": UiPalette.DISORDER_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_NONE,
 		"blocks_movement": false,

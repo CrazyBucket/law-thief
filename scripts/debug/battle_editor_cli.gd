@@ -1,6 +1,8 @@
 class_name BattleEditorCli
 extends RefCounted
 
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
 	get:
@@ -541,14 +543,11 @@ func _run_editor_spawn_gem(ctrl, tokens: Array, start_index: int) -> Dictionary:
 	_clear_slot_gem(ctrl, slot)
 	var gem_uid: String = _data_registry(ctrl).next_runtime_uid("runtime_gem")
 	var gem: GemState = _data_registry(ctrl).create_gem_instance(gem_uid, gem_id)
-	if target_kind == "unit" and unit != null:
-		gem.owner_uid = unit.uid
-		gem.slot_index = slot_index
-	else:
-		gem.owner_uid = ""
-		gem.slot_index = -1
 	ctrl.state.gems[gem.uid] = gem
-	slot.gem_uid = gem.uid
+	if target_kind == "unit" and unit != null:
+		GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
+	else:
+		GemTransfer.to_tile_slot(ctrl.state, gem, tile, slot)
 	return _finalize_mutation(ctrl, "spawned %s in %s" % [gem_id, target_label], false, {"gem_uid": gem.uid})
 
 
@@ -874,10 +873,7 @@ func _clear_unit_gems(ctrl, unit: UnitState) -> void:
 func _clear_slot_gem(ctrl, slot: SlotState) -> void:
 	if slot == null or slot.gem_uid.is_empty():
 		return
-	if ctrl.state.held_gem_uid == slot.gem_uid:
-		ctrl.state.held_gem_uid = ""
-	ctrl.state.gems.erase(slot.gem_uid)
-	slot.gem_uid = ""
+	GemTransfer.remove(ctrl.state, slot.gem_uid)
 
 
 func _default_tile_slot_defs(tile_id: String) -> Array:

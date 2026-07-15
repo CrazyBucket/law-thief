@@ -39,7 +39,8 @@ func _run() -> void:
 		{"from": Vector2i(1, 1), "to": Vector2i(4, 2)},
 	]
 	board.play_projectiles(shots)
-	assert(animation_state.active_projectiles.size() == 3, "renderer must activate the full split volley in one frame")
+	var projectile_fx = board.get("_projectile_fx")
+	assert(projectile_fx != null and projectile_fx.active_count() == 3, "renderer must activate the full split volley in one frame")
 	await board.projectile_animation_finished
 	var blast_timing: Dictionary = board.play_explosion_batch([{"type": "explode", "pos": Vector2i(4, 3)}])
 	assert(float(blast_timing.impact_time) > 0.0)

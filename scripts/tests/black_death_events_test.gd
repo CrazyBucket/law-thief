@@ -27,14 +27,23 @@ func _run() -> void:
 	var events: Array = res.get("attack_events", [])
 	var explode_count := 0
 	var damage_count := 0
-	for ev in events:
+	var first_black_effect := -1
+	var die_index := -1
+	for i in range(events.size()):
+		var ev: Dictionary = events[i]
 		match str(ev.get("type", "")):
 			"explode":
 				explode_count += 1
+				if first_black_effect < 0:
+					first_black_effect = i
 			"damage":
 				damage_count += 1
+			"die":
+				if str(ev.get("uid", "")) == guard.uid:
+					die_index = i
 	assert(explode_count >= 1, "black death should emit explode, got %d events: %s" % [explode_count, _summarize(events)])
 	assert(damage_count >= 1, "black death should emit damage, got %d" % damage_count)
+	assert(die_index > first_black_effect and first_black_effect >= 0, "black gem effects must resolve before the owner die event: %s" % _summarize(events))
 	print("BLACK_DEATH_EVENTS_TEST_PASS explode=%d damage=%d" % [explode_count, damage_count])
 	quit()
 

@@ -14,6 +14,7 @@ func _run_test() -> void:
 	_test_forced_insert_keeps_held_visual_state_consistent()
 	_test_self_occupied_insert_creates_overload_slot()
 	_test_enemy_gems_drop_to_ground()
+	_test_ground_gem_can_be_extracted()
 	_test_slot_panels_only_show_in_operation_range()
 	print("GEM_INSERT_OVERLOAD_TEST_PASS")
 	quit()
@@ -43,13 +44,10 @@ func _test_second_insert_overloads_without_replacing() -> void:
 	var player_red := player.get_slot(Constants.SLOT_RED)
 	controller.select_action(Constants.ACTION_INSERT)
 	var insert_result := controller.try_insert(player.uid, player.slots.find(player_red))
-	assert(insert_result.get("ok", false), "self occupied insert should overload instead of replacing")
-	assert(bool(insert_result.get("overload_forced", false)), "self occupied insert should report overload_forced")
+	assert(insert_result.get("ok", false) and bool(insert_result.get("overload_armed", false)), "first occupied insert should only arm overload")
+	assert(state.held_gem_uid == held_explosion_uid, "first occupied insert must keep the gem in hand")
 	var second_target_slot := player_red
 	var second_target_original_uid := second_target_slot.gem_uid
-	state.held_gem_uid = held_explosion_uid
-	var forced_held_uid := _make_gem(state, Constants.GEM_POISON, player.uid)
-	state.held_gem_uid = forced_held_uid
 
 	var second_result := controller.try_insert(player.uid, player.slots.find(second_target_slot))
 	if not second_result.get("ok", false):
@@ -63,8 +61,7 @@ func _test_second_insert_overloads_without_replacing() -> void:
 	assert(state.held_gem_uid.is_empty(), "forced overload insert should consume the held gem")
 	assert(second_target_slot.gem_uid == second_target_original_uid, "original occupied slot should stay unchanged")
 	assert(player.slots.size() >= 2, "forced overload insert should create an extra slot")
-	assert(_unit_has_gem(player, held_explosion_uid), "first forced insert should keep held gem on player")
-	assert(player.slots[player.slots.size() - 1].gem_uid == forced_held_uid, "second forced overload insert should place the held gem into the new slot")
+	assert(player.slots[player.slots.size() - 1].gem_uid == held_explosion_uid, "second insert should place the armed gem into the new slot")
 	print("  [OK] second insert creates real overload slot")
 
 
@@ -86,8 +83,10 @@ func _test_enemy_occupied_insert_creates_overload_slot() -> void:
 	var slot_count_before := rat.slots.size()
 	controller.select_action(Constants.ACTION_INSERT)
 	var result := controller.try_insert(rat.uid, rat.slots.find(black_slot))
-	assert(result.get("ok", false), "occupied enemy insert should create overload slot")
-	assert(bool(result.get("overload_forced", false)), "occupied enemy insert should report overload_forced")
+	assert(result.get("ok", false) and bool(result.get("overload_armed", false)), "first occupied enemy insert should only arm overload")
+	assert(state.held_gem_uid == held_uid and rat.slots.size() == slot_count_before, "arming overload must not move the gem or add a slot")
+	result = controller.try_insert(rat.uid, rat.slots.find(black_slot))
+	assert(result.get("ok", false) and bool(result.get("overload_forced", false)), "second occupied enemy insert should force overload")
 	assert(state.overload_pending, "occupied enemy insert should set overload pending")
 	assert(black_slot.gem_uid == black_uid, "occupied enemy slot should stay unchanged")
 	assert(rat.slots.size() == slot_count_before + 1, "occupied enemy insert should append a slot")
@@ -144,8 +143,10 @@ func _test_self_occupied_insert_creates_overload_slot() -> void:
 	var before_count := player.slots.size()
 	controller.select_action(Constants.ACTION_INSERT)
 	var result := controller.try_insert(player.uid, player.slots.find(red_slot))
-	assert(result.get("ok", false), "self occupied insert should create overload slot")
-	assert(bool(result.get("overload_forced", false)), "self occupied insert should report overload_forced")
+	assert(result.get("ok", false) and bool(result.get("overload_armed", false)), "first self occupied insert should only arm overload")
+	assert(state.held_gem_uid == held_uid and player.slots.size() == before_count, "first self insert must not mutate ownership")
+	result = controller.try_insert(player.uid, player.slots.find(red_slot))
+	assert(result.get("ok", false) and bool(result.get("overload_forced", false)), "second self occupied insert should force overload")
 	assert(state.overload_pending, "self overload insert should set overload pending")
 	assert(red_slot.gem_uid == red_uid, "self overload insert should not replace occupied slot")
 	assert(player.slots.size() == before_count + 1, "self overload insert should append a slot")
@@ -172,6 +173,36 @@ func _test_enemy_gems_drop_to_ground() -> void:
 	assert(state.gems.has(dropped_uid), "dropped gem should remain in state.gems")
 	assert(rat.get_slot(Constants.SLOT_RED).gem_uid.is_empty(), "dead enemy slot should no longer own dropped gem")
 	print("  [OK] enemy gems drop onto ground")
+
+
+func _test_ground_gem_can_be_extracted() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 24602)
+	var state := controller.state
+	var player := state.get_player()
+	var rat := _find_unit_by_def(state, "unit_bomb_rat")
+	assert(player != null and rat != null, "ground extract fixture should have player and rat")
+	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
+	var dropped_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
+	var death_pos := rat.pos
+	CombatRules.apply_true_damage(state, rat, rat.hp, state.player_uid, "test")
+	var moved_in_range := false
+	for neighbor in BoardUtils.neighbors4(death_pos):
+		if BoardUtils.unit_footprint_passable(state, player, neighbor, player.uid):
+			state.move_unit(player, neighbor)
+			moved_in_range = true
+			break
+	assert(moved_in_range, "test should place player beside the ground gem")
+	controller.select_action(Constants.ACTION_EXTRACT)
+	assert(controller.check_dropped_gem_action(dropped_uid).get("ok", false), "adjacent ground gem should be extractable")
+	var targets: Array = controller.get_highlights().get("targets", [])
+	assert(death_pos in targets, "extract highlights should include the ground gem cell")
+	var result := controller.try_extract_dropped(dropped_uid)
+	assert(result.get("ok", false), "ground gem extract should succeed")
+	assert(state.held_gem_uid == dropped_uid, "extracted ground gem should be held")
+	assert(not state.dropped_gems.has(dropped_uid), "extracted gem should leave the ground")
+	assert(BattleInvariantChecker.assert_valid(state, "gem_insert_replace.ground_extract"))
+	print("  [OK] ground gem can be extracted in combat")
 
 
 func _test_slot_panels_only_show_in_operation_range() -> void:

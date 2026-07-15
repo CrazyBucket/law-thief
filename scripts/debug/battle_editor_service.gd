@@ -3,6 +3,8 @@ extends RefCounted
 
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 const DoodlePropSprites = preload("res://scripts/ui/doodle_prop_sprites.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const EncounterCodec = preload("res://scripts/debug/battle_editor_encounter_codec.gd")
 
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
@@ -223,14 +225,11 @@ func _spawn_gem(payload: Dictionary) -> Dictionary:
 	_clear_slot_gem(slot)
 	var gem_uid: String = _data_registry().next_runtime_uid("runtime_gem")
 	var gem: GemState = _data_registry().create_gem_instance(gem_uid, gem_id)
-	if target_kind == "unit" and unit != null:
-		gem.owner_uid = unit.uid
-		gem.slot_index = slot_index
-	else:
-		gem.owner_uid = ""
-		gem.slot_index = -1
 	ctrl.state.gems[gem.uid] = gem
-	slot.gem_uid = gem.uid
+	if target_kind == "unit" and unit != null:
+		GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
+	else:
+		GemTransfer.to_tile_slot(ctrl.state, gem, tile, slot)
 	return _finalize_mutation("spawned %s in %s" % [gem_id, target_label], false, {"gem_uid": gem.uid})
 
 
@@ -530,91 +529,11 @@ func _finalize_mutation(message: String, rebuild_tiles: bool = false, payload: D
 
 
 func _build_export_encounter() -> Dictionary:
-	var ctrl := _ctrl
-	var player: UnitState = ctrl.state.get_player()
-	var enemies: Array[Dictionary] = []
-	var entities: Array[Dictionary] = []
-	var tiles: Array[Dictionary] = []
-	for unit in ctrl.state.units.values():
-		if unit.uid == ctrl.state.player_uid or not unit.alive or unit.team != Constants.TEAM_ENEMY:
-			continue
-		var enemy_entry := {
-			"def_id": unit.unit_def_id,
-			"pos": [unit.pos.x, unit.pos.y],
-		}
-		var slot_defs := _collect_slot_entries(unit.slots)
-		if not slot_defs.is_empty():
-			enemy_entry["slots"] = slot_defs
-		enemies.append(enemy_entry)
-	enemies.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return _compare_export_positions(a.get("pos", [0, 0]), b.get("pos", [0, 0]))
-	)
-	for entity in ctrl.state.entities.values():
-		if entity == null or not entity.alive:
-			continue
-		var entity_entry := {
-			"entity_id": entity.entity_id,
-			"pos": [entity.pos.x, entity.pos.y],
-		}
-		if not entity.prop_sprite.is_empty():
-			entity_entry["prop_sprite"] = entity.prop_sprite
-		entities.append(entity_entry)
-	entities.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return _compare_export_positions(a.get("pos", [0, 0]), b.get("pos", [0, 0]))
-	)
-	for tile in ctrl.state.tiles.values():
-		var tile_entry := _build_tile_export_entry(tile)
-		if tile_entry.is_empty():
-			continue
-		tiles.append(tile_entry)
-	tiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return _compare_export_positions(a.get("pos", [0, 0]), b.get("pos", [0, 0]))
-	)
-	var encounter := {
-		"schema_version": 2,
-		"player_spawn": [player.pos.x, player.pos.y] if player != null else [0, 0],
-		"floor_seed": ctrl.state.run_seed,
-		"enemies": enemies,
-		"entities": entities,
-		"tiles": tiles,
-	}
-	return encounter
+	return EncounterCodec.export_from_state(_ctrl.state)
 
 
 func _parse_import_encounter(raw: Dictionary) -> Dictionary:
-	var encounter := raw.duplicate(true)
-	if encounter.has("player_spawn"):
-		var spawn: Variant = encounter.get("player_spawn", [])
-		if spawn is Array and spawn.size() >= 2:
-			encounter["player_spawn"] = Vector2i(int(spawn[0]), int(spawn[1]))
-	if encounter.has("enemies"):
-		var enemies: Array = encounter.get("enemies", [])
-		for i in range(enemies.size()):
-			var entry: Dictionary = enemies[i].duplicate(true)
-			var pos_raw: Variant = entry.get("pos", [])
-			if pos_raw is Array and pos_raw.size() >= 2:
-				entry["pos"] = Vector2i(int(pos_raw[0]), int(pos_raw[1]))
-			enemies[i] = entry
-		encounter["enemies"] = enemies
-	if encounter.has("entities"):
-		var entities: Array = encounter.get("entities", [])
-		for i in range(entities.size()):
-			var entry: Dictionary = entities[i].duplicate(true)
-			var pos_raw: Variant = entry.get("pos", [])
-			if pos_raw is Array and pos_raw.size() >= 2:
-				entry["pos"] = Vector2i(int(pos_raw[0]), int(pos_raw[1]))
-			entities[i] = entry
-		encounter["entities"] = entities
-	if encounter.has("tiles"):
-		var tiles: Array = encounter.get("tiles", [])
-		for i in range(tiles.size()):
-			var entry: Dictionary = tiles[i].duplicate(true)
-			var pos_raw: Variant = entry.get("pos", [])
-			if pos_raw is Array and pos_raw.size() >= 2:
-				entry["pos"] = Vector2i(int(pos_raw[0]), int(pos_raw[1]))
-			tiles[i] = entry
-		encounter["tiles"] = tiles
-	return encounter
+	return EncounterCodec.parse_import(raw)
 
 
 func _apply_import_encounter(encounter: Dictionary, source_label: String) -> Dictionary:
@@ -638,57 +557,6 @@ func _apply_import_encounter(encounter: Dictionary, source_label: String) -> Dic
 	})
 
 
-func _build_tile_export_entry(tile: TileState) -> Dictionary:
-	if tile == null:
-		return {}
-	var has_overlay := not tile.modifiers.is_empty()
-	if tile.tile_id == Constants.TILE_FLOOR and not tile.has_slots() and not has_overlay:
-		return {}
-	var tile_entry := {
-		"pos": [tile.pos.x, tile.pos.y],
-		"tile_id": tile.tile_id,
-	}
-	var tile_slots := _collect_slot_entries(tile.slots)
-	if not tile_slots.is_empty():
-		tile_entry["slots"] = tile_slots
-	if has_overlay:
-		var overlays: Array[Dictionary] = []
-		for modifier in tile.modifiers:
-			var entry := {
-				"type": str(modifier.get("type", "")),
-				"duration": int(modifier.get("duration", 0)),
-			}
-			var payload: Dictionary = modifier.get("payload", {})
-			if not payload.is_empty():
-				entry["payload"] = payload.duplicate(true)
-			overlays.append(entry)
-		tile_entry["overlays"] = overlays
-	return tile_entry
-
-
-func _collect_slot_entries(slots: Array) -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-	for slot in slots:
-		var slot_entry := {
-			"slot_type": slot.slot_type,
-		}
-		if bool(slot.locked):
-			slot_entry["locked"] = true
-		if not str(slot.lock_type).is_empty():
-			slot_entry["lock_type"] = slot.lock_type
-		if not str(slot.dual_type).is_empty():
-			slot_entry["dual_type"] = slot.dual_type
-		if not slot.gem_uid.is_empty():
-			var gem: GemState = _ctrl.state.gems.get(slot.gem_uid, null)
-			if gem != null:
-				slot_entry["gem_id"] = gem.gem_id
-				if not gem.def_overrides.is_empty():
-					slot_entry["gem_overrides"] = gem.def_overrides.duplicate(true)
-		if slot_entry.size() > 1:
-			entries.append(slot_entry)
-	return entries
-
-
 func _clear_tile_gems(tile: TileState) -> void:
 	if tile == null:
 		return
@@ -706,10 +574,7 @@ func _clear_unit_gems(unit: UnitState) -> void:
 func _clear_slot_gem(slot: SlotState) -> void:
 	if slot == null or slot.gem_uid.is_empty():
 		return
-	if _ctrl.state.held_gem_uid == slot.gem_uid:
-		_ctrl.state.held_gem_uid = ""
-	_ctrl.state.gems.erase(slot.gem_uid)
-	slot.gem_uid = ""
+	GemTransfer.remove(_ctrl.state, slot.gem_uid)
 
 
 func _default_tile_slot_defs(tile_id: String) -> Array:
@@ -752,12 +617,6 @@ func _find_filled_slot_index(slots: Array, preferred_slot_type: String = "") -> 
 		if not slot.gem_uid.is_empty():
 			return i
 	return -1
-
-
-func _compare_export_positions(a: Array, b: Array) -> bool:
-	if int(a[1]) == int(b[1]):
-		return int(a[0]) < int(b[0])
-	return int(a[1]) < int(b[1])
 
 
 func _parse_bool(raw_value: String) -> Dictionary:

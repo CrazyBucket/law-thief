@@ -2,6 +2,7 @@ extends SceneTree
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 const PROFILES: Array[String] = [
 	"explosion",
@@ -199,18 +200,9 @@ func _setup_arena(state: GameState, player: UnitState, profiles: Array) -> Dicti
 
 
 func _create_isolated_state() -> GameState:
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var state: GameState = reg.create_battle_state("fission_slime_test", 42)
-	var to_remove: Array[String] = []
-	for unit in state.units.values():
-		if unit.team == Constants.TEAM_ENEMY:
-			to_remove.append(unit.uid)
-	for uid in to_remove:
-		state.unregister_unit(state.units[uid])
-	var player := state.get_player()
-	for slot in player.slots:
-		slot.gem_uid = ""
-	return state
+	var builder := ScenarioBuilder.new("fission_slime_test", 42, true)
+	builder.clear_slots(builder.player())
+	return builder.finish()
 
 
 func _ensure_red_slots(player: UnitState, needed: int) -> void:
@@ -231,9 +223,8 @@ func _mount_red_gem_on_slot(state: GameState, player: UnitState, slot: SlotState
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	var gem_uid: String = str(reg.call("_next_uid", "gem"))
 	var gem := GemState.create(gem_uid, gem_id, {})
-	gem.owner_uid = player.uid
 	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	assert(GemTransfer.to_unit_slot(state, gem, player, slot))
 
 
 func _spawn_guard(state: GameState, pos: Vector2i, hp: int) -> UnitState:

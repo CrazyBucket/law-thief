@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+checked=0
+invalid=0
+while IFS= read -r file; do
+  checked=$((checked + 1))
+  if ! iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+    echo "SOURCE_ENCODING_GUARD_INVALID file=${file#"$ROOT/"}" >&2
+    invalid=$((invalid + 1))
+  fi
+done < <(find "$ROOT" -type f \( -name '*.gd' -o -name '*.md' -o -name '*.json' -o -name '*.csv' \) \
+  ! -path "$ROOT/.git/*" ! -path "$ROOT/.godot/*" ! -path "$ROOT/artifacts/*" | sort)
+
+if (( invalid > 0 )); then
+  echo "SOURCE_ENCODING_GUARD_FAIL checked=$checked invalid=$invalid" >&2
+  exit 1
+fi
+echo "SOURCE_ENCODING_GUARD_PASS checked=$checked charset=UTF-8"

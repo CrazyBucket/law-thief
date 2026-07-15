@@ -139,6 +139,11 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 	return _action_svc.try_extract(target_uid, slot_index)
 
 
+func try_extract_dropped(gem_uid: String) -> Dictionary:
+	_ensure_services()
+	return _action_svc.try_extract_dropped(gem_uid)
+
+
 func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 	_ensure_services()
 	return _action_svc.try_insert(target_uid, slot_index)
@@ -204,6 +209,17 @@ func check_tile_slot_action(tile_pos: Vector2i, slot_index: int) -> Dictionary:
 	return _fail("当前操作不支持地块槽位")
 
 
+func check_dropped_gem_action(gem_uid: String) -> Dictionary:
+	if state == null:
+		return _fail("战斗未开始")
+	var player := state.get_player()
+	if player == null:
+		return _fail("目标无效")
+	if selected_action != Constants.ACTION_EXTRACT:
+		return _fail("当前操作不支持地面宝石")
+	return GemRules.can_extract_dropped(state, player, gem_uid)
+
+
 func can_use_action(action: String) -> bool:
 	if state == null or state.phase != Constants.PHASE_PLAYER:
 		return false
@@ -240,9 +256,9 @@ func get_held_gem() -> GemState:
 # 敌方回合（委托 BattleTurnService）
 # ═══════════════════════════════════════════════════════════════════════════
 
-func begin_enemy_phase() -> void:
+func begin_enemy_phase() -> Dictionary:
 	_ensure_services()
-	_turn_svc.begin_enemy_phase()
+	return _turn_svc.begin_enemy_phase()
 
 
 func execute_single_enemy(enemy: UnitState) -> Dictionary:

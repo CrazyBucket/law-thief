@@ -110,18 +110,37 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	if not selected_uid.is_empty():
 		var selected_unit: UnitState = state.units.get(selected_uid, null)
 		if selected_unit != null and selected_unit.alive and selected_unit.intent != null:
-			var intent_path: Array = selected_unit.intent.path.duplicate()
+			var intent_path: Array = _preview_cells(selected_unit.intent, "movement", selected_unit.intent.path)
 			result["paths"] = intent_path
 			if not intent_path.is_empty():
 				_append_overlay(result, "intent_path", intent_path, {"unit_uid": selected_unit.uid})
 				var route: Array = [selected_unit.pos]
 				route.append_array(intent_path)
 				_append_route(result, "intent", route, {"unit_uid": selected_unit.uid, "arrow_reverse": false})
-			if not selected_unit.intent.affected_cells.is_empty():
-				var danger_cells: Array = selected_unit.intent.affected_cells.duplicate()
+			var danger_cells: Array = _preview_cells(selected_unit.intent, "damage", selected_unit.intent.affected_cells)
+			if not danger_cells.is_empty():
 				result["danger"] = danger_cells
 				_append_overlay(result, "danger", danger_cells, {"unit_uid": selected_unit.uid})
+			for effect in selected_unit.intent.preview_effects:
+				if effect.kind in ["movement", "damage"]:
+					continue
+				_append_overlay(result, "effect", effect.cells, {
+					"unit_uid": selected_unit.uid,
+					"preview_kind": effect.kind,
+					"certainty": effect.certainty,
+				})
 	return result
+
+
+func _preview_cells(intent: IntentState, kind: String, fallback: Array) -> Array:
+	var cells: Array = []
+	for effect in intent.preview_effects:
+		if effect.kind != kind:
+			continue
+		for cell in effect.cells:
+			if cell not in cells:
+				cells.append(cell)
+	return fallback.duplicate() if cells.is_empty() else cells
 
 
 func _append_overlay(result: Dictionary, kind: String, cells: Array, options: Dictionary = {}) -> void:
@@ -200,6 +219,11 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 		for i in range(tile.slots.size()):
 			var tslot: SlotState = tile.slots[i]
 			lines.append(_slot_preview_line_tile(state, tile, tslot))
+	var dropped_here := state.get_dropped_gem_uids_at(cell)
+	for gem_uid in dropped_here:
+		var dropped_gem: GemState = state.gems.get(gem_uid, null)
+		if dropped_gem != null:
+			lines.append("地面宝石：%s" % _data_registry().get_gem_display_name(dropped_gem))
 	if unit != null:
 		lines.append("%s 生命 %d/%d" % [_data_registry().get_unit_display_name(unit.unit_def_id), unit.hp, unit.max_hp])
 		for status_line in _StatusUi.preview_lines(unit):
@@ -229,7 +253,13 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				if unit != null:
 					lines.append_array(_death_gem_preview_lines(state, unit))
 		Constants.ACTION_EXTRACT:
-			if unit != null and ctrl.can_use_action(Constants.ACTION_EXTRACT):
+			var extractable_drops: Array[String] = []
+			for gem_uid in dropped_here:
+				if ctrl.check_dropped_gem_action(gem_uid).get("ok", false):
+					extractable_drops.append(gem_uid)
+			if not extractable_drops.is_empty():
+				lines.append("可拔取地面宝石（免费）")
+			elif unit != null and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 				var valid := _valid_slot_indices(ctrl, unit)
 				if not valid.is_empty():
 					lines.append("可拔出：%s（免费）" % ", ".join(valid))
@@ -422,6 +452,15 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 		if not _valid_tile_slot_indices(ctrl, tile).is_empty():
 			if not tile.pos in cells:
 				cells.append(tile.pos)
+	if ctrl.selected_action == Constants.ACTION_EXTRACT:
+		for raw_uid in state.dropped_gems.keys():
+			var gem_uid := str(raw_uid)
+			if not ctrl.check_dropped_gem_action(gem_uid).get("ok", false):
+				continue
+			var drop: Dictionary = state.dropped_gems.get(gem_uid, {})
+			var pos: Vector2i = drop.get("pos", Vector2i(-1, -1))
+			if BoardUtils.in_bounds(state, pos) and not pos in cells:
+				cells.append(pos)
 	return cells
 
 

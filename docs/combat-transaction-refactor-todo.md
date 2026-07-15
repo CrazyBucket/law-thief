@@ -238,7 +238,9 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 
 仍建议后续继续深化的项：
 
-- [ ] 将 `CombatTransaction.damage_unit()` 扩展到死亡、状态、生成、tile enter hooks。
+- [x] `CombatTransaction` 已扩展到显式击杀、状态、生成和宝石位置转移；tile enter 继续由移动规则显式调用。
+- [x] 运行时单位生成已通过 `UnitSpawnService` 收口，并拆分生成来源与奖励资格。
+- [x] `CombatEventBuilder` 已覆盖 spawn/die/status/gem_transfer/transform 及主要范围表现事件。
 - [ ] 增加显示态移动后 `_cell_occupancy` 一致性的专门测试。
 - [ ] 继续清理剩余非战斗构造场景之外的直接 `unit.pos = ...`。
 

@@ -5,7 +5,10 @@ const _SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
 const _GemEffects = preload("res://scripts/rules/gem_effects.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const DamageContext = preload("res://scripts/rules/damage_context.gd")
+const _UnitRewardRules = preload("res://scripts/rules/unit_reward_rules.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -120,6 +123,7 @@ static func end_deferred_death_hooks(state: GameState) -> void:
 			_death_hook_context(entry, chain_id)
 		)
 		_drop_enemy_gems_to_ground(state, unit)
+		_finalize_unit_death(state, unit, entry, _death_event_sink)
 		_active_death_chain_id = prev_chain_id
 	_pending_deaths.clear()
 	_death_event_sink = []
@@ -136,7 +140,6 @@ static func _kill_unit(
 	unit.hp = 0
 	state.kill_unit(unit)  # 撤销占格索引并标记 alive = false
 	state.log("%s 被击败" % unit.uid)
-	state.on_unit_die.emit(unit.uid, source_uid, reason)
 	var death_chain_id := _active_death_chain_id
 	if death_chain_id <= 0:
 		_death_chain_serial += 1
@@ -163,7 +166,30 @@ static func _kill_unit(
 			"lethal_damage": DamageContext.with_actual_damage(damage_context, actual_hp_loss),
 		}, death_chain_id))
 		_drop_enemy_gems_to_ground(state, unit)
+		_finalize_unit_death(state, unit, {
+			"source_uid": source_uid,
+			"reason": reason,
+		}, death_events)
 		_active_death_chain_id = prev_chain_id
+
+
+static func _finalize_unit_death(
+	state: GameState,
+	unit: UnitState,
+	entry: Dictionary,
+	event_sink: Array[Dictionary]
+) -> void:
+	var source_uid := str(entry.get("source_uid", ""))
+	var reason := str(entry.get("reason", "unknown"))
+	event_sink.append(_EventBuilder.die(unit, {
+		"killer_uid": source_uid,
+		"source_uid": source_uid,
+		"reason": reason,
+		"reward_origin_uid": unit.reward_origin_uid,
+	}))
+	# Death hooks may mutate the board or create replacement units. Only expose
+	# the death to settlement/relic listeners after that chain is complete.
+	state.on_unit_die.emit(unit.uid, source_uid, reason)
 
 
 static func _death_hook_context(entry: Dictionary, death_chain_id: int) -> Dictionary:
@@ -253,7 +279,6 @@ static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> voi
 	if state == null or unit == null or unit.team != Constants.TEAM_ENEMY:
 		return
 	var registry := _data_registry()
-	var inherited := _GemEffects.consume_split_inherited_source_gems(state, unit.uid)
 	for unit_slot in unit.slots:
 		if unit_slot == null or unit_slot.gem_uid.is_empty():
 			continue
@@ -261,20 +286,14 @@ static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> voi
 		if gem == null:
 			unit_slot.gem_uid = ""
 			continue
-		if inherited.has(gem.uid):
-			state.gems.erase(gem.uid)
-			unit_slot.gem_uid = ""
+		if not _UnitRewardRules.can_drop_gems(unit):
+			_GemTransfer.remove(state, gem.uid)
 			continue
-		gem.owner_uid = ""
-		gem.slot_index = -1
-		state.dropped_gems[gem.uid] = {
-			"gem_uid": gem.uid,
-			"gem_id": gem.gem_id,
-			"pos": unit.pos,
+		_GemTransfer.to_ground(state, gem, unit.pos, {
 			"source_unit_uid": unit.uid,
+			"reward_origin_uid": _UnitRewardRules.reward_group_uid(unit),
 			"source_slot_type": unit_slot.slot_type,
-		}
-		unit_slot.gem_uid = ""
+		})
 		var gem_name := gem.gem_id
 		if registry != null:
 			gem_name = registry.get_gem_display_name(gem)

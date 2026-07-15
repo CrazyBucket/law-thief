@@ -7,6 +7,8 @@ const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 
@@ -28,6 +30,7 @@ const ATTACK_INTENT_TYPES := [
 	"slam_attack",
 	"lawless_attack",
 	"bomb_rat_plunder_steal",
+	"broodmother_ranged_attack",
 ]
 ## 敌人回合执行时按照预计算的意图行动
 
@@ -111,7 +114,14 @@ static func _compute_intent_from_ai(
 	var intent: IntentState = behavior.compute_intent(state, unit, cell_blockers)
 	if intent != null and not StatusRules.can_attack(unit) and _is_attack_intent(intent.type):
 		intent = _movement_only_intent(unit, intent)
-	IntentPreviewRules.populate_damage(state, unit, intent)
+	if intent != null:
+		if not intent.target_uid.is_empty():
+			if state.units.has(intent.target_uid):
+				intent.plan_metadata["target_kind"] = "unit"
+			elif state.gems.has(intent.target_uid):
+				intent.plan_metadata["target_kind"] = "gem"
+		IntentPreviewRules.populate(state, unit, intent)
+		intent.finalize_action_plan(state.turn_index, unit.pos)
 	return intent
 
 
@@ -241,7 +251,11 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 		return anim_events
 	if not StatusRules.can_act(unit):
 		return anim_events
-	var intent := unit.intent
+	if unit.intent.action_plan != null and not unit.intent.action_plan.is_applicable(state, unit):
+		refresh_unit_intent(state, unit)
+		if unit.intent == null:
+			return anim_events
+	var intent := unit.intent.execution_view(state.turn_index, unit.pos)
 	if intent == null:
 		return anim_events
 
@@ -266,7 +280,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append_array(_behavior_for(unit).execute_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)
-			anim_events.append({"type": "gem_flash", "pos": intent.target_pos, "color": Color(0.9, 0.2, 0.2)})
+			anim_events.append(_EventBuilder.gem_flash(intent.target_pos, {"color": Color(0.9, 0.2, 0.2)}))
 		"move":
 			pass # 纯移动，无行动
 
@@ -343,9 +357,7 @@ static func _execute_extract(state: GameState, unit: UnitState, intent: IntentSt
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem == null:
 			continue
-		gem.owner_uid = ""
-		gem.slot_index = -1
-		slot.gem_uid = ""
+		_GemTransfer.detach(state, gem)
 		_behavior_for(target).on_gem_extracted(state, target, slot.slot_type, gem.uid)
 		state.log("%s 窃取了 %s 的宝石 %s" % [unit.uid, target.uid, _data_registry().get_gem_display_name(gem)])
 		refresh_all_intents(state)

@@ -8,6 +8,9 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
 const AdventureProgressionConfig = preload("res://scripts/core/adventure_progression_config.gd")
 const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
+const EncounterEnemyResolver = preload("res://scripts/services/encounter_enemy_resolver.gd")
+const EncounterCatalogLoader = preload("res://scripts/services/encounter_catalog_loader.gd")
+const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
 
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
@@ -85,18 +88,14 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	# master seed 不存在时（首次裸启）退化为时间戳，行为与旧逻辑一致
 	var combat_seed := RngService.derive_combat_seed(encounter_id, room_id)
 	RngService.reset_state(combat_seed, "combat:%s" % encounter_id)
-	var state := GameState.new()
-	state.run_seed = RngService.get_seed()
-	state.encounter_id = encounter_id
-	state.player_uid = _next_uid("player")
-	var player := UnitState.from_def(
-		state.player_uid,
-		"unit_player",
-		Constants.TEAM_PLAYER,
+	var state := BattleStateFactory.create_base_state(
+		encounter_id,
 		encounter.get("player_spawn", Vector2i(3, 2)),
-		_unit_defs["unit_player"]
+		_unit_defs["unit_player"],
+		RngService.get_seed(),
+		Callable(self, "_next_uid")
 	)
-	state.units[state.player_uid] = player
+	var player := state.get_player()
 	_apply_run_slot_overrides(player)
 	_restore_run_player_state(state, player)
 	for enemy_data in _resolve_encounter_enemies(encounter, encounter_id):
@@ -104,13 +103,14 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
 		var base_slots: Array = def.get("slots", [])
 		var spawn_gem_slots: Array = def.get("spawn_gem_slots", [])
+		var restrict_spawn_gem_slots := def.has("spawn_gem_slots")
 		var enemy_slot_budget := _resolve_enemy_slot_budget(current_chapter, pending_room_type, encounter_id, enemy_data, def)
 		def["slots"] = []
 		for slot_data in base_slots:
 			var slot_entry: Dictionary = slot_data.duplicate(true)
 			var slot_type := str(slot_entry.get("slot_type", ""))
 			var should_roll_gem := not slot_entry.has("gem_id")
-			if should_roll_gem and not spawn_gem_slots.is_empty():
+			if should_roll_gem and restrict_spawn_gem_slots:
 				should_roll_gem = slot_type in spawn_gem_slots
 			if should_roll_gem and enemy_slot_budget > 0:
 				enemy_slot_budget -= 1
@@ -118,29 +118,16 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 				var roll_gem_id := roll_spawnable_gem_id("enemy_spawn_%s_%s_%s" % [encounter_id, enemy_uid, slot_type], [], enemy_pool_source, current_chapter)
 				if not roll_gem_id.is_empty():
 					slot_entry["gem_id"] = roll_gem_id
-			if slot_entry.has("gem_id"):
-				var gem_uid := _next_uid("gem")
-				var gem := create_gem_instance(gem_uid, slot_entry.get("gem_id", ""), slot_entry.get("gem_overrides", {}))
-				state.gems[gem_uid] = gem
-				slot_entry["gem_uid"] = gem_uid
-				slot_entry.erase("gem_id")
-				slot_entry.erase("gem_overrides")
 			def["slots"].append(slot_entry)
-		var enemy := UnitState.from_def(
+		var enemy := BattleStateFactory.add_enemy(
+			state,
+			enemy_data,
+			def,
 			enemy_uid,
-			enemy_data.get("def_id", "unit_bomb_rat"),
-			Constants.TEAM_ENEMY,
-			enemy_data.get("pos", Vector2i.ZERO),
-			def
+			Callable(self, "_next_uid"),
+			Callable(self, "create_gem_instance")
 		)
 		_apply_unit_spawn_variants(enemy, def)
-		for i in range(enemy.slots.size()):
-			var slot: SlotState = enemy.slots[i]
-			if not slot.gem_uid.is_empty():
-				var gem: GemState = state.gems[slot.gem_uid]
-				gem.owner_uid = enemy.uid
-				gem.slot_index = i
-		state.units[enemy_uid] = enemy
 	BoardMapGenerator.build(state, encounter)
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
@@ -159,51 +146,28 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 		RngService.start_run(seed_value)
 	var combat_seed := int(encounter.get("floor_seed", RngService.derive_combat_seed(encounter_id, "")))
 	RngService.reset_state(combat_seed, "combat:%s" % encounter_id)
-	var state := GameState.new()
-	state.run_seed = combat_seed
-	state.encounter_id = encounter_id
-	state.player_uid = _next_uid("player")
 	var player_spawn: Vector2i = encounter.get("player_spawn", Vector2i(3, 2))
-	var player := UnitState.from_def(
-		state.player_uid,
-		"unit_player",
-		Constants.TEAM_PLAYER,
+	var state := BattleStateFactory.create_base_state(
+		encounter_id,
 		player_spawn,
-		_unit_defs["unit_player"]
+		_unit_defs["unit_player"],
+		combat_seed,
+		Callable(self, "_next_uid")
 	)
-	state.units[state.player_uid] = player
 	for enemy_data in _resolve_encounter_enemies(encounter, encounter_id):
 		var enemy_uid := _next_uid(str(enemy_data.get("def_id", "enemy")))
 		var def_id := str(enemy_data.get("def_id", "unit_bomb_rat"))
 		var enemy_def: Dictionary = get_unit_def(def_id)
 		var slot_defs: Array = enemy_data.get("slots", enemy_def.get("slots", [])).duplicate(true)
 		enemy_def["slots"] = slot_defs
-		for slot_entry_variant in enemy_def["slots"]:
-			if not slot_entry_variant is Dictionary:
-				continue
-			var slot_entry := slot_entry_variant as Dictionary
-			if not slot_entry.has("gem_id"):
-				continue
-			var gem_uid := _next_uid("gem")
-			var gem := create_gem_instance(gem_uid, slot_entry.get("gem_id", ""), slot_entry.get("gem_overrides", {}))
-			state.gems[gem_uid] = gem
-			slot_entry["gem_uid"] = gem_uid
-			slot_entry.erase("gem_id")
-			slot_entry.erase("gem_overrides")
-		var enemy := UnitState.from_def(
+		BattleStateFactory.add_enemy(
+			state,
+			enemy_data,
+			enemy_def,
 			enemy_uid,
-			def_id,
-			Constants.TEAM_ENEMY,
-			enemy_data.get("pos", Vector2i.ZERO),
-			enemy_def
+			Callable(self, "_next_uid"),
+			Callable(self, "create_gem_instance")
 		)
-		for i in range(enemy.slots.size()):
-			var slot: SlotState = enemy.slots[i]
-			if not slot.gem_uid.is_empty():
-				var gem_state: GemState = state.gems[slot.gem_uid]
-				gem_state.owner_uid = enemy.uid
-				gem_state.slot_index = i
-		state.units[enemy_uid] = enemy
 	BoardMapGenerator.build(state, encounter)
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
@@ -227,62 +191,7 @@ func get_encounter_ids(include_hidden: bool = false) -> Array:
 ## whole formation, and every `random_enemies` slot rolls one candidate at its preset
 ## position. Keeping these rolls here makes reloads deterministic for a run/room seed.
 func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> Array[Dictionary]:
-	var resolved: Array[Dictionary] = []
-	for raw_enemy in encounter.get("enemies", []):
-		if raw_enemy is Dictionary:
-			resolved.append((raw_enemy as Dictionary).duplicate(true))
-
-	var groups: Array = encounter.get("enemy_groups", [])
-	if not groups.is_empty():
-		var valid_groups: Array = []
-		var weights: Array = []
-		for raw_group in groups:
-			if not raw_group is Dictionary:
-				continue
-			var group := raw_group as Dictionary
-			if (group.get("enemies", []) as Array).is_empty():
-				continue
-			valid_groups.append(group)
-			weights.append(maxf(0.0, float(group.get("weight", 1.0))))
-		var selected_group: Variant = RngService.weighted_pick(
-			"encounter_group_%s" % encounter_id,
-			valid_groups,
-			weights
-		)
-		if selected_group is Dictionary:
-			for raw_enemy in (selected_group as Dictionary).get("enemies", []):
-				if raw_enemy is Dictionary:
-					resolved.append((raw_enemy as Dictionary).duplicate(true))
-
-	var random_slots: Array = encounter.get("random_enemies", [])
-	for slot_index in range(random_slots.size()):
-		var raw_slot: Variant = random_slots[slot_index]
-		if not raw_slot is Dictionary:
-			continue
-		var slot := raw_slot as Dictionary
-		var candidates: Array = slot.get("candidates", [])
-		var candidate_defs: Array = []
-		var candidate_weights: Array = []
-		for raw_candidate in candidates:
-			if raw_candidate is String:
-				candidate_defs.append({"def_id": str(raw_candidate)})
-				candidate_weights.append(1.0)
-			elif raw_candidate is Dictionary:
-				var candidate := (raw_candidate as Dictionary).duplicate(true)
-				candidate_defs.append(candidate)
-				candidate_weights.append(maxf(0.0, float(candidate.get("weight", 1.0))))
-		var selected: Variant = RngService.weighted_pick(
-			"encounter_random_enemy_%s_%d" % [encounter_id, slot_index],
-			candidate_defs,
-			candidate_weights
-		)
-		if not selected is Dictionary:
-			continue
-		var enemy := (selected as Dictionary).duplicate(true)
-		enemy.erase("weight")
-		enemy["pos"] = slot.get("pos", Vector2i.ZERO)
-		resolved.append(enemy)
-	return resolved
+	return EncounterEnemyResolver.resolve(encounter, encounter_id, Callable(RngService, "weighted_pick"))
 
 
 func next_runtime_uid(prefix: String) -> String:
@@ -1555,41 +1464,33 @@ func _load_encounters_from_json() -> void:
 
 
 func _load_encounters_from_dir(dir_path: String) -> int:
-	var dir := DirAccess.open(dir_path)
-	if dir == null:
-		return 0
-	var file_names: Array[String] = []
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while not file_name.is_empty():
-		if not dir.current_is_dir() and file_name.ends_with(".json"):
-			file_names.append(file_name)
-		file_name = dir.get_next()
-	dir.list_dir_end()
-	file_names.sort()
-	var loaded_count := 0
-	for catalog_file_name in file_names:
-		var encounter_id := catalog_file_name.get_basename()
-		var path := dir_path.path_join(catalog_file_name)
-		var raw := _read_json_file(path)
-		var errors := AdventureConfigValidator.validate_encounter_def(
-			encounter_id,
-			raw,
-			_unit_defs,
-			_key_set(get_tile_ids()),
-			_key_set(get_entity_ids()),
-			_key_set(get_overlay_ids()),
-			_key_set(get_gem_ids()),
-			Constants.BOARD_SIZE
-		)
-		if _encounters.has(encounter_id):
-			errors.append("encounters.%s duplicates an already loaded id" % encounter_id)
-		AdventureConfigValidator.ensure_valid(path, errors)
-		if not errors.is_empty():
-			continue
-		_encounters[encounter_id] = _parse_encounter_json(raw)
-		loaded_count += 1
-	return loaded_count
+	var raw_entries := EncounterCatalogLoader.load_raw_entries(
+		dir_path,
+		_encounters,
+		Callable(self, "_read_json_file"),
+		Callable(self, "_validate_encounter_def"),
+		Callable(self, "_report_encounter_errors")
+	)
+	for encounter_id in raw_entries:
+		_encounters[encounter_id] = _parse_encounter_json(raw_entries[encounter_id])
+	return raw_entries.size()
+
+
+func _validate_encounter_def(encounter_id: String, raw: Dictionary) -> Array[String]:
+	return AdventureConfigValidator.validate_encounter_def(
+		encounter_id,
+		raw,
+		_unit_defs,
+		_key_set(get_tile_ids()),
+		_key_set(get_entity_ids()),
+		_key_set(get_overlay_ids()),
+		_key_set(get_gem_ids()),
+		Constants.BOARD_SIZE
+	)
+
+
+func _report_encounter_errors(path: String, errors: Array[String]) -> void:
+	AdventureConfigValidator.ensure_valid(path, errors)
 
 
 func _parse_encounter_json(raw: Dictionary) -> Dictionary:
@@ -1661,6 +1562,7 @@ func _resolve_enemy_slot_budget(
 	var fixed_count := 0
 	var random_slot_defs: Array[Dictionary] = []
 	var spawn_gem_slots: Array = def.get("spawn_gem_slots", [])
+	var restrict_spawn_gem_slots := def.has("spawn_gem_slots")
 	for raw_slot in def.get("slots", []):
 		if not raw_slot is Dictionary:
 			continue
@@ -1668,7 +1570,7 @@ func _resolve_enemy_slot_budget(
 		if slot_def.has("gem_id"):
 			fixed_count += 1
 			continue
-		if not spawn_gem_slots.is_empty() and not str(slot_def.get("slot_type", "")) in spawn_gem_slots:
+		if restrict_spawn_gem_slots and not str(slot_def.get("slot_type", "")) in spawn_gem_slots:
 			continue
 		random_slot_defs.append(slot_def)
 	if random_slot_defs.is_empty():
@@ -1810,8 +1712,7 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 			var dual_type := str(slot_snapshot.get("dual_type", ""))
 			if not dual_type.is_empty():
 				slot.dual_type = dual_type
-		gem.owner_uid = player.uid
-		gem.slot_index = i
+		gem.mark_slotted(player.uid, i)
 		state.gems[gem.uid] = gem
 	if not run.carried_gem.is_empty():
 		var carried := create_gem_instance(
@@ -1820,8 +1721,7 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 			run.carried_gem.get("def_overrides", {}) if run.carried_gem.get("def_overrides", {}) is Dictionary else {}
 		)
 		if not carried.gem_id.is_empty():
-			carried.owner_uid = player.uid
-			carried.slot_index = -1
+			carried.mark_held(player.uid)
 			state.gems[carried.uid] = carried
 			state.held_gem_uid = carried.uid
 	state.overload_active_mutations = run.overload_active_mutations.duplicate()

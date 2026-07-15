@@ -19,6 +19,20 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 # to the current run.
 find "$REPORT_DIR" -maxdepth 1 -type f -name '*.log' -delete
 
+FILE_SIZE_LOG="$REPORT_DIR/file_size_guard.log"
+if ! "$ROOT/tools/file_size_guard" >"$FILE_SIZE_LOG" 2>&1; then
+  echo "VERIFY_FAIL file_size_guard (see artifacts/verify/file_size_guard.log)"
+  cat "$FILE_SIZE_LOG"
+  exit 1
+fi
+
+SOURCE_ENCODING_LOG="$REPORT_DIR/source_encoding_guard.log"
+if ! "$ROOT/tools/source_encoding_guard" >"$SOURCE_ENCODING_LOG" 2>&1; then
+  echo "VERIFY_FAIL source_encoding_guard (see artifacts/verify/source_encoding_guard.log)"
+  cat "$SOURCE_ENCODING_LOG"
+  exit 1
+fi
+
 # CSV changes are not imported by a headless test run.  Build the generated
 # Translation resources first so every localization-backed assertion observes the
 # source being reviewed.
@@ -32,6 +46,7 @@ fi
 FAST_TESTS=(
   balance_config_test
   combat_transaction_test
+  battle_architecture_test
   battle_presentation_planner_test
   battle_event_player_cluster_test
   battle_renderer_timing_test
@@ -53,6 +68,10 @@ FAST_TESTS=(
   gravity_test
   bomb_rat_test
   tile_overlay_reaction_test
+  law_worm_test
+  gem_insert_replace_test
+  fission_slime_test
+  gem_transfer_test
 )
 
 CORE_TESTS=(
@@ -60,6 +79,7 @@ CORE_TESTS=(
   encounter_load_test
   ai_test
   combat_transaction_test
+  battle_architecture_test
   smoke_test
   economy_service_test
   event_service_test
@@ -72,6 +92,10 @@ CORE_TESTS=(
   split_shot_test
   bomb_rat_test
   tile_overlay_reaction_test
+  law_worm_test
+  gem_insert_replace_test
+  fission_slime_test
+  gem_transfer_test
 )
 
 ALL_TESTS=()
@@ -116,6 +140,8 @@ failed=0
 start="$(date +%s)"
 : > "$REPORT_DIR/verify.log"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
+cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
 echo "VERIFY_TRANSLATIONS_BUILT" | tee -a "$REPORT_DIR/verify.log"
 
 for test_name in "${TESTS[@]}"; do

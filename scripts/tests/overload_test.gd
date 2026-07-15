@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 
 func _initialize() -> void:
@@ -29,6 +30,7 @@ func _run_tests() -> void:
 	_test_operation_damage(controller, state, player, guard)
 	_test_operation_damage_is_nonlethal(controller, state, player, guard)
 	_test_echo_extract(controller, state, player, guard)
+	_test_echo_extract_does_not_chain(state, player, guard)
 	_test_ai_control_emits_action_events(state, player, guard)
 	_test_ai_control_blocks_manual_actions(controller, state, player, guard)
 
@@ -261,6 +263,20 @@ func _test_echo_extract(controller: BattleController, state: GameState, player: 
 	print("  [OK] extraction can leave a one-turn echo")
 
 
+func _test_echo_extract_does_not_chain(state: GameState, player: UnitState, guard: UnitState) -> void:
+	var slot := guard.get_slot_by_index(0)
+	var original_uid := state.held_gem_uid
+	var echo_uid := slot.gem_uid
+	assert(not original_uid.is_empty() and not echo_uid.is_empty(), "echo fixture should retain both gems")
+	assert(state.overload_echo_gems.has(echo_uid), "fixture slot should contain a tracked echo")
+	assert(GemTransfer.to_ground(state, state.gems[original_uid], player.pos), "real gem should leave hand before extracting echo")
+	var result := GemRules.extract(state, player, guard, slot)
+	assert(result.get("ok", false), "echo extraction should succeed")
+	assert(slot.gem_uid.is_empty(), "extracting an echo must not create another echo")
+	assert(state.held_gem_uid == echo_uid, "the extracted echo should be the held gem")
+	print("  [OK] echo extraction cannot chain into infinite gems")
+
+
 func _test_ai_control_blocks_manual_actions(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:
 	_force_player_phase(state)
 	_reset_slots(state, player, guard)
@@ -309,22 +325,28 @@ func _test_ai_control_emits_action_events(state: GameState, player: UnitState, g
 
 
 func _reset_slots(state: GameState, player: UnitState, guard: UnitState) -> void:
+	for raw_uid in state.gems.keys().duplicate():
+		var uid := str(raw_uid)
+		if uid.begins_with("test_gem"):
+			GemTransfer.remove(state, uid)
 	if not state.held_gem_uid.is_empty():
-		state.gems.erase(state.held_gem_uid)
+		GemTransfer.remove(state, state.held_gem_uid)
 	for unit in [player, guard]:
 		unit.statuses.clear()
 		for slot in unit.slots:
 			if slot != null and not slot.gem_uid.is_empty():
-				state.gems.erase(slot.gem_uid)
+				GemTransfer.remove(state, slot.gem_uid)
 		_restore_unit_slots_from_def(unit)
 	var held_uid := _make_gem(state, Constants.GEM_EXPLOSION, player.uid)
 	state.held_gem_uid = held_uid
 	var guard_red := guard.get_slot_by_index(0)
 	var guard_blue := guard.get_slot_by_index(1)
 	if guard_red != null:
-		guard_red.gem_uid = _make_gem(state, Constants.GEM_POISON, guard.uid)
+		var red_uid := _make_gem(state, Constants.GEM_POISON, "")
+		assert(GemTransfer.to_unit_slot(state, state.gems[red_uid], guard, guard_red))
 	if guard_blue != null:
-		guard_blue.gem_uid = _make_gem(state, Constants.GEM_GRAVITY, guard.uid)
+		var blue_uid := _make_gem(state, Constants.GEM_GRAVITY, "")
+		assert(GemTransfer.to_unit_slot(state, state.gems[blue_uid], guard, guard_blue))
 	state.overload_pending = false
 	state.overload_last_action = ""
 	state.overload_last_insert_turn = 0
@@ -352,8 +374,9 @@ func _make_gem(state: GameState, gem_id: String, owner_uid: String) -> String:
 	var registry: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	var gem_uid: String = registry.next_runtime_uid("test_gem")
 	var gem: GemState = registry.create_gem_instance(gem_uid, gem_id, {})
-	gem.owner_uid = owner_uid
 	state.gems[gem_uid] = gem
+	if not owner_uid.is_empty():
+		assert(GemTransfer.to_hand(state, gem, owner_uid))
 	return gem_uid
 
 

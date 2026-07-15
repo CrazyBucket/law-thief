@@ -3,6 +3,8 @@ extends RefCounted
 
 const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 const PLUNDER_PHASE_WAIT := 1
 const PLUNDER_PHASE_STEAL := 2
@@ -64,8 +66,8 @@ static func execute_black_suicide(state: GameState, unit: UnitState) -> Array[Di
 		return events
 	GemEffects.trigger_black_death_effects(state, unit, events)
 	var black := unit.get_slot(Constants.SLOT_BLACK)
-	if black != null:
-		black.gem_uid = ""
+	if black != null and not black.gem_uid.is_empty():
+		_GemTransfer.remove(state, black.gem_uid)
 	StatusRules.clear_bomb_rat_plunder(unit)
 	if unit.hp > 0:
 		var tx := _CombatTransaction.begin(state, events)
@@ -261,9 +263,6 @@ static func _force_steal_nearest_gem(
 	var gem: GemState = state.gems.get(stolen_slot.gem_uid, null)
 	if gem == null:
 		return false
-	stolen_slot.gem_uid = ""
-	if victim.team == Constants.TEAM_ENEMY and not EnemyBehavior.unit_has_any_gem(victim):
-		StatusRules.apply_lawless(state, victim, gem.uid)
 	var host := rat.get_slot(Constants.SLOT_BLACK)
 	if host == null or not host.gem_uid.is_empty():
 		for slot in rat.slots:
@@ -272,14 +271,15 @@ static func _force_steal_nearest_gem(
 				break
 	if host == null or not host.gem_uid.is_empty():
 		return false
-	host.gem_uid = gem.uid
-	gem.owner_uid = rat.uid
-	gem.slot_index = rat.slots.find(host)
+	if not _GemTransfer.to_unit_slot(state, gem, rat, host):
+		return false
+	if victim.team == Constants.TEAM_ENEMY and not EnemyBehavior.unit_has_any_gem(victim):
+		StatusRules.apply_lawless(state, victim, gem.uid)
 	state.log(
 		"%s 无律掠夺：夺取 %s 的 %s 并嵌入 %s 槽"
 		% [rat.uid, victim.uid, _data_registry().get_gem_display_name(gem), host.slot_type]
 	)
-	events.append({"type": "gem_flash", "pos": rat.pos, "color": Color(0.95, 0.25, 0.25)})
+	events.append(_EventBuilder.gem_flash(rat.pos, {"color": Color(0.95, 0.25, 0.25)}))
 	return true
 
 

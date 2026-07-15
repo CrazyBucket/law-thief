@@ -12,8 +12,11 @@ const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd
 const BattleHudPresenterScript = preload("res://scripts/ui/battle_hud_presenter.gd")
 const BattleEditorPanelScript = preload("res://scripts/ui/battle_editor_panel.gd")
 const RichTooltip = preload("res://scripts/ui/rich_tooltip.gd")
-const GemRules = preload("res://scripts/rules/gem_rules.gd")
-const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const BattleRewardOverlay = preload("res://scripts/ui/battle_reward_overlay.gd")
+const BattleRewardCardFactory = preload("res://scripts/ui/battle_reward_card_factory.gd")
+const BattleSettlementService = preload("res://scripts/battle/battle_settlement_service.gd")
+const BattlePreviewPanel = preload("res://scripts/ui/battle_preview_panel.gd")
+const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 const CoinIconTexture = preload("res://assets/ui/coin_gold.png")
 
 var _dmg_text: Node = null
@@ -83,9 +86,7 @@ var _held_banner_icon: TextureRect = null
 var _held_banner_label: Label = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
-var _preview_panel_tween: Tween = null
-var _preview_visible_target: bool = false
-var _preview_fade_serial: int = 0
+var _preview_view: BattlePreviewPanel = null
 var _relic_reward_overlay: Node = null
 var _relic_detail_overlay: Node = null
 var _settlement_overlay: Node = null
@@ -175,9 +176,7 @@ func _ready() -> void:
 	_board.editor_tool_drag_hovered.connect(_on_editor_tool_drag_hovered)
 	_board.editor_tool_dropped.connect(_on_editor_tool_dropped)
 	_apply_ui_theme()
-	_preview_panel.visible = false
-	_preview_panel.modulate.a = 0.0
-	_clear_preview_panel_content()
+	_ensure_preview_view().hide(true)
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
 	call_deferred("_setup_held_gem_row")
@@ -294,6 +293,7 @@ func _create_slot_popup() -> void:
 	$HudLayer.add_child(_slot_popup)
 	_slot_popup.slot_selected.connect(_on_popup_slot_selected)
 	_slot_popup.tile_slot_selected.connect(_on_popup_tile_slot_selected)
+	_slot_popup.dropped_gem_selected.connect(_on_popup_dropped_gem_selected)
 	_slot_popup.editor_unit_slot_selected.connect(_on_editor_unit_slot_selected)
 	_slot_popup.editor_tile_slot_selected.connect(_on_editor_tile_slot_selected)
 	_slot_popup.editor_unit_slot_added.connect(_on_editor_unit_slot_added)
@@ -598,7 +598,11 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
-				if unit != null and unit.alive:
+				var ground_gems := state.get_dropped_gem_uids_at(cell) if action == Constants.ACTION_EXTRACT else [] as Array[String]
+				if not ground_gems.is_empty():
+					_set_inspect_target(cell)
+					_show_dropped_gem_popup(ground_gems, cell)
+				elif unit != null and unit.alive:
 					_set_inspect_target(cell)
 					_sync_unit_slot_panels()
 				else:
@@ -654,59 +658,21 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 
 
 func _show_preview_panel(mouse: Vector2) -> void:
-	if _preview_title.text.strip_edges().is_empty() and _preview_body.text.strip_edges().is_empty():
-		_hide_preview_panel(true)
-		return
-	_preview_panel.position = mouse + Vector2(18, 18)
-	_clamp_preview_panel()
-	_set_preview_panel_visible(true)
+	_ensure_preview_view().show_at(mouse, Callable(self, "_clamp_preview_panel"))
 
 
 func _hide_preview_panel(immediate: bool = false) -> void:
-	_clear_preview_panel_content()
-	_set_preview_panel_visible(false, immediate)
+	_ensure_preview_view().hide(immediate)
 
 
 func _set_preview_panel_visible(shown: bool, immediate: bool = false) -> void:
-	if _preview_visible_target == shown:
-		if shown and not _preview_panel.visible:
-			_preview_panel.visible = true
-		elif not shown and immediate:
-			_preview_panel.visible = false
-			_preview_panel.modulate.a = 0.0
-		return
-	_preview_visible_target = shown
-	_preview_fade_serial += 1
-	var fade_serial := _preview_fade_serial
-	if _preview_panel_tween != null:
-		_preview_panel_tween.kill()
-	if immediate and not shown:
-		_preview_panel.visible = false
-		_preview_panel.modulate.a = 0.0
-		return
-	_preview_panel_tween = create_tween()
-	_preview_panel_tween.set_trans(Tween.TRANS_QUAD)
-	_preview_panel_tween.set_ease(Tween.EASE_OUT)
-	if shown:
-		_preview_panel.visible = true
-		_preview_panel_tween.tween_property(_preview_panel, "modulate:a", 1.0, 0.12)
-	else:
-		_preview_panel_tween.tween_property(_preview_panel, "modulate:a", 0.0, 0.24)
-		_preview_panel_tween.tween_callback(_finalize_preview_panel_hide.bind(fade_serial))
+	_ensure_preview_view().set_visible(shown, immediate)
 
 
-func _finalize_preview_panel_hide(fade_serial: int) -> void:
-	if fade_serial != _preview_fade_serial or _preview_visible_target:
-		return
-	_preview_panel.visible = false
-	_clear_preview_panel_content()
-
-
-func _clear_preview_panel_content() -> void:
-	if _preview_title != null:
-		_preview_title.text = ""
-	if _preview_body != null:
-		_preview_body.text = ""
+func _ensure_preview_view() -> BattlePreviewPanel:
+	if _preview_view == null:
+		_preview_view = BattlePreviewPanel.new(_preview_panel, _preview_title, _preview_body)
+	return _preview_view
 
 
 func _format_preview_body(body: String) -> String:
@@ -733,6 +699,12 @@ func _show_tile_slot_popup(tile: TileState, cell: Vector2i) -> void:
 	var board_global: Vector2 = _board.global_position
 	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
 	_slot_popup.show_for_tile(tile, _controller.state, _controller.selected_action, popup_pos, _controller.check_tile_slot_action)
+
+
+func _show_dropped_gem_popup(gem_uids: Array[String], cell: Vector2i) -> void:
+	var screen_pos: Vector2 = _board.grid_to_screen(cell)
+	var popup_pos: Vector2 = _board.global_position + screen_pos + Vector2(0, -72)
+	_slot_popup.show_for_dropped_gems(gem_uids, _controller.state, popup_pos, _controller.check_dropped_gem_action)
 
 
 func _sync_unit_slot_panels() -> void:
@@ -775,6 +747,17 @@ func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
 					_message_label.text = "过载嵌入：已压入地块，结束回合后异变生效"
 				else:
 					_message_label.text = "已嵌入地块" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
+	_refresh()
+	_sync_unit_slot_panels()
+
+
+func _on_popup_dropped_gem_selected(gem_uid: String) -> void:
+	var result := _controller.try_extract_dropped(gem_uid)
+	_dismiss_popup()
+	_show_result(result)
+	if result.get("ok", false):
+		_controller.select_action(Constants.ACTION_INSERT)
+		_message_label.text = "已从地面拔取，选择槽位嵌入"
 	_refresh()
 	_sync_unit_slot_panels()
 
@@ -874,17 +857,27 @@ func _on_end_turn_pressed() -> void:
 	if _enemy_phase_running:
 		return
 	_dismiss_popup()
-	_controller.begin_enemy_phase()
+	var turn_end_execution: Dictionary = _controller.begin_enemy_phase()
 	# 若分身切换后仍在玩家回合，刷新 UI 继续操控下一个分身
 	if _controller.state != null and _controller.state.phase == Constants.PHASE_PLAYER:
 		_message_label.text = _controller.get_action_hint()
 		_refresh()
 		return
-	_run_enemy_phase_async()
+	_run_enemy_phase_async(turn_end_execution)
 
 
-func _run_enemy_phase_async() -> void:
+func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 	_enemy_phase_running = true
+	var opening_events: Array = opening_execution.get("events", [])
+	if not opening_events.is_empty():
+		await _play_presentation_sequence(
+			opening_execution.get("presentation_state", _controller.state.clone()),
+			opening_events
+		)
+	if not is_inside_tree() or _controller.state == null or _controller.state.phase == Constants.PHASE_ENDED:
+		_enemy_phase_running = false
+		_refresh()
+		return
 	# begin_enemy_phase 已在 _on_end_turn_pressed 中调用，此处不重复调用
 	_message_label.text = "敌方行动中..."
 	_refresh()
@@ -913,8 +906,8 @@ func _run_enemy_phase_async() -> void:
 		await _await_scene_timer(0.35)
 		if not is_inside_tree():
 			break
-			_consume_enemy_turn(enemy.uid)
-			_refresh()
+		_consume_enemy_turn(enemy.uid)
+		_refresh()
 	if is_inside_tree() and _controller.state != null and _controller.state.phase != Constants.PHASE_ENDED:
 		var turn_start_execution: Dictionary = _controller.finish_enemy_phase()
 		var turn_start_events: Array = turn_start_execution.get("events", [])
@@ -1128,25 +1121,16 @@ func _battle_relic_offer(room_id: String) -> Array[String]:
 
 
 func _grant_combat_gold_once() -> int:
-	if not GameService.adventure_return:
-		return 0
-	var room_id := GameService.pending_room_id
-	if room_id.is_empty():
-		return 0
-	var transaction_id := "%s:battle_gold" % room_id
-	var reward := EconomyService.get_combat_reward(AdventureService.pending_room_type)
-	var grant_result := EconomyService.grant("gold", reward, "combat_reward", {
-		"transaction_id": transaction_id,
-		"room_id": room_id,
-		"room_type": AdventureService.pending_room_type,
-	})
+	var grant_result := BattleSettlementService.grant_combat_gold(
+		GameService.pending_room_id,
+		AdventureService.pending_room_type,
+		GameService.adventure_return
+	)
 	if not bool(grant_result.get("ok", false)):
 		return 0
 	var entry: Dictionary = grant_result.get("entry", {})
-	if entry.is_empty():
-		return 0
 	_message_label.text = "战斗结束 — 胜利 · %s" % EconomyService.format_entry(entry)
-	return int(entry.get("final_amount", reward))
+	return int(grant_result.get("amount", 0))
 
 
 func _open_battle_settlement() -> void:
@@ -1325,7 +1309,7 @@ func _refresh_settlement_rows(play_intro: bool = true) -> void:
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_settlement_rows_box.add_child(empty)
 	elif play_intro:
-		_animate_cards_in(rows, {"stagger": 0.035, "from": Vector2(32.0, 4.0), "tilt": 0.0})
+		BattleRewardOverlay.animate_cards_in(self, rows, {"stagger": 0.035, "from": Vector2(32.0, 4.0), "tilt": 0.0})
 
 
 func _build_settlement_row(label_text: String, value_text: String, action_text: String, value_color: Color, action_cb: Callable, icon_tex: Texture2D) -> Control:
@@ -1383,186 +1367,6 @@ func _build_settlement_row(label_text: String, value_text: String, action_text: 
 		hbox.add_child(spacer)
 
 	return row
-
-
-func _reward_overlay_viewport_cap() -> float:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var viewport_w := float(layout.get("fallback_viewport_width", 0))
-	if is_inside_tree():
-		viewport_w = get_viewport_rect().size.x
-	var ratio := float(layout.get("scroll_viewport_ratio", 0))
-	var max_w := float(layout.get("scroll_max_width", 0))
-	return minf(viewport_w * ratio, max_w)
-
-
-func _reward_cards_row_metrics(cards_row: HBoxContainer) -> Dictionary:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var separation := float(layout.get("card_separation", 0))
-	var content_w := 0.0
-	var content_h := 0.0
-	var count := cards_row.get_child_count()
-	for i in range(count):
-		var ctrl := cards_row.get_child(i) as Control
-		if ctrl == null:
-			continue
-		var sz := ctrl.custom_minimum_size
-		if sz.x <= 0.0 or sz.y <= 0.0:
-			sz = ctrl.get_combined_minimum_size()
-		content_w += sz.x
-		content_h = maxf(content_h, sz.y)
-	if count > 1:
-		content_w += separation * float(count - 1)
-	return {
-		"content_width": content_w,
-		"content_height": content_h,
-	}
-
-
-func _reward_overlay_scroll_metrics(cards_row: HBoxContainer) -> Dictionary:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var row := _reward_cards_row_metrics(cards_row)
-	var content_w: float = row.get("content_width", 0.0)
-	var content_h: float = row.get("content_height", 0.0)
-	var viewport_cap := _reward_overlay_viewport_cap()
-	var edge_pad := float(layout.get("scroll_edge_pad", 0))
-	var padded_w := content_w + edge_pad * 2.0
-	var needs_h_scroll := padded_w > viewport_cap + 0.5
-	var scroll_w := viewport_cap if needs_h_scroll else padded_w
-	var hover_pad := float(layout.get("scroll_hover_pad", 0))
-	var bar_reserve := float(layout.get("scroll_bar_reserve", 0))
-	var scroll_h := content_h + hover_pad + (bar_reserve if needs_h_scroll else 0.0)
-	return {
-		"size": Vector2(scroll_w, scroll_h),
-		"width": scroll_w,
-		"needs_horizontal_scroll": needs_h_scroll,
-	}
-
-
-func _wrap_reward_cards_scroll(cards_row: HBoxContainer, metrics: Dictionary) -> ScrollContainer:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var edge_pad := int(layout.get("scroll_edge_pad", 0))
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = metrics.get("size", Vector2.ZERO)
-	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	if bool(metrics.get("needs_horizontal_scroll", false)):
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	else:
-		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", edge_pad)
-	margin.add_theme_constant_override("margin_right", edge_pad)
-	margin.add_child(cards_row)
-	scroll.add_child(margin)
-	return scroll
-
-
-func _build_reward_overlay_action_button(text: String, pressed_cb: Callable, scroll_width: float) -> Control:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var action_wrap := CenterContainer.new()
-	action_wrap.custom_minimum_size = Vector2(scroll_width, 0)
-	var btn := Button.new()
-	btn.text = text
-	btn.custom_minimum_size = Vector2(
-		float(layout.get("action_button_width", 0)),
-		float(layout.get("action_button_height", 0))
-	)
-	BattleUiTheme.apply_button(btn, "ghost")
-	btn.pressed.connect(pressed_cb)
-	action_wrap.add_child(btn)
-	return action_wrap
-
-
-func _begin_reward_overlay_shell(layer: int) -> Dictionary:
-	var layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var canvas := CanvasLayer.new()
-	canvas.layer = layer
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.82)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", int(layout.get("content_separation", 0)))
-	center.add_child(vbox)
-
-	return {
-		"canvas": canvas,
-		"root_ctrl": root_ctrl,
-		"vbox": vbox,
-	}
-
-
-## 卡片/行入场在包裹节点内做位移，避开 HBox/VBox 对 position 的接管。
-## 可选键：stagger、hover、from、tilt。
-func _animate_cards_in(cards: Array, config: Dictionary = {}) -> void:
-	var stagger := float(config.get("stagger", 0.045))
-	var hover := bool(config.get("hover", false))
-	var from_offset: Vector2 = config.get("from", Vector2(54.0, 10.0))
-	var tilt := float(config.get("tilt", 0.035))
-	for i in range(cards.size()):
-		var card := cards[i] as Control
-		if card == null:
-			continue
-		var dir := 1.0 if i % 2 == 0 else -1.0
-		var start := Vector2(from_offset.x * dir, from_offset.y)
-		_deal_card_in(card, i, stagger, start, tilt * dir)
-		if hover:
-			card.mouse_entered.connect(_on_card_hover.bind(card, true))
-			card.mouse_exited.connect(_on_card_hover.bind(card, false))
-
-
-func _deal_card_in(card: Control, index: int, stagger: float, start_offset: Vector2, tilt: float) -> void:
-	var parent := card.get_parent()
-	if parent == null:
-		return
-	var slot_index := card.get_index()
-	var wrapper := Control.new()
-	wrapper.custom_minimum_size = card.custom_minimum_size
-	wrapper.size_flags_horizontal = card.size_flags_horizontal
-	wrapper.size_flags_vertical = card.size_flags_vertical
-	parent.add_child(wrapper)
-	parent.move_child(wrapper, slot_index)
-	parent.remove_child(card)
-	wrapper.add_child(card)
-	# 普通 Control 不会替子节点定尺寸，需显式给定，否则卡片会塌成 0×0。
-	var card_size := card.custom_minimum_size
-	if card_size.x <= 0.0 or card_size.y <= 0.0:
-		card_size = card.get_combined_minimum_size()
-	card.size = card_size
-	wrapper.custom_minimum_size = card_size
-	card.pivot_offset = card_size * 0.5
-	card.position = start_offset
-	card.scale = Vector2(0.94, 0.94)
-	card.rotation = tilt
-	card.modulate.a = 0.0
-	var delay := float(index) * stagger
-	var move := create_tween().set_parallel(true)
-	move.tween_property(card, "position", Vector2.ZERO, 0.22).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	move.tween_property(card, "scale", Vector2.ONE, 0.2).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	move.tween_property(card, "rotation", 0.0, 0.18).set_delay(delay).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	move.tween_property(card, "modulate:a", 1.0, 0.12).set_delay(delay)
-
-
-func _on_card_hover(card: Control, entered: bool) -> void:
-	if not is_instance_valid(card):
-		return
-	card.pivot_offset = card.size * 0.5
-	var target := Vector2(1.06, 1.06) if entered else Vector2.ONE
-	var lift := -6.0 if entered else 0.0
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(card, "scale", target, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(card, "position:y", lift, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func _on_settlement_claim_gold() -> void:
@@ -1809,37 +1613,20 @@ func _show_dropped_gem_reward(dropped_gems: Array[Dictionary], relic_offer: Arra
 
 
 func _dropped_gem_offer() -> Array[Dictionary]:
-	var offer: Array[Dictionary] = []
 	if _controller == null or _controller.state == null:
-		return offer
-	var uids := _controller.state.dropped_gems.keys()
-	uids.sort()
-	for uid in uids:
-		var drop: Dictionary = _controller.state.dropped_gems.get(uid, {})
-		var gem_uid := str(drop.get("gem_uid", uid))
-		var gem: GemState = _controller.state.gems.get(gem_uid, null)
-		if gem == null:
-			continue
-		offer.append({
-			"gem_uid": gem_uid,
-			"gem_id": gem.gem_id,
-			"def_overrides": gem.def_overrides.duplicate(true),
-			"pos": drop.get("pos", Vector2i.ZERO),
-		})
-	return offer
+		return [] as Array[Dictionary]
+	return BattleSettlementService.dropped_gem_offer(_controller.state)
 
 
 func _has_pending_dropped_gem_reward() -> bool:
 	if _controller == null or _controller.state == null:
 		return false
-	if bool(_controller.state.battle_temp_flags.get("dropped_gem_reward_handled", false)):
-		return false
-	return not _dropped_gem_offer().is_empty()
+	return BattleSettlementService.has_pending_dropped_gem_reward(_controller.state)
 
 
 func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Array[String], battle_result: String) -> Node:
 	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
 	var vbox: VBoxContainer = frame["vbox"]
 
 	var title := Label.new()
@@ -1856,78 +1643,26 @@ func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Ar
 		var card := _build_dropped_gem_card(drop, battle_result, relic_offer, frame["canvas"])
 		cards_row.add_child(card)
 		cards.append(card)
-	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
-	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
-	_animate_cards_in(cards, {"hover": true})
+	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
+	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
+	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
 
 	var skip_width := float(scroll_metrics.get("width", 0.0))
 	var on_skip := func() -> void:
 		_on_dropped_gem_insert_skipped(battle_result, relic_offer, frame["canvas"])
-	vbox.add_child(_build_reward_overlay_action_button("不嵌入", on_skip, skip_width))
+	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "不嵌入", on_skip, skip_width))
 
 	return frame["canvas"]
 
 
 func _build_dropped_gem_card(drop: Dictionary, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	var card_layout := DataRegistry.get_battle_reward_card_layout("dropped_gem")
 	var gem_uid := str(drop.get("gem_uid", ""))
 	var gem_id := str(drop.get("gem_id", ""))
-	var panel := PanelContainer.new()
 	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
 	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(
-		float(card_layout.get("width", 0)),
-		float(card_layout.get("height", 0))
-	)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
-	panel.add_child(vb)
-
-	var dummy_gem := GemState.new()
-	dummy_gem.gem_id = gem_id
-	dummy_gem.uid = gem_uid
-	if drop.get("def_overrides", {}) is Dictionary:
-		dummy_gem.def_overrides = (drop.get("def_overrides", {}) as Dictionary).duplicate(true)
-	var icon_tex := UnitLooks.get_gem_texture(dummy_gem)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.self_modulate = UnitLooks.gem_sprite_modulate(dummy_gem)
-		var icon_size := float(card_layout.get("icon_size", 0))
-		icon.custom_minimum_size = Vector2(icon_size, icon_size)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		vb.add_child(icon)
-
-	var name_lbl := Label.new()
-	name_lbl.text = DataRegistry.get_gem_display_name(dummy_gem)
-	name_lbl.add_theme_font_size_override("font_size", 15)
-	name_lbl.add_theme_color_override("font_color", rarity_color)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(name_lbl)
-
-	var pos: Vector2i = drop.get("pos", Vector2i.ZERO)
-	var pos_lbl := Label.new()
-	pos_lbl.text = "掉落于 (%d, %d)" % [pos.x, pos.y]
-	pos_lbl.add_theme_font_size_override("font_size", 11)
-	pos_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	pos_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vb.add_child(pos_lbl)
-
-	var pick_btn := Button.new()
-	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
-	BattleUiTheme.apply_button(pick_btn, "end")
-	pick_btn.pressed.connect(func() -> void:
+	return BattleRewardCardFactory.dropped_gem_card(drop, rarity_color, _data_registry(), UnitLooks, func() -> void:
 		_on_dropped_gem_selected_for_insert(gem_uid, battle_result, relic_offer, canvas)
 	)
-	vb.add_child(pick_btn)
-
-	return panel
 
 
 func _on_dropped_gem_selected_for_insert(gem_uid: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
@@ -1947,7 +1682,7 @@ func _on_dropped_gem_selected_for_insert(gem_uid: String, battle_result: String,
 
 func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, relic_offer: Array[String]) -> Node:
 	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
 	var vbox: VBoxContainer = frame["vbox"]
 	var canvas: Node = frame["canvas"]
 
@@ -1965,8 +1700,8 @@ func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, rel
 	if player != null:
 		for slot_index in range(player.slots.size()):
 			slots_row.add_child(_build_player_slot_embed_card(gem_uid, slot_index, battle_result, relic_offer, canvas))
-	var scroll_metrics := _reward_overlay_scroll_metrics(slots_row)
-	vbox.add_child(_wrap_reward_cards_scroll(slots_row, scroll_metrics))
+	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, slots_row, overlay_layout)
+	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(slots_row, overlay_layout, scroll_metrics))
 
 	var back_width := float(scroll_metrics.get("width", 0.0))
 	var on_back := func() -> void:
@@ -1976,74 +1711,20 @@ func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, rel
 			_open_settlement_gem()
 		else:
 			_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
-	vbox.add_child(_build_reward_overlay_action_button("返回", on_back, back_width))
+	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "返回", on_back, back_width))
 
 	return canvas
 
 
 func _build_player_slot_embed_card(gem_uid: String, slot_index: int, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	var card_layout := DataRegistry.get_battle_reward_card_layout("slot_embed")
-	var player := _controller.state.get_player()
-	var slot: SlotState = player.get_slot_by_index(slot_index) if player != null else null
-	var color := UnitLooks.slot_color(slot.slot_type if slot != null else "")
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(color))
-	panel.custom_minimum_size = Vector2(
-		float(card_layout.get("width", 0)),
-		float(card_layout.get("height", 0))
-	)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
-	panel.add_child(vb)
-
-	var title := Label.new()
-	title.text = "#%d %s" % [slot_index + 1, _slot_display_name(slot.slot_type if slot != null else "")]
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", color.lightened(0.2))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vb.add_child(title)
-
-	var current_lbl := Label.new()
-	current_lbl.add_theme_font_size_override("font_size", 11)
-	current_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	current_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if slot == null:
-		current_lbl.text = "无效槽位"
-	elif slot.gem_uid.is_empty():
-		current_lbl.text = "空槽"
-	else:
-		var current_gem: GemState = _controller.state.gems.get(slot.gem_uid, null)
-		current_lbl.text = "已有 %s" % (DataRegistry.get_gem_display_name(current_gem) if current_gem != null else "宝石")
-	vb.add_child(current_lbl)
-
-	var insert_btn := Button.new()
-	insert_btn.text = "嵌入"
-	insert_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
-	BattleUiTheme.apply_button(insert_btn, "end")
-	insert_btn.disabled = slot == null
-	insert_btn.pressed.connect(func() -> void:
+	return BattleRewardCardFactory.slot_embed_card(_controller.state, slot_index, _data_registry(), UnitLooks, func() -> void:
 		_on_dropped_gem_slot_chosen(gem_uid, slot_index, battle_result, relic_offer, canvas)
 	)
-	vb.add_child(insert_btn)
-
-	return panel
-
-
-func _slot_display_name(slot_type: String) -> String:
-	match slot_type:
-		Constants.SLOT_RED:
-			return "红槽"
-		Constants.SLOT_BLUE:
-			return "蓝槽"
-		Constants.SLOT_BLACK:
-			return "黑槽"
-	return slot_type
 
 
 func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> Node:
 	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
 	var vbox: VBoxContainer = frame["vbox"]
 
 	var title := Label.new()
@@ -2062,85 +1743,29 @@ func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], ba
 		var card := _build_gem_card(gem_id, battle_result, relic_offer, frame["canvas"])
 		cards_row.add_child(card)
 		cards.append(card)
-	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
-	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
+	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
+	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
 
 	var skip_width := float(scroll_metrics.get("width", 0.0))
 	var on_skip := func() -> void:
 		_on_gem_chosen("", battle_result, relic_offer, frame["canvas"])
-	vbox.add_child(_build_reward_overlay_action_button("跳过", on_skip, skip_width))
+	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "跳过", on_skip, skip_width))
 
-	_animate_cards_in(cards, {"hover": true})
+	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
 	return frame["canvas"]
 
 
 func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	var card_layout := DataRegistry.get_battle_reward_card_layout("gem")
-	var panel := PanelContainer.new()
 	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
 	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(
-		float(card_layout.get("width", 0)),
-		float(card_layout.get("height", 0))
-	)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
-	panel.add_child(vb)
-
-	var dummy_gem := GemState.new()
-	dummy_gem.gem_id = gem_id
-	dummy_gem.uid = "_preview_%s" % gem_id
-	var icon_tex := UnitLooks.get_gem_texture(dummy_gem)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.self_modulate = UnitLooks.gem_sprite_modulate(dummy_gem)
-		var icon_size := float(card_layout.get("icon_size", 0))
-		icon.custom_minimum_size = Vector2(icon_size, icon_size)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		vb.add_child(icon)
-
-	var name_lbl := Label.new()
-	name_lbl.text = DataRegistry.get_gem_display_name(dummy_gem)
-	name_lbl.add_theme_font_size_override("font_size", 15)
-	name_lbl.add_theme_color_override("font_color", rarity_color)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(name_lbl)
-
-	var tag_str := str(DataRegistry.get_gem_tag(gem_id))
-	var pool_tier := int(DataRegistry.get_gem_pool_tier(gem_id))
-	var tag_key := "gem.%s.symbol" % tag_str
-	var tag_sym: String = TranslationServer.translate(tag_key)
-	if tag_sym == tag_key:
-		tag_sym = tag_str
-	var rarity_name: String = _rarity_display_name(rarity)
-	var meta_lbl := Label.new()
-	meta_lbl.text = "[%s] %s  T%d" % [rarity_name, tag_sym, pool_tier]
-	meta_lbl.add_theme_font_size_override("font_size", 11)
-	meta_lbl.add_theme_color_override("font_color", rarity_color.darkened(0.15))
-	meta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vb.add_child(meta_lbl)
-
-	var pick_btn := Button.new()
-	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
-	BattleUiTheme.apply_button(pick_btn, "end")
-	pick_btn.pressed.connect(func() -> void:
+	return BattleRewardCardFactory.gem_card(gem_id, rarity_color, _data_registry(), UnitLooks, func() -> void:
 		_on_gem_chosen(gem_id, battle_result, relic_offer, canvas)
 	)
-	vb.add_child(pick_btn)
-
-	return panel
 
 
 func _on_gem_chosen(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
 	if not gem_id.is_empty():
-		var acquire_result := RunService.acquire_gem(gem_id)
+		var acquire_result := BattleSettlementService.acquire_run_gem(gem_id)
 		if not bool(acquire_result.get("ok", false)):
 			var carried_gem_id := str(acquire_result.get("carried_gem_id", ""))
 			var carried_name := DataRegistry.get_gem_display_name(carried_gem_id) if not carried_gem_id.is_empty() else "已有手持宝石"
@@ -2164,32 +1789,11 @@ func _on_dropped_gem_slot_chosen(gem_uid: String, slot_index: int, battle_result
 	if _controller == null or _controller.state == null:
 		_message_label.text = "无法嵌入：战斗状态不存在。"
 		return
-	var state := _controller.state
-	var player := state.get_player()
-	if player == null:
-		_message_label.text = "无法嵌入：玩家不存在。"
-		return
-	var slot := player.get_slot_by_index(slot_index)
-	if slot == null:
-		_message_label.text = "无法嵌入：槽位不存在。"
-		return
-	var gem: GemState = state.gems.get(gem_uid, null)
-	if gem == null or not state.dropped_gems.has(gem_uid):
-		_message_label.text = "无法嵌入：掉落宝石不存在。"
-		return
-	var previous_held_uid := state.held_gem_uid
-	state.held_gem_uid = gem_uid
-	var result := GemRules.insert(state, player, player, slot)
+	var result := BattleSettlementService.embed_dropped_gem(_controller.state, gem_uid, slot_index)
 	if not bool(result.get("ok", false)):
-		state.held_gem_uid = previous_held_uid
 		_message_label.text = "无法嵌入：%s" % str(result.get("reason", "未知错误"))
 		return
-	state.dropped_gems.erase(gem_uid)
-	if previous_held_uid != gem_uid:
-		state.held_gem_uid = previous_held_uid
-	if bool(result.get("overload_forced", false)):
-		OverloadRules.sync_active_mutations_to_overload_slots(state, true)
-	state.battle_temp_flags["dropped_gem_reward_handled"] = true
+	var gem: GemState = result.get("gem", null)
 	_message_label.text = "已嵌入 %s" % DataRegistry.get_gem_display_name(gem)
 	_refresh()
 	if canvas != null and is_instance_valid(canvas):
@@ -2206,7 +1810,7 @@ func _on_dropped_gem_insert_skipped(battle_result: String, relic_offer: Array[St
 		_return_to_settlement()
 		return
 	if _controller != null and _controller.state != null:
-		_controller.state.battle_temp_flags["dropped_gem_reward_handled"] = true
+		BattleSettlementService.skip_dropped_gem_reward(_controller.state)
 	_continue_after_dropped_gem_embed(battle_result, relic_offer)
 
 
@@ -2238,7 +1842,7 @@ func _show_relic_reward(offer: Array[String], battle_result: String) -> void:
 
 func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := _begin_reward_overlay_shell(int(overlay_layout.get("canvas_layer", 0)))
+	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
 	var vbox: VBoxContainer = frame["vbox"]
 
 	var is_no_relics := offer.size() == 1 and offer[0] == "relic_placeholder"
@@ -2260,92 +1864,28 @@ func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
 		var card := _build_relic_card(relic_id, def, rarity, battle_result)
 		cards_row.add_child(card)
 		cards.append(card)
-	var scroll_metrics := _reward_overlay_scroll_metrics(cards_row)
-	vbox.add_child(_wrap_reward_cards_scroll(cards_row, scroll_metrics))
+	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
+	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
 
 	var skip_width := float(scroll_metrics.get("width", 0.0))
 	var on_skip := func() -> void:
 		_on_relic_overlay_dismissed(battle_result)
-	vbox.add_child(_build_reward_overlay_action_button("跳过", on_skip, skip_width))
+	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "跳过", on_skip, skip_width))
 
-	_animate_cards_in(cards, {"hover": true})
+	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
 	return frame["canvas"]
 
 
 func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
-	var card_layout := DataRegistry.get_battle_reward_card_layout("relic")
 	var is_placeholder := bool(def.get("placeholder", false))
-	var panel := PanelContainer.new()
 	var rarity_color: Color = BattleUiTheme.TEXT_MUTED if is_placeholder else _hud_presenter.rarity_color(rarity)
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	panel.custom_minimum_size = Vector2(
-		float(card_layout.get("width", 0)),
-		float(card_layout.get("height", 0))
-	)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
-	panel.add_child(vb)
-
-	var icon_tex := UnitLooks.get_relic_texture(relic_id)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		var icon_size := float(card_layout.get("icon_size", 0))
-		icon.custom_minimum_size = Vector2(icon_size, icon_size)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		vb.add_child(icon)
-
-	var name_lbl := Label.new()
-	name_lbl.text = str(def.get("name", relic_id))
-	name_lbl.add_theme_font_size_override("font_size", 16)
-	name_lbl.add_theme_color_override("font_color", rarity_color)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(name_lbl)
-
-	var rarity_lbl := Label.new()
-	rarity_lbl.text = "[%s]" % _rarity_display_name(rarity)
-	rarity_lbl.add_theme_font_size_override("font_size", 11)
-	rarity_lbl.add_theme_color_override("font_color", rarity_color.darkened(0.15))
-	rarity_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vb.add_child(rarity_lbl)
-
-	var desc_lbl := RichTextLabel.new()
-	var desc_text: String = _hud_presenter.relic_desc_text(def)
-	desc_lbl.bbcode_enabled = false
-	desc_lbl.text = desc_text
-	desc_lbl.add_theme_font_size_override("normal_font_size", 12)
-	desc_lbl.add_theme_color_override("default_color", BattleUiTheme.TEXT_HINT)
-	desc_lbl.custom_minimum_size = Vector2(
-		float(card_layout.get("desc_width", 0)),
-		float(card_layout.get("desc_height", 0))
-	)
-	desc_lbl.scroll_active = false
-	vb.add_child(desc_lbl)
-
-	var pick_btn := Button.new()
-	pick_btn.text = "收下" if is_placeholder else "选择"
-	pick_btn.custom_minimum_size = Vector2(0, float(card_layout.get("pick_button_height", 0)))
-	BattleUiTheme.apply_button(pick_btn, "ghost" if is_placeholder else "end")
-	pick_btn.pressed.connect(func() -> void:
+	return BattleRewardCardFactory.relic_card(relic_id, def, rarity, rarity_color, _hud_presenter.relic_desc_text(def), _data_registry(), UnitLooks, func() -> void:
 		_on_relic_chosen("" if is_placeholder else relic_id, battle_result)
 	)
-	vb.add_child(pick_btn)
-
-	return panel
 
 
 func _rarity_display_name(rarity: String) -> String:
-	match rarity:
-		"common": return "普通"
-		"rare": return "稀有"
-		"epic": return "史诗"
-		"legendary": return "传说"
-		"boss": return "首领"
-		_: return rarity
+	return BattleRewardCardFactory.rarity_display_name(rarity)
 
 
 func _on_relic_overlay_dismissed(battle_result: String) -> void:
@@ -2361,7 +1901,7 @@ func _on_relic_overlay_dismissed(battle_result: String) -> void:
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
 		if not relic_id.is_empty():
-			RunService.acquire_relic(relic_id)
+			BattleSettlementService.acquire_run_relic(relic_id)
 			_settlement_relic_pending = false
 		if _relic_reward_overlay != null:
 			_relic_reward_overlay.queue_free()
@@ -2376,7 +1916,7 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 		_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
 		return
 	if not relic_id.is_empty():
-		RunService.acquire_relic(relic_id)
+		BattleSettlementService.acquire_run_relic(relic_id)
 	if GameService.adventure_return and RunService.is_run_active():
 		RunService.mark_room_resolved(GameService.pending_room_id, {
 			"room_id": GameService.pending_room_id,
@@ -2421,18 +1961,15 @@ func _finish_battle_and_navigate(result: String) -> void:
 
 
 func _mark_battle_reward_pending(reward_kind: String, battle_result: String, has_followup_relic: bool) -> void:
-	if not RunService.is_run_active():
-		return
-	RunService.set_run_phase("BATTLE_REWARD")
-	RunService.set_pending_decision({
-		"type": "battle_reward",
-		"room_id": GameService.pending_room_id,
-		"room_type": AdventureService.pending_room_type,
-		"encounter_id": _encounter_id,
-		"battle_result": battle_result,
-		"reward_kind": reward_kind,
-		"has_followup_relic": has_followup_relic,
-	})
+	BattleSettlementService.mark_reward_pending(
+		_encounter_id,
+		reward_kind,
+		battle_result,
+		has_followup_relic,
+		GameService.pending_room_id,
+		AdventureService.pending_room_type,
+		_controller.state if _controller != null else null
+	)
 
 
 func _restore_battle_reward_if_needed() -> void:
@@ -2444,6 +1981,7 @@ func _restore_battle_reward_if_needed() -> void:
 	if str(pending.get("type", "")) != "battle_reward":
 		return
 	var room_id := str(pending.get("room_id", GameService.pending_room_id))
+	BattleSettlementService.restore_pending_dropped_gems(_controller.state if _controller != null else null)
 	var battle_result := str(pending.get("battle_result", "win"))
 	var relic_offer: Array[String] = _battle_relic_offer(room_id)
 	match str(pending.get("reward_kind", "")):
@@ -2803,6 +2341,7 @@ func _sync_editor_hover(title: String, detail: String) -> void:
 	_editor_hover_label.text = title if detail.is_empty() else "%s\n%s" % [title, detail]
 	if _editor_panel != null and _editor_panel.has_method("set_hover_summary"):
 		_editor_panel.set_hover_summary(detail)
+		_layout_editor_ui()
 
 
 func _refresh_editor_focus() -> void:
@@ -3301,6 +2840,7 @@ func _update_held_banner() -> void:
 		_create_held_banner()
 	_held_banner_icon.texture = UnitLooks.get_gem_texture(held)
 	_held_banner_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
+	GemEchoVisuals.apply_icon_material(_held_banner_icon, _controller.state, held.uid)
 	_held_banner_icon.visible = _held_banner_icon.texture != null
 	var gem_name: String = DataRegistry.get_gem_display_name(held)
 	_held_banner_label.text = "手持 %s — 点击发光槽位嵌入" % gem_name
@@ -3600,7 +3140,10 @@ func _layout_editor_ui() -> void:
 	var bottom_limit := viewport_size.y - _bottom_dock.size.y - 8.0
 	if _editor_panel != null and _editor_panel.visible:
 		var editor_width := minf(380.0, maxf(viewport_size.x * 0.46, 340.0))
-		var editor_height := maxf(bottom_limit - top, 200.0)
+		_editor_panel.size.x = editor_width
+		# The editor is a dock: occupy the available lane while the inner list scrolls.
+		var available_height := maxf(bottom_limit - top, 200.0)
+		var editor_height := available_height
 		_editor_panel.size = Vector2(editor_width, editor_height)
 		if not _editor_panel_user_positioned:
 			_editor_panel.position = Vector2(left, top)

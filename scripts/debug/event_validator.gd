@@ -18,8 +18,10 @@ const _REQUIRED_FIELDS: Dictionary = {
 	"projectile_deflect": ["from", "to"],
 	"light_beam": ["from", "to"],
 	"die":       ["uid"],
-	"spawn":     ["uid", "pos"],
+	"spawn":     ["uid", "pos", "unit_id"],
+	"transform": ["uid", "pos", "from_unit_id", "to_unit_id"],
 	"status":    ["uid", "status_id"],
+	"gem_transfer": ["gem_uid", "from", "to"],
 	"heal":      ["uid", "amount"],
 	"knockback": ["uid", "from", "to"],
 }
@@ -101,6 +103,8 @@ static func _check_type_specific(
 			_check_heal(ev, index, out)
 		"explode":
 			_check_explode(ev, index, out)
+		"gem_transfer":
+			_check_gem_transfer(ev, index, out)
 
 
 static func _check_move_step(ev: Dictionary, index: int, out: Array[String]) -> void:
@@ -149,3 +153,13 @@ static func _check_explode(ev: Dictionary, index: int, out: Array[String]) -> vo
 	var pos = ev.get("pos")
 	if pos != null and not pos is Vector2i:
 		out.append("[%d] 'explode' event 'pos' is not a Vector2i: %s" % [index, str(pos)])
+
+
+static func _check_gem_transfer(ev: Dictionary, index: int, out: Array[String]) -> void:
+	for field in ["from", "to"]:
+		var value: Variant = ev.get(field, null)
+		if not value is Dictionary:
+			out.append("[%d] 'gem_transfer' event '%s' must be a Dictionary" % [index, field])
+			continue
+		if str((value as Dictionary).get("kind", "")).is_empty():
+			out.append("[%d] 'gem_transfer' event '%s.kind' is required" % [index, field])

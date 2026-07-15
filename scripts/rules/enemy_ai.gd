@@ -3,6 +3,10 @@ extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
+const ActionCandidate = preload("res://scripts/rules/ai_action_candidate.gd")
+const AiCandidateSelector = preload("res://scripts/rules/ai_candidate_selector.gd")
+const AiSkillCandidateFactory = preload("res://scripts/rules/ai_skill_candidate_factory.gd")
+const AiRedSkillScorer = preload("res://scripts/rules/ai_red_skill_scorer.gd")
 
 ## 分值评估系统 (Utility AI)
 ## 核心思路：遍历所有合法行动 → 模拟执行 → 打分 → 选最高分
@@ -18,16 +22,6 @@ enum ActionType {
 	EXTRACT,        # 拔出宝石
 	WAIT,           # 原地等待
 }
-
-
-# ─── 行动候选结构 ─────────────────────────────────────────────────────────
-class ActionCandidate:
-	var type: int = ActionType.WAIT
-	var move_target: Vector2i = Vector2i(-1, -1)  # 移动目标格
-	var action_target_uid: String = ""             # 行动目标单位
-	var slot_index: int = -1                       # 槽位索引（拔出用）
-	var score: float = 0.0
-	var description: String = ""
 
 
 static func make_candidate() -> ActionCandidate:
@@ -59,10 +53,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		return {"move_path": [] as Array[Vector2i], "action": null}
 
 	# 选最高分
-	var best: ActionCandidate = candidates[0]
-	for c in candidates:
-		if c.score > best.score:
-			best = c
+	var best: ActionCandidate = AiCandidateSelector.select_highest_scoring(candidates)
 
 	# 构建移动路径
 	var move_path: Array[Vector2i] = []
@@ -240,27 +231,27 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 
 	match str(GemEffects.get_enemy_red_intent_meta(gem, CombatRules.attack_damage(state, enemy)).get("type", "wait")):
 		"explosion_attack":
-			results.append_array(_score_explosion_attack(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.explosion_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"charge_explode":
-			results.append_array(_score_explosion_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.charge_explode(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"pull":
-			results.append_array(_score_pull_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.pull(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"poison_attack":
-			results.append_array(_score_poison_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.poison(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"arc_attack":
-			results.append_array(_score_arc_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.arc(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"fire_attack":
-			results.append_array(_score_fire_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "烈焰攻击"))
 		"ice_attack":
-			results.append_array(_score_ice_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "寒冰攻击"))
 		"split_attack":
-			results.append_array(_score_split_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.split(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"light_beam":
-			results.append_array(_score_light_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.light(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 		"counter_attack":
-			results.append_array(_score_counter_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "反击"))
 		"echo_attack":
-			results.append_array(_score_echo_skill(state, enemy, from_pos, player, profile))
+			results.append_array(AiRedSkillScorer.echo(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 	return results
 
 
@@ -274,250 +265,16 @@ static func evaluate_red_skill_candidates(
 
 
 # ─── 爆炸宝石：近战十字溅射（与玩家红槽攻击同源，不自爆）────────────────────
-static func _score_explosion_attack(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if BoardUtils.manhattan(from_pos, player.pos) != 1:
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
-	if damage <= 0:
-		return results
-	candidate.score = float(damage) * _w(profile, "w_damage")
-	if player.hp <= damage:
-		candidate.score += _w(profile, "w_kill_player")
-	candidate.score += _evaluate_tile_safety(state, from_pos, profile)
-	candidate.description = "爆炸攻击"
-	results.append(candidate)
-	return results
-
-
 # ─── 冲刺自爆（遗留 intent，非爆炸宝石默认路径）────────────────────────────
-static func _score_explosion_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	var dist_to_player: int = BoardUtils.manhattan(from_pos, player.pos)
-	var max_threat_range: int = CombatConfig.charge_explode_dash_range() + CombatConfig.explosion_radius()
-	if dist_to_player > max_threat_range:
-		return results
-
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-
-	var score: float = 0.0
-	if dist_to_player <= CombatConfig.explosion_radius():
-		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage") * _t(profile, "explosion_adjacent_bonus_mult")
-	elif dist_to_player <= max_threat_range:
-		score += float(CombatConfig.explosion_damage()) * _w(profile, "w_damage")
-
-	score += _w(profile, "w_self_sacrifice")
-
-	# 友军误伤扣分
-	for cell in BoardUtils.cells_in_radius(player.pos, CombatConfig.explosion_radius()):
-		var unit: UnitState = state.get_unit_at(cell)
-		if unit != null and unit.alive:
-			if unit.team == Constants.TEAM_ENEMY and unit.uid != enemy.uid:
-				score -= _w(profile, "w_friendly_fire")
-
-	candidate.score = score
-	candidate.description = "冲刺爆炸"
-	results.append(candidate)
-	return results
-
-
 # ─── 引力技能评分 ─────────────────────────────────────────────────────────
-static func _score_pull_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	var max_range := GemEffects.gravity_pull_range(state, enemy, CombatConfig.enemy_gravity_pull_range())
-	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
-	if dist > max_range:
-		return results
-
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-
-	var score: float = _w(profile, "w_pull") + _t(profile, "pull_base_bonus")
-	# 拉到危险地块加分
-	var pull_dest: Vector2i = BoardUtils.step_toward(player.pos, from_pos)
-	if BoardUtils.spike_entity_at(state, pull_dest) != null:
-		score += float(CombatConfig.spike_damage()) * _w(profile, "w_damage")
-	var pull_tile: TileState = state.get_tile(pull_dest)
-	if pull_tile.has_modifier("poison_fog"):
-		score += _w(profile, "w_damage") * _t(profile, "pull_damage_bonus_mult")
-	# 引力会附带束缚，距离越远价值越高
-	score += float(dist) * _t(profile, "pull_distance_score_mult")
-
-	candidate.score = score
-	candidate.description = "引力拉近(%d格)" % max_range
-	results.append(candidate)
-	return results
-
-
 # ─── 毒攻击评分 ───────────────────────────────────────────────────────────
-static func _score_poison_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
-		return results
-
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
-	score += _w(profile, "w_poison")  # 附加中毒价值
-
-	candidate.score = score
-	candidate.description = "毒攻击"
-	results.append(candidate)
-	return results
-
-
-static func _score_arc_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var base := float(CombatRules.attack_damage(state, enemy))
-	var score: float = base * _w(profile, "w_damage")
-	for unit in state.units.values():
-		if not unit.alive or unit.team == player.team or unit.uid == player.uid:
-			continue
-		if BoardUtils.chebyshev(player.pos, unit.pos) <= CombatConfig.arc_chain_range():
-			score += base * CombatConfig.arc_chain_damage_ratio() * _w(profile, "w_damage") * _t(profile, "arc_chain_bonus_mult")
-	candidate.score = score
-	candidate.description = "电击"
-	results.append(candidate)
-	return results
-
-
-static func _score_fire_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
-	score += _w(profile, "w_status")
-	candidate.score = score
-	candidate.description = "烈焰攻击"
-	results.append(candidate)
-	return results
-
-
-static func _score_ice_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
-	score += _w(profile, "w_status")
-	candidate.score = score
-	candidate.description = "寒冰攻击"
-	results.append(candidate)
-	return results
-
-
-static func _score_split_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	var in_range := BoardUtils.are_units_adjacent_at(enemy, from_pos, player)
-	if not in_range:
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
-	if damage <= 0:
-		return results
-	var score: float = float(damage) * _w(profile, "w_damage")
-	candidate.score = score
-	candidate.description = "分裂攻击"
-	results.append(candidate)
-	return results
-
-
-static func _score_light_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	var max_range := Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
-	if not BoardUtils.can_unit_attack_cell_at(enemy, state, from_pos, player.pos, max_range):
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var damage := _previewed_red_damage_to(state, enemy, from_pos, player)
-	if damage <= 0:
-		return results
-	var score: float = float(damage) * _w(profile, "w_damage")
-	score += _w(profile, "w_status")
-	candidate.score = score
-	candidate.description = "光束"
-	results.append(candidate)
-	return results
-
-
 static func _previewed_red_damage_to(
 	state: GameState,
 	enemy: UnitState,
 	from_pos: Vector2i,
 	target: UnitState
 ) -> int:
-	var preview := IntentPreviewRules.build_red_attack_profile(
-		state,
-		enemy,
-		from_pos,
-		target.pos,
-		CombatRules.attack_damage(state, enemy)
-	)
-	return IntentPreviewRules.predicted_raw_damage_to(preview, target.uid)
-
-
-static func _score_counter_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	if not BoardUtils.are_units_adjacent_at(enemy, from_pos, player):
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
-	score += _w(profile, "w_status")
-	candidate.score = score
-	candidate.description = "反击"
-	results.append(candidate)
-	return results
-
-
-static func _score_echo_skill(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary) -> Array:
-	var results: Array = []
-	var max_range := GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
-	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
-	if not in_range:
-		return results
-	var candidate := ActionCandidate.new()
-	candidate.type = ActionType.SKILL_RED
-	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var score: float = float(CombatRules.attack_damage(state, enemy)) * _w(profile, "w_damage")
-	score += _w(profile, "w_status")
-	candidate.score = score
-	candidate.description = "回响"
-	results.append(candidate)
-	return results
+	return AiRedSkillScorer.previewed_red_damage_to(state, enemy, from_pos, target)
 
 
 # ─── 评估纯移动（不攻击） ─────────────────────────────────────────────────

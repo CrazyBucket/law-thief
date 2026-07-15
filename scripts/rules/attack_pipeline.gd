@@ -9,8 +9,8 @@ const GemComboResolver = preload("res://scripts/rules/gem_combo_resolver.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const LightBeamRules = preload("res://scripts/rules/light_beam_rules.gd")
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
+const AttackContext = preload("res://scripts/rules/attack_context.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
-const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const DamageContext = preload("res://scripts/rules/damage_context.gd")
 
 
@@ -67,61 +67,6 @@ const HIT_TAG_HANDLERS: Array[Dictionary] = [
 	{"tag": TAG_SLOW_ON_HIT, "handler": "_apply_slow_on_hit_tag"},
 	{"tag": TAG_ARC, "handler": "_apply_arc_hit_tag"},
 ]
-
-
-class AttackContext:
-	var state: GameState
-	var attacker: UnitState
-	var aim_cell: Vector2i
-	var target: UnitState = null
-
-	var tags: Array[String] = []
-	var base_damage: int = 0
-	var events: Array[Dictionary] = []
-	var payload: Dictionary = {}
-	var trace: Array[Dictionary] = []
-
-	func _init(p_state: GameState, p_attacker: UnitState, p_aim_cell: Vector2i, p_target: UnitState = null) -> void:
-		state = p_state
-		attacker = p_attacker
-		aim_cell = p_aim_cell
-		target = p_target
-
-	func add_tag(tag: String) -> void:
-		if tag not in tags:
-			tags.append(tag)
-
-	func has_tag(tag: String) -> bool:
-		return tag in tags
-
-	func remove_tag(tag: String) -> void:
-		tags.erase(tag)
-
-	func push_event(ev: Dictionary) -> void:
-		events.append(ev)
-
-	func build_damage_context(reason: String, opts: Dictionary = {}) -> Dictionary:
-		var gem_ctx: Dictionary = opts.get(
-			"gem_tag_context",
-			payload.get("gem_tag_context", {})
-		)
-		return DamageContext.create(
-			attacker.uid,
-			reason,
-			opts.get("damage_tags", []),
-			gem_ctx
-		)
-
-	func damage_unit(unit: UnitState, amount: int, reason: String, opts: Dictionary = {}) -> int:
-		var damage_opts := opts.duplicate(true)
-		if not damage_opts.has("damage_context"):
-			damage_opts["damage_context"] = build_damage_context(reason, damage_opts)
-		var tx := CombatTransaction.begin(state, events)
-		return tx.damage_unit(unit, amount, attacker.uid, reason, damage_opts)
-
-	func push_trace(step: Dictionary) -> void:
-		if payload.get("debug_trace", false):
-			trace.append(step)
 
 
 ## 以瞄准格为唯一空间锚点执行攻击（空地 / 单位共用）
@@ -537,6 +482,7 @@ static func _apply_gravity_aura(ctx: AttackContext) -> void:
 static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
 	var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "light"))
+	var hit_entity_uids: Dictionary = {}
 	for path in LightBeamRules.compute_paths(
 		ctx.state,
 		ctx.attacker,
@@ -551,7 +497,8 @@ static func _apply_light_beam(ctx: AttackContext, reason: String) -> void:
 			gem_ctx,
 			level,
 			path.get("from", ctx.attacker.pos),
-			path.get("cells", [] as Array[Vector2i])
+			path.get("cells", [] as Array[Vector2i]),
+			hit_entity_uids
 		)
 static func _apply_single_light_beam(
 	ctx: AttackContext,
@@ -559,7 +506,8 @@ static func _apply_single_light_beam(
 	gem_ctx: Dictionary,
 	level: int,
 	from_cell: Vector2i,
-	cells: Array[Vector2i]
+	cells: Array[Vector2i],
+	hit_entity_uids: Dictionary = {}
 ) -> void:
 	var level_def := _effect_level_def("light", Constants.SLOT_RED, level)
 	if cells.is_empty():
@@ -604,6 +552,10 @@ static func _apply_single_light_beam(
 		var dye := GemEffects.light_dye_element_at(ctx.state, cell)
 		if not dye.is_empty():
 			traveled_ctx = GemEffects.light_context_with_dye(traveled_ctx, dye)
+		var hit_entity := ctx.state.get_entity_at(cell)
+		if hit_entity != null and hit_entity.alive and hit_entity.max_hp > 0 and not hit_entity_uids.has(hit_entity.uid):
+			hit_entity_uids[hit_entity.uid] = true
+			EntityRules.damage_entity(ctx.state, hit_entity, damage, ctx.attacker.uid, ctx.events)
 		var target := ctx.state.get_unit_at(cell)
 		if target == null or not target.alive or target.uid == ctx.attacker.uid or hit_uids.has(target.uid):
 			continue

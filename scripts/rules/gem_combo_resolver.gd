@@ -1,6 +1,8 @@
 class_name GemComboResolver
 extends RefCounted
 
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 
 
@@ -22,13 +24,13 @@ static func apply_after_explosion(
 			if not BoardUtils.in_bounds(state, cell):
 				continue
 			TileRules.create_fire(state, cell)
-			out_events.append({"type": "fire_burst", "pos": cell, "combo": "explosion_fire"})
+			out_events.append(_EventBuilder.area_effect("fire_burst", cell, {"combo": "explosion_fire"}))
 	if has_poison:
 		for cell in cells:
 			if not BoardUtils.in_bounds(state, cell):
 				continue
 			TileRules.create_poison_fog(state, cell)
-			out_events.append({"type": "poison_burst", "pos": cell, "radius": 0, "combo": "explosion_poison"})
+			out_events.append(_EventBuilder.area_effect("poison_burst", cell, {"radius": 0, "combo": "explosion_poison"}))
 	TileRules.end_overlay_batch(state)
 
 
@@ -45,4 +47,4 @@ static func apply_after_attack_hit(
 	if not BoardUtils.in_bounds(state, hit_cell):
 		return
 	TileRules.create_toxic_smoke(state, hit_cell)
-	out_events.append({"type": "toxic_smoke", "pos": hit_cell, "combo": "fire_poison"})
+	out_events.append(_EventBuilder.area_effect("toxic_smoke", hit_cell, {"combo": "fire_poison"}))

@@ -12,6 +12,11 @@ const SLIME_SPRITES_SCRIPT := preload("res://scripts/ui/slime_sprites.gd")
 const GEM_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_gem_sprites.gd")
 const PROP_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_prop_sprites.gd")
 const BoardFxTexturesClass := preload("res://scripts/ui/board_fx_textures.gd")
+const BattleLightBeamFx := preload("res://scripts/ui/battle_light_beam_fx.gd")
+const BattleProjectileFx := preload("res://scripts/ui/battle_projectile_fx.gd")
+const BattleParticleFx := preload("res://scripts/ui/battle_particle_fx.gd")
+const BattleSlotPanelLayout := preload("res://scripts/ui/battle_slot_panel_layout.gd")
+const GemEchoVisuals := preload("res://scripts/ui/gem_echo_visuals.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
@@ -23,6 +28,7 @@ const FxLightningShader := preload("res://scenes/battle/fx_lightning_bolt.gdshad
 const FxRadialBurstShader := preload("res://scenes/battle/fx_radial_burst.gdshader")
 const FxCloudPulseShader := preload("res://scenes/battle/fx_cloud_pulse.gdshader")
 const OverlayDriftShader := preload("res://scenes/battle/overlay_drift.gdshader")
+const GemEchoSmokeShader := preload("res://scenes/battle/gem_echo_smoke.gdshader")
 const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
 const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
 const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
@@ -44,17 +50,14 @@ class BoardAnimationHostState:
 	var move_offsets: Dictionary = {}
 	var move_path_segments: Dictionary = {}
 	var move_path_segment_facings: Dictionary = {}
-	var particles: Array[Dictionary] = []
 	var strike_elapsed: Dictionary = {}
 	var hit_elapsed: Dictionary = {}
 	var walk_phase: Dictionary = {}
 	var idle_phase: Dictionary = {}
-	var active_projectiles: Array = []
 	var parallel_move_remaining: int = 0
 	var held_gem_visual: Dictionary = {}
 	var inserting_gem_visuals: Array[Dictionary] = []
 	var masked_embedded_gems: Dictionary = {}
-	var cached_puff_paths: PackedStringArray = PackedStringArray()
 
 	func clear_state_runtime() -> void:
 		move_offsets.clear()
@@ -116,6 +119,11 @@ var _water_fill_layer: Node2D = null
 var _water_edge_layer: Node2D = null
 var _water_visual_signature: int = -1
 var _overlay_shader_viewports: Array[SubViewport] = []
+var _gem_echo_shader_viewport: SubViewport = null
+var _gem_echo_smoke_texture: Texture2D = null
+var _gem_echo_icon_viewports: Dictionary = {}
+var _gem_echo_icon_textures: Dictionary = {}
+var _gem_texture_content_bounds: Dictionary = {}
 var _last_continuous_redraw_tick: int = -1
 var _sorted_cells_cache: Array[Vector2i] = []
 var _sorted_cells_cache_size: Vector2i = Vector2i(-1, -1)
@@ -132,9 +140,10 @@ var _gem_sprites: RefCounted = null ## DoodleGemSprites
 var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
 var _soft_gradient_tex: Texture2D = null
-var _light_beam_soft_texture: Texture2D = null
-var _light_beam_nodes: Array[Node2D] = []
 var _beam_layer: Control = null
+var _light_beam_fx: BattleLightBeamFx = null
+var _projectile_fx: BattleProjectileFx = null
+var _particle_fx: BattleParticleFx = null
 var _shader_fx_seed: int = 0
 
 @export_group("Light Beam FX")
@@ -170,7 +179,6 @@ const _SLIME_WALK_FPS := 10.0
 const _SLIME_ANIM_FRAMES := 6
 const _SLIME_STRIKE_FRAMES := 6
 const _SLIME_STRIKE_DURATION := 0.36
-const _PUFF_FRAME_PATH := "res://assets/demo/doodle-rpg/ALL SPRITES/Particles/Puff_%d.png"
 const _INVALID_GRID := Vector2i(-9999, -9999)
 const _MOVE_DURATION := 0.35
 const _COLLISION_LUNGE_DURATION := 0.11
@@ -295,6 +303,8 @@ func _process(delta: float) -> void:
 		visuals_dirty = true
 	if state != null:
 		_update_overlay_shader_activity()
+		if _update_gem_echo_shader_activity():
+			visuals_dirty = true
 		if _has_animated_tile_overlays():
 			visuals_dirty = true
 		for unit: UnitState in state.units.values():
@@ -324,24 +334,7 @@ func _process(delta: float) -> void:
 	for hit_uid in hit_done:
 		_anim.hit_elapsed.erase(hit_uid)
 
-	var needs_redraw: bool = false
-	var i: int = _anim.particles.size() - 1
-	while i >= 0:
-		var p: Dictionary = _anim.particles[i]
-		var p_kind: String = str(p.get("type", "spark"))
-		p["life"] = p["life"] - delta
-		if p["life"] <= 0.0:
-			_anim.particles.remove_at(i)
-		else:
-			if p_kind == "sprite_seq":
-				p["frame_time"] = float(p.get("frame_time", 0.0)) + delta
-				p["pos"] = p["pos"] + p["velocity"] * delta
-				p["velocity"] = p["velocity"] + Vector2(0, 40.0) * delta
-			else:
-				p["pos"] = p["pos"] + p["velocity"] * delta
-				p["velocity"] = p["velocity"] + Vector2(0, 120.0) * delta
-		needs_redraw = true
-		i -= 1
+	var needs_redraw := _particle_fx.step(delta) if _particle_fx != null else false
 	var gem_dirty := _update_gem_visuals(scaled_dt)
 	if (needs_redraw or visuals_dirty or gem_dirty) and _continuous_redraw_due():
 		queue_redraw()
@@ -468,6 +461,141 @@ func _active_overlay_shader_paths() -> Dictionary:
 		if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 			active[TileRenderer.TOXIC_SMOKE_BODY_PATH] = true
 	return active
+
+
+func _update_gem_echo_shader_activity() -> bool:
+	var active_gem_ids := _active_gem_echo_ids()
+	var active := not active_gem_ids.is_empty()
+	if active:
+		_ensure_gem_echo_shader_texture()
+		for gem_id in active_gem_ids.keys():
+			_ensure_gem_echo_icon_shader_texture(str(gem_id))
+	if _gem_echo_shader_viewport != null:
+		_gem_echo_shader_viewport.render_target_update_mode = (
+			SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
+		)
+	for gem_id in _gem_echo_icon_viewports.keys():
+		var viewport: SubViewport = _gem_echo_icon_viewports[gem_id]
+		viewport.render_target_update_mode = (
+			SubViewport.UPDATE_ALWAYS if active_gem_ids.has(gem_id) else SubViewport.UPDATE_DISABLED
+		)
+	return active
+
+
+func _active_gem_echo_ids() -> Dictionary:
+	var result := {}
+	if state == null:
+		return result
+	for raw_uid in state.overload_echo_gems.keys():
+		var gem: GemState = state.gems.get(str(raw_uid), null)
+		if gem != null and not gem.gem_id.is_empty():
+			result[gem.gem_id] = true
+	return result
+
+
+func _ensure_gem_echo_shader_texture() -> void:
+	if _gem_echo_shader_viewport != null:
+		return
+	_gem_echo_shader_viewport = SubViewport.new()
+	_gem_echo_shader_viewport.name = "GemEchoShaderViewport"
+	_gem_echo_shader_viewport.disable_3d = true
+	_gem_echo_shader_viewport.transparent_bg = true
+	_gem_echo_shader_viewport.size = Vector2i(64, 64)
+	_gem_echo_shader_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	var smoke := ColorRect.new()
+	smoke.size = Vector2(_gem_echo_shader_viewport.size)
+	smoke.color = Color.WHITE
+	smoke.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var material := ShaderMaterial.new()
+	material.shader = GemEchoSmokeShader
+	smoke.material = material
+	_gem_echo_shader_viewport.add_child(smoke)
+	add_child(_gem_echo_shader_viewport)
+	_gem_echo_smoke_texture = _gem_echo_shader_viewport.get_texture()
+
+
+func _ensure_gem_echo_icon_shader_texture(gem_id: String) -> void:
+	if _gem_echo_icon_viewports.has(gem_id) or _gem_sprites == null:
+		return
+	var source: Texture2D = _gem_sprites.texture_for_gem_id(gem_id)
+	if source == null:
+		return
+	var viewport := SubViewport.new()
+	viewport.name = "GemEchoIconShaderViewport%d" % _gem_echo_icon_viewports.size()
+	viewport.disable_3d = true
+	viewport.transparent_bg = true
+	viewport.size = Vector2i(source.get_width(), source.get_height())
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.set_meta("gem_id", gem_id)
+	var sprite := Sprite2D.new()
+	sprite.texture = source
+	sprite.position = Vector2(viewport.size) * 0.5
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var material := ShaderMaterial.new()
+	material.shader = GemEchoVisuals.IconShader
+	sprite.material = material
+	viewport.add_child(sprite)
+	add_child(viewport)
+	_gem_echo_icon_viewports[gem_id] = viewport
+	_gem_echo_icon_textures[gem_id] = viewport.get_texture()
+
+
+func _display_gem_texture(gem: GemState, fallback: Texture2D) -> Texture2D:
+	if gem != null and GemEchoVisuals.is_echo(state, gem.uid):
+		return _gem_echo_icon_textures.get(gem.gem_id, fallback) as Texture2D
+	return fallback
+
+
+func _draw_echo_smoke(gem_uid: String, pos: Vector2, icon_size: float, alpha: float = 1.0) -> void:
+	if not GemEchoVisuals.is_echo(state, gem_uid) or _gem_echo_smoke_texture == null:
+		return
+	var gem: GemState = state.gems.get(gem_uid, null)
+	if gem == null:
+		return
+	var content_bounds := _gem_content_bounds(gem.gem_id)
+	var pulse := 0.99 + sin(_anim.pulse_time * 1.10 + float(gem_uid.hash() % 17)) * 0.01
+	var content_center := content_bounds.get_center()
+	var smoke_center := pos + (content_center - Vector2(0.5, 0.5)) * icon_size
+	var smoke_size := Vector2(icon_size, icon_size) * content_bounds.size
+	# Leave enough room for two readable wisps at gameplay scale without turning them into a halo.
+	smoke_size += Vector2.ONE * icon_size * 0.64
+	smoke_size *= pulse
+	draw_texture_rect(
+		_gem_echo_smoke_texture,
+		Rect2(smoke_center - smoke_size * 0.5, smoke_size),
+		false,
+		Color(1.0, 1.0, 1.0, clampf(alpha, 0.0, 1.0))
+	)
+
+
+func _gem_content_bounds(gem_id: String) -> Rect2:
+	if _gem_texture_content_bounds.has(gem_id):
+		return _gem_texture_content_bounds[gem_id]
+	var fallback := Rect2(Vector2(0.18, 0.18), Vector2(0.64, 0.64))
+	if _gem_sprites == null:
+		return fallback
+	var texture: Texture2D = _gem_sprites.texture_for_gem_id(gem_id)
+	var image := texture.get_image() if texture != null else null
+	if image == null:
+		return fallback
+	if image.is_compressed():
+		image.decompress()
+	var min_pos := Vector2i(image.get_width(), image.get_height())
+	var max_pos := Vector2i(-1, -1)
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if image.get_pixel(x, y).a <= 0.05:
+				continue
+			min_pos.x = mini(min_pos.x, x)
+			min_pos.y = mini(min_pos.y, y)
+			max_pos.x = maxi(max_pos.x, x)
+			max_pos.y = maxi(max_pos.y, y)
+	var bounds := fallback
+	if max_pos.x >= min_pos.x and max_pos.y >= min_pos.y:
+		var image_size := Vector2(image.get_width(), image.get_height())
+		bounds = Rect2(Vector2(min_pos) / image_size, Vector2(max_pos - min_pos + Vector2i.ONE) / image_size)
+	_gem_texture_content_bounds[gem_id] = bounds
+	return bounds
 
 
 func _update_overlay_fades(delta: float) -> bool:
@@ -641,6 +769,7 @@ func _draw() -> void:
 		return
 	var drawn_units: Dictionary = {}
 	var drawn_entities: Dictionary = {}
+	var drawn_entity_ui: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
 	if not _has_unified_overlays():
@@ -648,18 +777,18 @@ func _draw() -> void:
 	if _has_unified_overlays():
 		_draw_overlay_routes()
 	_draw_editor_preview()
+	if _has_unified_overlays():
+		_draw_unified_overlay_outlines()
+	if hover_cell.x >= 0:
+		var hover_unit := state.get_unit_at(hover_cell)
+		if hover_unit == null or not hover_unit.alive:
+			TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell), _cell_hover_outline_color())
 	for grid in _sorted_cells():
 		_draw_entity_at_grid(grid, drawn_entities)
 		if state.get_unit_at(grid) == null and state.get_entity_at(grid) != null:
 			_draw_front_tile_overlay_at(grid, true)
 		_draw_dropped_gems_at_grid(grid)
-		if hover_cell == grid:
-			var hover_unit := state.get_unit_at(hover_cell)
-			if hover_unit == null or not hover_unit.alive:
-				TileRenderer.draw_hover_outline(self, grid_to_screen(hover_cell), _cell_hover_outline_color())
 	_draw_unit_ground_outlines()
-	if _has_unified_overlays():
-		_draw_unified_overlay_outlines()
 	_draw_gem_visuals(false)
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
@@ -668,6 +797,11 @@ func _draw() -> void:
 			_draw_unit_body(unit)
 		if unit != null and unit.alive:
 			_draw_front_tile_overlay_at(grid, true)
+	for grid in _sorted_cells():
+		var entity := state.get_entity_at(grid)
+		if entity != null and entity.alive and not drawn_entity_ui.has(entity.uid):
+			drawn_entity_ui[entity.uid] = true
+			_draw_entity_ui(entity)
 	var drawn_unit_ui: Dictionary = {}
 	for grid in _sorted_cells():
 		var unit := state.get_unit_at(grid)
@@ -676,20 +810,33 @@ func _draw() -> void:
 			_draw_unit_ui(unit)
 	if not _has_unified_overlays():
 		_draw_highlight_outlines()
-	_draw_anim_particles()
-	_draw_projectile()
 	_draw_gem_visuals(true)
 	_draw_unit_slot_panels()
 
 
 func _ensure_combat_visual_layers() -> void:
-	if _beam_layer != null:
-		return
-	_beam_layer = Control.new()
-	_beam_layer.name = "BeamLayer"
-	_beam_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_beam_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_beam_layer)
+	if _beam_layer == null:
+		_beam_layer = Control.new()
+		_beam_layer.name = "BeamLayer"
+		_beam_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_beam_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_beam_layer)
+	if _light_beam_fx == null:
+		_light_beam_fx = BattleLightBeamFx.new()
+		_light_beam_fx.name = "LightBeamFx"
+		_light_beam_fx.configure(Callable(self, "grid_to_screen"))
+		_beam_layer.add_child(_light_beam_fx)
+	if _projectile_fx == null:
+		_projectile_fx = BattleProjectileFx.new()
+		_projectile_fx.name = "ProjectileFx"
+		_projectile_fx.configure(Callable(self, "grid_to_screen"))
+		_projectile_fx.finished.connect(_on_projectile_fx_finished)
+		_beam_layer.add_child(_projectile_fx)
+	if _particle_fx == null:
+		_particle_fx = BattleParticleFx.new()
+		_particle_fx.name = "ParticleFx"
+		_particle_fx.configure(_fx_textures)
+		_beam_layer.add_child(_particle_fx)
 
 
 func _spawn_shader_rect_fx(
@@ -955,6 +1102,23 @@ func _draw_prop_entity(entity: EntityState, center: Vector2) -> void:
 		return
 	var foot_ratio: float = _prop_sprites.foot_ratio_for_sprite_id(entity.prop_sprite)
 	TileRenderer.draw_prop_sprite(self, center, tex, foot_ratio)
+
+
+func _draw_entity_ui(entity: EntityState) -> void:
+	if entity.max_hp <= 0:
+		return
+	var center := grid_to_screen(entity.pos)
+	var foot := center + IsoCoordinates.entity_foot_offset()
+	var width := IsoCoordinates.visual(30.0)
+	var height := IsoCoordinates.visual(4.0)
+	var top := foot.y - IsoCoordinates.visual(65.0)
+	BattleUiTheme.draw_combined_hp_bar(
+		self,
+		Rect2(foot.x - width * 0.5, top, width, height),
+		entity.hp,
+		entity.max_hp,
+		0
+	)
 
 
 func _draw_move_highlight_outlines() -> void:
@@ -1776,6 +1940,7 @@ func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 			continue
 		var tex: Texture2D = _gem_sprites.texture_for_gem_id(gem.gem_id)
 		if tex != null:
+			tex = _display_gem_texture(gem, tex)
 			var tint: Color = _gem_sprites.modulate_for_gem_id(gem.gem_id)
 			draw_texture_rect(
 				tex,
@@ -1784,7 +1949,13 @@ func _draw_gem_icons(unit: UnitState, anchor: Vector2) -> void:
 				tint
 			)
 		else:
-			_draw_small_diamond(pos, icon_size * 0.38, icon_size * 0.3, UnitLooks.gem_color(gem))
+			_draw_small_diamond(
+				pos,
+				icon_size * 0.38,
+				icon_size * 0.3,
+				GemEchoVisuals.fallback_color(state, gem.uid, UnitLooks.gem_color(gem))
+			)
+		_draw_echo_smoke(gem.uid, pos, icon_size, 0.92)
 
 
 func _draw_unit_slot_panels() -> void:
@@ -1883,13 +2054,14 @@ func _draw_slot_sector_content(item: Dictionary) -> void:
 		var tex: Texture2D = UnitLooks.get_gem_texture(gem)
 		var icon_size := (outer_radius - inner_radius) * 0.52
 		if tex != null:
+			tex = _display_gem_texture(gem, tex)
 			var tint: Color = UnitLooks.gem_sprite_modulate(gem)
 			tint.a *= alpha
 			draw_texture_rect(tex, Rect2(content_pos - Vector2.ONE * icon_size * 0.5, Vector2.ONE * icon_size), false, tint)
 		else:
-			var gem_col: Color = UnitLooks.gem_color(gem)
-			gem_col.a = alpha
+			var gem_col := GemEchoVisuals.fallback_color(state, gem.uid, UnitLooks.gem_color(gem), alpha)
 			_draw_small_diamond(content_pos, icon_size * 0.4, icon_size * 0.3, gem_col)
+		_draw_echo_smoke(gem.uid, content_pos, icon_size, alpha * 0.95)
 		return
 	var hole := (outer_radius - inner_radius) * 0.16
 	draw_arc(content_pos, hole, 0.0, TAU, 12, Color(UiPalette.TEXT_BRIGHT, 0.55 * alpha), IsoCoordinates.visual(1.0))
@@ -1897,36 +2069,14 @@ func _draw_slot_sector_content(item: Dictionary) -> void:
 
 func _unit_slot_panel_layout(unit: UnitState) -> Dictionary:
 	var anchor := _unit_panel_anchor(unit)
-	var count := maxi(1, unit.slots.size())
-	var spread := minf(PI * 1.5, maxf(PI * 0.7, float(count) * PI * 0.34))
-	var center_angle := -PI * 0.5
-	var gap := PI * 0.018
-	var step_angle := spread / float(count)
-	var inner_radius := IsoCoordinates.visual(18.0)
-	var outer_radius := IsoCoordinates.visual(52.0)
-	var items: Array = []
-	for i in range(unit.slots.size()):
-		var slot: SlotState = unit.slots[i]
-		var start_angle := center_angle - spread * 0.5 + step_angle * float(i) + gap
-		var end_angle := center_angle - spread * 0.5 + step_angle * float(i + 1) - gap
-		var visible := _slot_panel_should_show(slot)
-		var enabled := false
-		if visible and slot_panel_check.is_valid():
-			var check: Dictionary = slot_panel_check.call(unit.uid, i)
-			enabled = bool(check.get("ok", false))
-		items.append({
-			"center": anchor,
-			"inner_radius": inner_radius,
-			"outer_radius": outer_radius,
-			"start_angle": start_angle,
-			"end_angle": end_angle,
-			"slot_index": i,
-			"slot": slot,
-			"unit_uid": unit.uid,
-			"visible": visible,
-			"enabled": enabled,
-		})
-	return {"center": anchor, "radius": outer_radius, "items": items}
+	return BattleSlotPanelLayout.build(
+		unit,
+		anchor,
+		slot_panel_action,
+		slot_panel_check,
+		IsoCoordinates.visual(18.0),
+		IsoCoordinates.visual(52.0)
+	)
 
 
 func _unit_panel_anchor(unit: UnitState) -> Vector2:
@@ -1952,33 +2102,15 @@ func _unit_slot_panel_in_range(unit: UnitState) -> bool:
 
 
 func _slot_panel_should_show(slot: SlotState) -> bool:
-	if slot == null:
-		return false
-	match slot_panel_action:
-		Constants.ACTION_EXTRACT:
-			return not slot.gem_uid.is_empty()
-		Constants.ACTION_INSERT:
-			return true
-	return false
+	return BattleSlotPanelLayout.should_show(slot, slot_panel_action)
 
 
 func _point_in_slot_sector(pos: Vector2, item: Dictionary) -> bool:
-	var center: Vector2 = item.get("center", Vector2.ZERO)
-	var delta := pos - center
-	var dist := delta.length()
-	if dist < float(item.get("inner_radius", 0.0)) or dist > float(item.get("outer_radius", 0.0)):
-		return false
-	var angle := atan2(delta.y, delta.x)
-	return _angle_between(angle, float(item.get("start_angle", 0.0)), float(item.get("end_angle", 0.0)))
+	return BattleSlotPanelLayout.contains_point(pos, item)
 
 
 func _angle_between(angle: float, start_angle: float, end_angle: float) -> bool:
-	var a := wrapf(angle, -PI, PI)
-	var s := wrapf(start_angle, -PI, PI)
-	var e := wrapf(end_angle, -PI, PI)
-	if s <= e:
-		return a >= s and a <= e
-	return a >= s or a <= e
+	return BattleSlotPanelLayout.angle_between(angle, start_angle, end_angle)
 
 
 func _slot_panel_color(slot_type: String) -> Color:
@@ -2793,43 +2925,15 @@ func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
 
 
+func _add_particle(spec: Dictionary) -> void:
+	_ensure_combat_visual_layers()
+	if _particle_fx != null:
+		_particle_fx.add(spec)
+
+
 func _push_sprite_sequence(cfg: Dictionary) -> bool:
-	var paths_val: Variant = cfg.get("paths", PackedStringArray())
-	var packed_paths: PackedStringArray = PackedStringArray()
-	if paths_val is PackedStringArray:
-		packed_paths = paths_val as PackedStringArray
-	elif paths_val is Array:
-		var rows: Array = paths_val as Array
-		for item in rows:
-			packed_paths.append(str(item))
-	else:
-		return false
-	if packed_paths.is_empty():
-		return false
-	var pos: Vector2 = cfg.get("pos", Vector2.ZERO)
-	var fps_val: float = float(cfg.get("fps", 26.0))
-	var draw_here: Variant = cfg.get("draw_size", Vector2(88.0, 88.0))
-	var draw_sz: Vector2 = draw_here if draw_here is Vector2 else Vector2(88.0, 88.0)
-	draw_sz = IsoCoordinates.visual_vec(draw_sz)
-	var tint: Color = cfg.get("tint", Color.WHITE)
-	var vel_here: Variant = cfg.get("velocity", Vector2.ZERO)
-	var vel2: Vector2 = vel_here if vel_here is Vector2 else Vector2.ZERO
-	vel2 = IsoCoordinates.visual_vec(vel2)
-	var extra_life := float(cfg.get("life_pad", 0.05))
-	var dur := float(packed_paths.size()) / maxf(fps_val, 0.01) + extra_life
-	_anim.particles.append({
-		"type": "sprite_seq",
-		"pos": pos,
-		"life": dur,
-		"max_life": dur,
-		"velocity": vel2,
-		"frame_time": 0.0,
-		"fps": fps_val,
-		"paths": packed_paths,
-		"draw_size": draw_sz,
-		"tint": tint,
-	})
-	return true
+	_ensure_combat_visual_layers()
+	return _particle_fx.push_sprite_sequence(cfg) if _particle_fx != null else false
 
 
 ## 播放伤害/爆炸特效
@@ -3037,7 +3141,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 		base_color = Color(1.0, 0.3, 0.15)
 	
 	# 加入一个居中的打击十字/星形特效（类型 hit_mark）
-	_anim.particles.append({
+	_add_particle({
 		"pos": center + IsoCoordinates.visual_vec(Vector2(0, -15)),
 		"color": Color(1.0, 1.0, 1.0, 0.9) if not is_crit else Color(1.0, 0.4, 0.4, 1.0),
 		"life": 0.25,
@@ -3053,7 +3157,7 @@ func _play_damage_procedural_fallback(grid: Vector2i, damage: int, is_crit: bool
 		var vel: Vector2 = Vector2(cos(angle), sin(angle)) * speed
 		var life: float = randf_range(0.3, 0.6)
 		var color: Color = base_color.lerp(Color.WHITE, randf() * 0.4)
-		_anim.particles.append({
+		_add_particle({
 			"pos": center + Vector2(randf_range(-IsoCoordinates.visual(8.0), IsoCoordinates.visual(8.0)), randf_range(-IsoCoordinates.visual(20.0), -IsoCoordinates.visual(5.0))),
 			"color": color,
 			"life": life,
@@ -3083,7 +3187,7 @@ func play_heal_effect(grid: Vector2i) -> void:
 		for _i in range(8):
 			var vel: Vector2 = Vector2(randf_range(-IsoCoordinates.visual(20.0), IsoCoordinates.visual(20.0)), randf_range(-IsoCoordinates.visual(80.0), -IsoCoordinates.visual(40.0)))
 			var life: float = randf_range(0.4, 0.8)
-			_anim.particles.append({
+			_add_particle({
 				"pos": center_legacy + Vector2(randf_range(-12, 12), randf_range(0, 10)),
 				"color": Color(0.3, 1.0, 0.5, 0.9),
 				"life": life,
@@ -3116,7 +3220,7 @@ func play_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 			var angle: float = randf() * TAU
 			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * randf_range(IsoCoordinates.visual(30.0), IsoCoordinates.visual(80.0))
 			var life: float = randf_range(0.2, 0.5)
-			_anim.particles.append({
+			_add_particle({
 				"pos": center_legacy,
 				"color": gem_color,
 				"life": life,
@@ -3167,7 +3271,7 @@ func play_poison_burst(anchor_grid: Vector2i, radius: int, pattern: String = "")
 			var puff_legacy: PackedStringArray = _puff_sprite_paths()
 			for _j in range(2):
 				var life_here: float = randf_range(0.48, 0.62)
-				_anim.particles.append({
+				_add_particle({
 					"type": "sprite_seq",
 					"pos": base + Vector2(randf_range(-IsoCoordinates.visual(14.0), IsoCoordinates.visual(14.0)), randf_range(-IsoCoordinates.visual(18.0), IsoCoordinates.visual(8.0))),
 					"life": life_here,
@@ -3218,7 +3322,7 @@ func play_explosion(grid: Vector2i) -> void:
 			var vel: Vector2 = Vector2(cos(angle), sin(angle)) * speed
 			var life: float = randf_range(0.4, 0.9)
 			var color: Color = Color(1.0, randf_range(0.2, 0.6), 0.05).lerp(Color.WHITE, randf() * 0.3)
-			_anim.particles.append({
+			_add_particle({
 				"pos": center_legacy + Vector2(randf_range(-6, 6), randf_range(-6, 6)),
 				"color": color,
 				"life": life,
@@ -3231,7 +3335,7 @@ func play_explosion(grid: Vector2i) -> void:
 			var speed2: float = randf_range(20.0, 60.0)
 			var vel2: Vector2 = Vector2(cos(angle2), sin(angle2)) * speed2 + Vector2(0, -30)
 			var life2: float = randf_range(0.6, 1.2)
-			_anim.particles.append({
+			_add_particle({
 				"pos": center_legacy + Vector2(randf_range(-10, 10), randf_range(-5, 5)),
 				"color": Color(0.3, 0.3, 0.35, 0.7),
 				"life": life2,
@@ -3239,7 +3343,7 @@ func play_explosion(grid: Vector2i) -> void:
 				"velocity": vel2,
 				"type": "smoke"
 			})
-		_anim.particles.append({
+		_add_particle({
 			"pos": center_legacy,
 			"color": Color(1.0, 0.6, 0.1, 0.8),
 			"life": 0.4,
@@ -3260,66 +3364,9 @@ func play_explosion_batch(events: Array) -> Dictionary:
 	}
 
 
-## 绘制所有粒子
-func _draw_anim_particles() -> void:
-	for p in _anim.particles:
-		var alpha: float = clampf(p["life"] / p["max_life"], 0.0, 1.0)
-		var color: Color = p.get("color", Color.WHITE)
-		color.a *= alpha
-		var pos: Vector2 = p["pos"]
-		match p["type"]:
-			"spark":
-				var sz: float = 3.0 * alpha + 1.0
-				draw_rect(Rect2(pos - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), color)
-			"heal":
-				var sz: float = 4.0 * alpha
-				draw_circle(pos, sz, color)
-			"gem":
-				_draw_small_diamond(pos, 6.0 * alpha + 2.0, 4.0 * alpha + 1.0, color)
-			"smoke":
-				var sz: float = 8.0 * (1.0 - alpha * 0.5)
-				draw_circle(pos, sz, color)
-			"ring":
-				var progress: float = 1.0 - alpha
-				var radius_px: float = 20.0 + progress * 60.0
-				var ring_color: Color = color
-				ring_color.a = alpha * 0.7
-				draw_arc(pos, radius_px, 0, TAU, 24, ring_color, 2.5 * alpha + 0.5)
-			"hit_mark":
-				var scale := float(p.get("scale", 1.0))
-				var expand := (1.0 - alpha) * 10.0 * scale
-				var len := (20.0 + expand) * scale
-				var thick := (3.0 * alpha + 1.0) * scale
-				draw_line(pos + Vector2(-len, -len), pos + Vector2(len, len), color, thick)
-				draw_line(pos + Vector2(-len, len), pos + Vector2(len, -len), color, thick)
-				draw_line(pos + Vector2(-len * 1.2, 0), pos + Vector2(len * 1.2, 0), color, thick * 0.6)
-				draw_line(pos + Vector2(0, -len * 1.2), pos + Vector2(0, len * 1.2), color, thick * 0.6)
-			"sprite_seq":
-				if _fx_textures == null:
-					continue
-				var paths: Variant = p.get("paths", null)
-				if paths == null or paths.is_empty():
-					continue
-				var ft: float = float(p.get("frame_time", 0.0))
-				var fps_val: float = float(p.get("fps", 14.0))
-				var fidx: int = clampi(int(ft * fps_val), 0, int(paths.size()) - 1)
-				var path_s: String = str(paths[fidx])
-				var tex: Texture2D = _fx_textures.texture_at(path_s)
-				if tex == null:
-					continue
-				var dsz: Variant = p.get("draw_size", Vector2(40, 40))
-				var hs: Vector2 = dsz * 0.5
-				var tnt: Color = p.get("tint", Color.WHITE)
-				tnt.a *= alpha
-				draw_texture_rect(tex, Rect2(pos - hs, dsz), false, tnt)
-
-
 func _puff_sprite_paths() -> PackedStringArray:
-	if not _anim.cached_puff_paths.is_empty():
-		return _anim.cached_puff_paths
-	for fi in range(7):
-		_anim.cached_puff_paths.append(_PUFF_FRAME_PATH % fi)
-	return _anim.cached_puff_paths
+	_ensure_combat_visual_layers()
+	return _particle_fx.puff_paths() if _particle_fx != null else PackedStringArray()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3338,35 +3385,12 @@ func play_projectile_task(from_grid: Vector2i, to_grid: Vector2i, proj_color: Co
 
 ## 齐射：多枚投射物同时飞行
 func play_projectiles(shots: Array) -> void:
-	if shots.is_empty():
+	_ensure_combat_visual_layers()
+	if _projectile_fx == null:
 		animation_finished.emit()
 		projectile_animation_finished.emit()
 		return
-	_anim.active_projectiles.clear()
-	var max_duration := 0.0
-	for shot in shots:
-		var from_grid: Vector2i = shot.get("from", Vector2i.ZERO)
-		var to_grid: Vector2i = shot.get("to", Vector2i.ZERO)
-		var proj_color: Color = shot.get("color", Color(0.95, 0.92, 0.45))
-		var from_scr: Vector2 = grid_to_screen(from_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
-		var to_scr: Vector2 = grid_to_screen(to_grid) + IsoCoordinates.visual_vec(Vector2(0, -20))
-		var mid: Vector2 = (from_scr + to_scr) * 0.5
-		var dist: float = from_scr.distance_to(to_scr)
-		var ctrl: Vector2 = mid + Vector2(0, -clampf(dist * 0.45, IsoCoordinates.visual(28.0), IsoCoordinates.visual(90.0)))
-		var duration: float = _scaled_duration(clampf(dist / IsoCoordinates.visual(520.0), 0.18, 0.38))
-		max_duration = maxf(max_duration, duration)
-		_anim.active_projectiles.append({
-			"from": from_scr,
-			"to": to_scr,
-			"ctrl": ctrl,
-			"t": 0.0,
-			"color": proj_color,
-		})
-	var tween: Tween = create_tween()
-	tween.set_ease(Tween.EASE_IN_OUT)
-	tween.set_trans(Tween.TRANS_QUAD)
-	tween.tween_method(_set_projectiles_t, 0.0, 1.0, max_duration)
-	tween.tween_callback(_on_projectiles_done)
+	_projectile_fx.play(shots, _animation_speed_scale)
 
 
 func play_projectiles_task(shots: Array) -> void:
@@ -3376,15 +3400,7 @@ func play_projectiles_task(shots: Array) -> void:
 	await projectile_animation_finished
 
 
-func _set_projectiles_t(t: float) -> void:
-	for projectile in _anim.active_projectiles:
-		projectile["t"] = t
-	queue_redraw()
-
-
-func _on_projectiles_done() -> void:
-	_anim.active_projectiles.clear()
-	queue_redraw()
+func _on_projectile_fx_finished() -> void:
 	animation_finished.emit()
 	projectile_animation_finished.emit()
 
@@ -3406,27 +3422,10 @@ func play_light_beam_task(
 
 
 func play_light_beams(beams: Array) -> float:
-	var duration := _scaled_duration(light_beam_duration)
-	for spec in beams:
-		var beam := _create_light_beam_node(
-			spec.get("from", Vector2i.ZERO),
-			spec.get("to", Vector2i.ZERO),
-			spec.get("color", Color(1.0, 0.96, 0.58)),
-			float(spec.get("width", 1.0)),
-			spec.get("fx", spec)
-		)
-		if beam == null:
-			continue
-		var mat := beam.material as ShaderMaterial
-		var tween := create_tween()
-		tween.set_parallel(true)
-		tween.tween_property(beam, "modulate:a", 0.0, duration * 0.72).set_delay(duration * 0.28)
-		if mat != null:
-			tween.tween_method(func(v: float) -> void:
-				mat.set_shader_parameter("pulse", v)
-			, 0.0, 1.0, duration)
-		tween.finished.connect(_finish_light_beam.bind(beam), CONNECT_ONE_SHOT)
-	return duration
+	_ensure_combat_visual_layers()
+	if _light_beam_fx == null:
+		return 0.0
+	return _light_beam_fx.play(beams, _light_beam_fx_config())
 
 
 func play_light_beams_task(beams: Array) -> void:
@@ -3435,203 +3434,12 @@ func play_light_beams_task(beams: Array) -> void:
 		await get_tree().create_timer(duration).timeout
 
 
-func _finish_light_beam(beam: Node2D) -> void:
-	if is_instance_valid(beam):
-		beam.queue_free()
-	_light_beam_nodes.erase(beam)
-
-
-func _create_light_beam_node(
-	from_grid: Vector2i,
-	to_grid: Vector2i,
-	beam_color: Color,
-	beam_width: float,
-	fx: Dictionary = {}
-) -> Node2D:
-	var from_scr := _light_beam_anchor(from_grid) + IsoCoordinates.visual_vec(Vector2(0, light_beam_source_drop))
-	var to_scr := _light_beam_anchor(to_grid)
-	var delta := to_scr - from_scr
-	if delta.length() < 1.0:
-		return null
-	var dir := delta.normalized()
-	var width := IsoCoordinates.visual(light_beam_base_half_width * maxf(0.1, beam_width) * light_beam_global_scale)
-	var transitions: Array = fx.get("dye_transitions", [])
-	var beam := Node2D.new()
-	var cursor := from_scr
-	var active_color := beam_color
-	var blend_half_length := IsoCoordinates.visual(22.0)
-	for transition_variant in transitions:
-		var transition: Dictionary = transition_variant
-		var transition_center := _light_beam_axis_point(from_scr, to_scr, transition.get("cell", to_grid))
-		var blend_from := transition_center - dir * blend_half_length
-		var blend_to := transition_center + dir * blend_half_length
-		if (blend_from - cursor).dot(dir) > 1.0:
-			_add_light_beam_line_stack(beam, cursor, blend_from, active_color, active_color, width, fx)
-		var next_color: Color = transition.get("color", active_color)
-		_add_light_beam_line_stack(beam, blend_from, blend_to, active_color, next_color, width, fx)
-		cursor = blend_to
-		active_color = next_color
-	if (to_scr - cursor).dot(dir) > 1.0:
-		_add_light_beam_line_stack(beam, cursor, to_scr, active_color, active_color, width, fx)
-	_add_light_beam_endpoint_fx(beam, from_scr, to_scr, beam_color, active_color, width, fx)
-	for hit_variant in fx.get("hit_effects", []):
-		var hit: Dictionary = hit_variant
-		var hit_center := _light_beam_axis_point(from_scr, to_scr, hit.get("cell", to_grid))
-		_add_light_beam_hit_fx(beam, hit_center, hit.get("color", active_color), width)
-	_ensure_combat_visual_layers()
-	_beam_layer.add_child(beam)
-	_light_beam_nodes.append(beam)
-	return beam
-
-
-func _add_light_beam_line_stack(
-	parent: Node2D,
-	from_scr: Vector2,
-	to_scr: Vector2,
-	from_color: Color,
-	to_color: Color,
-	width: float,
-	fx: Dictionary
-) -> void:
-	var power := float(fx.get("power", 1.0)) * light_beam_global_power
-	_add_light_beam_line(parent, from_scr, to_scr, width * 2.0, from_color, to_color, 0.42 * power)
-	_add_light_beam_line(parent, from_scr, to_scr, width * 1.06, from_color, to_color, 0.58 * power)
-	var core_from := from_color.lerp(Color.WHITE, 0.22)
-	var core_to := to_color.lerp(Color.WHITE, 0.22)
-	_add_light_beam_line(parent, from_scr, to_scr, width * 0.2, core_from, core_to, 0.78 * power)
-
-
-func _add_light_beam_line(
-	parent: Node2D,
-	from_scr: Vector2,
-	to_scr: Vector2,
-	line_width: float,
-	from_color: Color,
-	to_color: Color,
-	alpha: float
-) -> void:
-	var line := Line2D.new()
-	line.points = PackedVector2Array([from_scr, to_scr])
-	line.width = line_width
-	line.antialiased = true
-	line.texture = _get_light_beam_soft_texture()
-	line.texture_mode = Line2D.LINE_TEXTURE_STRETCH
-	var gradient := Gradient.new()
-	gradient.set_color(0, Color(from_color.r, from_color.g, from_color.b, alpha))
-	gradient.set_color(1, Color(to_color.r, to_color.g, to_color.b, alpha))
-	line.gradient = gradient
-	var material := CanvasItemMaterial.new()
-	material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	line.material = material
-	parent.add_child(line)
-
-
-func _get_light_beam_soft_texture() -> Texture2D:
-	if _light_beam_soft_texture != null:
-		return _light_beam_soft_texture
-	var image := Image.create(8, 64, false, Image.FORMAT_RGBA8)
-	for y in range(image.get_height()):
-		var normalized := absf((float(y) + 0.5) / float(image.get_height()) - 0.5) * 2.0
-		var alpha := pow(maxf(0.0, 1.0 - normalized), 1.65)
-		for x in range(image.get_width()):
-			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
-	_light_beam_soft_texture = ImageTexture.create_from_image(image)
-	return _light_beam_soft_texture
-
-
-func _light_beam_anchor(grid: Vector2i) -> Vector2:
-	return grid_to_screen(grid) + IsoCoordinates.visual_vec(Vector2(0, light_beam_plane_height))
-
-
-func _light_beam_axis_point(from_scr: Vector2, to_scr: Vector2, grid: Vector2i) -> Vector2:
-	var axis := to_scr - from_scr
-	var length_squared := axis.length_squared()
-	if length_squared < 1.0:
-		return from_scr
-	var raw := _light_beam_anchor(grid)
-	var t := clampf((raw - from_scr).dot(axis) / length_squared, 0.0, 1.0)
-	return from_scr + axis * t
-
-
-func _add_light_beam_endpoint_fx(
-	parent: Node2D,
-	from_scr: Vector2,
-	to_scr: Vector2,
-	from_color: Color,
-	to_color: Color,
-	width: float,
-	fx: Dictionary
-) -> void:
-	var power := float(fx.get("power", 1.0)) * light_beam_global_power
-	_add_light_beam_ring(parent, from_scr, width * 0.28, from_color, 0.42 * power)
-	_add_light_beam_ring(parent, to_scr, width * 0.38, to_color, 0.28 * power)
-	var dir := (to_scr - from_scr).normalized()
-	_add_light_beam_line(parent, from_scr - dir * width * 0.5, from_scr + dir * width * 0.72, width * 0.34, from_color, from_color, 0.7 * power)
-	_add_light_beam_line(parent, to_scr - dir * width * 0.5, to_scr + dir * width * 0.28, width * 0.28, to_color, to_color, 0.42 * power)
-
-
-func _add_light_beam_hit_fx(parent: Node2D, center: Vector2, color: Color, width: float) -> void:
-	_add_light_beam_ring(parent, center, width * 0.48, color, 0.48)
-	_add_light_beam_ring(parent, center, width * 0.27, color.lerp(Color.WHITE, 0.25), 0.68)
-	var flare_length := width * 0.58
-	_add_light_beam_line(parent, center - Vector2(flare_length, 0), center + Vector2(flare_length, 0), width * 0.08, color, color, 0.48)
-	_add_light_beam_line(parent, center - Vector2(0, flare_length), center + Vector2(0, flare_length), width * 0.08, color, color, 0.48)
-
-
-func _add_light_beam_ring(parent: Node2D, center: Vector2, radius: float, color: Color, alpha: float) -> void:
-	var ring := Line2D.new()
-	var points := PackedVector2Array()
-	for i in range(17):
-		var angle := TAU * float(i) / 16.0
-		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-	ring.points = points
-	ring.width = maxf(IsoCoordinates.visual(1.5), radius * 0.12)
-	ring.antialiased = true
-	ring.default_color = Color(color.r, color.g, color.b, alpha)
-	var material := CanvasItemMaterial.new()
-	material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	ring.material = material
-	parent.add_child(ring)
-
-
-func _draw_projectile() -> void:
-	for projectile in _anim.active_projectiles:
-		_draw_single_projectile(projectile)
-
-
-func _draw_single_projectile(projectile: Dictionary) -> void:
-	var t: float = float(projectile["t"])
-	var from: Vector2 = projectile["from"]
-	var to: Vector2 = projectile["to"]
-	var ctrl: Vector2 = projectile["ctrl"]
-	var color: Color = projectile["color"]
-
-	# 二次贝塞尔插值当前位置
-	var inv := 1.0 - t
-	var pos: Vector2 = inv * inv * from + 2.0 * inv * t * ctrl + t * t * to
-
-	# 朝向（飞行方向的切线）决定绘制角度
-	var tangent: Vector2 = (2.0 * (1.0 - t) * (ctrl - from) + 2.0 * t * (to - ctrl)).normalized()
-
-	# 拖尾：沿切线反方向画几段渐隐线段
-	const TRAIL_STEPS := 5
-	for i in range(TRAIL_STEPS):
-		var s: float = float(i + 1) / float(TRAIL_STEPS)
-		var alpha: float = (1.0 - s) * 0.55
-		var trail_t: float = clampf(t - s * 0.06, 0.0, 1.0)
-		var tinv := 1.0 - trail_t
-		var trail_pos: Vector2 = tinv * tinv * from + 2.0 * tinv * trail_t * ctrl + trail_t * trail_t * to
-		var trail_color: Color = color
-		trail_color.a = alpha
-		draw_line(pos, trail_pos, trail_color, maxf(IsoCoordinates.visual(3.0) - s * IsoCoordinates.visual(1.5), IsoCoordinates.visual(0.5)))
-
-	var perp: Vector2 = Vector2(-tangent.y, tangent.x)
-	var tip: Vector2 = pos + tangent * IsoCoordinates.visual(7.0)
-	var tail_pt: Vector2 = pos - tangent * IsoCoordinates.visual(5.0)
-	var left_pt: Vector2 = pos + perp * IsoCoordinates.visual(3.5)
-	var right_pt: Vector2 = pos - perp * IsoCoordinates.visual(3.5)
-	var pts := PackedVector2Array([tip, left_pt, tail_pt, right_pt])
-	draw_colored_polygon(pts, color)
-	var outline_color: Color = color.darkened(0.3)
-	outline_color.a = 0.85
-	draw_polyline(PackedVector2Array([tip, left_pt, tail_pt, right_pt, tip]), outline_color, IsoCoordinates.visual(1.0))
+func _light_beam_fx_config() -> Dictionary:
+	return {
+		"duration": _scaled_duration(light_beam_duration),
+		"base_half_width": light_beam_base_half_width,
+		"global_scale": light_beam_global_scale,
+		"global_power": light_beam_global_power,
+		"plane_height": light_beam_plane_height,
+		"source_drop": light_beam_source_drop,
+	}

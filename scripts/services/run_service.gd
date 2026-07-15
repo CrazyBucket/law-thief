@@ -5,6 +5,8 @@ const RUN_SAVE_VERSION := 1
 const RUN_SAVE_SCHEMA_VERSION := 2
 const RUN_RULESET_VERSION := 2
 const RUN_MIN_SUPPORTED_SCHEMA_VERSION := 1
+const RunPlayerHealth = preload("res://scripts/services/run_player_health.gd")
+const RunRecordBuilder = preload("res://scripts/services/run_record_builder.gd")
 
 var _run: RunState = null
 var _progress_payload: Dictionary = {}
@@ -210,6 +212,10 @@ func get_player_run_snapshot() -> Dictionary:
 	}
 
 
+func _player_default_max_hp() -> int:
+	return int(DataRegistry.get_unit_def("unit_player")["max_hp"])
+
+
 func mark_room_resolved(room_id: String, payload: Dictionary) -> void:
 	if _run == null:
 		return
@@ -251,69 +257,94 @@ func append_room_transaction(room_id: String, transaction_id: String, result: Di
 	set_room_state(room_id, room_state)
 
 
+func get_room_transaction(room_id: String, transaction_id: String) -> Dictionary:
+	var room_state := get_room_state(room_id)
+	var transactions: Variant = room_state.get("transactions", [])
+	if not transactions is Array:
+		return {}
+	for raw_tx in transactions:
+		if raw_tx is Dictionary and str(raw_tx.get("transaction_id", "")) == transaction_id:
+			var result: Variant = raw_tx.get("result", {})
+			return (result as Dictionary).duplicate(true) if result is Dictionary else {}
+	return {}
+
+
+func has_room_transaction(room_id: String, transaction_id: String) -> bool:
+	return not get_room_transaction(room_id, transaction_id).is_empty()
+
+
+func claim_battle_relic(room_id: String, relic_id: String, room_type: String = "") -> Dictionary:
+	if _run == null or room_id.is_empty() or relic_id.is_empty():
+		return {"ok": false, "reason": "invalid_claim"}
+	var transaction_id := "%s:battle_relic" % room_id
+	var existing := get_room_transaction(room_id, transaction_id)
+	if not existing.is_empty():
+		existing["ok"] = true
+		existing["duplicate"] = true
+		return existing
+	_run.add_relic(relic_id)
+	ProfileService.mark_seen_relic(relic_id)
+	AchievementService.refresh_progress_flags()
+	var result := {
+		"ok": true,
+		"relic_id": relic_id,
+		"reward_kind": "relic",
+		"room_type": room_type,
+	}
+	append_room_transaction(room_id, transaction_id, result)
+	DebugService.log_info("RunService: claimed battle relic %s" % relic_id)
+	return result
+
+
+func claim_battle_gem(room_id: String, gem_id: String, room_type: String = "") -> Dictionary:
+	if _run == null or room_id.is_empty() or gem_id.is_empty():
+		return {"ok": false, "reason": "invalid_claim"}
+	var transaction_id := "%s:battle_gem" % room_id
+	var existing := get_room_transaction(room_id, transaction_id)
+	if not existing.is_empty():
+		existing["ok"] = true
+		existing["duplicate"] = true
+		return existing
+	if not _run.carried_gem.is_empty():
+		return {
+			"ok": false,
+			"error": "carried_gem_occupied",
+			"carried_gem_id": str(_run.carried_gem.get("gem_id", "")),
+		}
+	_run.carried_gem = {"gem_id": gem_id}
+	var result := {
+		"ok": true,
+		"gem_id": gem_id,
+		"reward_kind": "gem",
+		"room_type": room_type,
+	}
+	append_room_transaction(room_id, transaction_id, result)
+	DebugService.log_info("RunService: claimed battle gem %s" % gem_id)
+	return result
+
+
 func heal_player_percent(ratio: float) -> Dictionary:
 	if _run == null:
 		return {}
-	var max_hp := _run.player_max_hp
-	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
-	var current_hp := _run.player_hp
-	if current_hp < 0:
-		current_hp = max_hp
-	var scaled_heal := maxf(0.0, float(max_hp) * ratio)
-	var amount := maxi(1, ceili(scaled_heal - 0.0001))
-	var next_hp := mini(max_hp, current_hp + amount)
-	var actual := maxi(0, next_hp - current_hp)
-	_run.player_max_hp = max_hp
-	_run.player_hp = next_hp
+	var result := RunPlayerHealth.heal_percent(_run, ratio, _player_default_max_hp())
 	save_run()
-	return {
-		"amount": actual,
-		"after_hp": next_hp,
-		"max_hp": max_hp,
-	}
+	return result
 
 
 func heal_player_amount(amount: int) -> Dictionary:
 	if _run == null:
 		return {}
-	var max_hp := _run.player_max_hp
-	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
-	var current_hp := _run.player_hp
-	if current_hp < 0:
-		current_hp = max_hp
-	var next_hp := mini(max_hp, current_hp + maxi(0, amount))
-	var actual := maxi(0, next_hp - current_hp)
-	_run.player_max_hp = max_hp
-	_run.player_hp = next_hp
+	var result := RunPlayerHealth.heal_amount(_run, amount, _player_default_max_hp())
 	save_run()
-	return {
-		"amount": actual,
-		"after_hp": next_hp,
-		"max_hp": max_hp,
-	}
+	return result
 
 
 func damage_player_amount(amount: int) -> Dictionary:
 	if _run == null:
 		return {}
-	var max_hp := _run.player_max_hp
-	if max_hp <= 0:
-		max_hp = int(DataRegistry.get_unit_def("unit_player")["max_hp"])
-	var current_hp := _run.player_hp
-	if current_hp < 0:
-		current_hp = max_hp
-	var next_hp := maxi(0, current_hp - maxi(0, amount))
-	var actual := maxi(0, current_hp - next_hp)
-	_run.player_max_hp = max_hp
-	_run.player_hp = next_hp
+	var result := RunPlayerHealth.damage_amount(_run, amount, _player_default_max_hp())
 	save_run()
-	return {
-		"amount": actual,
-		"after_hp": next_hp,
-		"max_hp": max_hp,
-	}
+	return result
 
 
 func get_balance(resource_id: String = "gold") -> int:
@@ -414,39 +445,7 @@ func complete_run(result: String) -> void:
 
 
 func build_run_record(result: String) -> Dictionary:
-	if _run == null:
-		return {}
-	var gold_earned := 0
-	var gold_spent := 0
-	for raw_entry in _run.resource_ledger:
-		if not raw_entry is Dictionary:
-			continue
-		var entry := raw_entry as Dictionary
-		if str(entry.get("resource_id", "")) != "gold":
-			continue
-		var delta := int(entry.get("final_amount", 0))
-		if delta >= 0:
-			gold_earned += delta
-		else:
-			gold_spent += -delta
-	var active_rule_ids: Array[String] = []
-	for raw_rule in _run.adventure_rules:
-		if raw_rule is Dictionary:
-			active_rule_ids.append(str((raw_rule as Dictionary).get("rule_id", "")))
-	return {
-		"run_id": "run_%d_%d" % [int(Time.get_unix_time_from_system()), _run.master_seed],
-		"type": "run",
-		"result": result,
-		"chapter_reached": _run.current_chapter,
-		"ended_at": int(Time.get_unix_time_from_system()),
-		"master_seed": _run.master_seed,
-		"summary": {
-			"gold_earned": gold_earned,
-			"gold_spent": gold_spent,
-			"owned_relics": _run.owned_relics.duplicate(),
-			"active_rule_ids": active_rule_ids,
-		},
-	}
+	return RunRecordBuilder.build(_run, result, int(Time.get_unix_time_from_system()))
 
 
 func get_save_compat_meta() -> Dictionary:

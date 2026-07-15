@@ -408,6 +408,12 @@ func _play_anim_event(ev: Dictionary) -> void:
 				flash_color = Color(0.62, 0.42, 1.0)
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), flash_color)
 			await _await_anim_delay(0.32)
+		"spawn":
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.72, 0.82, 0.32))
+			await _await_anim_delay(0.28)
+		"transform":
+			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.58, 0.34, 0.66))
+			await _await_anim_delay(0.36)
 		"projectile", "projectile_deflect":
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
 			await _board.play_projectile_task(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
@@ -436,6 +442,13 @@ func _play_anim_event(ev: Dictionary) -> void:
 		"miss":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.7, 0.7, 0.7, 0.6))
 			await _await_anim_delay(0.22)
+		"die":
+			if _board.has_method("play_unit_death"):
+				await _board.play_unit_death(str(ev.get("uid", "")))
+			else:
+				await _await_anim_delay(0.38)
+		"entity_destroyed":
+			await _await_anim_delay(0.08)
 
 
 func _prime_event_state(ev: Dictionary) -> void:
@@ -506,6 +519,40 @@ func _apply_event_state(ev: Dictionary) -> void:
 						_display_state.gems[gem.uid] = gem.clone()
 				_display_state.register_unit(clone.clone())
 				_display_state.rebuild_occupancy()
+		"spawn":
+			_copy_runtime_unit_to_display(str(ev.get("uid", "")))
+		"transform":
+			_copy_runtime_unit_to_display(str(ev.get("uid", "")), true)
+		"die":
+			var dead_uid := str(ev.get("uid", ""))
+			var dead_unit: UnitState = _display_state.units.get(dead_uid, null)
+			if dead_unit != null:
+				_display_state.kill_unit(dead_unit)
+		"entity_destroyed":
+			var entity_uid := str(ev.get("uid", ""))
+			var destroyed: EntityState = _display_state.entities.get(entity_uid, null)
+			if destroyed != null:
+				destroyed.alive = false
+
+
+func _copy_runtime_unit_to_display(uid: String, replace_existing: bool = false) -> void:
+	if uid.is_empty() or _display_state == null or _controller == null or _controller.state == null:
+		return
+	var runtime_unit: UnitState = _controller.state.units.get(uid, null)
+	if runtime_unit == null or not runtime_unit.alive:
+		return
+	if replace_existing:
+		var existing: UnitState = _display_state.units.get(uid, null)
+		if existing != null:
+			_display_state.unregister_unit(existing)
+	for slot in runtime_unit.slots:
+		if slot == null or slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = _controller.state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			_display_state.gems[gem.uid] = gem.clone()
+	_display_state.register_unit(runtime_unit.clone())
+	_display_state.rebuild_occupancy()
 
 
 func _scaled_anim_time(base_duration: float) -> float:

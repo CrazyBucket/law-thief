@@ -3,6 +3,9 @@ extends RefCounted
 
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const _UnitSpawnService = preload("res://scripts/rules/unit_spawn_service.gd")
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 
 const MUTATIONS: Array[String] = [
 	Constants.OVERLOAD_LAWLESS_ANY_EXTRACT,
@@ -125,15 +128,18 @@ static func leave_extract_echo(state: GameState, slot: SlotState, gem: GemState,
 		return
 	if slot == null or gem == null or not slot.gem_uid.is_empty():
 		return
+	# 残响只复制真实宝石一次；残响本身不能继续产出残响，避免单回合无限拔取。
+	if state.overload_echo_gems.has(gem.uid):
+		return
 	var registry: Node = _data_registry()
 	if registry == null:
 		return
 	var echo_uid: String = str(registry.next_runtime_uid("echo_gem"))
 	var echo: GemState = registry.create_gem_instance(echo_uid, gem.gem_id, gem.def_overrides)
-	echo.owner_uid = owner_uid
-	echo.slot_index = -1
 	state.gems[echo_uid] = echo
-	slot.gem_uid = echo_uid
+	if not _GemTransfer.to_slot_reference(state, echo, slot, owner_uid):
+		state.gems.erase(echo_uid)
+		return
 	state.overload_echo_gems[echo_uid] = state.turn_index + 1
 	state.log("过载残响：%s 的回声暂留原槽" % registry.get_gem_display_name(gem))
 
@@ -189,10 +195,10 @@ static func fill_random_enemy_gem(state: GameState) -> void:
 		return
 	var gem_uid: String = str(registry.next_runtime_uid("overload_gem"))
 	var gem: GemState = registry.create_gem_instance(gem_uid, gem_id, {})
-	gem.owner_uid = unit.uid
-	gem.slot_index = unit.slots.find(slot)
 	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	if not _GemTransfer.to_unit_slot(state, gem, unit, slot):
+		state.gems.erase(gem_uid)
+		return
 	state.log("过载异变：%s 的 %s 槽被填入 %s" % [
 		unit.uid, slot.slot_type, registry.get_gem_display_name(gem)
 	])
@@ -226,13 +232,16 @@ static func spawn_special_enemy(state: GameState, unit_def_id: String, label: St
 	var def: Dictionary = registry.get_unit_def(unit_def_id)
 	_instantiate_spawn_gems(state, uid, def, registry)
 	var unit := UnitState.from_def(uid, unit_def_id, Constants.TEAM_ENEMY, cell, def)
-	for i in range(unit.slots.size()):
-		var slot: SlotState = unit.slots[i]
-		if slot != null and not slot.gem_uid.is_empty() and state.gems.has(slot.gem_uid):
-			var gem: GemState = state.gems[slot.gem_uid]
-			gem.owner_uid = unit.uid
-			gem.slot_index = i
-	state.register_unit(unit)
+	var spawn_result := _UnitSpawnService.register_spawn(state, unit, [], {
+		"root_spawn": true,
+		"emit_event": false,
+		"event_kind": "none",
+		"refresh_intent": false,
+		"reason": "overload_reinforcement",
+	})
+	if not bool(spawn_result.get("ok", false)):
+		return null
+	_GemTransfer.reindex_unit(state, unit)
 	state.log("过载异变：%s 出现于 %s" % [label, cell])
 	return unit
 
@@ -334,15 +343,7 @@ static func _clear_expired_echoes(state: GameState) -> void:
 
 static func _remove_echo_gem(state: GameState, gem_uid: String) -> void:
 	state.overload_echo_gems.erase(gem_uid)
-	for unit in state.units.values():
-		for slot in unit.slots:
-			if slot != null and slot.gem_uid == gem_uid:
-				slot.gem_uid = ""
-	for tile in state.tiles.values():
-		for slot in tile.slots:
-			if slot != null and slot.gem_uid == gem_uid:
-				slot.gem_uid = ""
-	state.gems.erase(gem_uid)
+	_GemTransfer.remove(state, gem_uid)
 	state.log("过载残响消散")
 
 
@@ -420,11 +421,9 @@ static func _try_player_ai_insert(state: GameState, player: UnitState, out_event
 			if not result.get("ok", false):
 				continue
 			record_insert(state, bool(result.get("overload_forced", false)))
-			out_events.append({
-				"type": "gem_flash",
-				"pos": unit.pos,
+			out_events.append(_EventBuilder.gem_flash(unit.pos, {
 				"color": _data_registry().get_gem_color(held_gem) if held_gem != null else Color.WHITE,
-			})
+			}))
 			apply_gem_operation_backlash(state, out_events)
 			return "嵌入 %s" % _unit_label(unit)
 	return ""
@@ -442,7 +441,7 @@ static func _try_player_ai_extract(state: GameState, player: UnitState, out_even
 			if not result.get("ok", false):
 				continue
 			record_non_insert_action(state, Constants.ACTION_EXTRACT)
-			out_events.append({"type": "gem_flash", "pos": unit.pos, "color": Color(1.0, 0.85, 0.3)})
+			out_events.append(_EventBuilder.gem_flash(unit.pos, {"color": Color(1.0, 0.85, 0.3)}))
 			apply_gem_operation_backlash(state, out_events)
 			return "拔取 %s" % _unit_label(unit)
 	return ""
@@ -567,7 +566,7 @@ static func _instantiate_spawn_gems(state: GameState, owner_uid: String, def: Di
 			continue
 		var gem_uid: String = str(registry.next_runtime_uid("gem"))
 		var gem: GemState = registry.create_gem_instance(gem_uid, gem_id, slot_entry.get("gem_overrides", {}))
-		gem.owner_uid = owner_uid
+		gem.mark_detached()
 		state.gems[gem_uid] = gem
 		slot_entry["gem_uid"] = gem_uid
 		slot_entry.erase("gem_id")

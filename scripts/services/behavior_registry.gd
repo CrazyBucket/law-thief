@@ -8,6 +8,8 @@ const _MAP := {
 	"patrol_guard": preload("res://scripts/rules/behaviors/behavior_patrol_guard.gd"),
 	"stone_bow_guard": preload("res://scripts/rules/behaviors/behavior_stone_bow_guard.gd"),
 	"fission_slime": preload("res://scripts/rules/behaviors/behavior_fission_slime.gd"),
+	"law_worm": preload("res://scripts/rules/behaviors/behavior_law_worm.gd"),
+	"broodmother": preload("res://scripts/rules/behaviors/behavior_broodmother.gd"),
 	"training_dummy": preload("res://scripts/rules/behaviors/behavior_training_dummy.gd"),
 }
 

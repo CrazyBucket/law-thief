@@ -5,15 +5,11 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const IntentIcons = preload("res://scripts/ui/intent_icons.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
+const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 
 const _STATUS_PANEL_WIDTH := 320.0
-const _RELIC_ICON_MAX := 30.0
-const _RELIC_ICON_MIN := 24.0
-const _RELIC_ROW_GAP := 6.0
-const _RELIC_COLUMN_GAP := 12.0
-const _RELIC_ICON_PAD := 3.0
 const _RELIC_BAR_FALLBACK_H := 320.0
-const _RELIC_BAR_MAX_COLUMNS := 3
 
 var _controller: BattleController = null
 var _board = null
@@ -61,9 +57,7 @@ var _select_unit_cb: Callable = Callable()
 var _set_timeline_hover_cb: Callable = Callable()
 var _clear_timeline_hover_cb: Callable = Callable()
 
-var _relic_bar_ids: Array[String] = []
-var _relic_bar_layout_key := ""
-var _relic_render_texture_cache: Dictionary = {}
+var _relic_bar: BattleHudRelicBar = null
 var _intent_row: HBoxContainer = null
 var _intent_icon_wrap: Control = null
 var _intent_icon: TextureRect = null
@@ -185,6 +179,15 @@ func setup(deps: Dictionary) -> void:
 	_select_unit_cb = deps.get("select_unit_cb", Callable())
 	_set_timeline_hover_cb = deps.get("set_timeline_hover_cb", Callable())
 	_clear_timeline_hover_cb = deps.get("clear_timeline_hover_cb", Callable())
+	_relic_bar = BattleHudRelicBar.new()
+	_relic_bar.setup({
+		"root": _relic_bar_root,
+		"scroll": _relic_bar_scroll,
+		"grid": _relic_bar_vbox,
+		"owned_relics_cb": Callable(self, "_owned_relics"),
+		"texture_for_relic_cb": Callable(self, "_relic_texture"),
+		"show_detail_cb": _show_relic_detail_cb,
+	})
 
 
 func refresh(context: Dictionary) -> Dictionary:
@@ -243,11 +246,13 @@ func refresh(context: Dictionary) -> Dictionary:
 		if _held_gem_icon != null:
 			_held_gem_icon.texture = _gem_texture(held)
 			_held_gem_icon.self_modulate = _gem_sprite_modulate(held)
+			GemEchoVisuals.apply_icon_material(_held_gem_icon, _controller.state, held.uid)
 			_held_gem_icon.visible = true
 		_held_label.text = "手持 %s" % gem_name
 		_held_label.add_theme_color_override("font_color", _gem_color(held).lightened(0.15))
 	else:
 		if _held_gem_icon != null:
+			GemEchoVisuals.apply_icon_material(_held_gem_icon, _controller.state, "")
 			_held_gem_icon.visible = false
 		_held_label.text = ""
 		_held_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
@@ -350,7 +355,7 @@ func fit_status_panel_height() -> void:
 func _apply_status_panel_height(margins: Vector2) -> void:
 	_sync_panel_clip_heights()
 	_status_vbox.queue_sort()
-	var panel_h := _status_vbox.get_minimum_size().y + margins.y
+	var panel_h := _status_vbox.get_combined_minimum_size().y + margins.y
 	_status_panel.custom_minimum_size.y = panel_h
 	_status_panel.size.y = panel_h
 	_status_panel.offset_bottom = _status_panel.offset_top + panel_h
@@ -365,10 +370,45 @@ func _sync_panel_clip_heights() -> void:
 	if _slot_clip != null and _slot_box != null:
 		var slot_h := 0.0
 		if _slot_box.get_child_count() > 0:
-			slot_h = float(_slot_box.get_minimum_size().y)
+			var slot_width := maxf(_slot_box.size.x, _slot_clip.size.x)
+			if slot_width <= 0.0:
+				slot_width = _slot_clip.custom_minimum_size.x
+			slot_h = _flow_content_height(_slot_box, slot_width)
 		_slot_clip.custom_minimum_size.y = slot_h
+		_slot_box.size.y = slot_h
 	if _overload_detail_label != null and not _overload_detail_label.visible:
 		_overload_detail_label.custom_minimum_size.y = 0.0
+
+
+func _flow_content_height(flow: Container, available_width: float) -> float:
+	## FlowContainer's minimum height describes one unwrapped row. Calculate the
+	## wrapped rows from live children so queued-for-deletion slots cannot inflate
+	## the panel and the panel follows the actual visible content.
+	if flow == null or available_width <= 0.0:
+		return 0.0
+	var h_gap := float(flow.get_theme_constant("h_separation", "FlowContainer"))
+	var v_gap := float(flow.get_theme_constant("v_separation", "FlowContainer"))
+	var row_width := 0.0
+	var row_height := 0.0
+	var content_height := 0.0
+	var has_row := false
+	for child in flow.get_children():
+		if not child is Control or child.is_queued_for_deletion():
+			continue
+		var child_min := (child as Control).get_combined_minimum_size()
+		if child_min.x <= 0.0 and child_min.y <= 0.0:
+			continue
+		if has_row and row_width + h_gap + child_min.x > available_width + 0.5:
+			content_height += row_height + v_gap
+			row_width = 0.0
+			row_height = 0.0
+			has_row = false
+		row_width += child_min.x if not has_row else h_gap + child_min.x
+		row_height = maxf(row_height, child_min.y)
+		has_row = true
+	if has_row:
+		content_height += row_height
+	return content_height
 
 
 func sync_toggle_btn_x(panel_visible: bool) -> void:
@@ -739,6 +779,7 @@ func _make_gem_icon(gem: GemState, size_px: int) -> TextureRect:
 	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.self_modulate = _gem_sprite_modulate(gem)
+	GemEchoVisuals.apply_icon_material(icon, _controller.state, gem.uid)
 	return icon
 
 
@@ -975,93 +1016,19 @@ func _apply_editor_compact_layout(compact: bool) -> void:
 
 
 func _refresh_relic_bar(available_height: float = _RELIC_BAR_FALLBACK_H) -> void:
-	if _relic_bar_vbox == null or _relic_bar_scroll == null:
-		return
-	var owned: Array[String] = []
-	var run_service := _run_service()
-	if run_service != null and run_service.is_run_active():
-		owned = _string_array_from(run_service.get_owned_relics())
-	var has_relics := not owned.is_empty()
-	if _relic_bar_root != null:
-		_relic_bar_root.visible = has_relics
-	_relic_bar_scroll.visible = has_relics
-	if not has_relics:
-		_relic_bar_ids = owned.duplicate()
-		_relic_bar_layout_key = ""
-		for child in _relic_bar_vbox.get_children():
-			child.queue_free()
-		_relic_bar_scroll.custom_minimum_size = Vector2(0, 0)
-		return
+	if _relic_bar != null:
+		_relic_bar.refresh(available_height)
 
-	var layout := _relic_bar_layout(owned.size(), available_height)
-	var icon_size := float(layout.get("icon_size", _RELIC_ICON_MAX))
-	var columns := int(layout.get("columns", 1))
-	var content_size: Vector2 = layout.get("content_size", Vector2.ZERO)
-	var viewport_size: Vector2 = layout.get("viewport_size", Vector2.ZERO)
-	var allow_scroll := bool(layout.get("scroll", false))
-	var layout_key := "%d:%d:%0.1f:%d" % [owned.size(), columns, icon_size, int(allow_scroll)]
-	var ids_changed := owned != _relic_bar_ids
-	if ids_changed or layout_key != _relic_bar_layout_key:
-		_relic_bar_ids = owned.duplicate()
-		_relic_bar_layout_key = layout_key
-		for child in _relic_bar_vbox.get_children():
-			child.queue_free()
-		if _relic_bar_vbox is GridContainer:
-			(_relic_bar_vbox as GridContainer).columns = columns
-		_relic_bar_vbox.add_theme_constant_override("h_separation", int(_RELIC_COLUMN_GAP))
-		_relic_bar_vbox.add_theme_constant_override("v_separation", int(_RELIC_ROW_GAP))
-		for relic_id in _relic_ids_for_grid(owned, columns):
-			_relic_bar_vbox.add_child(_create_relic_badge(relic_id, icon_size))
-	_relic_bar_vbox.custom_minimum_size = content_size
-	_relic_bar_scroll.custom_minimum_size = viewport_size
-	_relic_bar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_relic_bar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if allow_scroll else ScrollContainer.SCROLL_MODE_DISABLED
+
+func _owned_relics() -> Array[String]:
+	var run_service := _run_service()
+	if run_service == null or not run_service.is_run_active():
+		return []
+	return _string_array_from(run_service.get_owned_relics())
 
 
 func _relic_bar_layout(count: int, available_height: float = _RELIC_BAR_FALLBACK_H) -> Dictionary:
-	var bar_height := maxf(_RELIC_ICON_MIN + _RELIC_ICON_PAD * 2.0, available_height)
-	var padded_max := _RELIC_ICON_MAX + _RELIC_ICON_PAD * 2.0
-	var padded_min := _RELIC_ICON_MIN + _RELIC_ICON_PAD * 2.0
-	var single_col_h := float(count) * padded_max + float(maxi(count - 1, 0)) * _RELIC_ROW_GAP
-	if single_col_h <= bar_height:
-		return _relic_bar_layout_result(1, _RELIC_ICON_MAX, single_col_h, padded_max, false, bar_height)
-
-	var shrink_total_gap := float(maxi(count - 1, 0)) * _RELIC_ROW_GAP
-	var shrink_icon := floorf((bar_height - shrink_total_gap) / float(count)) - _RELIC_ICON_PAD * 2.0
-	if shrink_icon >= _RELIC_ICON_MIN:
-		var padded_icon := shrink_icon + _RELIC_ICON_PAD * 2.0
-		return _relic_bar_layout_result(1, shrink_icon, bar_height, padded_icon, false, bar_height)
-
-	var rows_at_min := maxi(1, int(floorf((bar_height + _RELIC_ROW_GAP) / (padded_min + _RELIC_ROW_GAP))))
-	var columns := mini(_RELIC_BAR_MAX_COLUMNS, maxi(1, int(ceili(float(count) / float(rows_at_min)))))
-	var rows := int(ceili(float(count) / float(columns)))
-	var content_h := float(rows) * padded_min + float(maxi(rows - 1, 0)) * _RELIC_ROW_GAP
-	var content_w := float(columns) * padded_min + float(maxi(columns - 1, 0)) * _RELIC_COLUMN_GAP
-	return _relic_bar_layout_result(columns, _RELIC_ICON_MIN, content_h, content_w, content_h > bar_height, bar_height)
-
-
-func _relic_bar_layout_result(columns: int, icon_size: float, content_h: float, content_w: float, scroll: bool, max_height: float) -> Dictionary:
-	var viewport_w := content_w + (12.0 if scroll else 0.0)
-	return {
-		"columns": columns,
-		"icon_size": icon_size,
-		"content_size": Vector2(content_w, content_h),
-		"viewport_size": Vector2(viewport_w, minf(content_h, max_height)),
-		"scroll": scroll,
-	}
-
-
-func _relic_ids_for_grid(ids: Array[String], columns: int) -> Array[String]:
-	if columns <= 1:
-		return ids.duplicate()
-	var ordered: Array[String] = []
-	var rows := int(ceili(float(ids.size()) / float(columns)))
-	for row in range(rows):
-		for col in range(columns):
-			var idx := col * rows + row
-			if idx < ids.size():
-				ordered.append(ids[idx])
-	return ordered
+	return BattleHudRelicBar.layout_for(count, available_height)
 
 
 func _string_array_from(values: Variant) -> Array[String]:
@@ -1073,100 +1040,14 @@ func _string_array_from(values: Variant) -> Array[String]:
 
 
 func _create_relic_badge(relic_id: String, icon_size: float) -> Control:
-	var item_size := Vector2(icon_size + _RELIC_ICON_PAD * 2.0, icon_size + _RELIC_ICON_PAD * 2.0)
-	var root := Control.new()
-	root.custom_minimum_size = item_size
-	root.mouse_filter = Control.MOUSE_FILTER_PASS
-	root.clip_contents = false
-
-	var icon_tex := _relic_texture(relic_id)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.name = "RelicIcon"
-		icon.texture = _render_relic_texture(icon_tex, icon_size, false)
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_SCALE
-		icon.self_modulate = Color.WHITE
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		root.add_child(icon)
-
-		var outline := TextureRect.new()
-		outline.name = "HoverTextureOutline"
-		outline.visible = false
-		outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		outline.texture = _render_relic_texture(icon_tex, icon_size, true)
-		outline.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		outline.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		outline.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		outline.stretch_mode = TextureRect.STRETCH_SCALE
-		root.add_child(outline)
-		root.mouse_entered.connect(func() -> void:
-			outline.visible = true
-			icon.visible = false
-		)
-		root.mouse_exited.connect(func() -> void:
-			outline.visible = false
-			icon.visible = true
-		)
-
-	var click_btn := Button.new()
-	click_btn.flat = true
-	click_btn.focus_mode = Control.FOCUS_NONE
-	click_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	click_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	click_btn.mouse_entered.connect(func() -> void:
-		var outline := root.get_node_or_null("HoverTextureOutline")
-		var icon := root.get_node_or_null("RelicIcon")
-		if outline != null:
-			outline.visible = true
-		if icon != null:
-			icon.visible = false
-	)
-	click_btn.mouse_exited.connect(func() -> void:
-		var outline := root.get_node_or_null("HoverTextureOutline")
-		var icon := root.get_node_or_null("RelicIcon")
-		if outline != null:
-			outline.visible = false
-		if icon != null:
-			icon.visible = true
-	)
-	if _show_relic_detail_cb.is_valid():
-		click_btn.pressed.connect(_show_relic_detail_cb.bind(relic_id))
-	root.add_child(click_btn)
-	return root
-
-
-func _render_relic_texture(source_texture: Texture2D, icon_size: float, with_outline: bool) -> Texture2D:
-	var cache_key := "%s:%d:%d" % [source_texture.resource_path, int(icon_size), int(with_outline)]
-	if _relic_render_texture_cache.has(cache_key):
-		return _relic_render_texture_cache[cache_key]
-	var source := source_texture.get_image()
-	if source == null or source.is_empty():
-		return source_texture
-	source.convert(Image.FORMAT_RGBA8)
-	var source_pad := maxi(3, int(roundf(float(source.get_width()) * _RELIC_ICON_PAD / icon_size)))
-	var outline_radius := maxi(2, int(ceilf(float(source.get_width()) * 1.5 / icon_size)))
-	var rendered := Image.create(
-		source.get_width() + source_pad * 2,
-		source.get_height() + source_pad * 2,
-		false,
-		Image.FORMAT_RGBA8
-	)
-	rendered.fill(Color.TRANSPARENT)
-	if with_outline:
-		for y in range(source.get_height()):
-			for x in range(source.get_width()):
-				if source.get_pixel(x, y).a <= 0.01:
-					continue
-				for oy in range(-outline_radius, outline_radius + 1):
-					for ox in range(-outline_radius, outline_radius + 1):
-						rendered.set_pixel(x + source_pad + ox, y + source_pad + oy, Color.WHITE)
-	rendered.blend_rect(source, Rect2i(Vector2i.ZERO, source.get_size()), Vector2i(source_pad, source_pad))
-	var texture := ImageTexture.create_from_image(rendered)
-	_relic_render_texture_cache[cache_key] = texture
-	return texture
+	if _relic_bar == null:
+		var preview_bar := BattleHudRelicBar.new()
+		preview_bar.setup({
+			"texture_for_relic_cb": Callable(self, "_relic_texture"),
+			"show_detail_cb": _show_relic_detail_cb,
+		})
+		return preview_bar.create_badge(relic_id, icon_size)
+	return _relic_bar.create_badge(relic_id, icon_size)
 
 
 func _set_tooltip(control: Control, fallback_text: String, spec: Dictionary) -> void:

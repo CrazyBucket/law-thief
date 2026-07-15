@@ -1,6 +1,8 @@
 class_name ScenarioBuilder
 extends RefCounted
 
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+
 var state: GameState
 var _registry: Node
 var _serial := 0
@@ -12,6 +14,9 @@ func _init(encounter_id: String = "fission_slime_test", seed: int = 1, clear_ene
 	if clear_enemies:
 		for unit: UnitState in state.units.values().duplicate():
 			if unit.team == Constants.TEAM_ENEMY:
+				for slot: SlotState in unit.slots:
+					if slot != null and not slot.gem_uid.is_empty():
+						_GemTransfer.remove(state, slot.gem_uid)
 				state.unregister_unit(unit)
 
 
@@ -50,8 +55,7 @@ func set_stats(unit: UnitState, overrides: Dictionary) -> ScenarioBuilder:
 func clear_slots(unit: UnitState) -> ScenarioBuilder:
 	for slot: SlotState in unit.slots:
 		if not slot.gem_uid.is_empty():
-			state.gems.erase(slot.gem_uid)
-		slot.gem_uid = ""
+			_GemTransfer.remove(state, slot.gem_uid)
 	return self
 
 
@@ -62,14 +66,12 @@ func mount_gems(unit: UnitState, slot_type: String, gem_ids: Array) -> ScenarioB
 	for i in range(gem_ids.size()):
 		var slot: SlotState = slots[i]
 		if not slot.gem_uid.is_empty():
-			state.gems.erase(slot.gem_uid)
+			_GemTransfer.remove(state, slot.gem_uid)
 		_serial += 1
 		var gem_uid := "scenario_gem_%d" % _serial
 		var gem: GemState = _registry.create_gem_instance(gem_uid, str(gem_ids[i]), {})
-		gem.owner_uid = unit.uid
-		gem.slot_index = unit.slots.find(slot)
 		state.gems[gem_uid] = gem
-		slot.gem_uid = gem_uid
+		assert(_GemTransfer.to_unit_slot(state, gem, unit, slot))
 	return self
 
 

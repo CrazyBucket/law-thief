@@ -1,6 +1,8 @@
 class_name FissionSlimeRules
 extends RefCounted
 
+const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+
 const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
 
 
@@ -251,7 +253,7 @@ static func execute_trample(
 	if not _can_trample(state, unit, target):
 		return events
 
-	events.append({"type": "trample_start", "uid": unit.uid, "target_uid": target.uid, "pos": target.pos})
+	events.append(_EventBuilder.trample_start(unit, target, {"reason": "trample"}))
 
 	# Initial impact composes the authored trample and collision components.
 	var total_skill_dmg := trample_total_damage(unit)

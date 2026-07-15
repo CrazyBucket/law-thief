@@ -22,12 +22,18 @@ var ai_profile_id: String = ""
 var behavior_id: String = ""
 var tags: Array[String] = []
 var split_origin_uid: String = ""  # 若此单位是分裂分身，记录原体 uid
+## 生成来源与奖励归属是独立维度：召唤物可以有来源，但不一定产生死亡奖励。
+var spawn_origin_uid: String = ""
+var reward_origin_uid: String = ""
+var grants_death_rewards: bool = true
+var is_temporary_summon: bool = false
 var footprint_size: Vector2i = Vector2i(1, 1)
 
 
 static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector2i, def: Dictionary) -> UnitState:
 	var unit := UnitState.new()
 	unit.uid = uid
+	unit.reward_origin_uid = uid
 	unit.unit_def_id = unit_def_id
 	unit.team = team
 	unit.pos = pos
@@ -168,6 +174,10 @@ func clone() -> UnitState:
 	unit.behavior_id = behavior_id
 	unit.tags = tags.duplicate()
 	unit.split_origin_uid = split_origin_uid
+	unit.spawn_origin_uid = spawn_origin_uid
+	unit.reward_origin_uid = reward_origin_uid
+	unit.grants_death_rewards = grants_death_rewards
+	unit.is_temporary_summon = is_temporary_summon
 	unit.footprint_size = footprint_size
 	for slot in slots:
 		unit.slots.append(slot.clone() if slot != null else null)

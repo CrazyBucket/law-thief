@@ -247,6 +247,17 @@ func get_entity_at(pos: Vector2i) -> EntityState:
 	return null
 
 
+func get_dropped_gem_uids_at(pos: Vector2i) -> Array[String]:
+	var result: Array[String] = []
+	for raw_uid in dropped_gems.keys():
+		var uid := str(raw_uid)
+		var drop: Variant = dropped_gems.get(uid, {})
+		if drop is Dictionary and (drop as Dictionary).get("pos", Vector2i(-1, -1)) == pos:
+			result.append(uid)
+	result.sort()
+	return result
+
+
 func add_entity(entity: EntityState) -> void:
 	entities[entity.uid] = entity
 

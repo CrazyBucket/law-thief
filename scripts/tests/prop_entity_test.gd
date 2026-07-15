@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 var _failed := false
 
@@ -16,6 +17,8 @@ func _run_tests() -> void:
 	_test_prop_indestructible()
 	_test_barrel_blocks_movement_and_projectile()
 	_test_barrel_has_hp_and_explodes_on_ranged_hit()
+	_test_player_manual_attack_can_destroy_barrel()
+	_test_light_beam_can_destroy_barrel()
 	if _failed:
 		push_error("PROP_ENTITY_TEST_FAIL")
 		quit(1)
@@ -99,6 +102,39 @@ func _test_barrel_has_hp_and_explodes_on_ranged_hit() -> void:
 	_expect(victim.hp < 20, "barrel explosion should damage the unit behind it")
 	_expect((result.get("events", []) as Array).any(func(ev): return str(ev.get("type", "")) == "explode"), "barrel hit should emit explode event")
 	print("  [OK] barrel has hp and explodes on ranged hit")
+
+
+func _test_player_manual_attack_can_destroy_barrel() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("burning_storehouse", 20260715)
+	var barrel := controller.state.get_entity_at(Vector2i(2, 5))
+	_expect(barrel != null and barrel.entity_id == Constants.ENTITY_BARREL, "manual attack fixture should contain the nearby barrel")
+	controller.select_action(Constants.ACTION_ATTACK)
+	var result := controller.try_attack_cell(barrel.pos)
+	_expect(result.get("ok", false), "manual attack aimed at a barrel should succeed")
+	_expect(not barrel.alive and barrel.hp == 0, "manual attack should destroy the aimed barrel")
+	_expect((result.get("attack_events", []) as Array).any(func(ev): return str(ev.get("type", "")) == "explode"), "manual barrel destruction should emit an explosion")
+	print("  [OK] player manual attack can destroy barrel")
+
+
+func _test_light_beam_can_destroy_barrel() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("burning_storehouse", 20260716)
+	var state := controller.state
+	var player := state.get_player()
+	var barrel := state.get_entity_at(Vector2i(2, 5))
+	var red_slot := player.get_slot(Constants.SLOT_RED)
+	if not red_slot.gem_uid.is_empty():
+		GemTransfer.remove(state, red_slot.gem_uid)
+	var light_gem := GemState.create("barrel_light_gem", Constants.GEM_LIGHT)
+	state.gems[light_gem.uid] = light_gem
+	_expect(GemTransfer.to_unit_slot(state, light_gem, player, red_slot), "light barrel fixture should mount its red gem")
+	controller.select_action(Constants.ACTION_ATTACK)
+	var result := controller.try_attack_cell(barrel.pos)
+	_expect(result.get("ok", false), "light beam aimed at a barrel should succeed")
+	_expect(not barrel.alive and barrel.hp == 0, "light beam should damage and destroy a blocking barrel")
+	_expect((result.get("attack_events", []) as Array).any(func(ev): return str(ev.get("type", "")) == "entity_destroyed" and str(ev.get("uid", "")) == barrel.uid), "barrel destruction should have an explicit presentation event")
+	print("  [OK] light beam can destroy barrel")
 
 
 func _mini_state() -> GameState:
