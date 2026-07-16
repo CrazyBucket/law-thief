@@ -262,7 +262,11 @@ P0 的代码层止血能力已经闭环：系统级不变量、固定回归、�
 - 固定 seed 的 encounter/gem snapshot、聚焦事务测试以及 fast/all 回归构成闭环证据。
 - `PersistencePathPolicy` 为直接启动的测试与工具脚本自动分配进程沙箱，`SaveService` 和 `SettingsService` 共享同一隔离根；显式 `LAW_THIEF_SAVE_ROOT` 仍优先，正常游戏启动仍使用默认玩家路径。
 - `persistence_isolation_test` 与 `tools/persistence_architecture_guard` 已进入常规验证；直接启动 UI compile 与地图 probe 后，真实玩家 settings/save 文件指纹为 7→7、变更 0。
-- 2026-07-16 严格全量回归为 93/93，本次测试日志中 `ERROR:` / `SCRIPT ERROR:` 为 0；语义覆盖维持 71/90（78.88%），未用实现假设填补待决策语义。
+- `transition_manager_test` 使用最小目标场景验证棋盘格/轮廓 shader、输入遮罩、重入拒绝、错误路径、reset 以及 IN/OUT 场景切换信号时序，补齐了已进入验证清单但缺失测试文件的门禁断点。
+- `EncounterContentDiagnostics` 将无宝石敌人作为结构化 authoring warning 写入状态 clone/snapshot；加载与编辑器导出共享同一诊断，`allow_empty_gems` schema 和 JSON round-trip 由专门契约测试锁定。
+- `AdventureMapCopyPresenter` 和 `tools/player_copy_guard` 建立普通玩家文案与 debug 元数据的单向边界；地图卡片不再用 `rule_id` 兜底展示，坐标及 room/event/rule ID 只在 debug/editor 输出，纯 presenter 契约和真实场景 probe 同时覆盖。
+- `UiVisualRegressionContract` 将战斗 overlay 与地图路线两类固定场景扩展成 1280×720、1600×900、2048×1152 六图矩阵；捕获报告、布局门禁、运行时日志门禁和 baseline/candidate 像素 diff 形成可重复评审链路，headless 缺图不再静默跳过。
+- 2026-07-17 严格全量回归为 98/98，本次测试日志中 `ERROR:` / `SCRIPT ERROR:` 为 0；语义覆盖维持 71/90（78.88%），未用实现假设填补待决策语义。
 
 同日继续完成 overlay read-model 的代码边界收口：
 

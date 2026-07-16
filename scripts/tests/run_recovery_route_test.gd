@@ -25,7 +25,7 @@ func _run_tests() -> void:
 	run_service.reload_for_active_slot()
 	assert(str(run_service.get_run_phase()) == "ROOM", "ROOM phase should survive reload")
 	assert(str(run_service.get_pending_decision().get("room_type", "")) == "SHOP", "ROOM pending decision should survive reload")
-	assert(game_service.continue_scene_for_active_run() == "res://scenes/adventure/room_placeholder.tscn", "reloaded ROOM phase should route to room scene")
+	assert(game_service.continue_scene_for_active_run() == "res://scenes/adventure/shop_scene.tscn", "reloaded shop phase should route to the dedicated shop scene")
 
 	adventure_service.start_new_run(20260619)
 	run_service.set_run_phase("BATTLE")

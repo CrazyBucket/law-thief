@@ -47,6 +47,13 @@ if ! bash "$ROOT/tools/ui_architecture_guard" >"$UI_ARCHITECTURE_LOG" 2>&1; then
   exit 1
 fi
 
+PLAYER_COPY_LOG="$REPORT_DIR/player_copy_guard.log"
+if ! bash "$ROOT/tools/player_copy_guard" >"$PLAYER_COPY_LOG" 2>&1; then
+  echo "VERIFY_FAIL player_copy_guard (see artifacts/verify/player_copy_guard.log)"
+  cat "$PLAYER_COPY_LOG"
+  exit 1
+fi
+
 PERSISTENCE_ARCHITECTURE_LOG="$REPORT_DIR/persistence_architecture_guard.log"
 if ! bash "$ROOT/tools/persistence_architecture_guard" >"$PERSISTENCE_ARCHITECTURE_LOG" 2>&1; then
   echo "VERIFY_FAIL persistence_architecture_guard (see artifacts/verify/persistence_architecture_guard.log)"
@@ -76,9 +83,11 @@ FAST_TESTS=(
   combat_transaction_test
   battle_architecture_test
   battle_overlay_presenter_test
+  adventure_map_copy_presenter_test
   board_overlay_api_test
   battle_query_cache_test
   persistence_isolation_test
+  encounter_content_diagnostics_test
   battle_presentation_planner_test
   battle_event_player_cluster_test
   presentation_state_applier_test
@@ -103,6 +112,8 @@ FAST_TESTS=(
   tile_overlay_reaction_test
   overlay_render_contract_test
   ui_overlay_contract_test
+  ui_visual_regression_contract_test
+  transition_manager_test
   law_worm_test
   gem_insert_replace_test
   fission_slime_test
@@ -117,9 +128,11 @@ CORE_TESTS=(
   combat_transaction_test
   battle_architecture_test
   battle_overlay_presenter_test
+  adventure_map_copy_presenter_test
   board_overlay_api_test
   battle_query_cache_test
   persistence_isolation_test
+  encounter_content_diagnostics_test
   presentation_state_applier_test
   smoke_test
   economy_service_test
@@ -135,6 +148,8 @@ CORE_TESTS=(
   tile_overlay_reaction_test
   overlay_render_contract_test
   ui_overlay_contract_test
+  ui_visual_regression_contract_test
+  transition_manager_test
   law_worm_test
   gem_insert_replace_test
   fission_slime_test
@@ -158,8 +173,8 @@ tests_for_changed() {
   changed="$(git -C "$ROOT" diff --name-only HEAD; git -C "$ROOT" ls-files --others --exclude-standard)"
   if grep -Eq 'scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd|scripts/core/combat_config\.gd|resources/(gems|combat|adventure|relics)/|resources/units/unit_defs\.json|localization/strings\.csv' <<<"$changed"; then
     printf '%s\n' "${FAST_TESTS[@]}"
-  elif grep -Eq 'scripts/ui/(battle_overlay_presenter|isometric_board|battle_scene|adventure_map_scene)\.gd' <<<"$changed"; then
-    printf '%s\n' battle_overlay_presenter_test board_overlay_api_test overlay_render_contract_test ui_overlay_contract_test
+  elif grep -Eq 'scripts/ui/(battle_overlay_presenter|isometric_board|battle_scene|adventure_map_scene|transition_manager)\.gd|scenes/ui/transition_|assets/ui/transitions/' <<<"$changed"; then
+    printf '%s\n' adventure_map_copy_presenter_test battle_overlay_presenter_test board_overlay_api_test overlay_render_contract_test ui_overlay_contract_test ui_visual_regression_contract_test transition_manager_test
   elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/|scripts/services/(data_registry|balance_config_validator|economy_service|event_service|room_effect_executor|adventure_rule_registry|shop_service|room_flow_service|adventure_config_validator|numeric_text_resolver|persistence_path_policy|save_service|settings_service)\.gd' <<<"$changed"; then
     printf '%s\n' "${CORE_TESTS[@]}"
   elif grep -Eq 'scripts/testkit/|scripts/tools/|tools/' <<<"$changed"; then
@@ -191,6 +206,7 @@ cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$COMBAT_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$UI_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$PLAYER_COPY_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$PERSISTENCE_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$TEST_LOG_GUARD_LOG" | tee -a "$REPORT_DIR/verify.log"
 echo "VERIFY_TRANSLATIONS_BUILT" | tee -a "$REPORT_DIR/verify.log"

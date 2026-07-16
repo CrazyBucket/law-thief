@@ -12,9 +12,11 @@ static func export_from_state(state: GameState) -> Dictionary:
 		if unit.uid == state.player_uid or not unit.alive or unit.team != Constants.TEAM_ENEMY:
 			continue
 		var enemy_entry := {"def_id": unit.unit_def_id, "pos": _encode_position(unit.pos)}
-		var slot_defs := _collect_slot_entries(state, unit.slots)
+		var slot_defs := _collect_slot_entries(state, unit.slots, true)
 		if not slot_defs.is_empty():
 			enemy_entry["slots"] = slot_defs
+		if unit.has_tag("unit:allow_empty_gems"):
+			enemy_entry["allow_empty_gems"] = true
 		enemies.append(enemy_entry)
 	enemies.sort_custom(_sort_encoded_positions)
 	for entity in state.entities.values():
@@ -71,7 +73,7 @@ static func _build_tile_entry(state: GameState, tile: TileState) -> Dictionary:
 	return entry
 
 
-static func _collect_slot_entries(state: GameState, slots: Array) -> Array[Dictionary]:
+static func _collect_slot_entries(state: GameState, slots: Array, include_empty: bool = false) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for slot in slots:
 		var entry := {"slot_type": slot.slot_type}
@@ -87,7 +89,7 @@ static func _collect_slot_entries(state: GameState, slots: Array) -> Array[Dicti
 				entry["gem_id"] = gem.gem_id
 				if not gem.def_overrides.is_empty():
 					entry["gem_overrides"] = gem.def_overrides.duplicate(true)
-		if entry.size() > 1:
+		if include_empty or entry.size() > 1:
 			entries.append(entry)
 	return entries
 

@@ -1,17 +1,14 @@
 class_name BalanceConfigValidator
 extends RefCounted
-
 const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 const GemDefValidator = preload("res://scripts/services/gem_def_validator.gd")
 const GemPoolValidator = preload("res://scripts/services/gem_pool_validator.gd")
 const StatusConfigValidator = preload("res://scripts/services/status_config_validator.gd")
-
 const ROOM_TYPE_KEYS := [
 	"NORMAL_COMBAT",
 	"ELITE_COMBAT",
 	"BOSS_COMBAT",
 ]
-
 const UNIT_BALANCE_NUMERIC_KEYS := {
 	"rampage_move_bonus": true,
 	"charge_bonus": true,
@@ -75,6 +72,7 @@ const UNIT_DEF_FIELDS := {
 	"ai_profile_id": true,
 	"behavior_id": true,
 	"spawn_gem_slots": true,
+	"allow_empty_gems": true,
 	"balance": true,
 	"footprint_size": true,
 	"tags": true,
@@ -857,6 +855,8 @@ static func validate_unit_defs(
 			errors.append("%s.max_hp should be positive" % prefix)
 		if unit_def.has("hp_roll_max") and not _is_non_negative_integer(unit_def["hp_roll_max"]):
 			errors.append("%s.hp_roll_max should be a non-negative integer" % prefix)
+		if unit_def.has("allow_empty_gems") and not unit_def["allow_empty_gems"] is bool:
+			errors.append("%s.allow_empty_gems should be bool" % prefix)
 		errors.append_array(_validate_string_array("%s.tags" % prefix, unit_def.get("tags", null)))
 		var slots: Variant = unit_def.get("slots", null)
 		if not slots is Array or (slots as Array).is_empty():

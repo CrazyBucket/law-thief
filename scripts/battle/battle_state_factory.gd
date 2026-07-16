@@ -60,6 +60,8 @@ static func add_enemy(
 		enemy_data.get("pos", Vector2i.ZERO),
 		materialized_def
 	)
+	if bool(enemy_data.get("allow_empty_gems", false)):
+		enemy.add_tag("unit:allow_empty_gems")
 	for index in range(enemy.slots.size()):
 		var slot: SlotState = enemy.slots[index]
 		if not slot.gem_uid.is_empty():

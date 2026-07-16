@@ -43,6 +43,7 @@ const CONDITION_TYPES := [
 	"has_carried_gem",
 	"chapter_gte",
 ]
+const _EconomyConfigValidator = preload("res://scripts/services/economy_config_validator.gd")
 
 const MODIFIER_IDS := [
 	"gold_gain_mult",
@@ -318,29 +319,7 @@ static func validate_encounter_def(
 
 
 static func validate_economy_config(config: Dictionary) -> Array[String]:
-	var errors: Array[String] = []
-	var required_fields := ["starting_gold", "normal_combat_gold", "elite_combat_gold", "boss_combat_gold", "gem_base_price", "relic_base_price", "amount_refs"]
-	for key in config.keys():
-		if str(key) not in required_fields:
-			errors.append("economy_config.%s is unknown" % key)
-	for key in required_fields:
-		if not config.has(key):
-			errors.append("economy_config.%s missing" % key)
-	for key in ["starting_gold", "normal_combat_gold", "elite_combat_gold", "boss_combat_gold", "gem_base_price", "relic_base_price"]:
-		if not config.has(key):
-			continue
-		elif not config[key] is int and not config[key] is float:
-			errors.append("economy_config.%s should be number" % key)
-		elif int(config[key]) != float(config[key]) or int(config[key]) < 0:
-			errors.append("economy_config.%s should be a non-negative integer" % key)
-	var amount_refs: Variant = config.get("amount_refs", {})
-	if not amount_refs is Dictionary or (amount_refs as Dictionary).is_empty():
-		errors.append("economy_config.amount_refs should be a non-empty object")
-	else:
-		for ref_id in (amount_refs as Dictionary).keys():
-			var raw_ref: Variant = (amount_refs as Dictionary)[ref_id]
-			errors.append_array(_validate_amount_ref_def("economy_config.amount_refs.%s" % str(ref_id), raw_ref))
-	return errors
+	return _EconomyConfigValidator.validate(config)
 
 
 static func validate_shop_pools(config: Dictionary, known_gem_sources: Dictionary = {}, known_relic_sources: Dictionary = {}) -> Array[String]:
@@ -530,8 +509,10 @@ static func _validate_encounter_enemy(
 		return errors
 	var enemy := raw_enemy as Dictionary
 	for field_id in enemy.keys():
-		if str(field_id) not in ["def_id", "pos"]:
+		if str(field_id) not in ["def_id", "pos", "allow_empty_gems"]:
 			errors.append("%s.%s is unknown" % [prefix, field_id])
+	if enemy.has("allow_empty_gems") and not enemy["allow_empty_gems"] is bool:
+		errors.append("%s.allow_empty_gems should be bool" % prefix)
 	var def_id := str(enemy.get("def_id", ""))
 	if not enemy.get("def_id", null) is String or def_id.is_empty():
 		errors.append("%s.def_id should be a non-empty string" % prefix)
@@ -574,8 +555,10 @@ static func _validate_random_enemy_slot(
 		elif raw_candidate is Dictionary:
 			var candidate := raw_candidate as Dictionary
 			for field_id in candidate.keys():
-				if str(field_id) not in ["def_id", "weight"]:
+				if str(field_id) not in ["def_id", "weight", "allow_empty_gems"]:
 					errors.append("%s.%s is unknown" % [candidate_prefix, field_id])
+			if candidate.has("allow_empty_gems") and not candidate["allow_empty_gems"] is bool:
+				errors.append("%s.allow_empty_gems should be bool" % candidate_prefix)
 			def_id = str(candidate.get("def_id", ""))
 			var raw_weight: Variant = candidate.get("weight", 1.0)
 			if not raw_weight is int and not raw_weight is float or float(raw_weight) <= 0.0:

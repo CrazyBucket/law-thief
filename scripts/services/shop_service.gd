@@ -25,29 +25,38 @@ func get_shop_view(room_id: String) -> Dictionary:
 		var item_type := str(offer.get("item_type", "gem"))
 		var item_id := str(offer.get("item_id", ""))
 		var display_name := item_id
-		var rarity := "common"
-		if item_type == "relic":
-			var relic_def := DataRegistry.get_relic_def(item_id)
-			display_name = str(relic_def.get("name", item_id))
-			rarity = DataRegistry.get_relic_rarity(item_id)
-		else:
-			display_name = DataRegistry.get_gem_display_name(item_id)
-			rarity = DataRegistry.get_gem_rarity(item_id)
+		var rarity := str(offer.get("rarity", "common"))
+		match item_type:
+			"relic":
+				var relic_def := DataRegistry.get_relic_def(item_id)
+				display_name = str(relic_def.get("name", item_id))
+				if not offer.has("rarity"):
+					rarity = DataRegistry.get_relic_rarity(item_id)
+			"gem":
+				display_name = DataRegistry.get_gem_display_name(item_id)
+				if not offer.has("rarity"):
+					rarity = DataRegistry.get_gem_rarity(item_id)
 		var base_price := int(offer.get("base_price", 0))
 		var quote := EconomyService.quote("gold", base_price, "shop_price", {
 			"room_id": room_id,
 			"offer_id": str(offer.get("offer_id", "")),
 			"item_type": item_type,
+			"item_id": item_id,
+			"rarity": rarity,
 		})
 		var final_price := int(quote.get("final_amount", base_price))
 		var sold_out := bool(offer.get("sold_out", false))
 		var disabled_reason := ""
+		var disabled_reason_code := ""
 		if sold_out:
 			disabled_reason = "已售罄"
+			disabled_reason_code = "sold_out"
 		elif EconomyService.get_balance("gold") < final_price:
 			disabled_reason = "金币不足"
+			disabled_reason_code = "insufficient_gold"
 		elif item_type == "gem" and not RunService.get_run().carried_gem.is_empty():
 			disabled_reason = "手持已有宝石"
+			disabled_reason_code = "carried_gem_occupied"
 		view_offers.append({
 			"offer_id": str(offer.get("offer_id", "")),
 			"item_type": item_type,
@@ -59,6 +68,7 @@ func get_shop_view(room_id: String) -> Dictionary:
 			"price_trace": quote,
 			"sold_out": sold_out,
 			"disabled_reason": disabled_reason,
+			"disabled_reason_code": disabled_reason_code,
 		})
 	return {
 		"ok": true,
@@ -92,29 +102,36 @@ func purchase_offer(room_id: String, offer_id: String) -> Dictionary:
 		return {"ok": false, "error": "sold_out"}
 	var item_type := str(target_offer.get("item_type", "gem"))
 	var item_id := str(target_offer.get("item_id", ""))
+	var rarity := str(target_offer.get("rarity", "common"))
 	var base_price := int(target_offer.get("base_price", 0))
 	var quote := EconomyService.quote("gold", base_price, "shop_price", {
 		"room_id": room_id,
 		"offer_id": offer_id,
 		"item_type": item_type,
+		"item_id": item_id,
+		"rarity": rarity,
 	})
 	var final_price := int(quote.get("final_amount", base_price))
 	if item_type == "gem" and not RunService.get_run().carried_gem.is_empty():
 		return {"ok": false, "error": "carried_gem_occupied"}
 	if EconomyService.get_balance("gold") < final_price:
 		return {"ok": false, "error": "insufficient_funds", "required": final_price}
-	if item_type == "relic":
-		RunService.acquire_relic(item_id)
-	else:
-		var acquire_result := RunService.acquire_gem(item_id)
-		if not bool(acquire_result.get("ok", false)):
-			return acquire_result
+	match item_type:
+		"relic":
+			RunService.acquire_relic(item_id)
+		"gem":
+			var acquire_result := RunService.acquire_gem(item_id)
+			if not bool(acquire_result.get("ok", false)):
+				return acquire_result
+		_:
+			return {"ok": false, "error": "unsupported_item_type", "item_type": item_type}
 	var spend_result := EconomyService.spend("gold", final_price, "shop_purchase", {
 		"transaction_id": transaction_id,
 		"room_id": room_id,
 		"offer_id": offer_id,
 		"item_type": item_type,
 		"item_id": item_id,
+		"rarity": rarity,
 	})
 	if not bool(spend_result.get("ok", false)):
 		return spend_result
@@ -156,22 +173,28 @@ func _ensure_shop_snapshot(room_id: String) -> Dictionary:
 		var gem_id := str(gem_offer[i])
 		if gem_id.is_empty():
 			continue
+		var gem_offer_id := "gem_%d" % i
+		var gem_rarity := DataRegistry.get_gem_rarity(gem_id)
 		offers.append({
-			"offer_id": "gem_%d" % i,
+			"offer_id": gem_offer_id,
 			"item_type": "gem",
 			"item_id": gem_id,
-			"base_price": EconomyService.get_base_price("gem"),
+			"rarity": gem_rarity,
+			"base_price": EconomyService.roll_shop_price("gem", gem_rarity, "%s:%s" % [room_id, gem_offer_id]),
 			"sold_out": false,
 		})
 	for i in range(relic_offer.size()):
 		var relic_id := str(relic_offer[i])
 		if relic_id.is_empty() or relic_id == "relic_placeholder":
 			continue
+		var relic_offer_id := "relic_%d" % i
+		var relic_rarity := DataRegistry.get_relic_rarity(relic_id)
 		offers.append({
-			"offer_id": "relic_%d" % i,
+			"offer_id": relic_offer_id,
 			"item_type": "relic",
 			"item_id": relic_id,
-			"base_price": EconomyService.get_base_price("relic"),
+			"rarity": relic_rarity,
+			"base_price": EconomyService.roll_shop_price("relic", relic_rarity, "%s:%s" % [room_id, relic_offer_id]),
 			"sold_out": false,
 		})
 	shop_state = {

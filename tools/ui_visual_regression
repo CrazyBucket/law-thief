@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/tools/lib/godot.sh"
+GODOT="$(resolve_godot)"
+COMMAND="${1:-capture}"
+shift || true
+
+SAVE_ROOT="$ROOT/artifacts/verify/userdata/ui_visual_regression/save"
+mkdir -p "$SAVE_ROOT"
+SAVE_ROOT_HOST="$(godot_host_path "$SAVE_ROOT")"
+
+run_godot() {
+  WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" \
+    LAW_THIEF_SAVE_ROOT="$SAVE_ROOT_HOST" "$GODOT" "$@"
+}
+
+run_checked() {
+  local log_path="$1"
+  shift
+  set +e
+  run_godot "$@" 2>&1 | tee "$log_path"
+  local godot_exit="${PIPESTATUS[0]}"
+  set -e
+  if ! bash "$ROOT/tools/test_log_guard" "$log_path"; then
+    return 1
+  fi
+  return "$godot_exit"
+}
+
+case "$COMMAND" in
+  capture)
+    label="${1:-current}"
+    run_checked "$ROOT/artifacts/verify/ui_visual_regression_capture.log" \
+      --path "$ROOT" --script res://scripts/tools/ui_visual_probe.gd -- --label="$label"
+    ;;
+  compare)
+    if [[ "$#" -ne 2 ]]; then
+      echo "Usage: ./tools/ui_visual_regression compare <baseline-label> <candidate-label>" >&2
+      exit 2
+    fi
+    run_checked "$ROOT/artifacts/verify/ui_visual_regression_compare.log" \
+      --headless --path "$ROOT" --script res://scripts/tools/ui_visual_compare.gd -- \
+      --baseline="$1" --candidate="$2"
+    ;;
+  *)
+    echo "Usage: ./tools/ui_visual_regression capture [label] | compare <baseline-label> <candidate-label>" >&2
+    exit 2
+    ;;
+esac

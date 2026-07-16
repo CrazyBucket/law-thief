@@ -3,6 +3,7 @@ extends Control
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
+const _AdventureMapCopyPresenter := preload("res://scripts/ui/adventure_map_copy_presenter.gd")
 const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
 const INVALID_CELL := Vector2i(-999, -999)
@@ -297,16 +298,23 @@ func _build_outlook_text(node, cell: Vector2i) -> String:
 		"[color=#c8ccd8]%s[/color]" % _tr("map.screen.room.followup", {"followup": _followup_summary(node)}),
 	])
 	var active_rules: Array = AdventureRuleRegistry.get_active_rule_display()
-	if not active_rules.is_empty():
-		var rule_names: Array[String] = []
-		for rule in active_rules:
-			if rule is Dictionary:
-				rule_names.append(str(rule.get("name", rule.get("rule_id", ""))))
-		if not rule_names.is_empty():
-			lines.append("[color=#c8ccd8]%s[/color]" % _tr("map.screen.room.rules", {
-				"rules": " / ".join(rule_names),
-			}))
+	var copy := _AdventureMapCopyPresenter.present(active_rules, {
+		"cell": cell,
+		"room_id": AdventureService.room_id_for_cell(cell),
+		"event_id": str(node.properties.get("event_id", "")),
+	}, _debug_metadata_visible())
+	var rule_names: Array[String] = copy.get("rule_names", [])
+	if not rule_names.is_empty():
+		lines.append("[color=#c8ccd8]%s[/color]" % _tr("map.screen.room.rules", {
+			"rules": " / ".join(rule_names),
+		}))
+	for debug_line in copy.get("debug_lines", PackedStringArray()):
+		lines.append("[color=#777b86][DEBUG] %s[/color]" % str(debug_line))
 	return "\n".join(lines)
+
+
+func _debug_metadata_visible() -> bool:
+	return Engine.is_editor_hint() or OS.is_debug_build()
 
 
 func _followup_summary(node) -> String:

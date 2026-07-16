@@ -1,5 +1,4 @@
 extends Control
-
 const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
@@ -18,7 +17,6 @@ const BattleSettlementService = preload("res://scripts/battle/battle_settlement_
 const BattlePreviewPanel = preload("res://scripts/ui/battle_preview_panel.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 const CoinIconTexture = preload("res://assets/ui/coin_gold.png")
-
 var _dmg_text: Node = null
 
 @onready var _board: Control = $BoardLayer/IsometricBoard
@@ -1015,6 +1013,8 @@ func _on_console_submitted(command: String) -> void:
 	if result.get("ok", false):
 		var message := str(result.get("message", "Command succeeded"))
 		_console.append_log(message, "#8fd4a8")
+		for warning in result.get("warnings", []):
+			_console.append_log("Warning: %s" % str(warning), "#ffd166")
 		for line in result.get("lines", []):
 			_console.append_log("- %s" % str(line), "#c8cad4")
 		if _controller.state != null:
@@ -1999,7 +1999,7 @@ func _restore_battle_reward_if_needed() -> void:
 			if _has_pending_dropped_gem_reward():
 				_settlement_dropped_gems = _dropped_gem_offer()
 			_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
-			_settlement_gold_amount = EconomyService.get_combat_reward(AdventureService.pending_room_type)
+			_settlement_gold_amount = EconomyService.get_combat_reward(AdventureService.pending_room_type, room_id)
 			if _settlement_overlay == null:
 				_open_battle_settlement()
 		"dropped_gem":

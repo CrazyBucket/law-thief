@@ -22,6 +22,10 @@ func _run() -> void:
 	scene.call("_on_cell_hovered", reachable[0], true)
 	await process_frame
 	assert(preview.visible, "hovering a room should show the compact room preview")
+	var outlook := scene.get_node("HudLayer/PreviewPanel/VBox/OutlookBody") as RichTextLabel
+	assert(outlook != null, "map preview should expose the route outlook copy")
+	assert(outlook.text.contains("[DEBUG] cell="), "debug builds should expose coordinates only in the debug metadata block")
+	assert(outlook.text.contains("[DEBUG] room_id="), "debug builds should retain room ids for diagnosis")
 	scene.call("_on_cell_hovered", Vector2i.ZERO, false)
 	await process_frame
 	assert(not preview.visible, "leaving a room should hide the compact room preview")

@@ -39,6 +39,7 @@ AudioService="*res://scripts/services/audio_service.gd"
 I18nService="*res://scripts/services/i18n_service.gd"
 DebugService="*res://scripts/services/debug_service.gd"
 UnitLooks="*res://scripts/services/unit_looks.gd"
+TransitionManager="*res://scenes/ui/transition_manager.tscn"
 
 [display]
 

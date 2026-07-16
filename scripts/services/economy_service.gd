@@ -22,22 +22,44 @@ func get_starting_gold() -> int:
 	return int(_required_config_value("starting_gold"))
 
 
-func get_combat_reward(room_type: String) -> int:
-	match room_type:
-		"ELITE_COMBAT":
-			return int(_required_config_value("elite_combat_gold"))
-		"END":
-			return int(_required_config_value("boss_combat_gold"))
-		_:
-			return int(_required_config_value("normal_combat_gold"))
+func get_combat_reward_range(room_type: String) -> Dictionary:
+	var rewards := _config.get("combat_rewards", {}) as Dictionary
+	var tier := _combat_reward_tier(room_type)
+	var raw_range: Variant = rewards.get(tier, {})
+	return (raw_range as Dictionary).duplicate(true) if raw_range is Dictionary else {}
 
 
-func get_base_price(item_type: String) -> int:
-	match item_type:
-		"relic":
-			return int(_required_config_value("relic_base_price"))
-		_:
-			return int(_required_config_value("gem_base_price"))
+func get_combat_reward(room_type: String, roll_key: String = "") -> int:
+	return _roll_integer_range(
+		get_combat_reward_range(room_type),
+		["combat_reward", _combat_reward_tier(room_type), roll_key]
+	)
+
+
+func get_shop_price_range(item_type: String, rarity: String = "default") -> Dictionary:
+	var all_prices := _config.get("shop_prices", {}) as Dictionary
+	var normalized_type := item_type.to_lower()
+	var raw_type_prices: Variant = all_prices.get(normalized_type, {})
+	if not raw_type_prices is Dictionary:
+		push_error("EconomyService: unknown shop item type: %s" % item_type)
+		return {}
+	var type_prices := raw_type_prices as Dictionary
+	var normalized_rarity := rarity.to_lower()
+	var raw_range: Variant = type_prices.get(normalized_rarity, type_prices.get("default", {}))
+	return (raw_range as Dictionary).duplicate(true) if raw_range is Dictionary else {}
+
+
+func roll_shop_price(item_type: String, rarity: String, roll_key: String) -> int:
+	return _roll_integer_range(
+		get_shop_price_range(item_type, rarity),
+		["shop_price", item_type.to_lower(), rarity.to_lower(), roll_key]
+	)
+
+
+## Compatibility helper for callers that need a stable representative value instead of a roll.
+func get_base_price(item_type: String, rarity: String = "default") -> int:
+	var price_range := get_shop_price_range(item_type, rarity)
+	return roundi((float(price_range.get("min", 0)) + float(price_range.get("max", 0))) / 2.0)
 
 
 func has_amount_ref(ref_id: String) -> bool:
@@ -264,3 +286,23 @@ func _amount_ref_value(raw_ref: Variant) -> float:
 		return float((raw_ref as Dictionary).get("value", 0.0))
 	push_error("EconomyService: malformed amount ref")
 	return 0.0
+
+
+func _combat_reward_tier(room_type: String) -> String:
+	match room_type.to_upper():
+		"ELITE_COMBAT", "ELITE":
+			return "elite"
+		"END", "BOSS_COMBAT", "BOSS":
+			return "boss"
+		_:
+			return "normal"
+
+
+func _roll_integer_range(range_def: Dictionary, seed_parts: Array) -> int:
+	var min_value := int(range_def.get("min", 0))
+	var max_value := int(range_def.get("max", min_value))
+	if max_value <= min_value:
+		return min_value
+	var seed_value := RngService.derive_seed(seed_parts)
+	var rng := RngService.create_rng(seed_value, "economy")
+	return rng.randi_range(min_value, max_value)

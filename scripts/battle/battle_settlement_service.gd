@@ -97,7 +97,7 @@ static func grant_combat_gold(room_id: String, room_type: String, enabled: bool 
 	var economy := _service("EconomyService")
 	if economy == null:
 		return {"ok": false, "amount": 0, "reason": "economy_unavailable"}
-	var reward := int(economy.get_combat_reward(room_type))
+	var reward := int(economy.get_combat_reward(room_type, room_id))
 	var grant_result: Dictionary = economy.grant("gold", reward, "combat_reward", {
 		"transaction_id": "%s:battle_gold" % room_id,
 		"room_id": room_id,

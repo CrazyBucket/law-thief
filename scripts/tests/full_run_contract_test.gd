@@ -20,7 +20,8 @@ func _run_tests() -> void:
 
 	var combat_room_id := _room_id_for(adventure_service, path_cells[0], "NORMAL_COMBAT")
 	var combat_tx := "contract:combat:chapter1"
-	var combat_result: Dictionary = economy_service.grant("gold", economy_service.get_combat_reward("NORMAL_COMBAT"), "normal_combat_reward", {
+	var combat_reward_1: int = economy_service.get_combat_reward("NORMAL_COMBAT", combat_room_id)
+	var combat_result: Dictionary = economy_service.grant("gold", combat_reward_1, "normal_combat_reward", {
 		"transaction_id": combat_tx,
 		"room_id": combat_room_id,
 	})
@@ -30,7 +31,8 @@ func _run_tests() -> void:
 		"room_type": "NORMAL_COMBAT",
 		"summary": "普通战胜利。",
 	})
-	assert(economy_service.get_balance("gold") == 10, "first combat should grant 10 gold")
+	var normal_reward_range: Dictionary = economy_service.get_combat_reward_range("NORMAL_COMBAT")
+	assert(economy_service.get_balance("gold") >= int(normal_reward_range.get("min", 0)) and economy_service.get_balance("gold") <= int(normal_reward_range.get("max", 0)), "first combat should grant gold inside the configured normal range")
 
 	var event_room_id := _room_id_for(adventure_service, path_cells[1], "EVENT", {"event_id": "event_debug_cache"})
 	var event_view: Dictionary = room_flow_service.enter_room(event_room_id)
@@ -43,13 +45,14 @@ func _run_tests() -> void:
 	assert((run_service.get_adventure_rules() as Array).size() >= 1, "event should install run rule")
 
 	var combat_room_id_2 := _room_id_for(adventure_service, path_cells[2], "NORMAL_COMBAT")
-	var combat_result_2: Dictionary = economy_service.grant("gold", economy_service.get_combat_reward("NORMAL_COMBAT"), "normal_combat_reward", {
+	var combat_reward_2: int = economy_service.get_combat_reward("NORMAL_COMBAT", combat_room_id_2)
+	var combat_result_2: Dictionary = economy_service.grant("gold", combat_reward_2, "normal_combat_reward", {
 		"transaction_id": "contract:combat:chapter1:rule",
 		"room_id": combat_room_id_2,
 	})
 	assert(combat_result_2.get("ok", false), "second combat gold grant should succeed")
 	var combat_entry_2: Dictionary = combat_result_2.get("entry", {})
-	assert(int(combat_entry_2.get("final_amount", 0)) == 11, "gold gain rule should modify later combat reward")
+	assert(int(combat_entry_2.get("final_amount", 0)) == roundi(float(combat_reward_2) * 1.1), "gold gain rule should modify later combat reward")
 	run_service.mark_room_resolved(combat_room_id_2, {
 		"room_id": combat_room_id_2,
 		"room_type": "NORMAL_COMBAT",
@@ -63,12 +66,17 @@ func _run_tests() -> void:
 	var offers: Array = shop_view.get("payload", {}).get("shop", {}).get("offers", [])
 	assert(not offers.is_empty(), "shop should expose offers")
 	var offer: Dictionary = offers[0]
+	for candidate in offers:
+		if candidate is Dictionary and int(candidate.get("final_price", 0)) < int(offer.get("final_price", 0)):
+			offer = candidate
 	assert(int(offer.get("final_price", 0)) < int(offer.get("base_price", 0)), "shop discount rule should reduce price")
+	assert(int(offer.get("final_price", 0)) <= economy_service.get_balance("gold"), "the contract shop should expose an affordable offer")
 	var purchase: Dictionary = room_flow_service.submit_room_command(shop_room_id, {
 		"action": "purchase",
 		"offer_id": str(offer.get("offer_id", "")),
 	})
 	assert(purchase.get("ok", false), "shop purchase should succeed")
+	var expected_gold_after_purchase: int = int(economy_service.get_balance("gold"))
 	room_flow_service.leave_room(shop_room_id)
 
 	var rest_room_id := _room_id_for(adventure_service, path_cells[4], "REST_SITE")
@@ -90,7 +98,7 @@ func _run_tests() -> void:
 	run_service.save_run()
 	run_service.reload_for_active_slot()
 	assert(run_service.is_run_active(), "run should reload after save")
-	assert(int(run_service.get_balance("gold")) >= 9, "reloaded run should keep post-purchase gold")
+	assert(int(run_service.get_balance("gold")) == expected_gold_after_purchase, "reloaded run should keep the exact post-purchase gold")
 	assert((run_service.get_adventure_rules() as Array).size() >= 3, "reloaded run should keep installed rules")
 
 	run_service.complete_run("win")

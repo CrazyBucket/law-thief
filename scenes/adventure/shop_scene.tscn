@@ -1,0 +1,384 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/shop_scene.gd" id="1_shop"]
+[ext_resource type="Texture2D" path="res://assets/ui/coin_gold.png" id="2_coin"]
+[ext_resource type="Texture2D" path="res://assets/ui/main_menu_bg.png" id="3_backdrop"]
+
+[node name="ShopScene" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_shop")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_backdrop")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(0.62, 0.44, 0.32, 1)
+
+[node name="DarkWash" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.035, 0.025, 0.02, 0.5)
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="Layout" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TopBar" type="PanelContainer" parent="SafeArea/Layout"]
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+
+[node name="Row" type="HBoxContainer" parent="SafeArea/Layout/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="LeaveButton" type="Button" parent="SafeArea/Layout/TopBar/Row"]
+custom_minimum_size = Vector2(164, 44)
+layout_mode = 2
+text = "Leave Shop"
+
+[node name="TitleRule" type="ColorRect" parent="SafeArea/Layout/TopBar/Row"]
+custom_minimum_size = Vector2(4, 38)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.72, 0.47, 0.2, 1)
+
+[node name="TitleGroup" type="VBoxContainer" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_constants/separation = -2
+
+[node name="Title" type="Label" parent="SafeArea/Layout/TopBar/Row/TitleGroup"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "Back-Alley Market"
+
+[node name="Subtitle" type="Label" parent="SafeArea/Layout/TopBar/Row/TitleGroup"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "All sales are final"
+
+[node name="Spacer" type="Control" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BalancePanel" type="PanelContainer" parent="SafeArea/Layout/TopBar/Row"]
+custom_minimum_size = Vector2(186, 44)
+layout_mode = 2
+
+[node name="BalanceRow" type="HBoxContainer" parent="SafeArea/Layout/TopBar/Row/BalancePanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="Coin" type="TextureRect" parent="SafeArea/Layout/TopBar/Row/BalancePanel/BalanceRow"]
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+texture = ExtResource("2_coin")
+expand_mode = 1
+stretch_mode = 5
+texture_filter = 1
+
+[node name="BalanceLabel" type="Label" parent="SafeArea/Layout/TopBar/Row/BalancePanel/BalanceRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "0"
+
+[node name="Main" type="HBoxContainer" parent="SafeArea/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="InfoRail" type="PanelContainer" parent="SafeArea/Layout/Main"]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+
+[node name="InfoVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/InfoRail"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PortraitFrame" type="PanelContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+
+[node name="MerchantPortrait" type="TextureRect" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/PortraitFrame"]
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+texture_filter = 1
+
+[node name="Counter" type="PanelContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+
+[node name="SpeechPanel" type="PanelContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox"]
+custom_minimum_size = Vector2(0, 112)
+layout_mode = 2
+
+[node name="SpeechVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/SpeechPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="MerchantName" type="Label" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/SpeechPanel/SpeechVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Unlicensed Merchant"
+
+[node name="SpeechRule" type="HSeparator" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/SpeechPanel/SpeechVBox"]
+layout_mode = 2
+
+[node name="SpeechLine" type="Label" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/SpeechPanel/SpeechVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 16
+text = "Real coin. Real goods."
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="DetailPanel" type="PanelContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="DetailHeader" type="HBoxContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DetailEyebrow" type="Label" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox/DetailHeader"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Inspect"
+
+[node name="Rule" type="HSeparator" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox/DetailHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DetailIconFrame" type="PanelContainer" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+custom_minimum_size = Vector2(0, 310)
+layout_mode = 2
+
+[node name="DetailIcon" type="TextureRect" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox/DetailIconFrame"]
+layout_mode = 2
+texture_filter = 1
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DetailName" type="Label" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Today's Stock"
+text_overrun_behavior = 3
+
+[node name="DetailBody" type="RichTextLabel" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = "Hover an item to inspect it."
+fit_content = false
+scroll_active = false
+
+[node name="FeedbackLabel" type="Label" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Pick one."
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="DetailBuyButton" type="Button" parent="SafeArea/Layout/Main/InfoRail/InfoVBox/DetailPanel/DetailVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+icon = ExtResource("2_coin")
+text = "0"
+expand_icon = true
+
+[node name="CatalogFrame" type="PanelContainer" parent="SafeArea/Layout/Main"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CatalogVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Header" type="HBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+alignment = 1
+
+[node name="CatalogTitle" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/Header"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Today's Stock"
+
+[node name="HeaderRule" type="HSeparator" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StockLabel" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/Header"]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "0 available"
+horizontal_alignment = 2
+
+[node name="GemShelf" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox"]
+custom_minimum_size = Vector2(0, 400)
+layout_mode = 2
+
+[node name="GemVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/GemShelf"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Section" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/GemShelf/GemVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Gems · Relics"
+
+[node name="GemOffers" type="GridContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/GemShelf/GemVBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+columns = 4
+
+[node name="Plank" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/GemShelf/GemVBox"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+
+[node name="UtilityDock" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox"]
+custom_minimum_size = Vector2(0, 172)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="UtilityRow" type="HBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ServicesPanel" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ServicesVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="ServicesTitle" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel/ServicesVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Services"
+
+[node name="ServicesRule" type="HSeparator" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel/ServicesVBox"]
+layout_mode = 2
+
+[node name="ServicesText" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel/ServicesVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 12
+text = "All sales are final."
+autowrap_mode = 2
+vertical_alignment = 1
+
+[node name="LoadoutPanel" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LoadoutVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="LoadoutTitle" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Your Loadout"
+
+[node name="LoadoutRule" type="HSeparator" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox"]
+layout_mode = 2
+
+[node name="LoadoutRow" type="HBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="LoadoutIcon" type="TextureRect" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox/LoadoutRow"]
+custom_minimum_size = Vector2(76, 76)
+layout_mode = 2
+texture_filter = 1
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LoadoutLabel" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox/LoadoutRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "Empty hand"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RelicShelf" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 238)
+layout_mode = 2
+
+[node name="RelicVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/RelicShelf"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Section" type="Label" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/RelicShelf/RelicVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Relics & Consumables"
+
+[node name="RelicOffers" type="HBoxContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/RelicShelf/RelicVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 12
+
+[node name="Plank" type="PanelContainer" parent="SafeArea/Layout/Main/CatalogFrame/CatalogVBox/RelicShelf/RelicVBox"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+
+[node name="PurchaseFx" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[connection signal="pressed" from="SafeArea/Layout/TopBar/Row/LeaveButton" to="." method="_on_leave_pressed"]

@@ -16,6 +16,8 @@ func _run_tests() -> void:
 	run_service.set_run_phase("ROOM")
 	run_service.set_pending_decision({"type": "room", "room_id": "chapter_1:0_0"})
 	assert(game_service.continue_scene_for_active_run() == "res://scenes/adventure/room_placeholder.tscn", "ROOM phase should continue to room")
+	run_service.set_pending_decision({"type": "room", "room_id": "chapter_1:1_0", "room_type": "SHOP"})
+	assert(game_service.continue_scene_for_active_run() == "res://scenes/adventure/shop_scene.tscn", "SHOP phase should continue to the dedicated shop scene")
 	run_service.set_run_phase("BATTLE")
 	run_service.set_pending_decision({
 		"type": "battle",

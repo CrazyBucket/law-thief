@@ -631,7 +631,7 @@ func _on_continue_pressed() -> void:
 	_close_page()
 	if not AdventureService.resume_loaded_run():
 		return
-	_fade_to_scene(GameService.continue_scene_for_active_run())
+	_transition_to_scene(GameService.continue_scene_for_active_run())
 
 
 func _on_new_run_pressed() -> void:
@@ -639,7 +639,7 @@ func _on_new_run_pressed() -> void:
 		return
 	_close_page()
 	AdventureService.start_new_run()
-	_fade_to_scene(MAP_SCENE)
+	_transition_to_scene(MAP_SCENE)
 
 
 func _on_editor_pressed() -> void:
@@ -647,7 +647,7 @@ func _on_editor_pressed() -> void:
 		return
 	_close_page()
 	GameService.start_editor_battle("tutorial_001")
-	_fade_to_scene("res://scenes/battle/battle_scene.tscn")
+	_transition_to_scene("res://scenes/battle/battle_scene.tscn")
 
 
 func _on_exit_pressed() -> void:
@@ -701,12 +701,12 @@ func _on_menu_music_finished() -> void:
 		_menu_music.play()
 
 
-func _fade_to_scene(scene_path: String) -> void:
+func _transition_to_scene(scene_path: String) -> void:
 	_navigating = true
-	var tween := create_tween()
-	tween.tween_property(self, "modulate:a", 0.0, 0.18)
-	tween.tween_callback(func() -> void:
-		get_tree().change_scene_to_file(scene_path)
+	var style := TransitionManager.Style.SILHOUETTE if scene_path.ends_with("/battle_scene.tscn") else TransitionManager.Style.CHECKERBOARD
+	TransitionManager.change_scene(
+		scene_path, style, 0.38,
+		{"columns": 10, "cover_color": Color.BLACK}, TransitionManager.Direction.IN if style == TransitionManager.Style.SILHOUETTE else TransitionManager.Direction.OUT
 	)
 
 

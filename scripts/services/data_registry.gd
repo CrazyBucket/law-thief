@@ -1,5 +1,4 @@
 extends Node
-
 const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 const AdventureConfigValidator = preload("res://scripts/services/adventure_config_validator.gd")
 const BalanceConfigValidator = preload("res://scripts/services/balance_config_validator.gd")
@@ -11,7 +10,7 @@ const NumericTextResolver = preload("res://scripts/services/numeric_text_resolve
 const EncounterEnemyResolver = preload("res://scripts/services/encounter_enemy_resolver.gd")
 const EncounterCatalogLoader = preload("res://scripts/services/encounter_catalog_loader.gd")
 const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
-
+const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -22,7 +21,6 @@ const ABILITY_TILE_ACTIVE := "tile_active"
 const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
-
 const _GEM_EFFECT_LEVEL_PERCENT_FIELDS := {
 	"deflect_chance": true,
 	"rebound_chance": true,
@@ -133,6 +131,7 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	IntentSystem.refresh_all_intents(state)
 	# 所有单位就位后建立 O(1) 占格索引（多格单位 footprint 一并注册）
 	state.rebuild_occupancy()
+	EncounterContentDiagnostics.report(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
 
@@ -172,6 +171,7 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
 	state.rebuild_occupancy()
+	EncounterContentDiagnostics.report(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
 

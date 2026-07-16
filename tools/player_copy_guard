@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGREEMENT="$ROOT/AGENTS.md"
+MAP_SCENE="$ROOT/scripts/ui/adventure_map_scene.gd"
+PRESENTER="$ROOT/scripts/ui/adventure_map_copy_presenter.gd"
+
+violations=0
+
+require_pattern() {
+  local kind="$1"
+  local pattern="$2"
+  local file="$3"
+  if grep -q -E "$pattern" "$file"; then
+    return
+  fi
+  echo "PLAYER_COPY_GUARD_MISSING_${kind} ${file#"$ROOT/"}" >&2
+  violations=$((violations + 1))
+}
+
+reject_pattern() {
+  local kind="$1"
+  local pattern="$2"
+  local file="$3"
+  local matches
+  matches="$(grep -n -E "$pattern" "$file" 2>/dev/null || true)"
+  if [[ -z "$matches" ]]; then
+    return
+  fi
+  while IFS= read -r match; do
+    [[ -n "$match" ]] && echo "PLAYER_COPY_GUARD_${kind} ${file#"$ROOT/"}:$match" >&2
+  done <<<"$matches"
+  violations=$((violations + 1))
+}
+
+require_pattern "INTERNAL_ID_RULE" 'Do not show internal ids, coordinates, seeds' "$AGREEMENT"
+require_pattern "LOCALIZATION_RULE" 'New player-facing strings should go through localization data' "$AGREEMENT"
+require_pattern "PRESENTER" 'AdventureMapCopyPresenter' "$MAP_SCENE"
+require_pattern "DEBUG_SWITCH" 'Engine\.is_editor_hint\(\).*OS\.is_debug_build\(\)' "$MAP_SCENE"
+require_pattern "PLAYER_SANITIZER" 'func player_rule_names' "$PRESENTER"
+require_pattern "DEBUG_METADATA_BOUNDARY" 'func debug_metadata_lines' "$PRESENTER"
+reject_pattern "RULE_ID_AS_PLAYER_COPY" 'get\("name",[[:space:]]*rule\.get\("rule_id"' "$MAP_SCENE"
+
+if (( violations > 0 )); then
+  echo "PLAYER_COPY_GUARD_FAIL categories=$violations" >&2
+  exit 1
+fi
+
+echo "PLAYER_COPY_GUARD_PASS categories=7"

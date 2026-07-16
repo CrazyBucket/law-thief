@@ -39,6 +39,8 @@ var controllable_queue: Array[String] = []
 var combat_log: Array[String] = []
 ## Runtime-only mutation evidence captured by StateSnapshot for debugging/replay.
 var transaction_trace: Array[Dictionary] = []
+## Runtime-only authoring diagnostics; never used to decide combat behavior.
+var content_warnings: Array[Dictionary] = []
 var encounter_id: String = ""
 var result: String = ""
 var overload_pending: bool = false
@@ -303,6 +305,7 @@ func clone() -> GameState:
 	snapshot.controllable_queue = controllable_queue.duplicate()
 	snapshot.combat_log = combat_log.duplicate(true)
 	snapshot.transaction_trace = transaction_trace.duplicate(true)
+	snapshot.content_warnings = content_warnings.duplicate(true)
 	snapshot.encounter_id = encounter_id
 	snapshot.result = result
 	snapshot.overload_pending = overload_pending

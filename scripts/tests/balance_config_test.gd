@@ -97,12 +97,14 @@ func _test_economy_config_schema() -> void:
 	var errors := AdventureConfigValidator.validate_economy_config(raw)
 	_expect(errors.is_empty(), "economy config should pass strict validation")
 	var invalid := raw.duplicate(true)
-	invalid.erase("elite_combat_gold")
-	invalid["gem_base_price"] = -1
+	invalid["combat_rewards"].erase("elite")
+	invalid["shop_prices"]["gem"]["common"]["min"] = -1
+	invalid["shop_prices"]["relic"]["rare"] = {"min": 60, "max": 40}
 	invalid["legacy_reward"] = 9
 	var invalid_errors := AdventureConfigValidator.validate_economy_config(invalid)
-	_expect(_contains_error(invalid_errors, "economy_config.elite_combat_gold missing"), "economy config validator should require every reward field")
-	_expect(_contains_error(invalid_errors, "economy_config.gem_base_price should be a non-negative integer"), "economy config validator should reject negative prices")
+	_expect(_contains_error(invalid_errors, "economy_config.combat_rewards.elite missing"), "economy config validator should require every combat tier")
+	_expect(_contains_error(invalid_errors, "economy_config.shop_prices.gem.common.min should be non-negative"), "economy config validator should reject negative prices")
+	_expect(_contains_error(invalid_errors, "economy_config.shop_prices.relic.rare.min should not exceed max"), "economy config validator should reject inverted price ranges")
 	_expect(_contains_error(invalid_errors, "economy_config.legacy_reward is unknown"), "economy config validator should reject stale fields")
 	print("  [OK] economy config schema")
 
@@ -749,6 +751,15 @@ func _test_primary_content_catalogs() -> void:
 	)
 	_expect(unit_errors.is_empty(), "unit definition catalog should pass complete schema validation")
 	_expect(reg.get_unit_def_ids() == _sorted_string_keys(raw_unit_defs), "runtime unit catalog ids should exactly match unit_defs.json")
+	var allowed_empty_unit_defs := raw_unit_defs.duplicate(true)
+	allowed_empty_unit_defs["unit_patrol_guard"]["allow_empty_gems"] = true
+	var allowed_empty_unit_errors := BalanceConfigValidator.validate_unit_defs(
+		allowed_empty_unit_defs,
+		_key_set(reg.get_gem_ids()),
+		_key_set(BehaviorRegistry.get_behavior_ids()),
+		_known_unit_ai_profile_ids()
+	)
+	_expect(allowed_empty_unit_errors.is_empty(), "unit definitions should accept a boolean allow_empty_gems marker")
 	for unit_id in raw_unit_defs.keys():
 		_expect(
 			_sorted_string_keys(reg.get_unit_def(str(unit_id))) == _sorted_string_keys(raw_unit_defs[unit_id]),
@@ -760,6 +771,7 @@ func _test_primary_content_catalogs() -> void:
 	invalid_unit_defs["unit_stone_bow_guard"]["behavior_id"] = "missing_behavior"
 	invalid_unit_defs["unit_bomb_rat"]["ai_profile_id"] = "missing_ai_profile"
 	invalid_unit_defs["unit_fission_slime"]["slots"][2]["gem_id"] = "missing_gem"
+	invalid_unit_defs["unit_patrol_guard"]["allow_empty_gems"] = "yes"
 	var invalid_unit_errors := BalanceConfigValidator.validate_unit_defs(
 		invalid_unit_defs,
 		_key_set(reg.get_gem_ids()),
@@ -771,6 +783,7 @@ func _test_primary_content_catalogs() -> void:
 	_expect(_contains_error(invalid_unit_errors, "references unknown behavior: missing_behavior"), "unit catalog validator should reject unknown behavior ids")
 	_expect(_contains_error(invalid_unit_errors, "references unknown profile: missing_ai_profile"), "unit catalog validator should reject unknown AI profile ids")
 	_expect(_contains_error(invalid_unit_errors, "references unknown gem: missing_gem"), "unit catalog validator should reject unknown initial gems")
+	_expect(_contains_error(invalid_unit_errors, "allow_empty_gems should be bool"), "unit catalog validator should reject non-boolean empty-gem markers")
 	print("  [OK] primary content catalogs")
 
 
@@ -797,9 +810,31 @@ func _test_encounter_catalog_config() -> void:
 		Constants.BOARD_SIZE
 	)
 	_expect(errors.is_empty(), "tutorial encounter should pass catalog validation")
+	var allowed_empty := raw.duplicate(true)
+	allowed_empty["enemies"][0]["allow_empty_gems"] = true
+	allowed_empty["random_enemies"] = [{
+		"pos": [7, 7],
+		"candidates": [{"def_id": "unit_patrol_guard", "weight": 1, "allow_empty_gems": true}],
+	}]
+	var allowed_empty_errors := AdventureConfigValidator.validate_encounter_def(
+		"tutorial_001",
+		allowed_empty,
+		_unit_def_map(reg),
+		_key_set(reg.get_tile_ids()),
+		_key_set(reg.get_entity_ids()),
+		_key_set(reg.get_overlay_ids()),
+		_key_set(reg.get_gem_ids()),
+		Constants.BOARD_SIZE
+	)
+	_expect(allowed_empty_errors.is_empty(), "encounter enemies and random candidates should accept boolean allow_empty_gems markers")
 	var invalid := raw.duplicate(true)
 	invalid["legacy_enemy_damage"] = 3
 	invalid["enemies"][0]["def_id"] = "missing_unit"
+	invalid["enemies"][0]["allow_empty_gems"] = "yes"
+	invalid["random_enemies"] = [{
+		"pos": [7, 7],
+		"candidates": [{"def_id": "unit_patrol_guard", "allow_empty_gems": 1}],
+	}]
 	invalid["entities"][0]["pos"] = [99, 99]
 	var invalid_errors := AdventureConfigValidator.validate_encounter_def(
 		"tutorial_001",
@@ -814,6 +849,7 @@ func _test_encounter_catalog_config() -> void:
 	_expect(_contains_error(invalid_errors, "legacy_enemy_damage is unknown"), "encounter validator should reject stale fields")
 	_expect(_contains_error(invalid_errors, "references unknown unit: missing_unit"), "encounter validator should reject unknown unit ids")
 	_expect(_contains_error(invalid_errors, "outside 8x8 board"), "encounter validator should reject out-of-bounds positions")
+	_expect(_contains_error(invalid_errors, "allow_empty_gems should be bool"), "encounter validator should reject non-boolean empty-gem markers")
 	_expect(reg.create_battle_state("bomb_rat_test", 3801) != null, "hidden encounter fixtures should remain directly loadable by tests")
 	print("  [OK] encounter catalog config")
 

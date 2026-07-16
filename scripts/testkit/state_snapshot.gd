@@ -22,6 +22,7 @@ static func capture(state: GameState, events: Array = [], include_log: bool = tr
 		"entities": [],
 		"events": _json_safe(events),
 		"transaction_trace": _json_safe(state.transaction_trace),
+		"content_warnings": _json_safe(state.content_warnings),
 		"invariants": BattleInvariantChecker.check_all(state),
 		"event_violations": EventValidator.validate_events(events),
 	}

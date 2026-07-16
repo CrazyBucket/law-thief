@@ -5,12 +5,11 @@ const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
 const DoodlePropSprites = preload("res://scripts/ui/doodle_prop_sprites.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const EncounterCodec = preload("res://scripts/debug/battle_editor_encounter_codec.gd")
-
+const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
 	get:
 		return _ctrl_ref.get_ref() as BattleController if _ctrl_ref != null else null
-
 
 func setup(controller: BattleController) -> void:
 	_ctrl_ref = weakref(controller)
@@ -488,6 +487,7 @@ func _export_encounter(payload: Dictionary) -> Dictionary:
 	return _ok({
 		"message": "exported encounter %s" % encounter_id,
 		"lines": lines,
+		"warnings": EncounterContentDiagnostics.refresh_messages(_ctrl.state),
 		"encounter": encounter,
 		"encounter_id": encounter_id,
 	})

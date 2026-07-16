@@ -87,6 +87,14 @@ The result is `artifacts/verify/snapshot.json`. It contains:
 - Only when the task directly involves overlay art, board-surface textures, or overlay/tile shader visuals, read `docs/ui-overlay-art-spec.md`.
 - Do not read that spec for unrelated combat logic, economy, localization, or general scripting tasks.
 
+## Visual Asset Source Rules
+
+- AI agents must not hand-author SVG assets. Do not write SVG XML, assemble vector paths, trace shapes into SVG, or generate SVG markup through scripts.
+- Do not use a hand-authored SVG as an intermediate step and rasterize it to bypass this rule.
+- Reuse approved project art when suitable. When a new visual asset is required, use the available image generation or image editing workflow and deliver a normal raster asset such as PNG or WebP.
+- Programmatic drawing is acceptable only for runtime rendering, shaders, debug probes, or explicitly requested procedural visuals; it must not be checked in as a substitute for authored art.
+- Existing SVG assets may remain in the project, but agents must not create new ones or materially redraw them unless the user explicitly overrides this rule.
+
 ## Battle State Mutation Rules
 
 - Do not add new direct `unit.pos = ...` writes in battle rules, AI, or presentation code except constructors, clones, import/deserialization, or documented no-side-effect planning helpers.
@@ -106,7 +114,9 @@ scripts/debug/                   runtime invariant validators
 tools/combat_architecture_guard  static transaction/event mutation guard
 tools/test_log_guard            strict Godot runtime-error log gate
 tools/ui_architecture_guard     query/presenter/board overlay boundary gate
+tools/player_copy_guard         player/debug copy boundary and localization-policy gate
 tools/persistence_architecture_guard test/tool player-save isolation gate
+tools/ui_visual_regression      capture/compare fixed UI scenarios at three resolutions
 scripts/rules/gem_effects.gd     gem effect execution
 scripts/rules/gem_tag_resolver.gd gem count/level semantics
 scripts/rules/attack_pipeline.gd attack calculation and tags

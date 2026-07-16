@@ -26,6 +26,15 @@ func _run_tests() -> void:
 	var shop_view: Dictionary = room_view.get("payload", {}).get("shop", {})
 	var offers: Array = shop_view.get("offers", [])
 	assert(offers.size() >= 1, "shop should offer at least one item")
+	for raw_offer in offers:
+		assert(raw_offer is Dictionary, "shop offers should be dictionaries")
+		var priced_offer := raw_offer as Dictionary
+		var price_range: Dictionary = economy_service.get_shop_price_range(
+			str(priced_offer.get("item_type", "")),
+			str(priced_offer.get("rarity", ""))
+		)
+		var rolled_price := int(priced_offer.get("base_price", -1))
+		assert(rolled_price >= int(price_range.get("min", 0)) and rolled_price <= int(price_range.get("max", 0)), "offer price should use its item type and rarity range")
 	var offer: Dictionary = offers[0]
 	assert(int(offer.get("final_price", 0)) < int(offer.get("base_price", 0)), "shop price rule should reduce final price")
 	var offer_id: String = str(offer.get("offer_id", ""))

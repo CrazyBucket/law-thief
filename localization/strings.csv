@@ -24,6 +24,39 @@ gem.rarity.uncommon,稀有,Uncommon
 gem.rarity.rare,珍稀,Rare
 gem.rarity.epic,史诗,Epic
 gem.rarity.legendary,传说,Legendary
+gem.rarity.boss,首领,Boss
+shop.leave,离开商店,Leave Shop
+shop.title,暗巷黑市,Back-Alley Market
+shop.subtitle,货一出手，概不退换,All sales are final
+shop.merchant.name,无证商人,Unlicensed Merchant
+shop.merchant.greeting,钱是真的，货就是真的。,Real coin. Real goods.
+shop.catalog.title,今日货架,Today's Stock
+shop.section.gems,◆ 宝石,Gems
+shop.section.relics,◆ 遗物与消耗品,Relics & Consumables
+shop.section.all,宝石 · 遗物与消耗品,Gems · Relics & Consumables
+shop.section.market,宝石 · 遗物,Gems · Relics
+shop.item.gem,宝石,Gem
+shop.item.relic,遗物,Relic
+shop.item.consumable,消耗品,Consumable
+shop.stock,{count} 件在售,{count} available
+shop.feedback.idle,挑一件。别问来路。,Pick one. Don't ask where it came from.
+shop.feedback.purchased,成交：{item}，花费 {price} 金币。,Sold: {item} for {price} gold.
+shop.feedback.failed,这笔买卖做不成。,That deal cannot be made.
+shop.offer.sold_out,已售罄,Sold Out
+shop.offer.insufficient,金币不足,Not Enough Gold
+shop.offer.hand_full,手里已有宝石,Hands Full
+shop.price.discount,原价 {base}，现价 {final},Base {base} → {final}
+shop.shelf.empty,货架空了,Shelf empty
+shop.detail.eyebrow,看看货,Inspect
+shop.detail.title,今日货架,Today's Stock
+shop.detail.default,把鼠标移到商品上查看详情。,Hover an item to inspect it.
+shop.detail.gem,宝石在红、蓝、黑槽中会产生不同效果。购买后会放入手持位。,Gems behave differently in red, blue, and black slots. Purchases go to your held slot.
+shop.detail.relic.empty,这件遗物没有留下说明。,No description survived with this relic.
+shop.detail.consumable,一次性补给，购买后进入局内物品栏。,A one-use supply added to the run inventory.
+shop.services.title,服务,Services
+shop.services.coin_only,只接受金币交易。,Gold only. No returns.
+shop.loadout.title,当前携带,Your Loadout
+shop.loadout.empty,手持位为空。,Empty hand.
 gem.explosion.name,爆炸,Explosion
 gem.explosion.symbol,爆,Blast
 gem.poison.name,剧毒,Poison

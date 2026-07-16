@@ -52,6 +52,8 @@ static func from_def(uid: String, unit_def_id: String, team: String, pos: Vector
 		unit.footprint_size = Vector2i(int(fp[0]), int(fp[1]))
 	for tag in def.get("tags", []):
 		unit.add_tag(str(tag))
+	if bool(def.get("allow_empty_gems", false)):
+		unit.add_tag("unit:allow_empty_gems")
 	for slot_data in def.get("slots", []):
 		var slot := SlotState.create(
 			slot_data.get("slot_type", Constants.SLOT_RED),

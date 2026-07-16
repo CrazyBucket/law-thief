@@ -12,6 +12,29 @@ func _run_tests() -> void:
 	var economy_service: Node = root.get_node("EconomyService")
 	adventure_service.start_new_run(20260609)
 	assert(economy_service.get_balance("gold") == 0, "starting gold should come from config")
+	var normal_range: Dictionary = economy_service.get_combat_reward_range("NORMAL_COMBAT")
+	var elite_range: Dictionary = economy_service.get_combat_reward_range("ELITE_COMBAT")
+	var boss_range: Dictionary = economy_service.get_combat_reward_range("END")
+	var normal_reward: int = economy_service.get_combat_reward("NORMAL_COMBAT", "normal_room")
+	var elite_reward: int = economy_service.get_combat_reward("ELITE_COMBAT", "elite_room")
+	var boss_reward: int = economy_service.get_combat_reward("END", "boss_room")
+	assert(normal_reward >= int(normal_range.get("min", 0)) and normal_reward <= int(normal_range.get("max", 0)), "normal reward should roll inside its configured range")
+	assert(elite_reward >= int(elite_range.get("min", 0)) and elite_reward <= int(elite_range.get("max", 0)), "elite reward should roll inside its configured range")
+	assert(boss_reward >= int(boss_range.get("min", 0)) and boss_reward <= int(boss_range.get("max", 0)), "boss reward should roll inside its configured range")
+	assert(economy_service.get_combat_reward("NORMAL_COMBAT", "normal_room") == normal_reward, "same combat roll key should reproduce the same reward")
+	for price_case in [
+		{"item_type": "gem", "rarity": "common"},
+		{"item_type": "gem", "rarity": "legendary"},
+		{"item_type": "relic", "rarity": "rare"},
+		{"item_type": "consumable", "rarity": "uncommon"},
+	]:
+		var item_type := str(price_case.get("item_type", ""))
+		var rarity := str(price_case.get("rarity", ""))
+		var price_range: Dictionary = economy_service.get_shop_price_range(item_type, rarity)
+		var price: int = economy_service.roll_shop_price(item_type, rarity, "%s:%s" % [item_type, rarity])
+		assert(price >= int(price_range.get("min", 0)) and price <= int(price_range.get("max", 0)), "shop price should roll inside the configured rarity range")
+		assert(economy_service.roll_shop_price(item_type, rarity, "%s:%s" % [item_type, rarity]) == price, "same shop roll key should reproduce the same price")
+	assert(economy_service.get_shop_price_range("consumable", "missing") == economy_service.get_shop_price_range("consumable", "default"), "unknown rarity should use the authored default price range")
 	assert(economy_service.has_amount_ref("event_debug_cache_gold"), "amount ref should be available from config")
 	assert(is_equal_approx(economy_service.get_amount_ref("event_debug_cache_gold"), 10.0), "amount ref should resolve configured value")
 	assert(is_equal_approx(economy_service.get_amount_ref("rest_site_heal_ratio"), 0.2), "ratio amount ref should resolve configured value")

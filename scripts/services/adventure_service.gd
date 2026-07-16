@@ -7,6 +7,7 @@ const AdventureProgressionConfig = preload("res://scripts/core/adventure_progres
 
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
+const SHOP_SCENE := "res://scenes/adventure/shop_scene.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 
 var map_seed: int = 20260525
@@ -92,7 +93,9 @@ func get_room_scene_path(room_type: String) -> String:
 	match room_type:
 		"NORMAL_COMBAT", "ELITE_COMBAT", "END":
 			return BATTLE_SCENE
-		"REST_SITE", "SHOP", "EVENT":
+		"SHOP":
+			return SHOP_SCENE
+		"REST_SITE", "EVENT":
 			return PLACEHOLDER_SCENE
 		_:
 			return PLACEHOLDER_SCENE
@@ -149,10 +152,10 @@ func finish_room_and_return() -> void:
 		RunService.complete_run("win")
 		RunService.end_run()
 		reset_local_state()
-		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
+		_transition_out_to("res://scenes/main/main.tscn")
 		return
 	_sync_run_progress()
-	get_tree().change_scene_to_file(MAP_SCENE)
+	_transition_out_to(MAP_SCENE)
 
 
 func save_and_return_to_main() -> void:
@@ -253,7 +256,23 @@ func _navigate_to_room(room_type: String) -> void:
 				"room_type": pending_room_type,
 			})
 			RunService.save_run()
-			get_tree().change_scene_to_file(PLACEHOLDER_SCENE)
+			TransitionManager.change_scene(
+				SHOP_SCENE if room_type == "SHOP" else PLACEHOLDER_SCENE,
+				TransitionManager.Style.CHECKERBOARD,
+				0.38,
+				{"columns": 10, "cover_color": Color.BLACK},
+				TransitionManager.Direction.OUT
+			)
+
+
+func _transition_out_to(scene_path: String) -> void:
+	TransitionManager.change_scene(
+		scene_path,
+		TransitionManager.Style.CHECKERBOARD,
+		0.38,
+		{"columns": 10, "cover_color": Color.BLACK},
+		TransitionManager.Direction.OUT
+	)
 
 
 func _mark_pending_battle(encounter_id: String) -> void:

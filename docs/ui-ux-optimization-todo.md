@@ -270,7 +270,7 @@ BattleScene/BattleHudPresenter
 - [x] 底部操作区改为分组 Command Dock：机动、战斗、宝石、回合四个命令舱。
 - [x] 按钮文案改为短命令词，禁用状态交给视觉样式表达，不再追加 `×`。
 - [x] 增加 `scripts/tests/ui_overlay_contract_test.gd`，锁定移动路线与敌方意图 overlay 数据契约。
-- [x] 增加 `scripts/tools/ui_visual_probe.gd`，当前 headless renderer 无法产出截图时会明确跳过。
+- [x] `scripts/tools/ui_visual_probe.gd` 已升级为真实 renderer 六图矩阵；headless 捕获会明确失败，不再把缺失截图记为跳过成功。
 - [x] 火焰与毒雾改为双向生成毒烟，并以 `scripts/tests/tile_overlay_reaction_test.gd` 锁住两个生成顺序。
 - [x] 爆炸、伤害、位移、分裂生成等连续爆炸事件在表现层按同一 cluster 播放，避免分裂+爆炸排队演出。
 - [x] 敌人初始宝石预算增加至少 1 颗宝石的默认约束，`allow_empty_gems` / `unit:test_fixture` 作为例外。
@@ -278,7 +278,15 @@ BattleScene/BattleHudPresenter
 - [x] 新增 `battle_overlay_presenter_test` 与 `tools/ui_architecture_guard`，锁定等价输出、只读性和查询/表现边界。
 - [x] `IsometricBoard` 已删除 `set_highlights()` 与旧散字段绘制分支；战斗页和地图页统一提交 `set_overlays(specs, routes)`。
 - [x] 新增 `board_overlay_api_test`，锁定深拷贝、清理、tile/hover 投影与旧 API 移除。
-- [x] 2026-07-16 严格全量回归 93/93，本次测试日志零 `ERROR:` / `SCRIPT ERROR:`。
+- [x] 全局 `TransitionManager` 已具备棋盘格/轮廓两种转场、输入拦截、重入保护、错误恢复与完整生命周期信号。
+- [x] 新增 `transition_manager_test`，用真实场景切换锁定 IN/OUT 时序、shader 参数边界和 reset 契约；该测试已进入 fast/core/changed/all。
+- [x] 新增结构化 `EncounterContentDiagnostics`；未豁免的无宝石敌人在加载与编辑器导出时给出非阻断 warning，并进入 clone/snapshot 调试证据。
+- [x] `allow_empty_gems` 已贯通 unit def、固定敌人、随机候选、运行时标签和编辑器 JSON round-trip；空槽导出不再丢失。
+- [x] `AdventureMapCopyPresenter` 将普通房间情报与 debug 元数据分流；无展示名的规则不再回退泄漏 `rule_id`，坐标、room/event/rule ID 仅在 debug/editor 路径生成。
+- [x] 新增 `adventure_map_copy_presenter_test`、真实地图 hover probe 与 `tools/player_copy_guard`，并把玩家文案规则固化进常规验证。
+- [x] `tools/ui_visual_regression` 已支持固定战斗/地图场景的 before/after 捕获和像素 diff；三档分辨率共六图，报告包含 SHA-256、布局违规及逐图差异指标。
+- [x] 新增 `ui_visual_regression_contract_test`，锁定分辨率/场景矩阵、路径安全、报告完整性、像素差异算法和关键控件越界检测；使用方法见 `docs/ui-visual-regression.md`。
+- [x] 2026-07-17 严格全量回归 98/98，本次测试日志零 `ERROR:` / `SCRIPT ERROR:`。
 - [x] `PersistencePathPolicy` 自动隔离直接启动的测试/工具脚本；`SaveService` 与 `SettingsService` 共享进程沙箱，正常游戏路径保持不变。
 - [x] 新增 `persistence_isolation_test` 与 `tools/persistence_architecture_guard`，防止 UI 编译检查和视觉探针污染真实玩家存档。
 
@@ -287,7 +295,7 @@ BattleScene/BattleHudPresenter
 - [x] 将 `BattleQueryService` 内的兼容 overlay 生成拆成独立 `BattleOverlayPresenter`。
 - [ ] 给危险区增加斜纹/角标纹理，而不是只靠颜色和透明度。
 - [ ] Command Dock 继续补热键角标、次数角标、手持宝石独立 slot。
-- [ ] 在可读 renderer 环境补齐多分辨率截图对比流程。
+- [x] 在可读 renderer 环境补齐多分辨率截图对比流程。
 - [ ] 将火/毒/冰/电等元素 overlay 的视觉纹理继续拆分，避免只靠颜色表达效果类型。
 
 ### Player-Facing Logic Audit
@@ -299,16 +307,16 @@ BattleScene/BattleHudPresenter
 - [x] 分裂 + 爆炸属于同一结算链时，不应在表现层排队播放，已改为连续爆炸 cluster 同步演出。
 - [x] 移动路线箭头应融入地块并指向终点，已改为地面层纯色半透明箭头。
 - [ ] 敌人被偷走最后一颗宝石后处于失律但槽位为空是合理结果，但 UI 需要明确显示“正在追回哪颗被盗宝石”，否则玩家会误以为状态来源不明。
-- [ ] 编辑器/特殊 encounter 仍可以显式创建无宝石敌人；需要在编辑器保存或战斗加载时给出 warning，除非标记 `allow_empty_gems`。
+- [x] 编辑器/特殊 encounter 仍可以显式创建无宝石敌人；保存/导出和战斗加载均会给出 warning，显式 `allow_empty_gems` 时抑制。
 - [ ] 爆炸遇到毒雾目前仍有设计冲突：地块设计倾向消散，宝石/当前产品方向确认了火+毒生成毒烟。后续要单独确认“爆炸是否等同火源”。
 - [x] UI compile/probe 启动地图场景时会触发 RunService 新 run/存档侧效应；测试/工具脚本现已自动隔离玩家真实存档与设置。
 - [ ] 敌方意图路线当前主要在选中敌人后清晰展示；后续要设计 hover/长按检视方案，避免全量常驻路线造成视觉噪音。
 
 ### P0 - 文案和调试信息止血
 
-- [ ] 建立玩家文案规则，写入 `AGENTS.md`。
+- [x] 建立玩家文案规则，写入 `AGENTS.md`，并由 `tools/player_copy_guard` 锁定关键边界。
 - [ ] 搜索玩家可见文本，标记 debug-only 文案。
-- [ ] 地图 hover 面板隐藏坐标、event_id、rule_id；debug/editor 模式再显示。
+- [x] 地图 hover 面板隐藏坐标、event_id、rule_id；debug/editor 模式再显示。
 - [ ] 下方提示栏拆分为 `当前状态`、`操作目标`、`结果反馈` 三类，不再拼成长句。
 - [ ] 所有新增玩家文案进入 `localization/strings.csv` 或明确记录暂不本地化原因。
 
@@ -353,11 +361,11 @@ BattleScene/BattleHudPresenter
 
 ### P3 - 视觉验证与回归
 
-- [ ] 增加地图页视觉 probe 截图。
-- [ ] 增加战斗 overlay probe：移动、攻击、敌方意图、爆炸范围、危险区同屏。
-- [ ] 对 1280x720、1600x900、2048x1152 至少三档截图验证。
+- [x] 增加地图页视觉 probe 截图，固定 seed 并展开 hover 房间卡。
+- [x] 增加战斗 overlay probe：移动、攻击、敌方意图、爆炸范围、危险区同屏。
+- [x] 对 1280x720、1600x900、2048x1152 三档生成截图、SHA-256 与布局报告。
 - [ ] 检查文字不溢出按钮、tooltip 不遮住关键格、底栏不挡住单位。
-- [ ] 形成 UI 截图对比流程，重大 UI 改动必须附截图。
+- [x] 形成 UI 截图对比流程，输出逐图差异指标和增强 diff；重大 UI 改动附 before/after 截图与 comparison report。
 
 ## Acceptance Criteria
 

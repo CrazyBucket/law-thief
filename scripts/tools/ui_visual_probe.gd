@@ -1,10 +1,9 @@
 extends SceneTree
 
-const OUTPUT_DIR := "artifacts/verify"
-const CAPTURES: Array[Dictionary] = [
-	{"scene": "res://scenes/battle/battle_scene.tscn", "file": "ui_battle_probe.png"},
-	{"scene": "res://scenes/map/adventure_map.tscn", "file": "ui_map_probe.png"},
-]
+const Contract = preload("res://scripts/tools/ui_visual_regression_contract.gd")
+const OUTPUT_ROOT := "res://artifacts/verify/ui-visual"
+
+var _label := "current"
 
 
 func _initialize() -> void:
@@ -12,42 +11,198 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	DisplayServer.window_set_size(Vector2i(1600, 900))
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://%s" % OUTPUT_DIR))
-	for capture in CAPTURES:
-		await _capture_scene(str(capture.get("scene", "")), str(capture.get("file", "")))
-	print("UI_VISUAL_PROBE_PASS")
-	quit()
+	_label = _label_from_args()
+	var output_dir := "%s/%s" % [OUTPUT_ROOT, _label]
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(output_dir))
+	if DisplayServer.get_name() == "headless":
+		_write_report(output_dir, {
+			"schema_version": Contract.SCHEMA_VERSION,
+			"label": _label,
+			"captures": [],
+			"errors": ["renderer_unavailable:headless"],
+		})
+		print("UI_VISUAL_PROBE_FAIL readable renderer required; do not use --headless")
+		quit(2)
+		return
+	var report := {
+		"schema_version": Contract.SCHEMA_VERSION,
+		"label": _label,
+		"renderer": {
+			"display_server": DisplayServer.get_name(),
+			"rendering_method": str(ProjectSettings.get_setting("rendering/renderer/rendering_method", "")),
+			"adapter": RenderingServer.get_video_adapter_name(),
+		},
+		"captures": [],
+		"errors": [],
+	}
+	for resolution: Vector2i in Contract.RESOLUTIONS:
+		for scenario: Dictionary in Contract.SCENARIOS:
+			var capture := await _capture_scene(scenario, resolution, output_dir)
+			report.captures.append(capture)
+	var report_errors := Contract.validate_capture_report(report)
+	report.errors.append_array(report_errors)
+	_write_report(output_dir, report)
+	if report.errors.is_empty():
+		print("UI_VISUAL_PROBE_PASS label=%s captures=%d report=%s/report.json" % [
+			_label, report.captures.size(), output_dir,
+		])
+		quit(0)
+		return
+	for error in report.errors:
+		print("UI_VISUAL_PROBE_ERROR %s" % str(error))
+	print("UI_VISUAL_PROBE_FAIL label=%s errors=%d" % [_label, report.errors.size()])
+	quit(1)
 
 
-func _capture_scene(scene_path: String, file_name: String) -> void:
+func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: String) -> Dictionary:
+	DisplayServer.window_set_size(resolution)
+	root.size = resolution
+	await process_frame
+	await process_frame
+	_prepare_scenario(str(scenario.get("id", "")))
+	var scene_path := str(scenario.get("scene", ""))
 	var packed := load(scene_path) as PackedScene
-	assert(packed != null, "scene should load: %s" % scene_path)
+	var capture_key := Contract.capture_id(str(scenario.get("id", "")), resolution)
+	var violations: Array[Dictionary] = []
+	if packed == null:
+		violations.append({"code": "scene_load_failed", "scene": scene_path})
+		return _capture_result(capture_key, scenario, resolution, "", "", violations)
 	var node := packed.instantiate()
 	root.add_child(node)
 	await process_frame
 	await process_frame
-	await create_timer(0.25).timeout
-	if DisplayServer.get_name() == "headless":
-		print("  [SKIP] capture %s: headless renderer has no readable screenshot" % scene_path)
-		node.queue_free()
-		await process_frame
-		return
+	await _configure_scenario(node, str(scenario.get("id", "")))
+	await create_timer(0.2).timeout
+	var layout_viewport: Vector2 = node.get_viewport_rect().size
+	violations.append_array(Contract.audit_layout(node, scenario, layout_viewport))
 	var texture := root.get_texture()
-	if texture == null:
-		print("  [SKIP] capture %s: renderer has no readable root texture" % scene_path)
-		node.queue_free()
-		await process_frame
-		return
-	var image := texture.get_image()
+	var image := texture.get_image() if texture != null else null
+	var relative_path := "%s/%s" % [
+		output_dir.trim_prefix("res://"),
+		Contract.capture_file_name(str(scenario.get("id", "")), resolution),
+	]
+	var absolute_path := ProjectSettings.globalize_path("res://%s" % relative_path)
+	var sha256 := ""
 	if image == null:
-		print("  [SKIP] capture %s: renderer returned no image" % scene_path)
-		node.queue_free()
-		await process_frame
-		return
-	var output_path := ProjectSettings.globalize_path("res://%s/%s" % [OUTPUT_DIR, file_name])
-	var err := image.save_png(output_path)
-	assert(err == OK, "screenshot should save: %s err=%d" % [output_path, err])
-	print("  [OK] capture %s" % output_path)
+		violations.append({"code": "renderer_image_unavailable"})
+	else:
+		if image.get_size() != resolution:
+			violations.append({
+				"code": "capture_size_mismatch",
+				"expected": {"width": resolution.x, "height": resolution.y},
+				"actual": {"width": image.get_width(), "height": image.get_height()},
+			})
+		var save_error := image.save_png(absolute_path)
+		if save_error != OK:
+			violations.append({"code": "capture_save_failed", "error": save_error})
+		else:
+			sha256 = FileAccess.get_sha256(absolute_path)
+			print("  [OK] %s -> %s" % [capture_key, absolute_path])
 	node.queue_free()
 	await process_frame
+	return _capture_result(capture_key, scenario, resolution, relative_path, sha256, violations, layout_viewport)
+
+
+func _prepare_scenario(scenario_id: String) -> void:
+	var transition_manager := root.get_node_or_null("TransitionManager")
+	if transition_manager != null and transition_manager.has_method("reset_immediately"):
+		transition_manager.call("reset_immediately")
+	match scenario_id:
+		"battle_overlays":
+			root.get_node("SettingsService").call("set_value", "show_tutorial", false)
+			var adventure_service := root.get_node("AdventureService")
+			adventure_service.set("pending_room_type", "NORMAL_COMBAT")
+			adventure_service.set("pending_room_label", "")
+			root.get_node("GameService").set("pending_room_id", "")
+			root.get_node("GameService").call("start_battle", "tutorial_001")
+		"map_route":
+			root.get_node("AdventureService").call("start_new_run", 12345)
+
+
+func _configure_scenario(node: Node, scenario_id: String) -> void:
+	match scenario_id:
+		"battle_overlays":
+			_configure_battle_overlays(node)
+		"map_route":
+			var adventure_service := root.get_node("AdventureService")
+			var reachable: Array = adventure_service.call("get_reachable_cells")
+			if not reachable.is_empty():
+				node.call("_on_cell_hovered", reachable[0], true)
+	await process_frame
+	await process_frame
+
+
+func _configure_battle_overlays(node: Node) -> void:
+	var controller: Variant = node.get("_controller")
+	if controller == null or controller.state == null:
+		return
+	var state: GameState = controller.state
+	var player := state.get_player()
+	if player == null:
+		return
+	var cells := _nearby_cells(state, player.pos)
+	if cells.size() < 7:
+		return
+	var overlays: Array = [
+		{"kind": "move", "cells": [cells[0], cells[1]]},
+		{"kind": "attack_range", "cells": [cells[2], cells[3]]},
+		{"kind": "danger", "cells": [cells[4], cells[5]]},
+		{"kind": "effect", "preview_kind": "explosion", "cells": [cells[3], cells[4], cells[6]]},
+	]
+	var routes: Array = [
+		{"kind": "move", "path": [player.pos, cells[0], cells[1]], "arrow_reverse": false},
+		{"kind": "intent", "path": [cells[6], cells[5], cells[4]], "arrow_reverse": false},
+	]
+	var board := node.get_node("BoardLayer/IsometricBoard")
+	board.call("set_overlays", overlays, routes)
+	board.call("set_hover", cells[3])
+
+
+func _nearby_cells(state: GameState, origin: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for offset in [
+		Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1),
+		Vector2i(-1, 0), Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1),
+		Vector2i(2, 0), Vector2i(0, 2), Vector2i(-2, 0), Vector2i(0, -2),
+	]:
+		var cell: Vector2i = origin + offset
+		if state.get_tile(cell) != null:
+			result.append(cell)
+	return result
+
+
+func _capture_result(
+	capture_key: String,
+	scenario: Dictionary,
+	resolution: Vector2i,
+	image_path: String,
+	sha256: String,
+	violations: Array[Dictionary],
+	layout_viewport: Vector2 = Vector2.ZERO
+) -> Dictionary:
+	return {
+		"capture_id": capture_key,
+		"scenario_id": str(scenario.get("id", "")),
+		"scene": str(scenario.get("scene", "")),
+		"resolution": {"width": resolution.x, "height": resolution.y},
+		"layout_viewport": {"width": layout_viewport.x, "height": layout_viewport.y},
+		"image_path": image_path,
+		"sha256": sha256,
+		"violations": violations,
+	}
+
+
+func _label_from_args() -> String:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--label="):
+			return Contract.sanitize_label(argument.trim_prefix("--label="))
+	return "current"
+
+
+func _write_report(output_dir: String, report: Dictionary) -> void:
+	var path := ProjectSettings.globalize_path("%s/report.json" % output_dir)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(report, "\t") + "\n")
+	file.close()

@@ -1,10 +1,32 @@
 {
   "starting_gold": 0,
-  "normal_combat_gold": 10,
-  "elite_combat_gold": 20,
-  "boss_combat_gold": 40,
-  "gem_base_price": 15,
-  "relic_base_price": 30,
+  "combat_rewards": {
+    "normal": {"min": 8, "max": 12},
+    "elite": {"min": 18, "max": 22},
+    "boss": {"min": 36, "max": 44}
+  },
+  "shop_prices": {
+    "gem": {
+      "default": {"min": 12, "max": 18},
+      "common": {"min": 12, "max": 18},
+      "uncommon": {"min": 18, "max": 24},
+      "rare": {"min": 27, "max": 33},
+      "epic": {"min": 39, "max": 51},
+      "legendary": {"min": 57, "max": 73}
+    },
+    "relic": {
+      "default": {"min": 25, "max": 35},
+      "common": {"min": 25, "max": 35},
+      "rare": {"min": 40, "max": 50},
+      "boss": {"min": 60, "max": 80}
+    },
+    "consumable": {
+      "default": {"min": 8, "max": 12},
+      "common": {"min": 8, "max": 12},
+      "uncommon": {"min": 13, "max": 17},
+      "rare": {"min": 20, "max": 26}
+    }
+  },
   "amount_refs": {
     "event_debug_cache_gold": {"value": 10, "kind": "flat", "unit": "gold"},
     "event_debug_relief_gold": {"value": 8, "kind": "flat", "unit": "gold"},

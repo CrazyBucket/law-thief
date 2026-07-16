@@ -84,11 +84,16 @@ func _run_tests() -> void:
 	assert(invalid_effects.has("event_defs.broken_event.options[0].effects[5].amount should use amount_ref in authored config"), "authored numeric payloads should use amount refs")
 	var invalid_economy := Validator.validate_economy_config({
 		"starting_gold": 0,
-		"normal_combat_gold": 10,
-		"elite_combat_gold": 20,
-		"boss_combat_gold": 40,
-		"gem_base_price": 15,
-		"relic_base_price": 30,
+		"combat_rewards": {
+			"normal": {"min": 10, "max": 10},
+			"elite": {"min": 20, "max": 20},
+			"boss": {"min": 40, "max": 40},
+		},
+		"shop_prices": {
+			"gem": {"default": {"min": 15, "max": 15}},
+			"relic": {"default": {"min": 30, "max": 30}},
+			"consumable": {"default": {"min": 10, "max": 10}},
+		},
 		"amount_refs": {
 			"broken_ratio": {"value": 0.2, "kind": "ratio"}
 		}
