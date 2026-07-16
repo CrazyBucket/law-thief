@@ -19,26 +19,14 @@ func _run() -> void:
 
 
 func _test_deferred_death_sink_keeps_events() -> void:
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var state: GameState = reg.create_battle_state("fission_slime_test", 42)
-	var victim := UnitState.new()
-	victim.uid = "victim"
-	victim.unit_def_id = "unit_patrol_guard"
-	victim.team = Constants.TEAM_ENEMY
-	victim.pos = Vector2i(3, 3)
-	victim.hp = 1
-	victim.max_hp = 20
-	victim.alive = true
-	for slot_type in [Constants.SLOT_RED, Constants.SLOT_BLUE, Constants.SLOT_BLACK]:
-		var slot := SlotState.new()
-		slot.slot_type = slot_type
-		victim.slots.append(slot)
-	state.register_unit(victim)
-	var gem := GemState.new()
-	gem.uid = "explosion_gem"
-	gem.gem_id = Constants.GEM_EXPLOSION
-	state.gems[gem.uid] = gem
-	victim.get_slot(Constants.SLOT_BLACK).gem_uid = gem.uid
+	var builder := ScenarioBuilder.new("fission_slime_test", 42, true)
+	var victim := builder.add_unit(
+		"victim", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 3),
+		{"hp": 1, "max_hp": 20}
+	)
+	builder.clear_slots(victim)
+	builder.mount_gems(victim, Constants.SLOT_BLACK, [Constants.GEM_EXPLOSION])
+	var state := builder.finish()
 	var events: Array[Dictionary] = []
 	CombatRules.begin_deferred_death_hooks(events)
 	CombatRules.apply_damage(state, victim, 10, "player", "test")

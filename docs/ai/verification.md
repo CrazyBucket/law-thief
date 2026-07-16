@@ -22,7 +22,7 @@
 
 不要输入 `bash .\tools\verify changed`；PowerShell 会将反斜杠当作转义符传递给 bash。虽然有针对该错误的兼容性垫片，但 `.cmd` 包装器是官方支持的 Windows 入口。
 
-`tools/verify` 会自动从常见的 macOS 和 Windows 可执行文件名中检测 Godot。仅当自动检测无法找到编辑器时，才设置 `GODOT=/path/to/godot`。测试运行使用 `LAW_THIEF_SAVE_ROOT=artifacts/verify/userdata/...`，这样运行/存档/历史记录不会触及正常的玩家存档位。
+`tools/verify` 会自动从常见的 macOS 和 Windows 可执行文件名中检测 Godot。仅当自动检测无法找到编辑器时，才设置 `GODOT=/path/to/godot`。验证器仍会显式设置 `LAW_THIEF_SAVE_ROOT=artifacts/verify/userdata/...`；此外，所有通过 `--script` 直接启动的 `scripts/tests/` 与 `scripts/tools/` 脚本也会自动获得独立沙箱。运行存档、历史记录和设置文件共享该沙箱，不会触及正常玩家数据；正常游戏启动仍使用默认 `user://` 路径。
 
 `snapshot.json` 旨在作为最快的调试产物。它记录了确定性操作前后的状态、紧凑的差异、事件、不变量失败以及权威设计文档路径。
 

@@ -2,6 +2,8 @@ extends SceneTree
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 var _failed := false
 
@@ -15,6 +17,7 @@ func _run() -> void:
 	var adventure_service: Node = root.get_node("AdventureService")
 	var run_service: Node = root.get_node("RunService")
 	adventure_service.start_new_run(20260614)
+	adventure_service.pending_room_type = "NORMAL_COMBAT"
 	_test_chaos_on_empty_aim_with_explosion()
 	run_service.end_run()
 	if _failed:
@@ -31,7 +34,7 @@ func _test_chaos_on_empty_aim_with_explosion() -> void:
 	_mount_red_gem(state, player, Constants.GEM_EXPLOSION)
 	_ensure_chaos_launcher_relic()
 	var guard := _spawn_enemy(state, Vector2i(5, 5), "guard")
-	player.pos = Vector2i(2, 5)
+	state.move_unit(player, Vector2i(2, 5))
 	var aim := Vector2i(4, 5)
 	var result := AttackPipeline.execute_aimed(
 		state,
@@ -65,15 +68,9 @@ func _test_chaos_on_empty_aim_with_explosion() -> void:
 
 
 func _battle_state() -> GameState:
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var state: GameState = reg.create_battle_state("template_a", 11)
-	for unit in state.units.values():
-		if unit.team == Constants.TEAM_ENEMY:
-			state.unregister_unit(unit)
-	var player := state.get_player()
-	for slot in player.slots:
-		slot.gem_uid = ""
-	return state
+	var builder := ScenarioBuilder.new("template_a", 11, true)
+	builder.clear_slots(builder.player())
+	return builder.finish()
 
 
 func _mount_red_gem(state: GameState, player: UnitState, gem_id: String) -> void:
@@ -84,9 +81,8 @@ func _mount_red_gem(state: GameState, player: UnitState, gem_id: String) -> void
 		return
 	var gem_uid: String = str(reg.call("_next_uid", "gem"))
 	var gem := GemState.create(gem_uid, gem_id, {})
-	gem.owner_uid = player.uid
 	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	assert(_GemTransfer.to_unit_slot(state, gem, player, slot))
 
 
 func _ensure_chaos_launcher_relic() -> void:

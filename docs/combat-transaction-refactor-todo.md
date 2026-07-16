@@ -31,16 +31,18 @@ scripts/testkit/state_snapshot.gd
 scripts/testkit/state_diff.gd
 ```
 
-## Current Evidence
+## Baseline Evidence
 
-当前项目已经有一部分正确基础：
+以下是启动本次重构时的基线，保留用于解释改造动机；当前完成状态见后文的 Closure Evidence。
+
+项目当时已经有一部分正确基础：
 
 - `GameState.move_unit()` 会同步 `_cell_occupancy`。
 - `BattleInvariantChecker` 已能发现死亡单位占格、占格索引不一致、多格单位越界等问题。
 - `EventValidator` 已对 `move_step`、`damage`、`explode` 等事件做基础字段校验。
 - `StateSnapshot` / `StateDiff` / `./tools/snapshot` 已能记录 action 前后状态和事件流。
 
-但状态变更仍然分散：
+但当时状态变更仍然分散：
 
 - 规则/战斗/UI 中仍存在多处直接 `*.pos = ...`。
 - 玩家移动、敌方移动、强制位移分别手写 `move_step`。
@@ -236,72 +238,83 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 - [x] 规则层剩余直接 `CombatRules.apply_damage()` / `apply_true_damage()` 入口已收口到事务伤害入口，事务内部除外。
 - [x] `EventValidator` 已将 `damage.uid` / `damage.victim_uid` 升级为强制字段，并补充事务契约测试。
 
-仍建议后续继续深化的项：
+完成收口项：
 
 - [x] `CombatTransaction` 已扩展到显式击杀、状态、生成和宝石位置转移；tile enter 继续由移动规则显式调用。
 - [x] 运行时单位生成已通过 `UnitSpawnService` 收口，并拆分生成来源与奖励资格。
 - [x] `CombatEventBuilder` 已覆盖 spawn/die/status/gem_transfer/transform 及主要范围表现事件。
-- [ ] 增加显示态移动后 `_cell_occupancy` 一致性的专门测试。
-- [ ] 继续清理剩余非战斗构造场景之外的直接 `unit.pos = ...`。
+- [x] 增加显示态移动后 `_cell_occupancy` 一致性的专门测试。
+- [x] 清理非构造场景的直接 `unit.pos = ...`；仅保留注册前的 detached split clone 初始化，并由架构门禁显式豁免。
 
 ### P0 - 事务边界和文档落地
 
-- [ ] 新增 `docs/combat-transaction-refactor-todo.md`。
-- [ ] 在 `AGENTS.md` 写明战斗状态变更规则。
-- [ ] 搜索并记录当前直接 `*.pos =`、裸 `move_step`、裸 `damage` 事件位置。
-- [ ] 明确迁移期间兼容策略：先新增事务入口，不一次性强改所有调用点。
+- [x] 新增 `docs/combat-transaction-refactor-todo.md`。
+- [x] 在 `AGENTS.md` 写明战斗状态变更规则。
+- [x] 搜索并记录直接 `*.pos =`、裸 `move_step`、裸 `damage` 事件位置，最终由 `tools/combat_architecture_guard` 自动扫描。
+- [x] 明确迁移期间兼容策略：先新增事务入口，不一次性强改所有调用点。
 
 ### P1 - Event Builder 与显示态同步
 
-- [ ] 新增 `scripts/rules/combat_event_builder.gd`。
-- [ ] 提供 `move_step()`、`damage()`、`explode()` 等基础工厂方法。
-- [ ] `damage()` 统一写入 `uid` 和 `victim_uid`。
-- [ ] `BattleEventPlayer._prime_event_state()` 应用移动时改用 `display_state.move_unit()`。
-- [ ] `BattleEventPlayer._apply_event_state()` 伤害目标优先按 uid 查找。
-- [ ] 补测试：显示态移动后 `_cell_occupancy` 与单位位置一致。
+- [x] 新增 `scripts/rules/combat_event_builder.gd`。
+- [x] 提供 `move_step()`、`damage()`、`explode()` 等基础工厂方法。
+- [x] `damage()` 统一写入 `uid` 和 `victim_uid`。
+- [x] `BattleEventPlayer._prime_event_state()` 应用移动时改用 `display_state.move_unit()`。
+- [x] `BattleEventPlayer._apply_event_state()` 伤害目标优先按 uid 查找。
+- [x] 补测试：显示态移动后 `_cell_occupancy` 与单位位置一致。
 
 ### P2 - CombatTransaction 最小可用
 
-- [ ] 新增 `scripts/rules/combat_transaction.gd`。
-- [ ] 支持 `move_unit()`：状态移动、facing、`move_step` 事件、`on_unit_move` 信号。
-- [ ] 支持 `damage_unit()`：调用 `CombatRules.apply_damage()`，写完整 `damage` 事件。
-- [ ] 支持绑定现有 `events` 数组，兼容旧函数签名。
-- [ ] `finish()` 在 debug/test 中调用 `EventValidator` 和 `BattleInvariantChecker`。
-- [ ] 补 `combat_transaction_test.gd`：移动、伤害、死亡、无效输入。
+- [x] 新增 `scripts/rules/combat_transaction.gd`。
+- [x] 支持 `move_unit()`：状态移动、facing、`move_step` 事件、`on_unit_move` 信号。
+- [x] 支持 `damage_unit()`：调用 `CombatRules.apply_damage()`，写完整 `damage` 事件。
+- [x] 支持绑定现有 `events` 数组，兼容旧函数签名。
+- [x] `finish()` 在 debug/test 中调用 `EventValidator` 和 `BattleInvariantChecker`。
+- [x] 补 `combat_transaction_test.gd`：移动、伤害、死亡、无效输入与 snapshot trace。
 
 ### P3 - 迁移高频移动入口
 
-- [ ] 迁移 `BattleActionService.try_move()`。
-- [ ] 迁移 `IntentSystem._execute_move()`。
-- [ ] 迁移 `Displacement._push_directional()`。
-- [ ] 迁移 `Displacement.star_relocate()`。
-- [ ] 保持现有事件顺序，尤其爆炸后 damage/move 批处理顺序。
-- [ ] 跑 `./tools/verify changed` 和 displacement / intent 相关测试。
+- [x] 迁移 `BattleActionService.try_move()`。
+- [x] 迁移 `IntentSystem._execute_move()`。
+- [x] 迁移 `Displacement._push_directional()`。
+- [x] 迁移 `Displacement.star_relocate()`。
+- [x] 保持现有事件顺序，尤其爆炸后 damage/move 批处理顺序。
+- [x] 跑 `./tools/verify changed` 和 displacement / intent 相关测试。
 
 ### P4 - 迁移高频伤害事件
 
-- [ ] 迁移 `AttackPipeline.AttackContext.push_damage_event()`。
-- [ ] 迁移 `GemEffects` 中裸 `damage` 事件。
-- [ ] 迁移 `EnemyBehavior`、`EntityRules`、`BombRatRules` 中裸 `damage` 事件。
-- [ ] 所有 `damage` 事件补齐 `uid` / `victim_uid`。
+- [x] 迁移 `AttackPipeline.AttackContext.push_damage_event()`。
+- [x] 迁移 `GemEffects` 中裸 `damage` 事件。
+- [x] 迁移 `EnemyBehavior`、`EntityRules`、`BombRatRules` 中裸 `damage` 事件。
+- [x] 所有 `damage` 事件补齐 `uid` / `victim_uid`。
 - [x] `EventValidator` 将 `damage` 的必填字段升级为 `uid`、`victim_uid`、`pos`、`damage`、`is_crit`。
-- [ ] 更新受影响测试断言。
+- [x] 更新受影响测试断言。
 
 ### P5 - 清理 AI 临时改位
 
-- [ ] 新增 BoardUtils 无副作用位置工具。
-- [ ] 迁移 `enemy_ai.gd` 中的临时 `enemy.pos = ...`。
-- [ ] 迁移 `stone_bow_guard_rules.gd` 中的临时改位。
-- [ ] 迁移 `fission_slime_rules.gd` 和 `intent_system.gd` 中的临时改位。
-- [ ] 补 intent consistency 测试，验证预览路径和执行事件一致。
+- [x] 新增 BoardUtils 无副作用位置工具。
+- [x] 迁移 `enemy_ai.gd` 中的临时 `enemy.pos = ...`。
+- [x] 迁移 `stone_bow_guard_rules.gd` 中的临时改位。
+- [x] 迁移 `fission_slime_rules.gd` 和 `intent_system.gd` 中的临时改位。
+- [x] 补 intent consistency 测试，验证预览路径和执行事件一致。
 
 ### P6 - 长期收口
 
-- [ ] 禁止新增裸 `events.append({"type": "damage"...})`。
-- [ ] 禁止新增战斗规则中的直接 `unit.pos = ...`，构造/clone 除外。
-- [ ] 将 `spawn`、`die`、`status` 逐步迁移到事务层。
-- [ ] Snapshot 输出中增加事务 trace，便于复盘。
-- [ ] 文档更新到 `docs/system-stability-roadmap.md` 或后续架构总览。
+- [x] 禁止新增裸 `events.append({"type": "damage"...})`，由 `tools/combat_architecture_guard` 阻断。
+- [x] 禁止新增战斗规则中的直接 `unit.pos = ...`，构造/clone 除外。
+- [x] 将运行时 `spawn`、`die`、`status` 状态变更入口迁移到事务层；底层合并器和死亡钩子保留在事务内部。
+- [x] Snapshot 输出中增加 `transaction_trace`，便于复盘。
+- [x] 文档更新到 `docs/system-stability-roadmap.md`，外部 `Technical_Architecture.md` 同步声明事务边界。
+
+## Closure Evidence
+
+截至 2026-07-16，本专项的 Acceptance Criteria 已全部满足：
+
+- `tools/combat_architecture_guard` 随每次 `tools/verify` 执行，禁止裸关键事件、绕过事务的伤害/状态入口、运行时单位注册和非法位置写入。
+- `StateSnapshot` 输出 `transaction_trace`，记录操作、主体、来源/原因、revision 与关键结果。
+- `CombatTransaction` 聚焦测试覆盖事件 shape、伤害/死亡、事件 sink、移动连锁、标准化 damage tags 与 snapshot trace。
+- `PresentationStateApplier` 专项测试覆盖展示态移动、伤害按 uid 定位、死亡与 `_cell_occupancy` 同步。
+- 确定性 encounter/gem snapshot 的 event violations 与 battle invariant violations 均为 0。
+- `tools/verify changed`、`tools/verify fast` 与 `tools/verify all` 是最终闭环门槛；结果以 `artifacts/verify/report.json` 为准。
 
 ## Migration Rules
 

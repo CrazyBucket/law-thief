@@ -47,6 +47,13 @@ func move_unit(unit: UnitState, to_pos: Vector2i, opts: Dictionary = {}) -> void
 	if not bool(opts.get("keep_facing", false)):
 		unit.facing = UnitState.facing_from_step(from_pos, to_pos)
 	state.move_unit(unit, to_pos)
+	state.record_transaction("move_unit", {
+		"uid": unit.uid,
+		"from": from_pos,
+		"to": to_pos,
+		"forced": bool(opts.get("forced", false)),
+		"reason": str(opts.get("reason", "")),
+	})
 	if bool(opts.get("emit_signal", true)):
 		state.on_unit_move.emit(unit.uid, from_pos, to_pos)
 	if bool(opts.get("emit_event", true)):
@@ -66,8 +73,10 @@ func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: Strin
 		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
+	state.bump_revision()
 	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
 	events.insert(event_start, _EventBuilder.damage(unit, dealt, event_opts))
+	_record_damage("damage_unit", unit, dealt, source_uid, reason, event_opts)
 	return dealt
 
 
@@ -84,8 +93,10 @@ func true_damage_unit(unit: UnitState, amount: int, source_uid: String, reason: 
 		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
+	state.bump_revision()
 	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
 	events.insert(event_start, _EventBuilder.damage(unit, dealt, event_opts))
+	_record_damage("true_damage_unit", unit, dealt, source_uid, reason, event_opts)
 	return dealt
 
 
@@ -93,7 +104,14 @@ func kill_unit(unit: UnitState, killer_uid: String = "", reason: String = "trans
 	if state == null or unit == null or not unit.alive:
 		return _reject("cannot kill missing or dead unit")
 	true_damage_unit(unit, maxi(1, unit.hp), killer_uid, reason, opts)
-	return not unit.alive
+	var killed := not unit.alive
+	if killed:
+		state.record_transaction("kill_unit", {
+			"uid": unit.uid,
+			"killer_uid": killer_uid,
+			"reason": reason,
+		})
+	return killed
 
 
 func spawn_unit(unit: UnitState, opts: Dictionary = {}) -> bool:
@@ -105,6 +123,12 @@ func spawn_unit(unit: UnitState, opts: Dictionary = {}) -> bool:
 		and not BoardUtils.unit_footprint_passable(state, unit, unit.pos, unit.uid):
 		return _reject("spawn footprint is blocked: %s" % unit.pos)
 	state.register_unit(unit)
+	state.record_transaction("spawn_unit", {
+		"uid": unit.uid,
+		"unit_id": unit.unit_def_id,
+		"pos": unit.pos,
+		"reason": str(opts.get("reason", "")),
+	})
 	if bool(opts.get("emit_event", true)):
 		var event_opts := opts.duplicate(true)
 		event_opts["spawn_origin_uid"] = unit.spawn_origin_uid
@@ -119,6 +143,15 @@ func apply_status(unit: UnitState, status_value: StatusInstance, opts: Dictionar
 	if state == null or unit == null or not unit.alive or status_value == null or status_value.status_id.is_empty():
 		return _reject("cannot apply invalid status")
 	_StatusRegistry.apply_to_unit(unit, status_value)
+	state.bump_revision()
+	state.record_transaction("apply_status", {
+		"uid": unit.uid,
+		"status_id": status_value.status_id,
+		"stacks": status_value.stacks,
+		"duration": status_value.duration,
+		"source_uid": status_value.source_uid,
+		"reason": str(opts.get("reason", "")),
+	})
 	if bool(opts.get("emit_event", true)):
 		append_event(_EventBuilder.status(unit, status_value, opts))
 	return true
@@ -148,6 +181,13 @@ func transfer_gem(gem: GemState, target, opts: Dictionary = {}) -> bool:
 			return _reject("unknown gem location: %s" % str(target.kind))
 	if not moved:
 		return _reject("gem transfer rejected: %s -> %s" % [gem.uid, target.describe()])
+	state.bump_revision()
+	state.record_transaction("transfer_gem", {
+		"gem_uid": gem.uid,
+		"from": from_location,
+		"to": gem.location.to_dict(),
+		"reason": str(opts.get("reason", "")),
+	})
 	if bool(opts.get("emit_event", true)):
 		append_event(_EventBuilder.gem_transfer(gem.uid, from_location, gem.location.to_dict(), opts))
 	return true
@@ -200,3 +240,22 @@ func _damage_event_opts(
 	event_opts["remaining_hp"] = unit.hp
 	event_opts["damage_tags"] = DamageContext.tags(damage_context)
 	return event_opts
+
+
+func _record_damage(
+	operation: String,
+	unit: UnitState,
+	dealt: int,
+	source_uid: String,
+	reason: String,
+	event_opts: Dictionary
+) -> void:
+	state.record_transaction(operation, {
+		"uid": unit.uid,
+		"damage": dealt,
+		"source_uid": source_uid,
+		"reason": reason,
+		"lethal": bool(event_opts.get("lethal", false)),
+		"remaining_hp": int(event_opts.get("remaining_hp", unit.hp)),
+		"damage_tags": event_opts.get("damage_tags", []).duplicate(),
+	})

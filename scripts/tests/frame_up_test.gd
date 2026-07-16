@@ -15,6 +15,7 @@ func _run() -> void:
 	var adventure_service: Node = root.get_node("AdventureService")
 	var run_service: Node = root.get_node("RunService")
 	adventure_service.start_new_run(20260620)
+	adventure_service.pending_room_type = "NORMAL_COMBAT"
 	_test_enemy_to_enemy_insert_applies_weak_and_reduces_attack()
 	_test_player_to_enemy_insert_does_not_apply_weak()
 	run_service.end_run()

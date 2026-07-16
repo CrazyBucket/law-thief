@@ -244,12 +244,33 @@
 
 两者是上下层关系：动画文档回答“事件如何正确播放”，本文档回答“为什么当前系统容易出问题，以及应该先治理哪一层”。
 
-## 当前阶段建议
+## 当前阶段结论
 
-如果只选择一件事先做，建议优先从 P0 开始，并把最小交付定义为：
+P0 的代码层止血能力已经闭环：系统级不变量、固定回归、严格日志判定和固定 seed 随机压力矩阵都进入常规验证。后续 P1 的碰撞几何与落点语义仍需策划确认，不在本次无决策代码工作中擅自调整。
 
-- 补一组系统级不变量检查。
-- 固化战斗主链路回归命令。
-- 增加一个随机压力测试入口。
+## 已闭环基础项（2026-07-16）
 
-这是当前性价比最高、且最能直接改善试玩体验的一步。 
+`CombatTransaction` 专项已完成 P0-P2 的共同基础：
+
+- 高频真实移动、伤害、生成、死亡和状态变更已收口到事务入口，事件构造由 `CombatEventBuilder` 统一。
+- `PresentationStateApplier` 使用 `GameState.move_unit()` 维护展示态占格，不再按坐标猜测伤害目标。
+- `EventValidator` 与 `BattleInvariantChecker` 在事务完成边界执行；`StateSnapshot` 同时输出事件、不变量和 `transaction_trace`。
+- `tools/combat_architecture_guard` 已接入 `tools/verify`，防止裸关键事件、直接伤害/状态调用和非法位置写入重新进入运行时代码。
+- `tools/test_log_guard` 已接入 `tools/verify` 并带自测；测试日志中的 `ERROR:` / `SCRIPT ERROR:` 会直接判失败，预期恢复警告不受影响。
+- 严格门禁启用前全量日志中的 783 条运行时错误已清零：测试夹具统一使用 `ScenarioBuilder`、`GemTransfer` 与 `GameState.move_unit()`，菜单音频/UI 测试会在退出前释放播放资源。
+- `manual/battle_stress_test` 的 5 遭遇 × 3 固定 seed 矩阵已提升到 fast、changed/core 与 all 常规回归，每个动作步骤后校验战斗不变量。
+- 固定 seed 的 encounter/gem snapshot、聚焦事务测试以及 fast/all 回归构成闭环证据。
+- `PersistencePathPolicy` 为直接启动的测试与工具脚本自动分配进程沙箱，`SaveService` 和 `SettingsService` 共享同一隔离根；显式 `LAW_THIEF_SAVE_ROOT` 仍优先，正常游戏启动仍使用默认玩家路径。
+- `persistence_isolation_test` 与 `tools/persistence_architecture_guard` 已进入常规验证；直接启动 UI compile 与地图 probe 后，真实玩家 settings/save 文件指纹为 7→7、变更 0。
+- 2026-07-16 严格全量回归为 93/93，本次测试日志中 `ERROR:` / `SCRIPT ERROR:` 为 0；语义覆盖维持 71/90（78.88%），未用实现假设填补待决策语义。
+
+同日继续完成 overlay read-model 的代码边界收口：
+
+- `BattleQueryService` 只计算可达格、目标格、攻击范围、预览路径等兼容查询结果，不再构造 overlay/route 表现 schema。
+- 纯 `BattleOverlayPresenter` 统一生成移动、攻击、宝石目标和敌方意图 overlay；输出顺序、字段与旧接口保持等价。
+- `IsometricBoard` 只接收 `set_overlays(specs, routes)`，旧 `set_highlights()`、散字段 fallback 与重复描边路径已删除；战斗页和地图页均已迁移。
+- `battle_overlay_presenter_test` 锁定 schema、去重、元数据、输入只读性与意图投影，`tools/ui_architecture_guard` 防止职责重新回流查询层。
+- `board_overlay_api_test` 锁定 renderer 输入深拷贝、显式清理、tile/hover 投影和旧 API 不可用。
+- 本次只调整代码所有权与测试生命周期；危险区含义、颜色纹理、碰撞和宝石语义均未改变。
+
+该闭环只建立代码边界和防回退能力，不替代仍需策划决定的碰撞几何、AI 预览承诺范围或具体宝石语义。

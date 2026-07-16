@@ -21,6 +21,12 @@ func _run() -> void:
 	var route_target: Vector2i = move_second.reachable[0]
 	var move_hover := ctrl.get_highlights(route_target)
 	assert(not move_hover.routes.is_empty(), "hover-specific move routes must still be computed on cache hits")
+	var old_move_key: Array = query.get("_reachable_cache_key").duplicate()
+	var blocker: UnitState = ctrl.state.get_alive_enemies()[0]
+	ctrl.state.move_unit(blocker, route_target)
+	var move_after_mutation := ctrl.get_highlights()
+	assert(query.get("_reachable_cache_key") != old_move_key, "state revision must invalidate cached movement without controller bookkeeping")
+	assert(route_target not in move_after_mutation.reachable, "recomputed movement must observe the new blocker")
 
 	ctrl.select_action(Constants.ACTION_ATTACK)
 	var attack_first := ctrl.get_highlights()

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RULE_PATHS=("$ROOT/scripts/rules" "$ROOT/scripts/battle")
+POSITION_PATHS=("${RULE_PATHS[@]}")
+for file in "$ROOT"/scripts/ui/battle*.gd "$ROOT/scripts/ui/presentation_state_applier.gd"; do
+  if [[ -f "$file" ]]; then
+    POSITION_PATHS+=("$file")
+  fi
+done
+
+collect_matches() {
+  local pattern="$1"
+  shift
+  grep -R -n -E --include='*.gd' "$pattern" "$@" 2>/dev/null \
+    | sed "s#^$ROOT/##" || true
+}
+
+report_violations() {
+  local kind="$1"
+  local matches="$2"
+  if [[ -z "$matches" ]]; then
+    return
+  fi
+  while IFS= read -r match; do
+    [[ -n "$match" ]] && echo "COMBAT_ARCHITECTURE_GUARD_${kind} $match" >&2
+  done <<<"$matches"
+  violations=$((violations + 1))
+}
+
+violations=0
+
+# UnitState position writes in live battle code must go through GameState/CombatTransaction.
+# The split clone assignment initializes a detached clone before UnitSpawnService registers it.
+position_writes="$(collect_matches '\.pos[[:space:]]*=[[:space:]]*[^=]' "${POSITION_PATHS[@]}")"
+position_writes="$(grep -Ev '^scripts/rules/gem_effects\.gd:[0-9]+:[[:space:]]*clone\.pos[[:space:]]*=[[:space:]]*spawn_pos[[:space:]]*$' <<<"$position_writes" || true)"
+report_violations "DIRECT_POSITION_WRITE" "$position_writes"
+
+# Event dictionaries are centralized so identity and shape cannot silently drift.
+raw_events="$(collect_matches '"type"[[:space:]]*:[[:space:]]*"(damage|move_step|spawn|die|status)"' "${POSITION_PATHS[@]}")"
+raw_events="$(grep -Ev '^scripts/rules/combat_event_builder\.gd:' <<<"$raw_events" || true)"
+report_violations "RAW_COMBAT_EVENT" "$raw_events"
+
+# CombatRules is the low-level damage engine; live callers enter through CombatTransaction.
+direct_damage="$(collect_matches 'CombatRules\.apply_(true_)?damage[[:space:]]*\(' "${RULE_PATHS[@]}")"
+direct_damage="$(grep -Ev '^scripts/rules/combat_transaction\.gd:' <<<"$direct_damage" || true)"
+report_violations "DIRECT_DAMAGE_CALL" "$direct_damage"
+
+# StatusRegistry remains the low-level merger and is only called by CombatTransaction.
+direct_status="$(collect_matches '(_?StatusRegistry)\.apply_to_unit[[:space:]]*\(' "${RULE_PATHS[@]}")"
+direct_status="$(grep -Ev '^scripts/rules/combat_transaction\.gd:' <<<"$direct_status" || true)"
+report_violations "DIRECT_STATUS_CALL" "$direct_status"
+
+# Unit registration/death mutation is centralized. CombatRules owns the low-level lethal hook.
+unit_registry="$(collect_matches '\.(register_unit|kill_unit)[[:space:]]*\(' "${RULE_PATHS[@]}")"
+unit_registry="$(grep -Ev '^scripts/rules/(combat_transaction|combat_rules)\.gd:' <<<"$unit_registry" || true)"
+report_violations "DIRECT_UNIT_REGISTRY_MUTATION" "$unit_registry"
+
+# Initial battle construction may populate the dictionary directly; runtime rules may not.
+unit_dictionary="$(collect_matches '\.units\[[^]]+\][[:space:]]*=' "${RULE_PATHS[@]}")"
+unit_dictionary="$(grep -Ev '^scripts/battle/battle_state_factory\.gd:' <<<"$unit_dictionary" || true)"
+report_violations "DIRECT_UNIT_DICTIONARY_WRITE" "$unit_dictionary"
+
+if (( violations > 0 )); then
+  echo "COMBAT_ARCHITECTURE_GUARD_FAIL categories=$violations" >&2
+  exit 1
+fi
+
+echo "COMBAT_ARCHITECTURE_GUARD_PASS categories=6"

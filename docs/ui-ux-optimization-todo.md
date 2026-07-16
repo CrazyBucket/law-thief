@@ -274,10 +274,17 @@ BattleScene/BattleHudPresenter
 - [x] 火焰与毒雾改为双向生成毒烟，并以 `scripts/tests/tile_overlay_reaction_test.gd` 锁住两个生成顺序。
 - [x] 爆炸、伤害、位移、分裂生成等连续爆炸事件在表现层按同一 cluster 播放，避免分裂+爆炸排队演出。
 - [x] 敌人初始宝石预算增加至少 1 颗宝石的默认约束，`allow_empty_gems` / `unit:test_fixture` 作为例外。
+- [x] 新增纯 `BattleOverlayPresenter`，统一从兼容 read model、当前 action、hover route 与敌方 intent 生成 overlay/route specs；查询层不再构造表现 schema。
+- [x] 新增 `battle_overlay_presenter_test` 与 `tools/ui_architecture_guard`，锁定等价输出、只读性和查询/表现边界。
+- [x] `IsometricBoard` 已删除 `set_highlights()` 与旧散字段绘制分支；战斗页和地图页统一提交 `set_overlays(specs, routes)`。
+- [x] 新增 `board_overlay_api_test`，锁定深拷贝、清理、tile/hover 投影与旧 API 移除。
+- [x] 2026-07-16 严格全量回归 93/93，本次测试日志零 `ERROR:` / `SCRIPT ERROR:`。
+- [x] `PersistencePathPolicy` 自动隔离直接启动的测试/工具脚本；`SaveService` 与 `SettingsService` 共享进程沙箱，正常游戏路径保持不变。
+- [x] 新增 `persistence_isolation_test` 与 `tools/persistence_architecture_guard`，防止 UI 编译检查和视觉探针污染真实玩家存档。
 
 仍建议后续继续深化的项：
 
-- [ ] 将 `BattleQueryService` 内的兼容 overlay 生成拆成独立 `BattleOverlayPresenter`。
+- [x] 将 `BattleQueryService` 内的兼容 overlay 生成拆成独立 `BattleOverlayPresenter`。
 - [ ] 给危险区增加斜纹/角标纹理，而不是只靠颜色和透明度。
 - [ ] Command Dock 继续补热键角标、次数角标、手持宝石独立 slot。
 - [ ] 在可读 renderer 环境补齐多分辨率截图对比流程。
@@ -294,7 +301,7 @@ BattleScene/BattleHudPresenter
 - [ ] 敌人被偷走最后一颗宝石后处于失律但槽位为空是合理结果，但 UI 需要明确显示“正在追回哪颗被盗宝石”，否则玩家会误以为状态来源不明。
 - [ ] 编辑器/特殊 encounter 仍可以显式创建无宝石敌人；需要在编辑器保存或战斗加载时给出 warning，除非标记 `allow_empty_gems`。
 - [ ] 爆炸遇到毒雾目前仍有设计冲突：地块设计倾向消散，宝石/当前产品方向确认了火+毒生成毒烟。后续要单独确认“爆炸是否等同火源”。
-- [ ] UI compile/probe 启动地图场景时会触发 RunService 新 run/存档侧效应；测试环境应隔离玩家真实存档。
+- [x] UI compile/probe 启动地图场景时会触发 RunService 新 run/存档侧效应；测试/工具脚本现已自动隔离玩家真实存档与设置。
 - [ ] 敌方意图路线当前主要在选中敌人后清晰展示；后续要设计 hover/长按检视方案，避免全量常驻路线造成视觉噪音。
 
 ### P0 - 文案和调试信息止血
@@ -307,14 +314,14 @@ BattleScene/BattleHudPresenter
 
 ### P1 - Overlay 统一模型
 
-- [ ] 新增 `BattleOverlaySpec` 或轻量 Dictionary schema 文档。
-- [ ] 新增 `BattleOverlayPresenter`，由当前 action、hover cell、enemy intents 生成 overlay specs。
-- [ ] `IsometricBoard.set_highlights()` 逐步替换为 `set_overlays(specs)`。
-- [ ] 先迁移 `reachable`、`paths`、`targets` 三类。
-- [ ] 再迁移 `attack_range`、`danger`、`effect_preview`。
-- [ ] 给 overlay renderer 增加固定 z-order，避免高亮遮住单位和血条。
-- [ ] 增加移动路径箭头：实际路径线 + 终点箭头。
-- [ ] 敌方意图增加路径/影响区 overlay，而不是只靠头顶 badge。
+- [x] 新增 `BattleOverlaySpec` 或轻量 Dictionary schema 文档。
+- [x] 新增 `BattleOverlayPresenter`，由当前 action、hover cell、enemy intents 生成 overlay specs。
+- [x] `IsometricBoard.set_highlights()` 逐步替换为 `set_overlays(specs)`。
+- [x] 先迁移 `reachable`、`paths`、`targets` 三类。
+- [x] 再迁移 `attack_range`、`danger`、`effect_preview`。
+- [x] 给 overlay renderer 增加固定 z-order，避免高亮遮住单位和血条。
+- [x] 增加移动路径箭头：实际路径线 + 终点箭头。
+- [x] 敌方意图增加路径/影响区 overlay，而不是只靠头顶 badge。
 
 ### P1 - 地图页重构
 

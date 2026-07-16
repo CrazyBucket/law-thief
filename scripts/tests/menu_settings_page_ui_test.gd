@@ -25,6 +25,20 @@ func _run_tests() -> void:
 	var sliders := page_layer.find_children("*", "HSlider", true, false)
 	assert(sliders.size() >= 3, "settings page should expose master, music, and sfx volume sliders")
 
-	main_root.queue_free()
+	var menu_music := main_root.get_node_or_null("MenuMusic") as AudioStreamPlayer
+	if menu_music != null:
+		menu_music.stop()
+		await process_frame
+		await create_timer(0.1).timeout
+		menu_music.stream = null
+		await process_frame
+		menu_music.free()
+	menu_music = null
+	main_root.free()
+	await process_frame
+	await create_timer(0.1).timeout
+	page_layer = null
+	main_root = null
+	main_scene = null
 	print("MENU_SETTINGS_PAGE_UI_TEST_PASS")
 	quit()

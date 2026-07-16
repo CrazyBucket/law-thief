@@ -7,7 +7,26 @@ GODOT="$(resolve_godot)"
 PRESET="${1:-Linux}"
 OUT_DIR="$ROOT/build"
 
-mkdir -p "$OUT_DIR"
+if [[ ! -f "$ROOT/export_presets.cfg" ]]; then
+  echo "EXPORT_FAIL missing export_presets.cfg" >&2
+  exit 1
+fi
+
+case "$PRESET" in
+  Linux)
+    EXPORT_FILE="$OUT_DIR/linux/law-thief.x86_64"
+    ;;
+  *)
+    echo "EXPORT_FAIL unsupported preset=$PRESET" >&2
+    exit 2
+    ;;
+esac
+
+mkdir -p "$(dirname "$EXPORT_FILE")"
 echo "EXPORT_RUN preset=$PRESET"
 "$GODOT" --headless --path "$ROOT" --export-release "$PRESET"
+if [[ ! -f "$EXPORT_FILE" ]]; then
+  echo "EXPORT_FAIL missing output=$EXPORT_FILE" >&2
+  exit 1
+fi
 echo "EXPORT_DONE preset=$PRESET"

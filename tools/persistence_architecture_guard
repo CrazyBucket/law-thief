@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+POLICY="$ROOT/scripts/services/persistence_path_policy.gd"
+SAVE_SERVICE="$ROOT/scripts/services/save_service.gd"
+SETTINGS_SERVICE="$ROOT/scripts/services/settings_service.gd"
+VERIFY="$ROOT/tools/verify"
+violations=0
+
+require_match() {
+  local kind="$1"
+  local pattern="$2"
+  local file="$3"
+  if grep -q -E "$pattern" "$file" 2>/dev/null; then
+    return
+  fi
+  echo "PERSISTENCE_ARCHITECTURE_GUARD_${kind} ${file#"$ROOT/"}" >&2
+  violations=$((violations + 1))
+}
+
+for file in "$POLICY" "$SAVE_SERVICE" "$SETTINGS_SERVICE"; do
+  if [[ ! -f "$file" ]]; then
+    echo "PERSISTENCE_ARCHITECTURE_GUARD_MISSING ${file#"$ROOT/"}" >&2
+    violations=$((violations + 1))
+  fi
+done
+
+if [[ -f "$POLICY" ]]; then
+  require_match "MISSING_TEST_SCRIPT_SCOPE" 'scripts/tests/' "$POLICY"
+  require_match "MISSING_TOOL_SCRIPT_SCOPE" 'scripts/tools/' "$POLICY"
+  require_match "MISSING_EXPLICIT_ROOT_PRECEDENCE" 'if not normalized_explicit\.is_empty\(\)' "$POLICY"
+fi
+
+if [[ -f "$SAVE_SERVICE" ]]; then
+  require_match "SAVE_SERVICE_BYPASSES_POLICY" '_PersistencePathPolicy\.save_root\(\)' "$SAVE_SERVICE"
+  if grep -q 'OS\.get_environment' "$SAVE_SERVICE"; then
+    echo "PERSISTENCE_ARCHITECTURE_GUARD_SAVE_SERVICE_READS_ENV scripts/services/save_service.gd" >&2
+    violations=$((violations + 1))
+  fi
+fi
+
+if [[ -f "$SETTINGS_SERVICE" ]]; then
+  require_match "SETTINGS_SERVICE_BYPASSES_POLICY" '_PersistencePathPolicy\.settings_path\(\)' "$SETTINGS_SERVICE"
+  if grep -q 'user://settings\.json' "$SETTINGS_SERVICE"; then
+    echo "PERSISTENCE_ARCHITECTURE_GUARD_SETTINGS_SERVICE_PLAYER_PATH scripts/services/settings_service.gd" >&2
+    violations=$((violations + 1))
+  fi
+fi
+
+player_path_matches="$(grep -R -n -E --include='*.gd' 'user://(settings\.json|save_manager\.json|slot_[0-9]+)' \
+  "$ROOT/scripts/tests" "$ROOT/scripts/tools" 2>/dev/null || true)"
+if [[ -n "$player_path_matches" ]]; then
+  while IFS= read -r match; do
+    [[ -n "$match" ]] && echo "PERSISTENCE_ARCHITECTURE_GUARD_AUTOMATION_PLAYER_PATH ${match#"$ROOT/"}" >&2
+  done <<<"$player_path_matches"
+  violations=$((violations + 1))
+fi
+
+require_match "VERIFY_MISSING_EXPLICIT_ROOT" 'LAW_THIEF_SAVE_ROOT=' "$VERIFY"
+
+if (( violations > 0 )); then
+  echo "PERSISTENCE_ARCHITECTURE_GUARD_FAIL categories=$violations" >&2
+  exit 1
+fi
+
+echo "PERSISTENCE_ARCHITECTURE_GUARD_PASS categories=5"

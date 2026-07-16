@@ -25,7 +25,9 @@
 - 已从 `DataRegistry` 抽取 `scripts/services/encounter_enemy_resolver.gd`：固定敌军、权重编组与随机候选的解析无状态化；战斗 RNG 以回调注入，避免解析器读取全局服务。
 - 已从 `DataRegistry` 抽取 `scripts/services/encounter_catalog_loader.gd`：遭遇目录扫描、重复检测与校验报告通过显式回调组合，注册表只保存通过校验的内容。
 - 已从 `BalanceConfigValidator` 抽取 `scripts/services/gem_def_validator.gd`：宝石字段、稀有度、组合与能力档案校验集中在单一纯静态模块，原验证器保留兼容入口。
-- `BattleScene` 当前为 3,272 行，`IsometricBoard` 当前为 3,332 行；新增五组组件测试固化奖励弹窗、奖励卡片、光束、投射物和粒子特效的结构契约。
+- 已从 `BattleQueryService` 抽取 `scripts/ui/battle_overlay_presenter.gd`：兼容 overlay/route schema、去重、元数据与敌方意图表现投影由纯 presenter 负责，查询服务降至 576 行。
+- `IsometricBoard` 已删除旧 `set_highlights()`、散字段 fallback 与重复描边路径，统一由 `set_overlays()` 接收 presenter/map specs。
+- `BattleScene` 当前为 3,248 行，`IsometricBoard` 当前为 3,380 行；组件测试持续固化奖励、战斗特效和 overlay 输入/渲染契约。
 
 ## 体积大于等于 100 KB 的全部文件
 

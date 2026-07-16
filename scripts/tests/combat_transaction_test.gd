@@ -13,6 +13,7 @@ func _run_tests() -> void:
 	_test_begin_from_state_reuses_existing_event_sink()
 	_test_bound_move_sink_captures_spike_damage()
 	_test_damage_context_tags_are_normalized()
+	_test_transaction_trace_is_snapshot_safe()
 	_test_event_validator_requires_damage_identity()
 	print("COMBAT_TRANSACTION_TEST_PASS")
 	quit()
@@ -140,6 +141,27 @@ func _test_damage_context_tags_are_normalized() -> void:
 	_assert_events_valid(events, "damage_context_tags")
 	tx.finish("combat_transaction_test.damage_context_tags")
 	print("  [OK] damage context tags are normalized")
+
+
+func _test_transaction_trace_is_snapshot_safe() -> void:
+	var state := _make_state()
+	var attacker := _make_unit(state, "trace_attacker", Constants.TEAM_PLAYER, Vector2i(1, 1), 10)
+	var victim := _make_unit(state, "trace_victim", Constants.TEAM_ENEMY, Vector2i(3, 1), 10)
+	var events: Array[Dictionary] = []
+	var tx := CombatTransaction.begin(state, events)
+	tx.move_unit(attacker, Vector2i(2, 1), {"reason": "trace_move"})
+	tx.damage_unit(victim, 2, attacker.uid, "trace_damage")
+	tx.finish("combat_transaction_test.trace")
+	assert(state.transaction_trace.size() == 2, "move and damage should each append one trace entry")
+	assert(state.transaction_trace[0].get("operation", "") == "move_unit")
+	assert(state.transaction_trace[1].get("operation", "") == "damage_unit")
+	assert(int(state.transaction_trace[1].get("remaining_hp", -1)) == 8)
+	var snapshot := StateSnapshot.capture(state, events, false)
+	var trace: Array = snapshot.get("transaction_trace", [])
+	assert(trace.size() == 2, "snapshot should expose transaction trace")
+	assert(trace[0].get("to", {}) == {"x": 2, "y": 1}, "trace vectors should be JSON-safe")
+	assert(state.clone().transaction_trace == state.transaction_trace, "state clone should preserve transaction evidence")
+	print("  [OK] transaction trace is snapshot-safe")
 
 
 func _test_event_validator_requires_damage_identity() -> void:

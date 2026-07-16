@@ -1859,7 +1859,7 @@ static func _copy_one_debuff_to_nearest_unit(state: GameState, source: UnitState
 	var debuff := debuffs[0]
 	var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, source_uid, debuff.payload.duplicate(true))
 	copy.value = debuff.value
-	StatusRegistry.apply_to_unit(nearest, copy)
+	_CombatTransaction.begin_from_state(state).apply_status(nearest, copy, {"emit_event": false, "reason": "blue_poison_transfer"})
 
 
 static func _spread_blue_poison_from_unit(state: GameState, carrier: UnitState, poison_level_def: Dictionary = {}) -> bool:
@@ -2184,7 +2184,7 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 			remaining.remove_at(pick)
 			var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, owner.uid, debuff.payload.duplicate(true))
 			copy.value = debuff.value
-			StatusRegistry.apply_to_unit(target, copy)
+			_CombatTransaction.begin_from_state(state).apply_status(target, copy, {"emit_event": false, "reason": "black_debuff_spread"})
 			state.log("%s 死亡将 %s 转给 %s" % [owner.uid, StatusRegistry.display_name(debuff.status_id), target.uid])
 
 

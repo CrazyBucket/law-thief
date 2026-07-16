@@ -3,6 +3,8 @@ extends SceneTree
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
 const BattleHudPresenter = preload("res://scripts/ui/battle_hud_presenter.gd")
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 var _failed := false
 
@@ -195,7 +197,7 @@ func _test_blue_pillar_gravity_uses_level_config() -> void:
 func _test_poison_red_level_two_cross_fog() -> void:
 	var state := _create_state()
 	var player := state.get_player()
-	player.pos = Vector2i(2, 3)
+	state.move_unit(player, Vector2i(2, 3))
 	_mount_gems(state, player, Constants.SLOT_RED, [Constants.GEM_POISON, Constants.GEM_POISON])
 	var target := _spawn_guard(state, Vector2i(5, 3), "poison_cross_target")
 	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
@@ -215,7 +217,7 @@ func _test_poison_red_level_two_cross_fog() -> void:
 func _test_fire_poison_combo_creates_toxic_smoke() -> void:
 	var state := _create_state()
 	var player := state.get_player()
-	player.pos = Vector2i(2, 3)
+	state.move_unit(player, Vector2i(2, 3))
 	_mount_gems(state, player, Constants.SLOT_RED, [Constants.GEM_FIRE, Constants.GEM_POISON])
 	var target := _spawn_guard(state, Vector2i(5, 3), "toxic_smoke_target")
 	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
@@ -229,7 +231,7 @@ func _test_fire_poison_combo_creates_toxic_smoke() -> void:
 func _test_ice_red_level_three_freezes_slowed_target() -> void:
 	var state := _create_state()
 	var player := state.get_player()
-	player.pos = Vector2i(2, 3)
+	state.move_unit(player, Vector2i(2, 3))
 	_mount_gems(state, player, Constants.SLOT_RED, [Constants.GEM_ICE, Constants.GEM_ICE, Constants.GEM_ICE])
 	var target := _spawn_guard(state, Vector2i(5, 3), "ice_freeze_target")
 	StatusRules.apply_slowed(state, target, 1, player.uid)
@@ -252,16 +254,9 @@ func _test_gravity_black_level_three_roots_nearby_units() -> void:
 
 
 func _create_state(encounter_id: String = "fission_slime_test") -> GameState:
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var state: GameState = reg.create_battle_state(encounter_id, 27182)
-	for uid in state.units.keys():
-		var unit: UnitState = state.units[uid]
-		if unit.team == Constants.TEAM_ENEMY:
-			state.unregister_unit(unit)
-	var player := state.get_player()
-	for slot in player.slots:
-		slot.gem_uid = ""
-	return state
+	var builder := ScenarioBuilder.new(encounter_id, 27182, true)
+	builder.clear_slots(builder.player())
+	return builder.finish()
 
 
 func _mount_gems(state: GameState, unit: UnitState, slot_type: String, gem_ids: Array[String]) -> void:
@@ -271,12 +266,12 @@ func _mount_gems(state: GameState, unit: UnitState, slot_type: String, gem_ids: 
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	for i in range(gem_ids.size()):
 		var slot: SlotState = slots[i]
+		if not slot.gem_uid.is_empty():
+			_GemTransfer.remove(state, slot.gem_uid)
 		var gem_uid: String = reg.next_runtime_uid("level_gem")
 		var gem := GemState.create(gem_uid, gem_ids[i], {})
-		gem.owner_uid = unit.uid
-		gem.slot_index = unit.slots.find(slot)
 		state.gems[gem_uid] = gem
-		slot.gem_uid = gem_uid
+		assert(_GemTransfer.to_unit_slot(state, gem, unit, slot))
 
 
 func _mount_tile_gem(state: GameState, tile: TileState, gem_id: String, slot_index: int = 0) -> void:
@@ -286,12 +281,11 @@ func _mount_tile_gem(state: GameState, tile: TileState, gem_id: String, slot_ind
 		return
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	if not slot.gem_uid.is_empty():
-		state.gems.erase(slot.gem_uid)
+		_GemTransfer.remove(state, slot.gem_uid)
 	var gem_uid: String = reg.next_runtime_uid("tile_gem")
 	var gem := GemState.create(gem_uid, gem_id, {})
-	gem.slot_index = slot_index
 	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	assert(_GemTransfer.to_tile_slot(state, gem, tile, slot))
 
 
 func _spawn_guard(state: GameState, pos: Vector2i, uid: String) -> UnitState:

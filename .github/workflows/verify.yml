@@ -7,6 +7,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      SEMANTIC_COVERAGE_MIN: "78.88"
     steps:
       - uses: actions/checkout@v4
       - uses: chickensoft-games/setup-godot@v2
@@ -25,6 +27,7 @@ jobs:
         with:
           version: "4.6.3"
           use-dotnet: false
+          include-templates: true
       - name: Export Linux build
         run: ./tools/export_build Linux
       - name: Smoke exported build

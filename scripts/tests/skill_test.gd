@@ -2,6 +2,7 @@ extends SceneTree
 ## 红槽宝石攻击触发测试：验证玩家装备红槽宝石后，攻击命中时附带效果正确触发
 
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 
 
 func _initialize() -> void:
@@ -173,11 +174,7 @@ func _test_explosion_splash_damages_neighbor() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
-	var gem := GemState.new()
-	gem.uid = "test_explosion_splash"
-	gem.gem_id = Constants.GEM_EXPLOSION
-	state.gems[gem.uid] = gem
-	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	_mount_gem_on_slot(state, player, player.get_slot(Constants.SLOT_RED), "test_explosion_splash", Constants.GEM_EXPLOSION)
 	var guards: Array[UnitState] = []
 	for unit in state.units.values():
 		if unit.unit_def_id == "unit_patrol_guard" and unit.alive:
@@ -185,7 +182,7 @@ func _test_explosion_splash_damages_neighbor() -> void:
 	assert(not guards.is_empty(), "need at least 1 guard")
 	var primary := guards[0]
 	var neighbor := guards[1] if guards.size() >= 2 else _spawn_test_guard(state, primary.pos + Vector2i(1, 0), "splash_guard")
-	neighbor.pos = primary.pos + Vector2i(1, 0)
+	state.move_unit(neighbor, primary.pos + Vector2i(1, 0))
 	assert(BoardUtils.chebyshev(primary.pos, neighbor.pos) == 1, "neighbor setup")
 	var primary_hp := primary.hp
 	var neighbor_hp := neighbor.hp
@@ -436,11 +433,7 @@ func _test_gravity_red_collision_when_adjacent() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
-	var gem := GemState.new()
-	gem.uid = "test_gravity_collision_gem"
-	gem.gem_id = Constants.GEM_GRAVITY
-	state.gems[gem.uid] = gem
-	player.get_slot(Constants.SLOT_RED).gem_uid = gem.uid
+	_mount_gem_on_slot(state, player, player.get_slot(Constants.SLOT_RED), "test_gravity_collision_gem", Constants.GEM_GRAVITY)
 	var guard := _spawn_test_guard(state, player.pos + Vector2i(1, 0), "test_gravity_collision_target")
 	guard.hp = 50
 	var player_hp_before := player.hp
@@ -469,6 +462,15 @@ func _spawn_test_guard(state: GameState, pos: Vector2i, uid: String) -> UnitStat
 	guard.alive = true
 	state.register_unit(guard)
 	return guard
+
+
+func _mount_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, uid: String, gem_id: String) -> GemState:
+	if not slot.gem_uid.is_empty():
+		_GemTransfer.remove(state, slot.gem_uid)
+	var gem := GemState.create(uid, gem_id, {})
+	state.gems[gem.uid] = gem
+	assert(_GemTransfer.to_unit_slot(state, gem, unit, slot))
+	return gem
 
 
 func _data_registry() -> Node:

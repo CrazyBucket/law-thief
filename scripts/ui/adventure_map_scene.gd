@@ -104,12 +104,7 @@ func _rebuild_board() -> void:
 			"path": [focus_choice, future_cell],
 			"arrow_reverse": false,
 		})
-	_board.set_highlights({
-		"targets": [AdventureService.current_pos],
-		"reachable": reachable,
-		"overlays": overlays,
-		"routes": routes,
-	})
+	_board.set_overlays(overlays, routes)
 	_board.set_hover(_hover_cell if _has_valid_cell(_hover_cell) else INVALID_CELL)
 
 

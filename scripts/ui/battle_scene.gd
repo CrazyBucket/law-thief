@@ -554,7 +554,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			var move_result := _controller.try_move(cell)
 			if move_result.get("ok", false):
 				_player_animating = true
-				_board.set_highlights({})
+				_board.clear_overlays()
 				var events: Array = move_result.get("move_events", [])
 				await _play_presentation_sequence(
 					move_result.get("presentation_state", _controller.state.clone()),
@@ -644,11 +644,11 @@ func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
 		_board.set_hover(Vector2i(-1, -1))
 		if _timeline_hover_uid.is_empty():
 			_board.set_timeline_hover_unit("")
-		_board.set_highlights(_controller.get_highlights())
+		BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights())
 		_refresh_editor_focus()
 		return
 	_board.set_hover(cell)
-	_board.set_highlights(_controller.get_highlights(_hover_cell))
+	BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
 	if _timeline_hover_uid.is_empty():
 		var hovered_state := _view_state()
 		var hovered_unit := hovered_state.get_unit_at(cell) if hovered_state != null else null
@@ -2073,14 +2073,14 @@ func _refresh() -> void:
 	var active_turn_uid := str(hud_state.get("active_turn_uid", ""))
 	_board.set_active_turn_unit(active_turn_uid)
 	if _editor_drag_active:
-		_board.set_highlights({})
+		_board.clear_overlays()
 		if _hover_cell.x >= 0:
 			var preview := _editor_preview_for_cell(_hover_cell)
 			_board.set_editor_preview(_typed_preview_cells(preview.get("cells", [])), bool(preview.get("valid", false)), true)
 		else:
 			_board.clear_editor_preview()
 	else:
-		_board.set_highlights(_controller.get_highlights(_hover_cell))
+		BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
 		_board.clear_editor_preview()
 	_sync_unit_slot_panels()
 	_update_held_banner()

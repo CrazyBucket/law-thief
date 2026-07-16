@@ -18,6 +18,8 @@ signal on_unit_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
 signal on_forced_displacement(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, source_uid: String)
 
 var version: int = 1
+## Runtime-only monotonic mutation version used by read-model caches.
+var revision: int = 0
 var run_seed: int = 0
 var turn_index: int = 1
 var phase: String = Constants.PHASE_PLAYER
@@ -35,6 +37,8 @@ var player_acted: bool = false
 ## 当前回合仍待操控的友方单位队列（首个已成为 player_uid，后续依次激活）
 var controllable_queue: Array[String] = []
 var combat_log: Array[String] = []
+## Runtime-only mutation evidence captured by StateSnapshot for debugging/replay.
+var transaction_trace: Array[Dictionary] = []
 var encounter_id: String = ""
 var result: String = ""
 var overload_pending: bool = false
@@ -55,6 +59,18 @@ var _cell_occupancy: Dictionary = {}
 func log(message: String) -> void:
 	combat_log.append(message)
 	print("[COMBAT] ", message)
+
+
+func bump_revision() -> void:
+	revision += 1
+
+
+func record_transaction(operation: String, details: Dictionary = {}) -> void:
+	var entry := details.duplicate(true)
+	entry["sequence"] = transaction_trace.size() + 1
+	entry["operation"] = operation
+	entry["revision"] = revision
+	transaction_trace.append(entry)
 
 
 func bind_combat_events(sink: Array) -> void:
@@ -184,24 +200,28 @@ func move_unit(unit: UnitState, new_pos: Vector2i) -> void:
 	_remove_unit_from_occupancy(unit)
 	unit.pos = new_pos
 	_add_unit_to_occupancy(unit)
+	bump_revision()
 
 
 ## 注册新单位到占格索引（单位生成时调用，替代直接写 units[uid] = unit）
 func register_unit(unit: UnitState) -> void:
 	units[unit.uid] = unit
 	_add_unit_to_occupancy(unit)
+	bump_revision()
 
 
 ## 标记单位死亡并撤销占格索引
 func kill_unit(unit: UnitState) -> void:
 	_remove_unit_from_occupancy(unit)
 	unit.alive = false
+	bump_revision()
 
 
 ## 从战场移除单位（编辑器删除等，非战斗击杀）
 func unregister_unit(unit: UnitState) -> void:
 	_remove_unit_from_occupancy(unit)
 	units.erase(unit.uid)
+	bump_revision()
 
 
 # ─── 查询接口 ─────────────────────────────────────────────────────────────────
@@ -260,15 +280,18 @@ func get_dropped_gem_uids_at(pos: Vector2i) -> Array[String]:
 
 func add_entity(entity: EntityState) -> void:
 	entities[entity.uid] = entity
+	bump_revision()
 
 
 func remove_entity(uid: String) -> void:
-	entities.erase(uid)
+	if entities.erase(uid):
+		bump_revision()
 
 
 func clone() -> GameState:
 	var snapshot := GameState.new()
 	snapshot.version = version
+	snapshot.revision = revision
 	snapshot.run_seed = run_seed
 	snapshot.turn_index = turn_index
 	snapshot.phase = phase
@@ -279,6 +302,7 @@ func clone() -> GameState:
 	snapshot.player_acted = player_acted
 	snapshot.controllable_queue = controllable_queue.duplicate()
 	snapshot.combat_log = combat_log.duplicate(true)
+	snapshot.transaction_trace = transaction_trace.duplicate(true)
 	snapshot.encounter_id = encounter_id
 	snapshot.result = result
 	snapshot.overload_pending = overload_pending

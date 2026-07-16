@@ -13,6 +13,7 @@ fi
 checked=0
 documented=0
 missing=0
+over_budget=0
 while IFS= read -r file; do
   rel="${file#"$ROOT/"}"
   lines="$(wc -l < "$file")"
@@ -20,8 +21,17 @@ while IFS= read -r file; do
     continue
   fi
   checked=$((checked + 1))
-  if grep -Fq "| \`$rel\` |" "$BOUNDARY_DOC"; then
+  row="$(grep -F "| \`$rel\` |" "$BOUNDARY_DOC" | head -1 || true)"
+  if [[ -n "$row" ]]; then
     documented=$((documented + 1))
+    budget="$(awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3}' <<<"$row")"
+    if [[ ! "$budget" =~ ^[0-9]+$ ]]; then
+      echo "FILE_SIZE_GUARD_INVALID_BUDGET file=$rel budget=$budget" >&2
+      over_budget=$((over_budget + 1))
+    elif (( lines > budget )); then
+      echo "FILE_SIZE_GUARD_OVER_BUDGET lines=$lines budget=$budget file=$rel" >&2
+      over_budget=$((over_budget + 1))
+    fi
   else
     echo "FILE_SIZE_GUARD_MISSING lines=$lines file=$rel" >&2
     missing=$((missing + 1))
@@ -30,8 +40,8 @@ done < <(find "$ROOT/scripts" -type f -name '*.gd' \
   ! -path "$ROOT/scripts/tests/*" \
   ! -path "$ROOT/scripts/tools/*" | sort)
 
-if (( missing > 0 )); then
-  echo "FILE_SIZE_GUARD_FAIL checked=$checked documented=$documented missing=$missing max_lines=$MAX_LINES" >&2
+if (( missing > 0 || over_budget > 0 )); then
+  echo "FILE_SIZE_GUARD_FAIL checked=$checked documented=$documented missing=$missing over_budget=$over_budget max_lines=$MAX_LINES" >&2
   exit 1
 fi
-echo "FILE_SIZE_GUARD_PASS checked=$checked documented=$documented max_lines=$MAX_LINES"
+echo "FILE_SIZE_GUARD_PASS checked=$checked documented=$documented over_budget=$over_budget max_lines=$MAX_LINES"

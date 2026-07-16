@@ -59,6 +59,7 @@ The result is `artifacts/verify/snapshot.json`. It contains:
 - before/after battle state;
 - compact state diff;
 - emitted events;
+- transaction trace for state mutations routed through `CombatTransaction`;
 - battle and event invariant violations.
 
 ## Testing Rules
@@ -102,6 +103,10 @@ The result is `artifacts/verify/snapshot.json`. It contains:
 scripts/testkit/                 reusable scenario, snapshot, and diff helpers
 scripts/tools/ai_snapshot.gd     one-command AI probe
 scripts/debug/                   runtime invariant validators
+tools/combat_architecture_guard  static transaction/event mutation guard
+tools/test_log_guard            strict Godot runtime-error log gate
+tools/ui_architecture_guard     query/presenter/board overlay boundary gate
+tools/persistence_architecture_guard test/tool player-save isolation gate
 scripts/rules/gem_effects.gd     gem effect execution
 scripts/rules/gem_tag_resolver.gd gem count/level semantics
 scripts/rules/attack_pipeline.gd attack calculation and tags

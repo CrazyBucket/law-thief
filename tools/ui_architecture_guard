@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+QUERY="$ROOT/scripts/battle/battle_query_service.gd"
+PRESENTER="$ROOT/scripts/ui/battle_overlay_presenter.gd"
+BOARD="$ROOT/scripts/ui/isometric_board.gd"
+OVERLAY_CALLERS=(
+  "$ROOT/scripts/ui/battle_scene.gd"
+  "$ROOT/scripts/ui/adventure_map_scene.gd"
+)
+
+violations=0
+
+report_match() {
+  local kind="$1"
+  local pattern="$2"
+  local file="$3"
+  local matches
+  matches="$(grep -n -E "$pattern" "$file" 2>/dev/null || true)"
+  if [[ -z "$matches" ]]; then
+    return
+  fi
+  while IFS= read -r match; do
+    [[ -n "$match" ]] && echo "UI_ARCHITECTURE_GUARD_${kind} ${file#"$ROOT/"}:$match" >&2
+  done <<<"$matches"
+  violations=$((violations + 1))
+}
+
+if [[ ! -f "$PRESENTER" ]]; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING scripts/ui/battle_overlay_presenter.gd" >&2
+  exit 1
+fi
+
+if ! grep -q 'BattleOverlayPresenter' "$QUERY" || ! grep -q '\.present(result, overlay_context)' "$QUERY"; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING_DELEGATION scripts/battle/battle_query_service.gd" >&2
+  violations=$((violations + 1))
+fi
+
+report_match "QUERY_OWNS_OVERLAY_SCHEMA" '"(overlays|routes)"[[:space:]]*:' "$QUERY"
+report_match "QUERY_OWNS_OVERLAY_BUILDER" 'func[[:space:]]+_append_(overlay|route)' "$QUERY"
+
+if ! grep -q 'func set_overlays' "$BOARD" || ! grep -q 'func clear_overlays' "$BOARD"; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING_BOARD_OVERLAY_API scripts/ui/isometric_board.gd" >&2
+  violations=$((violations + 1))
+fi
+
+report_match "BOARD_RETAINS_LEGACY_HIGHLIGHTS" '(set_highlights|var[[:space:]]+highlights|_draw_(move_)?highlight_outlines|_has_unified_overlays)' "$BOARD"
+
+for caller in "${OVERLAY_CALLERS[@]}"; do
+  report_match "LEGACY_HIGHLIGHT_CALL" '\.set_highlights[[:space:]]*\(' "$caller"
+  if ! grep -q -E '(\.set_overlays[[:space:]]*\(|BattleOverlayPresenter\.apply_to_board[[:space:]]*\()' "$caller"; then
+    echo "UI_ARCHITECTURE_GUARD_MISSING_OVERLAY_CALL ${caller#"$ROOT/"}" >&2
+    violations=$((violations + 1))
+  fi
+done
+
+if (( violations > 0 )); then
+  echo "UI_ARCHITECTURE_GUARD_FAIL categories=$violations" >&2
+  exit 1
+fi
+
+echo "UI_ARCHITECTURE_GUARD_PASS categories=6"

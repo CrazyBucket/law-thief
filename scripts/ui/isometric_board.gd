@@ -74,7 +74,8 @@ class BoardAnimationHostState:
 		masked_embedded_gems.clear()
 
 
-var highlights: Dictionary = {}
+var overlay_specs: Array = []
+var overlay_routes: Array = []
 var hover_cell: Vector2i = Vector2i(-1, -1)
 var editor_preview_cells: Array[Vector2i] = []
 var editor_preview_active: bool = false
@@ -292,9 +293,9 @@ func _board_texture_content_rect() -> Rect2:
 func _process(delta: float) -> void:
 	_anim.pulse_time += delta
 	var scaled_dt := delta * _animation_speed_scale
-	var has_highlights: bool = not highlights.is_empty()
+	var has_overlays := not overlay_specs.is_empty() or not overlay_routes.is_empty()
 	var visuals_dirty := _update_overlay_fades(delta)
-	if has_highlights or not active_turn_unit_uid.is_empty():
+	if has_overlays or not active_turn_unit_uid.is_empty():
 		visuals_dirty = true
 	for mv_uid in _anim.move_offsets.keys():
 		if _anim.strike_elapsed.has(mv_uid):
@@ -707,8 +708,15 @@ func _facing_from_screen_delta(from_screen: Vector2, to_screen: Vector2, fallbac
 	return best_name
 
 
-func set_highlights(new_highlights: Dictionary) -> void:
-	highlights = new_highlights
+func set_overlays(new_overlays: Array, new_routes: Array = []) -> void:
+	overlay_specs = new_overlays.duplicate(true)
+	overlay_routes = new_routes.duplicate(true)
+	queue_redraw()
+
+
+func clear_overlays() -> void:
+	overlay_specs.clear()
+	overlay_routes.clear()
 	queue_redraw()
 
 
@@ -772,13 +780,9 @@ func _draw() -> void:
 	var drawn_entity_ui: Dictionary = {}
 	for grid in _sorted_cells():
 		_draw_tile(grid)
-	if not _has_unified_overlays():
-		_draw_move_highlight_outlines()
-	if _has_unified_overlays():
-		_draw_overlay_routes()
+	_draw_overlay_routes()
 	_draw_editor_preview()
-	if _has_unified_overlays():
-		_draw_unified_overlay_outlines()
+	_draw_overlay_outlines()
 	if hover_cell.x >= 0:
 		var hover_unit := state.get_unit_at(hover_cell)
 		if hover_unit == null or not hover_unit.alive:
@@ -808,8 +812,6 @@ func _draw() -> void:
 		if unit != null and unit.alive and not drawn_unit_ui.has(unit.uid):
 			drawn_unit_ui[unit.uid] = true
 			_draw_unit_ui(unit)
-	if not _has_unified_overlays():
-		_draw_highlight_outlines()
 	_draw_gem_visuals(true)
 	_draw_unit_slot_panels()
 
@@ -1121,20 +1123,6 @@ func _draw_entity_ui(entity: EntityState) -> void:
 	)
 
 
-func _draw_move_highlight_outlines() -> void:
-	var reachable: Array = highlights.get("reachable", [])
-	if reachable.is_empty():
-		return
-	var outline: Color = _reachable_outline_color()
-	var hover_outline: Color = _hover_outline_color()
-	for grid in reachable:
-		var cell: Vector2i = grid
-		var is_hovered: bool = (cell == hover_cell)
-		var color: Color = hover_outline if is_hovered else outline
-		var width: float = IsoCoordinates.visual(2.0 if is_hovered else 1.5)
-		_draw_cell_outline(cell, color, width)
-
-
 func _draw_editor_preview() -> void:
 	if not editor_preview_active or editor_preview_cells.is_empty():
 		return
@@ -1148,38 +1136,11 @@ func _draw_editor_preview() -> void:
 		draw_polyline(closed, outline, IsoCoordinates.visual(2.0), false)
 
 
-func _draw_highlight_outlines() -> void:
-	var attack_range: Array = highlights.get("attack_range", [])
-	var targets: Array = highlights.get("targets", [])
-	var danger: Array = highlights.get("danger", [])
-	var effect_list: Array = highlights.get("effect_preview", [])
-	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
-	for grid in attack_range:
-		var c := Color(UiPalette.HILITE_REACH, 0.45 + pulse * 0.25)
-		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.6))
-	for grid in targets:
-		var c := Color(UiPalette.HILITE_TARGET, 0.55 + pulse * 0.35)
-		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
-	for grid in danger:
-		var c := Color(UiPalette.HILITE_DANGER, 0.5 + pulse * 0.35)
-		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.8))
-	for grid in effect_list:
-		var c := Color(UiPalette.HILITE_RANGE, 0.45 + pulse * 0.3)
-		_draw_cell_outline(grid, c, IsoCoordinates.visual(1.5))
-
-
-func _has_unified_overlays() -> bool:
-	var overlays: Array = highlights.get("overlays", [])
-	var routes: Array = highlights.get("routes", [])
-	return not overlays.is_empty() or not routes.is_empty()
-
-
-func _draw_unified_overlay_outlines() -> void:
-	var overlays: Array = highlights.get("overlays", [])
-	if overlays.is_empty():
+func _draw_overlay_outlines() -> void:
+	if overlay_specs.is_empty():
 		return
 	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
-	for raw_overlay in overlays:
+	for raw_overlay in overlay_specs:
 		if not raw_overlay is Dictionary:
 			continue
 		var overlay: Dictionary = raw_overlay
@@ -1204,8 +1165,7 @@ func _draw_map_room_nameplates() -> void:
 	if state == null or state.encounter_id != "adventure_map":
 		return
 	var cells: Dictionary = {}
-	var overlays: Array = highlights.get("overlays", [])
-	for raw_overlay in overlays:
+	for raw_overlay in overlay_specs:
 		if not raw_overlay is Dictionary:
 			continue
 		var overlay: Dictionary = raw_overlay
@@ -1253,10 +1213,9 @@ func _draw_map_room_nameplate(cell: Vector2i, label: String, color: Color, prior
 
 
 func _draw_overlay_routes() -> void:
-	var routes: Array = highlights.get("routes", [])
-	if routes.is_empty():
+	if overlay_routes.is_empty():
 		return
-	for raw_route in routes:
+	for raw_route in overlay_routes:
 		if not raw_route is Dictionary:
 			continue
 		var route: Dictionary = raw_route
@@ -1329,34 +1288,7 @@ func _draw_front_tile_overlay_at(grid: Vector2i, occupied: bool = false) -> void
 
 
 func _tile_highlight(grid: Vector2i) -> Color:
-	var overlays: Array = highlights.get("overlays", [])
-	if not overlays.is_empty():
-		return _tile_overlay_highlight(grid, overlays)
-	var reachable: Array = highlights.get("reachable", [])
-	var attack_range: Array = highlights.get("attack_range", [])
-	var targets: Array = highlights.get("targets", [])
-	var paths: Array = highlights.get("paths", [])
-	var danger: Array = highlights.get("danger", [])
-	var effect_list: Array = highlights.get("effect_preview", [])
-	var pulse: float = (sin(_anim.pulse_time * 3.2) * 0.5 + 0.5)
-	if grid in effect_list:
-		var a: float = 0.5 + pulse * 0.22
-		return Color(UiPalette.HILITE_DANGER, a)
-	if grid in reachable:
-		var move_a: float = 0.28 + pulse * 0.12
-		return Color(UiPalette.HILITE_REACH, move_a)
-	if grid in attack_range:
-		var a: float = 0.28 + pulse * 0.12
-		return Color(UiPalette.HILITE_REACH, a)
-	if grid in targets:
-		var a: float = 0.52 + pulse * 0.22
-		return Color(UiPalette.HILITE_TARGET, a)
-	if grid in danger:
-		var a: float = 0.42 + pulse * 0.22
-		return Color(UiPalette.HILITE_DANGER, a)
-	if grid in paths:
-		return Color(UiPalette.HILITE_RANGE, 0.24 + pulse * 0.1)
-	return Color.TRANSPARENT
+	return _tile_overlay_highlight(grid, overlay_specs)
 
 
 func _tile_overlay_highlight(grid: Vector2i, overlays: Array) -> Color:
@@ -1782,17 +1714,20 @@ func _draw_cell_outline(grid: Vector2i, color: Color, line_width: float) -> void
 	draw_polyline(closed, color, line_width, false)
 
 
-func _reachable_outline_color() -> Color:
-	return Color(UiPalette.TEXT_BRIGHT, 0.92)
-
-
 func _hover_outline_color() -> Color:
 	return Color(UiPalette.HILITE_REACH.lightened(0.4), 0.98)
 
 
 func _cell_hover_outline_color() -> Color:
-	var reachable: Array = highlights.get("reachable", [])
-	return _hover_outline_color() if hover_cell in reachable else Color(UiPalette.TEXT_BRIGHT, 0.95)
+	for raw_overlay in overlay_specs:
+		if not raw_overlay is Dictionary:
+			continue
+		var overlay: Dictionary = raw_overlay
+		if str(overlay.get("kind", "")) not in ["move", "map_choice", "map_focus"]:
+			continue
+		if hover_cell in overlay.get("cells", []):
+			return _hover_outline_color()
+	return Color(UiPalette.TEXT_BRIGHT, 0.95)
 
 
 func _draw_unit_ground_outlines() -> void:

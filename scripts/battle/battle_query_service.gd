@@ -7,6 +7,7 @@ const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const _BattleOverlayPresenter = preload("res://scripts/ui/battle_overlay_presenter.gd")
 
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
@@ -16,6 +17,7 @@ var _reachable_cache: Array = []
 var _reachable_cache_key: Array = []
 var _attack_range_cache: Array = []
 var _attack_range_cache_key: Array = []
+var _overlay_presenter := _BattleOverlayPresenter.new()
 
 
 func setup(controller: BattleController) -> void:
@@ -39,16 +41,7 @@ func _c() -> BattleController:
 # ═══════════════════════════════════════════════════════════════════════════
 
 func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
-	var result := {
-		"reachable": [],
-		"targets": [],
-		"attack_range": [],
-		"paths": [],
-		"danger": [],
-		"effect_preview": [],
-		"overlays": [],
-		"routes": [],
-	}
+	var result := _BattleOverlayPresenter.empty_highlights()
 	var ctrl = _c()
 	if ctrl == null:
 		push_error("BattleQueryService: _ctrl is null in get_highlights")
@@ -64,11 +57,14 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	var manual_blocked := OverloadRules.blocks_player_manual_actions(state) and not unlimited
 	if manual_blocked:
 		action = ""
+	var overlay_context := {
+		"action": action,
+		"source_uid": player.uid,
+	}
 	var move_budget := ctrl.player_move_budget(player)
 	if action == Constants.ACTION_MOVE and (unlimited or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))):
 		var reachable := _cached_reachable_cells(state, player, move_budget, unlimited)
 		result["reachable"] = reachable
-		_append_overlay(result, "move", reachable)
 		if hover_cell in reachable and hover_cell != player.pos:
 			var move_path := BoardUtils.astar_path(
 				state,
@@ -83,53 +79,36 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 			if not move_path.is_empty() and move_path[-1] == hover_cell:
 				var route: Array = [player.pos]
 				route.append_array(move_path)
-				_append_route(result, "move", route, {"arrow_reverse": false})
+				overlay_context["move_route"] = route
 	elif action == Constants.ACTION_ATTACK \
 		and (unlimited or StatusRules.can_attack(player)) \
 		and (unlimited or not state.player_acted or StatusRules.has_extra_attack(player)):
 		var attack_range := _cached_attack_target_cells(state, player, unlimited)
 		result["attack_range"] = attack_range
-		_append_overlay(result, "attack_range", attack_range)
 		if hover_cell.x >= 0 and BoardUtils.in_bounds(state, hover_cell):
 			var hit_preview := _attack_hit_preview_cells(state, player, hover_cell)
 			result["effect_preview"] = hit_preview
-			_append_overlay(result, "effect", hit_preview, {"source_uid": player.uid, "target_cell": hover_cell})
+			overlay_context["target_cell"] = hover_cell
 		else:
 			var effect_preview := _attack_effect_preview(state, player)
 			result["effect_preview"] = effect_preview
-			_append_overlay(result, "effect", effect_preview, {"source_uid": player.uid})
 	elif action == Constants.ACTION_EXTRACT and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 		var targets := _gem_target_cells(ctrl, state, player)
 		result["targets"] = targets
-		_append_overlay(result, "target", targets, {"action": action})
 	elif action == Constants.ACTION_INSERT and ctrl.can_use_action(Constants.ACTION_INSERT):
 		var targets := _gem_target_cells(ctrl, state, player)
 		result["targets"] = targets
-		_append_overlay(result, "target", targets, {"action": action})
 	var selected_uid: String = ctrl.selected_unit_uid
 	if not selected_uid.is_empty():
 		var selected_unit: UnitState = state.units.get(selected_uid, null)
 		if selected_unit != null and selected_unit.alive and selected_unit.intent != null:
+			overlay_context["selected_unit"] = selected_unit
 			var intent_path: Array = _preview_cells(selected_unit.intent, "movement", selected_unit.intent.path)
 			result["paths"] = intent_path
-			if not intent_path.is_empty():
-				_append_overlay(result, "intent_path", intent_path, {"unit_uid": selected_unit.uid})
-				var route: Array = [selected_unit.pos]
-				route.append_array(intent_path)
-				_append_route(result, "intent", route, {"unit_uid": selected_unit.uid, "arrow_reverse": false})
 			var danger_cells: Array = _preview_cells(selected_unit.intent, "damage", selected_unit.intent.affected_cells)
 			if not danger_cells.is_empty():
 				result["danger"] = danger_cells
-				_append_overlay(result, "danger", danger_cells, {"unit_uid": selected_unit.uid})
-			for effect in selected_unit.intent.preview_effects:
-				if effect.kind in ["movement", "damage"]:
-					continue
-				_append_overlay(result, "effect", effect.cells, {
-					"unit_uid": selected_unit.uid,
-					"preview_kind": effect.kind,
-					"certainty": effect.certainty,
-				})
-	return result
+	return _overlay_presenter.present(result, overlay_context)
 
 
 func _preview_cells(intent: IntentState, kind: String, fallback: Array) -> Array:
@@ -141,43 +120,6 @@ func _preview_cells(intent: IntentState, kind: String, fallback: Array) -> Array
 			if cell not in cells:
 				cells.append(cell)
 	return fallback.duplicate() if cells.is_empty() else cells
-
-
-func _append_overlay(result: Dictionary, kind: String, cells: Array, options: Dictionary = {}) -> void:
-	if cells.is_empty():
-		return
-	var unique_cells: Array[Vector2i] = []
-	var seen := {}
-	for raw_cell in cells:
-		var cell: Vector2i = raw_cell
-		if seen.has(cell):
-			continue
-		seen[cell] = true
-		unique_cells.append(cell)
-	if unique_cells.is_empty():
-		return
-	var overlay := {
-		"kind": kind,
-		"cells": unique_cells,
-	}
-	for key in options.keys():
-		overlay[key] = options[key]
-	result["overlays"].append(overlay)
-
-
-func _append_route(result: Dictionary, kind: String, path: Array, options: Dictionary = {}) -> void:
-	if path.size() < 2:
-		return
-	var clean_path: Array[Vector2i] = []
-	for raw_cell in path:
-		clean_path.append(raw_cell)
-	var route := {
-		"kind": kind,
-		"path": clean_path,
-	}
-	for key in options.keys():
-		route[key] = options[key]
-	result["routes"].append(route)
 
 
 func get_cell_preview(cell: Vector2i) -> Dictionary:
@@ -418,7 +360,7 @@ func _cached_reachable_cells(
 	move_budget: int,
 	unlimited: bool
 ) -> Array:
-	var key := [state.get_instance_id(), player.uid, player.pos, move_budget, unlimited]
+	var key := [state.get_instance_id(), state.revision, player.uid, player.pos, move_budget, unlimited]
 	if key != _reachable_cache_key:
 		_reachable_cache_key = key
 		_reachable_cache = BoardUtils.reachable_cells(state, player.pos, move_budget)
@@ -428,7 +370,7 @@ func _cached_reachable_cells(
 func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited: bool) -> Array:
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	var uses_light := GemEffects.unit_has_red_light(state, player)
-	var key := [state.get_instance_id(), player.uid, player.pos, max_range, uses_light, unlimited]
+	var key := [state.get_instance_id(), state.revision, player.uid, player.pos, max_range, uses_light, unlimited]
 	if key != _attack_range_cache_key:
 		_attack_range_cache_key = key
 		_attack_range_cache = _attack_target_cells(state, player)

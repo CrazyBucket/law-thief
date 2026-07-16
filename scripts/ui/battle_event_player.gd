@@ -1,8 +1,8 @@
 class_name BattleEventPlayer
 extends RefCounted
 
-const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const PresentationPlanner = preload("res://scripts/ui/battle_presentation_planner.gd")
+const PresentationStateApplierScript = preload("res://scripts/ui/presentation_state_applier.gd")
 
 const BLAST_IMPACT_DELAY := 0.12
 const BLAST_RECOVERY_DELAY := 0.63
@@ -16,6 +16,7 @@ var _spawn_damage_text: Callable = Callable()
 var _scale_anim_time: Callable = Callable()
 
 var _display_state: GameState = null
+var _state_applier = PresentationStateApplierScript.new()
 var _is_playing: bool = false
 var _pending_battle_end: String = ""
 
@@ -39,6 +40,7 @@ func is_playing() -> bool:
 func begin_presentation(state_before: GameState, inspect_uid: String, economy_source: GameState = null) -> void:
 	_is_playing = true
 	_display_state = state_before
+	_sync_state_applier()
 	if economy_source != null and _display_state != null:
 		_display_state.player_moved = economy_source.player_moved
 		_display_state.player_acted = economy_source.player_acted
@@ -50,6 +52,7 @@ func begin_presentation(state_before: GameState, inspect_uid: String, economy_so
 
 func finish_presentation(final_state: GameState, inspect_uid: String) -> String:
 	_display_state = null
+	_sync_state_applier()
 	_is_playing = false
 	if _board != null:
 		_board.set_battle_state(final_state)
@@ -452,107 +455,20 @@ func _play_anim_event(ev: Dictionary) -> void:
 
 
 func _prime_event_state(ev: Dictionary) -> void:
-	if _display_state == null:
-		return
-	match str(ev.get("type", "")):
-		"move_step":
-			var uid := str(ev.get("uid", ""))
-			var unit: UnitState = _display_state.units.get(uid, null)
-			if unit != null:
-				var from_pos: Vector2i = ev.get("from", unit.pos)
-				var to_pos: Vector2i = ev.get("to", unit.pos)
-				if unit.pos != to_pos:
-					_display_state.move_unit(unit, to_pos)
-				unit.facing = UnitState.facing_from_step(from_pos, to_pos)
+	_sync_state_applier()
+	_state_applier.prime(ev)
 
 
 func _apply_event_state(ev: Dictionary) -> void:
-	if _display_state == null:
-		return
-	match str(ev.get("type", "")):
-		"damage":
-			var pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var victim_uid := str(ev.get("uid", ev.get("victim_uid", "")))
-			var victim: UnitState = _display_state.units.get(victim_uid, null) if not victim_uid.is_empty() else null
-			if victim == null:
-				victim = _display_state.get_unit_at(pos)
-			if victim == null:
-				return
-			victim.hp = maxi(0, victim.hp - int(ev.get("damage", 0)))
-			# 致命伤仍保留单位到本段表现结束，让受击帧可见；最终状态切换时再移除。
-		"poison_burst":
-			var poison_center: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var pattern := str(ev.get("pattern", ""))
-			var poison_radius: int = int(ev.get("radius", 0))
-			var cells: Array[Vector2i] = []
-			if pattern == "cross":
-				cells.append(poison_center)
-				for neighbor in BoardUtils.neighbors4(poison_center):
-					if BoardUtils.in_bounds(_display_state, neighbor):
-						cells.append(neighbor)
-			elif poison_radius <= 0:
-				cells.append(poison_center)
-			else:
-				for cell in BoardUtils.cells_in_radius(poison_center, poison_radius):
-					if BoardUtils.in_bounds(_display_state, cell):
-						cells.append(cell)
-			var duration := CombatConfig.poison_fog_duration()
-			if int(ev.get("duration", 0)) > 0:
-				duration = int(ev.get("duration", duration))
-			TileRules.begin_overlay_batch(_display_state)
-			for cell in cells:
-				TileRules.create_poison_fog(_display_state, cell, duration)
-			TileRules.end_overlay_batch(_display_state)
-		"fire_burst":
-			TileRules.create_fire(_display_state, ev.get("pos", Vector2i.ZERO))
-		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam":
-			pass
-		"split_spawn":
-			var clone_uid := str(ev.get("uid", ""))
-			var clone: UnitState = _controller.state.units.get(clone_uid, null)
-			if clone != null and clone.alive:
-				for slot in clone.slots:
-					if slot == null or slot.gem_uid.is_empty():
-						continue
-					var gem: GemState = _controller.state.gems.get(slot.gem_uid, null)
-					if gem != null:
-						_display_state.gems[gem.uid] = gem.clone()
-				_display_state.register_unit(clone.clone())
-				_display_state.rebuild_occupancy()
-		"spawn":
-			_copy_runtime_unit_to_display(str(ev.get("uid", "")))
-		"transform":
-			_copy_runtime_unit_to_display(str(ev.get("uid", "")), true)
-		"die":
-			var dead_uid := str(ev.get("uid", ""))
-			var dead_unit: UnitState = _display_state.units.get(dead_uid, null)
-			if dead_unit != null:
-				_display_state.kill_unit(dead_unit)
-		"entity_destroyed":
-			var entity_uid := str(ev.get("uid", ""))
-			var destroyed: EntityState = _display_state.entities.get(entity_uid, null)
-			if destroyed != null:
-				destroyed.alive = false
+	_sync_state_applier()
+	_state_applier.apply(ev)
 
 
-func _copy_runtime_unit_to_display(uid: String, replace_existing: bool = false) -> void:
-	if uid.is_empty() or _display_state == null or _controller == null or _controller.state == null:
-		return
-	var runtime_unit: UnitState = _controller.state.units.get(uid, null)
-	if runtime_unit == null or not runtime_unit.alive:
-		return
-	if replace_existing:
-		var existing: UnitState = _display_state.units.get(uid, null)
-		if existing != null:
-			_display_state.unregister_unit(existing)
-	for slot in runtime_unit.slots:
-		if slot == null or slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = _controller.state.gems.get(slot.gem_uid, null)
-		if gem != null:
-			_display_state.gems[gem.uid] = gem.clone()
-	_display_state.register_unit(runtime_unit.clone())
-	_display_state.rebuild_occupancy()
+func _sync_state_applier() -> void:
+	var runtime_state: GameState = null
+	if _controller != null:
+		runtime_state = _controller.state
+	_state_applier.set_states(_display_state, runtime_state)
 
 
 func _scaled_anim_time(base_duration: float) -> float:

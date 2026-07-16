@@ -6,7 +6,7 @@
 
 # Export
 export/
-export_presets.cfg
+build/
 
 # OS
 .DS_Store

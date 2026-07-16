@@ -33,6 +33,34 @@ if ! "$ROOT/tools/source_encoding_guard" >"$SOURCE_ENCODING_LOG" 2>&1; then
   exit 1
 fi
 
+COMBAT_ARCHITECTURE_LOG="$REPORT_DIR/combat_architecture_guard.log"
+if ! bash "$ROOT/tools/combat_architecture_guard" >"$COMBAT_ARCHITECTURE_LOG" 2>&1; then
+  echo "VERIFY_FAIL combat_architecture_guard (see artifacts/verify/combat_architecture_guard.log)"
+  cat "$COMBAT_ARCHITECTURE_LOG"
+  exit 1
+fi
+
+UI_ARCHITECTURE_LOG="$REPORT_DIR/ui_architecture_guard.log"
+if ! bash "$ROOT/tools/ui_architecture_guard" >"$UI_ARCHITECTURE_LOG" 2>&1; then
+  echo "VERIFY_FAIL ui_architecture_guard (see artifacts/verify/ui_architecture_guard.log)"
+  cat "$UI_ARCHITECTURE_LOG"
+  exit 1
+fi
+
+PERSISTENCE_ARCHITECTURE_LOG="$REPORT_DIR/persistence_architecture_guard.log"
+if ! bash "$ROOT/tools/persistence_architecture_guard" >"$PERSISTENCE_ARCHITECTURE_LOG" 2>&1; then
+  echo "VERIFY_FAIL persistence_architecture_guard (see artifacts/verify/persistence_architecture_guard.log)"
+  cat "$PERSISTENCE_ARCHITECTURE_LOG"
+  exit 1
+fi
+
+TEST_LOG_GUARD_LOG="$REPORT_DIR/test_log_guard.log"
+if ! bash "$ROOT/tools/test_log_guard" --self-test >"$TEST_LOG_GUARD_LOG" 2>&1; then
+  echo "VERIFY_FAIL test_log_guard_self_test (see artifacts/verify/test_log_guard.log)"
+  cat "$TEST_LOG_GUARD_LOG"
+  exit 1
+fi
+
 # CSV changes are not imported by a headless test run.  Build the generated
 # Translation resources first so every localization-backed assertion observes the
 # source being reviewed.
@@ -47,8 +75,13 @@ FAST_TESTS=(
   balance_config_test
   combat_transaction_test
   battle_architecture_test
+  battle_overlay_presenter_test
+  board_overlay_api_test
+  battle_query_cache_test
+  persistence_isolation_test
   battle_presentation_planner_test
   battle_event_player_cluster_test
+  presentation_state_applier_test
   battle_renderer_timing_test
   testkit_snapshot_test
   gem_semantic_contract_test
@@ -68,10 +101,13 @@ FAST_TESTS=(
   gravity_test
   bomb_rat_test
   tile_overlay_reaction_test
+  overlay_render_contract_test
+  ui_overlay_contract_test
   law_worm_test
   gem_insert_replace_test
   fission_slime_test
   gem_transfer_test
+  manual/battle_stress_test
 )
 
 CORE_TESTS=(
@@ -80,6 +116,11 @@ CORE_TESTS=(
   ai_test
   combat_transaction_test
   battle_architecture_test
+  battle_overlay_presenter_test
+  board_overlay_api_test
+  battle_query_cache_test
+  persistence_isolation_test
+  presentation_state_applier_test
   smoke_test
   economy_service_test
   event_service_test
@@ -92,16 +133,20 @@ CORE_TESTS=(
   split_shot_test
   bomb_rat_test
   tile_overlay_reaction_test
+  overlay_render_contract_test
+  ui_overlay_contract_test
   law_worm_test
   gem_insert_replace_test
   fission_slime_test
   gem_transfer_test
+  manual/battle_stress_test
 )
 
 ALL_TESTS=()
 while IFS= read -r file; do
   ALL_TESTS+=("$(basename "$file" .gd)")
 done < <(find "$ROOT/scripts/tests" -maxdepth 1 -name '*_test.gd' | sort)
+ALL_TESTS+=(manual/battle_stress_test)
 
 MANUAL_TESTS=()
 while IFS= read -r file; do
@@ -113,7 +158,9 @@ tests_for_changed() {
   changed="$(git -C "$ROOT" diff --name-only HEAD; git -C "$ROOT" ls-files --others --exclude-standard)"
   if grep -Eq 'scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd|scripts/core/combat_config\.gd|resources/(gems|combat|adventure|relics)/|resources/units/unit_defs\.json|localization/strings\.csv' <<<"$changed"; then
     printf '%s\n' "${FAST_TESTS[@]}"
-  elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/|scripts/services/(data_registry|balance_config_validator|economy_service|event_service|room_effect_executor|adventure_rule_registry|shop_service|room_flow_service|adventure_config_validator|numeric_text_resolver)\.gd' <<<"$changed"; then
+  elif grep -Eq 'scripts/ui/(battle_overlay_presenter|isometric_board|battle_scene|adventure_map_scene)\.gd' <<<"$changed"; then
+    printf '%s\n' battle_overlay_presenter_test board_overlay_api_test overlay_render_contract_test ui_overlay_contract_test
+  elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/|scripts/services/(data_registry|balance_config_validator|economy_service|event_service|room_effect_executor|adventure_rule_registry|shop_service|room_flow_service|adventure_config_validator|numeric_text_resolver|persistence_path_policy|save_service|settings_service)\.gd' <<<"$changed"; then
     printf '%s\n' "${CORE_TESTS[@]}"
   elif grep -Eq 'scripts/testkit/|scripts/tools/|tools/' <<<"$changed"; then
     printf '%s\n' testkit_snapshot_test
@@ -142,6 +189,10 @@ start="$(date +%s)"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
 cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$COMBAT_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$UI_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$PERSISTENCE_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$TEST_LOG_GUARD_LOG" | tee -a "$REPORT_DIR/verify.log"
 echo "VERIFY_TRANSLATIONS_BUILT" | tee -a "$REPORT_DIR/verify.log"
 
 for test_name in "${TESTS[@]}"; do
@@ -159,15 +210,23 @@ for test_name in "${TESTS[@]}"; do
   else
     test_exit=$?
   fi
-  if [[ "$test_exit" -eq 0 ]] && ! grep -Fq 'SCRIPT ERROR:' "$test_log"; then
+  if bash "$ROOT/tools/test_log_guard" "$test_log" >/dev/null 2>&1; then
+    log_guard_exit=0
+  else
+    log_guard_exit=$?
+  fi
+  if [[ "$test_exit" -eq 0 && "$log_guard_exit" -eq 0 ]]; then
     echo "VERIFY_PASS $test_name" | tee -a "$REPORT_DIR/verify.log"
     passed=$((passed + 1))
   else
     failure_reason="exit=$test_exit"
-    if grep -Fq 'SCRIPT ERROR:' "$test_log"; then
-      failure_reason="script error"
+    if [[ "$log_guard_exit" -ne 0 ]]; then
+      failure_reason="runtime error"
     fi
     echo "VERIFY_FAIL $test_name ($failure_reason; see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
+    if [[ "$log_guard_exit" -ne 0 ]]; then
+      bash "$ROOT/tools/test_log_guard" "$test_log" || true
+    fi
     tail -40 "$test_log"
     failed=$((failed + 1))
   fi
@@ -177,6 +236,10 @@ duration=$(($(date +%s) - start))
 printf '{"mode":"%s","passed":%d,"failed":%d,"duration_seconds":%d}\n' \
   "$MODE" "$passed" "$failed" "$duration" > "$REPORT_DIR/report.json"
 echo "VERIFY_SUMMARY mode=$MODE passed=$passed failed=$failed duration=${duration}s report=artifacts/verify/report.json"
-"$ROOT/tools/coverage" > "$REPORT_DIR/semantic-coverage.log"
+if ! "$ROOT/tools/coverage" > "$REPORT_DIR/semantic-coverage.log"; then
+  echo "VERIFY_FAIL semantic_coverage (see artifacts/verify/semantic-coverage.log)"
+  cat "$REPORT_DIR/semantic-coverage.log"
+  exit 1
+fi
 head -1 "$REPORT_DIR/semantic-coverage.log"
 test "$failed" -eq 0

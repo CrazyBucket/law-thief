@@ -1,5 +1,8 @@
 extends SceneTree
 
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+
 const PROFILES: Array[String] = [
 	"explosion",
 	"poison",
@@ -389,7 +392,7 @@ func _test_dual_blue_slot_contact() -> void:
 	_case_count += 1
 	var state := _create_state()
 	var carrier := state.get_player()
-	carrier.pos = VICTIM_POS + Vector2i(-1, 0)
+	state.move_unit(carrier, VICTIM_POS + Vector2i(-1, 0))
 	var dual_slot := carrier.get_slot(Constants.SLOT_BLUE)
 	dual_slot.dual_type = Constants.SLOT_RED
 	_mount_gem_on_slot(state, carrier, dual_slot, Constants.GEM_POISON)
@@ -410,21 +413,14 @@ func _kill_and_collect_events(state: GameState, victim: UnitState) -> Array:
 
 
 func _create_state() -> GameState:
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
 	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
 	if run_svc != null:
 		var run: RunState = run_svc.get_run()
 		if run != null:
 			run.owned_relics.clear()
-	var state: GameState = reg.create_battle_state("fission_slime_test", 42)
-	for uid in state.units.keys():
-		var unit: UnitState = state.units[uid]
-		if unit.team == Constants.TEAM_ENEMY:
-			state.unregister_unit(unit)
-	var player := state.get_player()
-	for slot in player.slots:
-		slot.gem_uid = ""
-	return state
+	var builder := ScenarioBuilder.new("fission_slime_test", 42, true)
+	builder.clear_slots(builder.player())
+	return builder.finish()
 
 
 func _ensure_blue_slots(unit: UnitState, needed: int) -> void:
@@ -454,11 +450,12 @@ func _profile_stack_level(profiles: Array, profile: String) -> int:
 
 func _mount_gem_on_slot(state: GameState, unit: UnitState, slot: SlotState, gem_id: String) -> void:
 	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
+	if not slot.gem_uid.is_empty():
+		_GemTransfer.remove(state, slot.gem_uid)
 	var gem_uid: String = str(reg.call("_next_uid", "gem"))
 	var gem := GemState.create(gem_uid, gem_id, {})
-	gem.owner_uid = unit.uid
 	state.gems[gem_uid] = gem
-	slot.gem_uid = gem_uid
+	assert(_GemTransfer.to_unit_slot(state, gem, unit, slot))
 
 
 func _spawn_unit(

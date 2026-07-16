@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+has_runtime_errors() {
+  grep -Eq '^(SCRIPT ERROR:|ERROR:)' "$1"
+}
+
+self_test() {
+  local temp_dir
+  temp_dir="$(mktemp -d)"
+  trap "rm -rf '$temp_dir'" EXIT
+
+  printf 'WARNING: expected recovery warning\nTEST_PASS\n' > "$temp_dir/clean.log"
+  if has_runtime_errors "$temp_dir/clean.log"; then
+    echo "TEST_LOG_GUARD_SELF_TEST_FAIL warning classified as error" >&2
+    return 1
+  fi
+
+  printf 'ERROR: invariant violation\n' > "$temp_dir/error.log"
+  if ! has_runtime_errors "$temp_dir/error.log"; then
+    echo "TEST_LOG_GUARD_SELF_TEST_FAIL ERROR not detected" >&2
+    return 1
+  fi
+
+  printf 'SCRIPT ERROR: parse failure\n' > "$temp_dir/script_error.log"
+  if ! has_runtime_errors "$temp_dir/script_error.log"; then
+    echo "TEST_LOG_GUARD_SELF_TEST_FAIL SCRIPT_ERROR not detected" >&2
+    return 1
+  fi
+
+  echo "TEST_LOG_GUARD_SELF_TEST_PASS"
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  self_test
+  exit $?
+fi
+
+if [[ $# -ne 1 || ! -f "$1" ]]; then
+  echo "Usage: test_log_guard LOG_FILE | --self-test" >&2
+  exit 2
+fi
+
+if has_runtime_errors "$1"; then
+  grep -m 20 -E '^(SCRIPT ERROR:|ERROR:)' "$1" >&2 || true
+  echo "TEST_LOG_GUARD_FAIL file=$1" >&2
+  exit 1
+fi
+
+echo "TEST_LOG_GUARD_PASS file=$1"

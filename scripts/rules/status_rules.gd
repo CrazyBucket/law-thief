@@ -640,7 +640,7 @@ static func _apply(state: GameState, unit: UnitState, status_id: String, params:
 	)
 	if params.has("value"):
 		incoming.value = int(params.get("value", 0))
-	_StatusRegistry.apply_to_unit(unit, incoming)
+	_CombatTransaction.begin_from_state(state).apply_status(unit, incoming, {"emit_event": false, "reason": "status_rules_apply"})
 	state.log("%s 获得状态 %s" % [unit.uid, _StatusRegistry.display_name(status_id)])
 
 

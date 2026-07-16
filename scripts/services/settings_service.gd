@@ -1,7 +1,7 @@
 extends Node
 
-const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
+const _PersistencePathPolicy = preload("res://scripts/services/persistence_path_policy.gd")
 const DEFAULTS := {
 	"fullscreen": false,
 	"show_tutorial": true,
@@ -37,6 +37,10 @@ func get_value(key: String):
 
 func get_all() -> Dictionary:
 	return _settings.duplicate(true)
+
+
+func get_settings_path() -> String:
+	return _PersistencePathPolicy.settings_path()
 
 
 func set_value(key: String, value) -> void:
@@ -110,10 +114,11 @@ func cycle_animation_speed(step: int) -> float:
 func load_settings() -> void:
 	_settings = DEFAULTS.duplicate(true)
 	_settings = _default_settings()
-	if not FileAccess.file_exists(SETTINGS_PATH):
+	var settings_path := get_settings_path()
+	if not FileAccess.file_exists(settings_path):
 		save_settings()
 		return
-	var file := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	var file := FileAccess.open(settings_path, FileAccess.READ)
 	if file == null:
 		return
 	var text := file.get_as_text()
@@ -133,11 +138,13 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
+	var settings_path := get_settings_path()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(settings_path).get_base_dir())
 	var payload := {
 		"version": SETTINGS_VERSION,
 		"settings": _settings,
 	}
-	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	var file := FileAccess.open(settings_path, FileAccess.WRITE)
 	if file == null:
 		return
 	file.store_string(JSON.stringify(payload, "\t"))

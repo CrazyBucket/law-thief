@@ -359,7 +359,12 @@ static func _try_ai_control_player(state: GameState) -> Dictionary:
 	var player := state.get_player()
 	if player == null or not player.alive:
 		return {"events": out_events, "action": ""}
-	StatusRegistry.apply_to_unit(player, StatusInstance.create(Constants.STATUS_OVERLOAD_AI_CONTROL, 1, 1))
+	var tx := _CombatTransaction.begin(state, out_events)
+	tx.apply_status(
+		player,
+		StatusInstance.create(Constants.STATUS_OVERLOAD_AI_CONTROL, 1, 1),
+		{"emit_event": false, "reason": "overload_ai_control"}
+	)
 	var result := _execute_player_ai_control(state, player, out_events)
 	if result.is_empty():
 		state.log("过载异变：AI 接管本回合（概率 %.0f%%），但没有可执行行动" % (probability * 100.0))

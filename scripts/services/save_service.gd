@@ -4,7 +4,7 @@ const SLOT_COUNT := 3
 const DEFAULT_SLOT_ID := 1
 const MANAGER_PATH := "user://save_manager.json"
 const _SLOT_FILES := ["profile.json", "run_save.json", "run_history.json"]
-const SAVE_ROOT_ENV := "LAW_THIEF_SAVE_ROOT"
+const _PersistencePathPolicy = preload("res://scripts/services/persistence_path_policy.gd")
 
 var _bootstrapped: bool = false
 var _active_slot_id: int = DEFAULT_SLOT_ID
@@ -325,7 +325,7 @@ func _manager_path() -> String:
 
 
 func _save_root_override() -> String:
-	return OS.get_environment(SAVE_ROOT_ENV).strip_edges().trim_suffix("/").trim_suffix("\\")
+	return _PersistencePathPolicy.save_root()
 
 
 func _join_path(base_path: String, relative_path: String) -> String:
