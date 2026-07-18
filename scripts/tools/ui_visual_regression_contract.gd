@@ -26,6 +26,16 @@ const SCENARIOS := [
 			"HudLayer/PreviewPanel",
 		],
 	},
+	{
+		"id": "event_room",
+		"scene": "res://scenes/adventure/event_scene.tscn",
+		"critical_controls": [
+			"SafeArea/Layout/TopBar",
+			"SafeArea/Layout/Main/ArtFrame",
+			"SafeArea/Layout/Main/StoryColumn/StoryPanel",
+			"SafeArea/Layout/Main/StoryColumn/ChoicePanel",
+		],
+	},
 ]
 const _SAFE_LABEL_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 

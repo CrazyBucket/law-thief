@@ -82,6 +82,29 @@ func _run_tests() -> void:
 	assert(invalid_effects.has("event_defs.broken_event.options[0].effects[3].amount_ref unit mismatch: rest_site_heal_ratio expected gold got max_hp"), "resource costs should reject non-resource units")
 	assert(invalid_effects.has("event_defs.broken_event.options[0].effects[4].amount_ref kind mismatch: event_debug_toll_heal expected ratio got flat"), "percent heals should reject flat amount refs")
 	assert(invalid_effects.has("event_defs.broken_event.options[0].effects[5].amount should use amount_ref in authored config"), "authored numeric payloads should use amount refs")
+	var invalid_graph := Validator.validate_event_defs({
+		"broken_graph": {
+			"entry": "missing",
+			"nodes": {
+				"start": {
+					"title": "broken",
+					"body": "broken",
+					"options": [
+						{
+							"id": "unsafe",
+							"label": "unsafe",
+							"conditions": [],
+							"calls": [{"function": "queue_free", "args": {}}],
+							"next": "missing"
+						}
+					]
+				}
+			}
+		}
+	}, root.get_node("EconomyService").get_amount_refs())
+	assert(invalid_graph.has("event_defs.broken_graph.entry references unknown node: missing"), "graph validator should reject an unknown entry node")
+	assert(invalid_graph.has("event_defs.broken_graph.nodes.start.options[0].calls[0].function unknown: queue_free"), "graph validator should reject arbitrary function calls")
+	assert(invalid_graph.has("event_defs.broken_graph.nodes.start.options[0].next references unknown node: missing"), "graph validator should reject an unknown next node")
 	var invalid_economy := Validator.validate_economy_config({
 		"starting_gold": 0,
 		"combat_rewards": {

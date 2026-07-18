@@ -57,6 +57,18 @@ shop.services.title,服务,Services
 shop.services.coin_only,只接受金币交易。,Gold only. No returns.
 shop.loadout.title,当前携带,Your Loadout
 shop.loadout.empty,手持位为空。,Empty hand.
+event.ui.header,奇遇,Event
+event.ui.chapter,第 {current} / {total} 关,Act {current} / {total}
+event.ui.story,遭遇,Encounter
+event.ui.choices,你的选择,Choose
+event.ui.resolved,尘埃落定,Resolved
+event.ui.continue,继续前进,Continue
+event.ui.error.title,事件中断,Encounter Interrupted
+event.ui.error.body,这场奇遇暂时无法继续。,This encounter cannot continue right now.
+event.ui.error.action,选择未能完成，请再试一次。,The choice could not be completed. Try again.
+event.ui.condition.gold,金币不足,Not Enough Gold
+event.ui.condition.hand_full,手中已有宝石,Hands Full
+event.ui.condition.unavailable,条件未满足,Unavailable
 gem.explosion.name,爆炸,Explosion
 gem.explosion.symbol,爆,Blast
 gem.poison.name,剧毒,Poison

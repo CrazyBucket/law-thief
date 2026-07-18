@@ -290,7 +290,6 @@ func _create_slot_popup() -> void:
 	_slot_popup = SlotPopup.new()
 	$HudLayer.add_child(_slot_popup)
 	_slot_popup.slot_selected.connect(_on_popup_slot_selected)
-	_slot_popup.tile_slot_selected.connect(_on_popup_tile_slot_selected)
 	_slot_popup.dropped_gem_selected.connect(_on_popup_dropped_gem_selected)
 	_slot_popup.editor_unit_slot_selected.connect(_on_editor_unit_slot_selected)
 	_slot_popup.editor_tile_slot_selected.connect(_on_editor_tile_slot_selected)
@@ -596,20 +595,13 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
-				var ground_gems := state.get_dropped_gem_uids_at(cell) if action == Constants.ACTION_EXTRACT else [] as Array[String]
-				if not ground_gems.is_empty():
-					_set_inspect_target(cell)
-					_show_dropped_gem_popup(ground_gems, cell)
-				elif unit != null and unit.alive:
+				if unit != null and unit.alive:
 					_set_inspect_target(cell)
 					_sync_unit_slot_panels()
 				else:
-					var tile: TileState = _controller.state.get_tile(cell)
 					_set_inspect_target(cell)
-					if tile != null and tile.has_slots():
-						_show_tile_slot_popup(tile, cell)
-					else:
-						_dismiss_popup()
+					# Tile gem operations are intentionally not part of the current player-facing design.
+					_dismiss_popup()
 			else:
 				_dismiss_popup()
 				_set_inspect_target(cell)
@@ -692,19 +684,6 @@ func _format_preview_body(body: String) -> String:
 	return "\n".join(formatted)
 
 
-func _show_tile_slot_popup(tile: TileState, cell: Vector2i) -> void:
-	var screen_pos: Vector2 = _board.grid_to_screen(cell)
-	var board_global: Vector2 = _board.global_position
-	var popup_pos: Vector2 = board_global + screen_pos + Vector2(0, -72)
-	_slot_popup.show_for_tile(tile, _controller.state, _controller.selected_action, popup_pos, _controller.check_tile_slot_action)
-
-
-func _show_dropped_gem_popup(gem_uids: Array[String], cell: Vector2i) -> void:
-	var screen_pos: Vector2 = _board.grid_to_screen(cell)
-	var popup_pos: Vector2 = _board.global_position + screen_pos + Vector2(0, -72)
-	_slot_popup.show_for_dropped_gems(gem_uids, _controller.state, popup_pos, _controller.check_dropped_gem_action)
-
-
 func _sync_unit_slot_panels() -> void:
 	if _controller == null or _board == null:
 		return
@@ -719,34 +698,6 @@ func _on_board_unit_slot_selected(unit_uid: String, slot_index: int) -> void:
 	if _player_animating or _enemy_phase_running:
 		return
 	_on_popup_slot_selected(unit_uid, slot_index)
-
-
-func _on_popup_tile_slot_selected(tile_pos: Vector2i, slot_index: int) -> void:
-	var action := _controller.selected_action
-	var result: Dictionary
-	match action:
-		Constants.ACTION_EXTRACT:
-			result = _controller.try_extract_tile(tile_pos, slot_index)
-		Constants.ACTION_INSERT:
-			result = _controller.try_insert_tile(tile_pos, slot_index)
-		_:
-			return
-	_dismiss_popup()
-	_show_result(result)
-	if result.get("ok", false):
-		match action:
-			Constants.ACTION_EXTRACT:
-				_begin_held_gem_extract(tile_pos, result)
-				_controller.select_action(Constants.ACTION_INSERT)
-				_message_label.text = "已从地块拔出，选择槽位嵌入"
-			Constants.ACTION_INSERT:
-				_begin_held_gem_insert(tile_pos, result)
-				if bool(result.get("overload_forced", false)):
-					_message_label.text = "过载嵌入：已压入地块，结束回合后异变生效"
-				else:
-					_message_label.text = "已嵌入地块" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
-	_refresh()
-	_sync_unit_slot_panels()
 
 
 func _on_popup_dropped_gem_selected(gem_uid: String) -> void:
@@ -1901,7 +1852,7 @@ func _on_relic_overlay_dismissed(battle_result: String) -> void:
 func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
 		if not relic_id.is_empty():
-			BattleSettlementService.acquire_run_relic(relic_id)
+			BattleSettlementService.acquire_run_relic(relic_id, _controller.state if _controller != null else null)
 			_settlement_relic_pending = false
 		if _relic_reward_overlay != null:
 			_relic_reward_overlay.queue_free()
@@ -1916,7 +1867,7 @@ func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
 		_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
 		return
 	if not relic_id.is_empty():
-		BattleSettlementService.acquire_run_relic(relic_id)
+		BattleSettlementService.acquire_run_relic(relic_id, _controller.state if _controller != null else null)
 	if GameService.adventure_return and RunService.is_run_active():
 		RunService.mark_room_resolved(GameService.pending_room_id, {
 			"room_id": GameService.pending_room_id,

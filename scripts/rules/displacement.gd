@@ -200,8 +200,6 @@ static func _push_directional(
 		TileRules.on_unit_entered(state, unit, start_pos, {
 			"forced": true,
 			"source_uid": source_uid,
-			"skip_overlay": true,
-			"skip_entity": true,
 			"damage_context": damage_context,
 		})
 		state.on_forced_displacement.emit(unit.uid, start_pos, unit.pos, source_uid)

@@ -205,19 +205,11 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				var valid := _valid_slot_indices(ctrl, unit)
 				if not valid.is_empty():
 					lines.append("可拔出：%s（免费）" % ", ".join(valid))
-			elif tile.has_slots() and ctrl.can_use_action(Constants.ACTION_EXTRACT):
-				var tile_valid := _valid_tile_slot_indices(ctrl, tile)
-				if not tile_valid.is_empty():
-					lines.append("可从地块拔出：%s（免费）" % ", ".join(tile_valid))
 		Constants.ACTION_INSERT:
 			if unit != null and ctrl.can_use_action(Constants.ACTION_INSERT):
 				var insert_valid := _valid_slot_indices(ctrl, unit)
 				if not insert_valid.is_empty():
 					lines.append("可嵌入：%s（免费）" % ", ".join(insert_valid))
-			elif tile.has_slots() and ctrl.can_use_action(Constants.ACTION_INSERT):
-				var tile_insert_valid := _valid_tile_slot_indices(ctrl, tile)
-				if not tile_insert_valid.is_empty():
-					lines.append("可嵌入地块：%s（免费）" % ", ".join(tile_insert_valid))
 	return {"title": lines[0] if not lines.is_empty() else "", "body": "\n".join(lines)}
 
 
@@ -323,16 +315,6 @@ func _is_viewable_gem_slot(state: GameState, player: UnitState, unit: UnitState,
 	return BoardUtils.distance_between_units(player, unit) <= max_range
 
 
-func _valid_tile_slot_indices(ctrl, tile: TileState) -> Array[String]:
-	var labels: Array[String] = []
-	for i in range(tile.slots.size()):
-		var check: Dictionary = ctrl.check_tile_slot_action(tile.pos, i)
-		if check.get("ok", false):
-			var slot: SlotState = tile.slots[i]
-			labels.append(_slot_short_label(slot))
-	return labels
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # 攻击/宝石目标格计算
 # ═══════════════════════════════════════════════════════════════════════════
@@ -387,13 +369,6 @@ func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 		for cell in unit.occupied_cells():
 			if not cell in cells:
 				cells.append(cell)
-	for key in state.tiles.keys():
-		var tile: TileState = state.tiles[key]
-		if not tile.has_slots():
-			continue
-		if not _valid_tile_slot_indices(ctrl, tile).is_empty():
-			if not tile.pos in cells:
-				cells.append(tile.pos)
 	if ctrl.selected_action == Constants.ACTION_EXTRACT:
 		for raw_uid in state.dropped_gems.keys():
 			var gem_uid := str(raw_uid)

@@ -3,7 +3,6 @@ extends Control
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 signal slot_selected(unit_uid: String, slot_index: int)
-signal tile_slot_selected(tile_pos: Vector2i, slot_index: int)
 signal dropped_gem_selected(gem_uid: String)
 signal editor_unit_slot_selected(unit_uid: String, slot_index: int)
 signal editor_tile_slot_selected(tile_pos: Vector2i, slot_index: int)
@@ -49,20 +48,6 @@ func show_for_unit(unit: UnitState, state: GameState, action: String, screen_pos
 	_title_label.text = _action_title(action)
 	_clear_content()
 	_add_unit_row(unit, state, action, func(i: int): return check_fn.call(unit.uid, i), func(i: int): slot_selected.emit(_target_uid, i))
-	_layout_panel(screen_pos)
-
-
-func show_for_tile(tile: TileState, state: GameState, action: String, screen_pos: Vector2, check_fn: Callable) -> void:
-	if visible and _is_tile_mode and _target_tile_pos == tile.pos and _current_action == action:
-		return
-	_is_tile_mode = true
-	_is_dropped_mode = false
-	_target_uid = ""
-	_target_tile_pos = tile.pos
-	_current_action = action
-	_title_label.text = "%s · 地块" % _action_title(action)
-	_clear_content()
-	_add_slot_row("地块 %s" % str(tile.pos), tile.slots, func(i: int): return check_fn.call(tile.pos, i), state, action, func(i: int): tile_slot_selected.emit(tile.pos, i))
 	_layout_panel(screen_pos)
 
 

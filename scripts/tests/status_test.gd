@@ -9,7 +9,7 @@ func _run_tests() -> void:
 	print("=== Status System Test ===")
 	_test_poison_stack_and_tick()
 	_test_unit_turn_end_ticks_only_carrier_and_emits_damage()
-	_test_controller_settles_statuses_at_carrier_turn_boundaries()
+	_test_controller_settles_statuses_at_round_boundary()
 	_test_armor_max_value_merge()
 	_test_shield_consumed_on_hit()
 	_test_relic_grants_shield_not_unit_armor()
@@ -34,7 +34,7 @@ func _test_poison_stack_and_tick() -> void:
 	assert(poison.stacks == 3, "poison stacks should merge")
 	assert(poison.duration == 3, "poison duration should take max")
 	StatusRules.tick_turn_end(state)
-	assert(unit.hp == 1, "poison should deal 9 damage (3 stacks x 3) on turn end: got hp %d" % unit.hp)
+	assert(unit.hp == 7, "poison should deal 3 damage (3 stacks x 1) at round end: got hp %d" % unit.hp)
 	print("  [OK] poison stack + tick")
 
 
@@ -47,7 +47,7 @@ func _test_unit_turn_end_ticks_only_carrier_and_emits_damage() -> void:
 	StatusRules.apply_poison(state, waiting, 1, 2, acting.uid)
 	var events: Array[Dictionary] = []
 	StatusRules.tick_unit_turn_end(state, acting, events)
-	assert(acting.hp == 7, "the acting carrier should take its poison damage at its own turn end")
+	assert(acting.hp == 9, "the acting carrier should take one poison damage in this isolated tick")
 	assert(waiting.hp == 10, "another carrier must not settle before its own turn ends")
 	assert(events.any(func(event: Dictionary) -> bool:
 		return str(event.get("type", "")) == "damage" \
@@ -57,7 +57,7 @@ func _test_unit_turn_end_ticks_only_carrier_and_emits_damage() -> void:
 	print("  [OK] unit turn end settles only its carrier and emits damage")
 
 
-func _test_controller_settles_statuses_at_carrier_turn_boundaries() -> void:
+func _test_controller_settles_statuses_at_round_boundary() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("tutorial_001", 20260717)
 	var state := controller.state
@@ -72,20 +72,18 @@ func _test_controller_settles_statuses_at_carrier_turn_boundaries() -> void:
 	StatusRules.apply_paralyzed(state, enemy, 1, player.uid)
 
 	var player_end := controller.begin_enemy_phase()
-	assert(player.hp == 97, "player poison should settle when the player action window ends")
-	assert(enemy.hp == 100, "enemy poison must wait for that enemy's action window")
-	assert(_has_status_damage(player_end.get("events", []), player.uid, "poison"), "player turn-end poison should be presented")
+	assert(player.hp == 100 and enemy.hp == 100, "status damage must wait until all combatants act")
+	assert(not _has_status_damage(player_end.get("events", []), player.uid, "poison"), "player boundary must not settle DOT")
 
-	StatusRules.apply_poison(state, player, 1, 2, enemy.uid)
 	var enemy_end := controller.execute_single_enemy(enemy)
-	assert(enemy.hp == 97, "enemy poison should settle after its own skipped action window")
-	assert(_has_status_damage(enemy_end.get("events", []), enemy.uid, "poison"), "enemy turn-end poison should be presented")
-	assert(not _has_status_damage(enemy_end.get("events", []), player.uid, "poison"), "enemy turn end must not settle newly applied player poison")
+	assert(player.hp == 100 and enemy.hp == 100, "enemy action must not settle DOT early")
+	assert(not _has_status_damage(enemy_end.get("events", []), enemy.uid, "poison"), "enemy boundary must not settle DOT")
 
-	controller.finish_enemy_phase()
-	var next_player_end := controller.begin_enemy_phase()
-	assert(_has_status_damage(next_player_end.get("events", []), player.uid, "poison"), "player poison should wait until the next player turn end")
-	print("  [OK] controller settles statuses at carrier turn boundaries")
+	var round_end := controller.finish_enemy_phase()
+	assert(player.hp == 99 and enemy.hp == 99, "both poison carriers should settle together at round end")
+	assert(_has_status_damage(round_end.get("events", []), player.uid, "poison"), "round-end player poison should be presented")
+	assert(_has_status_damage(round_end.get("events", []), enemy.uid, "poison"), "round-end enemy poison should be presented")
+	print("  [OK] controller settles statuses together at the round boundary")
 
 
 func _has_status_damage(events: Array, victim_uid: String, reason: String) -> bool:

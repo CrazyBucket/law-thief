@@ -33,6 +33,11 @@
     "event_debug_relief_heal": {"value": 4, "kind": "flat", "unit": "hp"},
     "event_debug_toll_cost": {"value": 5, "kind": "flat", "unit": "gold"},
     "event_debug_toll_heal": {"value": 4, "kind": "flat", "unit": "hp"},
+    "event_cache_gold": {"value": 10, "kind": "flat", "unit": "gold"},
+    "event_cache_heal": {"value": 5, "kind": "flat", "unit": "hp"},
+    "event_medic_cost": {"value": 6, "kind": "flat", "unit": "gold"},
+    "event_medic_heal": {"value": 8, "kind": "flat", "unit": "hp"},
+    "event_forge_gold": {"value": 7, "kind": "flat", "unit": "gold"},
     "rest_site_heal_ratio": {"value": 0.2, "kind": "ratio", "unit": "max_hp"}
   }
 }

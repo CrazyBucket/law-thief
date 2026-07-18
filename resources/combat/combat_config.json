@@ -19,7 +19,7 @@
   "barrel_explosion_radius": 1,
   "gravity_collision_damage": 3,
   "enemy_gravity_pull_range": 4,
-  "poison_fog_damage": 3,
+  "poison_fog_damage": 1,
   "poison_fog_duration": 2,
   "toxic_smoke_duration": 1,
   "poison_puddle_duration": 2,

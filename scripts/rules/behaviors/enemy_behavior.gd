@@ -165,7 +165,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var boom_result := CombatRules.melee_attack(state, unit, boom_target)
 			if not boom_result.get("ok", false):
 				return [] as Array[Dictionary]
-			return boom_result.get("events", [] as Array[Dictionary])
+			return _events_from_result(boom_result)
 		"charge_explode":
 			return _execute_charge_explosion(state, unit, intent.target_uid)
 		"poison_attack":
@@ -200,7 +200,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var split_result := CombatRules.split_melee_attack(state, unit, split_target)
 			if not split_result.get("ok", false):
 				return [] as Array[Dictionary]
-			return split_result.get("events", [] as Array[Dictionary])
+			return _events_from_result(split_result)
 		"fire_attack":
 			var fire_target: UnitState = state.units.get(intent.target_uid, null)
 			if fire_target == null or not fire_target.alive:
@@ -234,7 +234,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			var counter_result := CombatRules.melee_attack(state, unit, counter_target)
 			if not counter_result.get("ok", false):
 				return [] as Array[Dictionary]
-			return counter_result.get("events", [] as Array[Dictionary])
+			return _events_from_result(counter_result)
 		"echo_attack":
 			var echo_target: UnitState = state.units.get(intent.target_uid, null)
 			if echo_target == null or not echo_target.alive:
@@ -247,7 +247,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 				)
 			if not echo_result.get("ok", false):
 				return [] as Array[Dictionary]
-			return echo_result.get("events", [] as Array[Dictionary])
+			return _events_from_result(echo_result)
 		"light_beam":
 			var light_target: UnitState = state.units.get(intent.target_uid, null)
 			if light_target == null or not light_target.alive:
@@ -260,7 +260,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			)
 			if not result.get("ok", false):
 				return [] as Array[Dictionary]
-			return result.get("events", [] as Array[Dictionary])
+			return _events_from_result(result)
 		_:
 			return [] as Array[Dictionary]
 
@@ -352,24 +352,24 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 	var target: UnitState = state.units.get(target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
-	var max_range := GemEffects.gravity_pull_range(state, unit, CombatConfig.enemy_gravity_pull_range())
-	if BoardUtils.distance_between_units(unit, target) > max_range:
+	# The shared attack pipeline applies the gravity pull after the normal hit,
+	# preserving both the unit's base damage and the authored range bonus.
+	var result := CombatRules.ranged_attack(state, unit, target.pos, CombatConfig.attack_range())
+	if not bool(result.get("ok", false)):
 		return [] as Array[Dictionary]
-	var gem_ctx := GemTagResolver.build_context(
-		state,
-		unit,
-		Constants.SLOT_RED,
-		GemEffects.TIMING_ACTIVE
-	)
-	var pull_steps := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-	return GemEffects.pull_unit_toward_with_events(
-		state,
-		target,
-		unit.pos,
-		pull_steps,
-		unit.uid,
-		DamageContext.create(unit.uid, "gravity_collision", ["gravity"], gem_ctx)
-	)
+	var events: Array[Dictionary] = []
+	for event in result.get("events", []):
+		if event is Dictionary:
+			events.append(event as Dictionary)
+	return events
+
+
+static func _events_from_result(result: Dictionary) -> Array[Dictionary]:
+	var events: Array[Dictionary] = []
+	for event in result.get("events", []):
+		if event is Dictionary:
+			events.append(event as Dictionary)
+	return events
 
 
 static func _execute_charge_explosion(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:

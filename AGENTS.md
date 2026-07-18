@@ -1,17 +1,22 @@
 # AI Working Agreement
 
-## First Commands
+## Verification Cadence
 
-Run these before changing battle or gem behavior:
+Do not run tests before editing unless the task is specifically to reproduce or diagnose a failure.
+Start with read-only inspection. Before changing battle or gem behavior, gather design context with:
 
 ```bash
 ./tools/context <relevant Chinese or English terms>
 ./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
-./tools/coverage
-./tools/verify changed
 ```
 
-Use `./tools/verify fast` while iterating and `./tools/verify all` before broad battle changes.
+After editing, run the smallest relevant test with `./tools/verify test <test_name>`. Use
+`./tools/verify changed` only when several related files changed or no single test represents the
+impact. Do not run `fast` or `all` by default: `all` is reserved for CI or an explicit user request,
+and `fast` requires a concrete cross-system risk that focused tests cannot cover. State that reason
+before starting either suite. Manual probes and stress tests run only through
+`./tools/verify manual`. `verify` already refreshes semantic coverage, so do not follow it with a
+separate `coverage` run. Use `./tools/verify changed --list` to inspect selection without Godot.
 Machine-readable output is written under `artifacts/verify/`.
 Only executable cases in `tests/contracts/gem_semantics.json` count as semantic verification.
 Green ordinary tests do not imply that uncovered gem semantics are correct.

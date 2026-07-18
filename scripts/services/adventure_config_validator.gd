@@ -2,8 +2,8 @@ class_name AdventureConfigValidator
 extends RefCounted
 
 const _TextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
+const _EventGraphValidator = preload("res://scripts/services/event_graph_config_validator.gd")
 const BattleRewardUiConfigValidator = preload("res://scripts/services/battle_reward_ui_config_validator.gd")
-
 const ROOM_TYPES := [
 	"START",
 	"REST_SITE",
@@ -13,7 +13,6 @@ const ROOM_TYPES := [
 	"NORMAL_COMBAT",
 	"ELITE_COMBAT",
 ]
-
 const ROOM_UI_KINDS := [
 	"start",
 	"rest",
@@ -22,7 +21,6 @@ const ROOM_UI_KINDS := [
 	"end",
 	"battle",
 ]
-
 const EFFECT_ACTIONS := [
 	"grant_resource",
 	"spend_resource",
@@ -34,17 +32,16 @@ const EFFECT_ACTIONS := [
 	"add_adventure_rule",
 	"remove_adventure_rule",
 ]
-
 const CONDITION_TYPES := [
 	"resource_gte",
 	"hp_below_ratio",
 	"has_relic",
 	"not_has_relic",
 	"has_carried_gem",
+	"carried_gem_empty",
 	"chapter_gte",
 ]
 const _EconomyConfigValidator = preload("res://scripts/services/economy_config_validator.gd")
-
 const MODIFIER_IDS := [
 	"gold_gain_mult",
 	"shop_price_mult",
@@ -431,35 +428,44 @@ static func validate_event_defs(defs: Dictionary, amount_refs: Dictionary = {}) 
 			errors.append("event_defs.%s should be object" % event_id)
 			continue
 		var event_def := raw_def as Dictionary
-		for key in ["title", "body", "options"]:
-			if not event_def.has(key):
-				errors.append("event_defs.%s.%s missing" % [event_id, key])
-		errors.append_array(_validate_text_tokens("event_defs.%s.title" % event_id, str(event_def.get("title", "")), amount_refs, {}))
-		errors.append_array(_validate_text_tokens("event_defs.%s.body" % event_id, str(event_def.get("body", "")), amount_refs, {}))
-		var options: Variant = event_def.get("options", [])
-		if not options is Array:
-			errors.append("event_defs.%s.options should be array" % event_id)
+		if event_def.has("nodes"):
+			errors.append_array(_EventGraphValidator.validate_event_graph(str(event_id), event_def, amount_refs))
+		else:
+			errors.append_array(_validate_legacy_event(str(event_id), event_def, amount_refs))
+	return errors
+
+
+static func _validate_legacy_event(event_id: String, event_def: Dictionary, amount_refs: Dictionary) -> Array[String]:
+	var errors: Array[String] = []
+	for key in ["title", "body", "options"]:
+		if not event_def.has(key):
+			errors.append("event_defs.%s.%s missing" % [event_id, key])
+	errors.append_array(_validate_text_tokens("event_defs.%s.title" % event_id, str(event_def.get("title", "")), amount_refs, {}))
+	errors.append_array(_validate_text_tokens("event_defs.%s.body" % event_id, str(event_def.get("body", "")), amount_refs, {}))
+	var options: Variant = event_def.get("options", [])
+	if not options is Array:
+		errors.append("event_defs.%s.options should be array" % event_id)
+		return errors
+	for i in range((options as Array).size()):
+		var raw_option: Variant = (options as Array)[i]
+		if not raw_option is Dictionary:
+			errors.append("event_defs.%s.options[%d] should be object" % [event_id, i])
 			continue
-		for i in range((options as Array).size()):
-			var raw_option: Variant = (options as Array)[i]
-			if not raw_option is Dictionary:
-				errors.append("event_defs.%s.options[%d] should be object" % [event_id, i])
-				continue
-			var option := raw_option as Dictionary
-			for key in ["id", "label", "effects"]:
-				if not option.has(key):
-					errors.append("event_defs.%s.options[%d].%s missing" % [event_id, i, key])
-			errors.append_array(_validate_text_tokens("event_defs.%s.options[%d].label" % [event_id, i], str(option.get("label", "")), amount_refs, {}))
-			var conditions: Variant = option.get("conditions", [])
-			if not conditions is Array:
-				errors.append("event_defs.%s.options[%d].conditions should be array" % [event_id, i])
-			else:
-				errors.append_array(_validate_conditions("event_defs.%s.options[%d].conditions" % [event_id, i], conditions, amount_refs))
-			var effects: Variant = option.get("effects", [])
-			if not effects is Array:
-				errors.append("event_defs.%s.options[%d].effects should be array" % [event_id, i])
-			else:
-				errors.append_array(_validate_effects("event_defs.%s.options[%d].effects" % [event_id, i], effects, amount_refs))
+		var option := raw_option as Dictionary
+		for key in ["id", "label", "effects"]:
+			if not option.has(key):
+				errors.append("event_defs.%s.options[%d].%s missing" % [event_id, i, key])
+		errors.append_array(_validate_text_tokens("event_defs.%s.options[%d].label" % [event_id, i], str(option.get("label", "")), amount_refs, {}))
+		var conditions: Variant = option.get("conditions", [])
+		if not conditions is Array:
+			errors.append("event_defs.%s.options[%d].conditions should be array" % [event_id, i])
+		else:
+			errors.append_array(_validate_conditions("event_defs.%s.options[%d].conditions" % [event_id, i], conditions, amount_refs))
+		var effects: Variant = option.get("effects", [])
+		if not effects is Array:
+			errors.append("event_defs.%s.options[%d].effects should be array" % [event_id, i])
+		else:
+			errors.append_array(_validate_effects("event_defs.%s.options[%d].effects" % [event_id, i], effects, amount_refs))
 	return errors
 
 
@@ -777,6 +783,15 @@ static func _validate_effect_payload(prefix: String, action: String, effect: Dic
 		"heal_player_percent":
 			errors.append_array(_validate_amount_fields(prefix, effect, amount_refs))
 			errors.append_array(_validate_amount_ref_usage(prefix, effect, amount_refs, "ratio", ["max_hp"]))
+		"grant_relic":
+			if str(effect.get("relic_id", "")).is_empty():
+				errors.append("%s.relic_id missing" % prefix)
+		"grant_gem":
+			if str(effect.get("gem_id", "")).is_empty():
+				errors.append("%s.gem_id missing" % prefix)
+		"add_adventure_rule", "remove_adventure_rule":
+			if str(effect.get("rule_id", "")).is_empty():
+				errors.append("%s.rule_id missing" % prefix)
 	return errors
 
 

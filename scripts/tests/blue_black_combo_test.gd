@@ -55,6 +55,7 @@ func _run_tests() -> void:
 		_run_black_death_case(_profiles_from_list(PROFILES, mask))
 	_test_dual_blue_slot_contact()
 	_test_blue_explosion_events()
+	_test_fire_application_triggers_blue_explosion()
 	_test_blue_poison_turn_end_spread_uses_level_context()
 	_test_blue_light_reflects_ranged_attack()
 	_test_blue_counter_reflects_damage()
@@ -220,6 +221,21 @@ func _test_blue_explosion_events() -> void:
 		_fail("[blue_explosion_events] burning hit should emit explode event")
 		return
 	print("  [OK] blue_explosion_events")
+
+
+func _test_fire_application_triggers_blue_explosion() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var victim := _spawn_unit(state, "fire_trigger_victim", VICTIM_POS, Constants.TEAM_ENEMY, 40)
+	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["explosion"])
+	var events: Array[Dictionary] = []
+	state.bind_combat_events(events)
+	StatusRules.apply_burning(state, victim, 1, "fire_test")
+	state.unbind_combat_events()
+	if _count_events(events, "explode") != 1:
+		_fail("[fire_trigger_blue_explosion] fire application should emit exactly one explosion")
+		return
+	print("  [OK] fire application triggers blue explosion")
 
 
 func _test_blue_poison_turn_end_spread_uses_level_context() -> void:

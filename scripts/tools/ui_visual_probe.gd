@@ -117,6 +117,18 @@ func _prepare_scenario(scenario_id: String) -> void:
 			root.get_node("GameService").call("start_battle", "tutorial_001")
 		"map_route":
 			root.get_node("AdventureService").call("start_new_run", 12345)
+		"event_room":
+			var adventure_service := root.get_node("AdventureService")
+			adventure_service.call("start_new_run", 20260717)
+			adventure_service.set("current_pos", Vector2i.ZERO)
+			adventure_service.set("pending_room_type", "EVENT")
+			adventure_service.set("pending_room_label", "奇遇")
+			var map_node: Variant = adventure_service.call("get_current_node")
+			if map_node != null:
+				map_node.set("room_type", "EVENT")
+				var properties: Dictionary = map_node.get("properties")
+				properties["event_id"] = "event_field_medic"
+				map_node.set("properties", properties)
 
 
 func _configure_scenario(node: Node, scenario_id: String) -> void:

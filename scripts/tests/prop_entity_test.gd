@@ -18,6 +18,7 @@ func _run_tests() -> void:
 	_test_barrel_blocks_movement_and_projectile()
 	_test_barrel_has_hp_and_explodes_on_ranged_hit()
 	_test_player_manual_attack_can_destroy_barrel()
+	_test_red_explosion_can_destroy_barrel()
 	_test_light_beam_can_destroy_barrel()
 	if _failed:
 		push_error("PROP_ENTITY_TEST_FAIL")
@@ -115,6 +116,25 @@ func _test_player_manual_attack_can_destroy_barrel() -> void:
 	_expect(not barrel.alive and barrel.hp == 0, "manual attack should destroy the aimed barrel")
 	_expect((result.get("attack_events", []) as Array).any(func(ev): return str(ev.get("type", "")) == "explode"), "manual barrel destruction should emit an explosion")
 	print("  [OK] player manual attack can destroy barrel")
+
+
+func _test_red_explosion_can_destroy_barrel() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("burning_storehouse", 20260718)
+	var state := controller.state
+	var player := state.get_player()
+	var barrel := state.get_entity_at(Vector2i(2, 5))
+	var red_slot := player.get_slot(Constants.SLOT_RED)
+	if not red_slot.gem_uid.is_empty():
+		GemTransfer.remove(state, red_slot.gem_uid)
+	var explosion_gem := GemState.create("barrel_explosion_gem", Constants.GEM_EXPLOSION)
+	state.gems[explosion_gem.uid] = explosion_gem
+	_expect(GemTransfer.to_unit_slot(state, explosion_gem, player, red_slot), "explosion barrel fixture should mount its red gem")
+	controller.select_action(Constants.ACTION_ATTACK)
+	var result := controller.try_attack_cell(barrel.pos)
+	_expect(result.get("ok", false), "red explosion aimed at a barrel should succeed")
+	_expect(not barrel.alive and barrel.hp == 0, "red explosion should damage and destroy the barrel")
+	print("  [OK] red explosion can destroy barrel")
 
 
 func _test_light_beam_can_destroy_barrel() -> void:

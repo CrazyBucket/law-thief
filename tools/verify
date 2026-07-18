@@ -2,9 +2,56 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODE="changed"
+LIST_ONLY=false
+REQUESTED_TESTS=()
+
+usage() {
+  echo "Usage: ./tools/verify changed|fast|all|manual [--list]" >&2
+  echo "       ./tools/verify test TEST_NAME... [--list]" >&2
+}
+
+if (( $# > 0 )) && [[ "$1" != "--list" ]]; then
+  MODE="$1"
+  shift
+fi
+for arg in "$@"; do
+  if [[ "$arg" == "--list" ]]; then
+    if [[ "$LIST_ONLY" == true ]]; then
+      usage
+      exit 2
+    fi
+    LIST_ONLY=true
+  else
+    REQUESTED_TESTS+=("$arg")
+  fi
+done
+if [[ "$MODE" != "test" && ${#REQUESTED_TESTS[@]} -gt 0 ]]; then
+  usage
+  exit 2
+fi
+
+source "$ROOT/tools/lib/verify_suites.sh"
+if ! select_verify_tests "$MODE" "$ROOT" "${REQUESTED_TESTS[@]}"; then
+  usage
+  exit 2
+fi
+
+if [[ "$LIST_ONLY" == true ]]; then
+  echo "VERIFY_PLAN mode=$MODE selected=${#TESTS[@]}"
+  if [[ "$MODE" == "changed" ]]; then
+    while IFS= read -r path; do
+      [[ -n "$path" ]] && echo "VERIFY_CHANGED $path"
+    done <<<"$VERIFY_CHANGED_FILES"
+  fi
+  for test_name in "${TESTS[@]}"; do
+    echo "VERIFY_TEST $test_name"
+  done
+  exit 0
+fi
+
 source "$ROOT/tools/lib/godot.sh"
 GODOT="$(resolve_godot)"
-MODE="${1:-fast}"
 REPORT_DIR="$ROOT/artifacts/verify"
 mkdir -p "$REPORT_DIR"
 LOCK_DIR="$REPORT_DIR/.verify.lock"
@@ -14,9 +61,8 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
-# Per-test logs are evidence for one verifier run only.  Keeping old logs beside
-# a new report makes a broad artifact search report failures that no longer belong
-# to the current run.
+# Per-test logs are evidence for one verifier run only. Keeping old logs beside
+# a new report makes broad artifact searches report stale failures.
 find "$REPORT_DIR" -maxdepth 1 -type f -name '*.log' -delete
 
 FILE_SIZE_LOG="$REPORT_DIR/file_size_guard.log"
@@ -68,139 +114,34 @@ if ! bash "$ROOT/tools/test_log_guard" --self-test >"$TEST_LOG_GUARD_LOG" 2>&1; 
   exit 1
 fi
 
-# CSV changes are not imported by a headless test run.  Build the generated
-# Translation resources first so every localization-backed assertion observes the
-# source being reviewed.
+# Generated translations are ignored artifacts. Build them only on a clean
+# checkout or when the CSV/generator is newer, instead of starting Godot for
+# every verification command.
 TRANSLATION_LOG="$REPORT_DIR/localization_translation_build.log"
-if ! "$GODOT" --headless --path "$ROOT" --script res://scripts/tools/build_localization_translations.gd >"$TRANSLATION_LOG" 2>&1; then
-  echo "VERIFY_FAIL localization_translation_build (see artifacts/verify/localization_translation_build.log)"
-  tail -40 "$TRANSLATION_LOG"
-  exit 1
-fi
-
-FAST_TESTS=(
-  balance_config_test
-  combat_transaction_test
-  battle_architecture_test
-  battle_overlay_presenter_test
-  adventure_map_copy_presenter_test
-  board_overlay_api_test
-  battle_query_cache_test
-  persistence_isolation_test
-  encounter_content_diagnostics_test
-  battle_presentation_planner_test
-  battle_event_player_cluster_test
-  presentation_state_applier_test
-  battle_renderer_timing_test
-  testkit_snapshot_test
-  gem_semantic_contract_test
-  full_run_contract_test
-  intent_consistency_contract_test
-  room_effect_executor_test
-  economy_service_test
-  event_service_test
-  adventure_rule_registry_test
-  shop_service_test
-  explosion_test
-  gem_level_context_test
-  status_test
-  prop_entity_test
-  stone_bow_guard_test
-  split_shot_test
-  gravity_test
-  bomb_rat_test
-  tile_overlay_reaction_test
-  overlay_render_contract_test
-  ui_overlay_contract_test
-  ui_visual_regression_contract_test
-  transition_manager_test
-  law_worm_test
-  gem_insert_replace_test
-  fission_slime_test
-  gem_transfer_test
-  manual/battle_stress_test
-)
-
-CORE_TESTS=(
-  balance_config_test
-  encounter_load_test
-  ai_test
-  combat_transaction_test
-  battle_architecture_test
-  battle_overlay_presenter_test
-  adventure_map_copy_presenter_test
-  board_overlay_api_test
-  battle_query_cache_test
-  persistence_isolation_test
-  encounter_content_diagnostics_test
-  presentation_state_applier_test
-  smoke_test
-  economy_service_test
-  event_service_test
-  adventure_rule_registry_test
-  shop_service_test
-  explosion_test
-  status_test
-  prop_entity_test
-  stone_bow_guard_test
-  split_shot_test
-  bomb_rat_test
-  tile_overlay_reaction_test
-  overlay_render_contract_test
-  ui_overlay_contract_test
-  ui_visual_regression_contract_test
-  transition_manager_test
-  law_worm_test
-  gem_insert_replace_test
-  fission_slime_test
-  gem_transfer_test
-  manual/battle_stress_test
-)
-
-ALL_TESTS=()
-while IFS= read -r file; do
-  ALL_TESTS+=("$(basename "$file" .gd)")
-done < <(find "$ROOT/scripts/tests" -maxdepth 1 -name '*_test.gd' | sort)
-ALL_TESTS+=(manual/battle_stress_test)
-
-MANUAL_TESTS=()
-while IFS= read -r file; do
-  MANUAL_TESTS+=("manual/$(basename "$file" .gd)")
-done < <(find "$ROOT/scripts/tests/manual" -maxdepth 1 -name '*_test.gd' 2>/dev/null | sort)
-
-tests_for_changed() {
-  local changed
-  changed="$(git -C "$ROOT" diff --name-only HEAD; git -C "$ROOT" ls-files --others --exclude-standard)"
-  if grep -Eq 'scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd|scripts/core/combat_config\.gd|resources/(gems|combat|adventure|relics)/|resources/units/unit_defs\.json|localization/strings\.csv' <<<"$changed"; then
-    printf '%s\n' "${FAST_TESTS[@]}"
-  elif grep -Eq 'scripts/ui/(battle_overlay_presenter|isometric_board|battle_scene|adventure_map_scene|transition_manager)\.gd|scenes/ui/transition_|assets/ui/transitions/' <<<"$changed"; then
-    printf '%s\n' adventure_map_copy_presenter_test battle_overlay_presenter_test board_overlay_api_test overlay_render_contract_test ui_overlay_contract_test ui_visual_regression_contract_test transition_manager_test
-  elif grep -Eq 'scripts/rules/|scripts/battle/|scripts/data/|scripts/services/(data_registry|balance_config_validator|economy_service|event_service|room_effect_executor|adventure_rule_registry|shop_service|room_flow_service|adventure_config_validator|numeric_text_resolver|persistence_path_policy|save_service|settings_service)\.gd' <<<"$changed"; then
-    printf '%s\n' "${CORE_TESTS[@]}"
-  elif grep -Eq 'scripts/testkit/|scripts/tools/|tools/' <<<"$changed"; then
-    printf '%s\n' testkit_snapshot_test
-  else
-    printf '%s\n' encounter_load_test
+TRANSLATION_SOURCE="$ROOT/localization/strings.csv"
+TRANSLATION_BUILDER="$ROOT/scripts/tools/build_localization_translations.gd"
+translation_needs_build=false
+for translation_output in \
+  "$ROOT/localization/strings.zh_CN.translation" \
+  "$ROOT/localization/strings.en_US.translation"; do
+  if [[ ! -f "$translation_output" || "$TRANSLATION_SOURCE" -nt "$translation_output" || "$TRANSLATION_BUILDER" -nt "$translation_output" ]]; then
+    translation_needs_build=true
   fi
-}
-
-case "$MODE" in
-  fast) TESTS=("${FAST_TESTS[@]}") ;;
-  changed)
-    TESTS=()
-    while IFS= read -r test_name; do
-      TESTS+=("$test_name")
-    done < <(tests_for_changed | awk '!seen[$0]++')
-    ;;
-  all) TESTS=("${ALL_TESTS[@]}") ;;
-  manual) TESTS=("${MANUAL_TESTS[@]}") ;;
-  *) echo "Usage: ./tools/verify fast|changed|all|manual"; exit 2 ;;
-esac
+done
+if [[ "$translation_needs_build" == true ]]; then
+  if ! "$GODOT" --headless --path "$ROOT" --script res://scripts/tools/build_localization_translations.gd >"$TRANSLATION_LOG" 2>&1; then
+    echo "VERIFY_FAIL localization_translation_build (see artifacts/verify/localization_translation_build.log)"
+    tail -40 "$TRANSLATION_LOG"
+    exit 1
+  fi
+else
+  echo "LOCALIZATION_TRANSLATION_CURRENT" >"$TRANSLATION_LOG"
+fi
 
 passed=0
 failed=0
 start="$(date +%s)"
-: > "$REPORT_DIR/verify.log"
+: >"$REPORT_DIR/verify.log"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
 cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
@@ -209,10 +150,17 @@ cat "$UI_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$PLAYER_COPY_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$PERSISTENCE_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$TEST_LOG_GUARD_LOG" | tee -a "$REPORT_DIR/verify.log"
-echo "VERIFY_TRANSLATIONS_BUILT" | tee -a "$REPORT_DIR/verify.log"
+cat "$TRANSLATION_LOG" | tee -a "$REPORT_DIR/verify.log"
+echo "VERIFY_SELECTED mode=$MODE count=${#TESTS[@]}" | tee -a "$REPORT_DIR/verify.log"
+if [[ "$MODE" == "changed" ]]; then
+  while IFS= read -r path; do
+    [[ -n "$path" ]] && echo "VERIFY_CHANGED $path" | tee -a "$REPORT_DIR/verify.log"
+  done <<<"$VERIFY_CHANGED_FILES"
+fi
 
 for test_name in "${TESTS[@]}"; do
   echo "VERIFY_RUN $test_name" | tee -a "$REPORT_DIR/verify.log"
+  test_start="$(date +%s)"
   local_path="res://scripts/tests/${test_name}.gd"
   log_name="${test_name//\//__}"
   user_root="$REPORT_DIR/userdata/$log_name"
@@ -231,15 +179,16 @@ for test_name in "${TESTS[@]}"; do
   else
     log_guard_exit=$?
   fi
+  test_duration=$(($(date +%s) - test_start))
   if [[ "$test_exit" -eq 0 && "$log_guard_exit" -eq 0 ]]; then
-    echo "VERIFY_PASS $test_name" | tee -a "$REPORT_DIR/verify.log"
+    echo "VERIFY_PASS $test_name duration=${test_duration}s" | tee -a "$REPORT_DIR/verify.log"
     passed=$((passed + 1))
   else
     failure_reason="exit=$test_exit"
     if [[ "$log_guard_exit" -ne 0 ]]; then
       failure_reason="runtime error"
     fi
-    echo "VERIFY_FAIL $test_name ($failure_reason; see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
+    echo "VERIFY_FAIL $test_name ($failure_reason; duration=${test_duration}s; see artifacts/verify/${log_name}.log)" | tee -a "$REPORT_DIR/verify.log"
     if [[ "$log_guard_exit" -ne 0 ]]; then
       bash "$ROOT/tools/test_log_guard" "$test_log" || true
     fi
@@ -249,10 +198,10 @@ for test_name in "${TESTS[@]}"; do
 done
 
 duration=$(($(date +%s) - start))
-printf '{"mode":"%s","passed":%d,"failed":%d,"duration_seconds":%d}\n' \
-  "$MODE" "$passed" "$failed" "$duration" > "$REPORT_DIR/report.json"
-echo "VERIFY_SUMMARY mode=$MODE passed=$passed failed=$failed duration=${duration}s report=artifacts/verify/report.json"
-if ! "$ROOT/tools/coverage" > "$REPORT_DIR/semantic-coverage.log"; then
+printf '{"mode":"%s","selected":%d,"passed":%d,"failed":%d,"duration_seconds":%d}\n' \
+  "$MODE" "${#TESTS[@]}" "$passed" "$failed" "$duration" >"$REPORT_DIR/report.json"
+echo "VERIFY_SUMMARY mode=$MODE selected=${#TESTS[@]} passed=$passed failed=$failed duration=${duration}s report=artifacts/verify/report.json"
+if ! "$ROOT/tools/coverage" >"$REPORT_DIR/semantic-coverage.log"; then
   echo "VERIFY_FAIL semantic_coverage (see artifacts/verify/semantic-coverage.log)"
   cat "$REPORT_DIR/semantic-coverage.log"
   exit 1

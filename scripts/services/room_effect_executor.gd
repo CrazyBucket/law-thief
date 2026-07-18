@@ -43,6 +43,24 @@ func evaluate_conditions(conditions: Array, ctx: Dictionary = {}) -> Dictionary:
 	}
 
 
+## JSON events can only invoke this explicit function-call adapter. The function name is
+## converted into a validated room effect; arbitrary Node methods are never exposed.
+func apply_calls(calls: Array, ctx: Dictionary = {}) -> Dictionary:
+	var effects: Array[Dictionary] = []
+	for raw_call in calls:
+		if not raw_call is Dictionary:
+			return {"ok": false, "error": "invalid_event_call"}
+		var event_call := raw_call as Dictionary
+		var function_id := str(event_call.get("function", ""))
+		var raw_args: Variant = event_call.get("args", {})
+		if function_id.is_empty() or not raw_args is Dictionary:
+			return {"ok": false, "error": "invalid_event_call"}
+		var effect := (raw_args as Dictionary).duplicate(true)
+		effect["action"] = function_id
+		effects.append(effect)
+	return apply_effects(effects, ctx)
+
+
 func apply_effects(effects: Array, ctx: Dictionary = {}) -> Dictionary:
 	var results: Array[Dictionary] = []
 	var summaries: Array[String] = []
@@ -186,6 +204,13 @@ func _evaluate_condition(condition: Dictionary, _ctx: Dictionary) -> Dictionary:
 			if required_gem_id.is_empty() or str(carried.get("gem_id", "")) == required_gem_id:
 				return {"ok": true}
 			return {"ok": false, "error": "has_carried_gem_failed", "reason": "携带宝石不匹配"}
+		"carried_gem_empty":
+			var current_run := RunService.get_run()
+			if current_run == null:
+				return {"ok": false, "error": "no_active_run", "reason": "当前没有进行中的冒险"}
+			if current_run.carried_gem.is_empty():
+				return {"ok": true}
+			return {"ok": false, "error": "carried_gem_empty_failed", "reason": "手中已有宝石"}
 		"chapter_gte":
 			if RunService.get_current_chapter() >= int(condition.get("chapter", 1)):
 				return {"ok": true}

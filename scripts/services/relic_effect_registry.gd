@@ -84,6 +84,20 @@ func fire_event(event_id: String, state: GameState, payload: Dictionary = {}) ->
 			_dispatch_action(relic_id, effect, state, payload)
 
 
+## Applies only the newly acquired relic's immediate effects. This is used by
+## battle settlement so slot-granting relics are available to the next reward.
+func apply_acquired_relic(relic_id: String, event_id: String, state: GameState) -> void:
+	if relic_id.is_empty() or state == null:
+		return
+	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
+	var effects: Variant = def.get("effects", [])
+	if not effects is Array:
+		return
+	for effect in effects:
+		if effect is Dictionary and str((effect as Dictionary).get("on", "")) == event_id:
+			_dispatch_action(relic_id, effect as Dictionary, state, {})
+
+
 ## 查询 modifier：对当前局持有的所有遗物累计查询
 func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {}) -> Variant:
 	var owned := RunService.get_owned_relics()

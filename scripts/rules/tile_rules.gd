@@ -94,17 +94,13 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 		_apply_enter_effects_for_occupied_cells(state, unit)
 
 
-## 单位经过某格时触发（移动路径中间格）
+## 移动路径中的中间格不结算地块进入效果；仅保留路径钩子。
 static func on_unit_moved_through(
 	state: GameState,
 	unit: UnitState,
 	pos: Vector2i,
 	opts: Dictionary = {}
 ) -> void:
-	sync_standing_ground_effects(state, unit)
-	EntityRules.on_unit_entered(state, unit, opts)
-	_apply_enter_effects_for_occupied_cells(state, unit)
-
 	GemEffects.run_unit_hooks(
 		state,
 		unit,
@@ -124,13 +120,12 @@ static func on_unit_position_changed(state: GameState, unit: UnitState, old_pos:
 		StatusRules.clear_burning(unit)
 
 
-## 主动移动路径走完后的收尾：清 burning、触发 entity 钩子、避免 overlay 重复触发
-## 路径中每一步已由 on_unit_moved_through 处理 overlay/entity，落点只做状态收尾。
+## 主动移动只根据最终落点结算地块、实体和驻留状态。
 static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: Vector2i) -> void:
 	if unit.pos == start_pos:
 		return
 	on_unit_position_changed(state, unit, start_pos)
-	on_unit_entered(state, unit, start_pos, {"skip_overlay": true, "skip_entity": true})
+	on_unit_entered(state, unit, start_pos)
 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────
@@ -155,10 +150,8 @@ static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = -
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = int(merged.get("duration", 0)) + add_turns
 		tile.modifiers[i] = merged
-		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_POISON_FOG, add_turns)
-	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 static func create_overlay(
@@ -187,7 +180,6 @@ static func create_overlay(
 			tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 			var puddle_duration := duration if duration > 0 else CombatConfig.poison_puddle_duration()
 			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, puddle_duration, payload)
-			_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 			return {"ok": true}
 	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
 
@@ -215,7 +207,6 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
 		tile.modifiers[i] = merged
-		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	tile.add_modifier(Constants.TILE_MOD_FIRE, duration)
 
@@ -224,9 +215,6 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 		state.log("%s 的 %s 被点燃" % [pos, tile.tile_id])
 		tile.tile_id = Constants.TILE_FLOOR
 		tile._init_ground_tags()
-
-	# 如果此刻有单位站在上面，按 overlay 进入规则结算。
-	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 	# 如果此刻有油桶站在上面，触发爆炸
 	var barrel := state.get_entity_at(pos)
@@ -251,11 +239,9 @@ static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 
 		var merged: Dictionary = existing.duplicate(true)
 		merged["duration"] = maxi(int(merged.get("duration", 0)), duration)
 		tile.modifiers[i] = merged
-		_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 		return
 	var resolved_duration := duration if duration > 0 else CombatConfig.toxic_smoke_duration()
 	tile.add_modifier(Constants.TILE_MOD_TOXIC_SMOKE, resolved_duration)
-	_queue_or_apply_enter_effects_to_occupant(state, pos, tile)
 
 
 ## 火焰蔓延：[着火] 的地块引燃相邻可燃格（每回合 50% 概率）
@@ -389,7 +375,6 @@ static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_t
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_puddle_duration())
-	_queue_or_apply_enter_effects_to_occupant(state, tile.pos, tile)
 
 
 static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileState]:

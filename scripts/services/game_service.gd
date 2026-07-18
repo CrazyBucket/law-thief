@@ -8,6 +8,7 @@ var pending_battle_mode: String = "normal"
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const ROOM_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const SHOP_SCENE := "res://scenes/adventure/shop_scene.tscn"
+const EVENT_SCENE := "res://scenes/adventure/event_scene.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 
 
@@ -57,7 +58,13 @@ func continue_scene_for_active_run() -> String:
 		"ROOM":
 			pending_room_id = str(pending.get("room_id", pending_room_id))
 			AdventureService.pending_room_type = str(pending.get("room_type", AdventureService.pending_room_type))
-			return SHOP_SCENE if AdventureService.pending_room_type == "SHOP" else ROOM_SCENE
+			match AdventureService.pending_room_type:
+				"SHOP":
+					return SHOP_SCENE
+				"EVENT":
+					return EVENT_SCENE
+				_:
+					return ROOM_SCENE
 		"BATTLE":
 			pending_room_id = str(pending.get("room_id", ""))
 			pending_encounter_id = str(pending.get("encounter_id", pending_encounter_id))

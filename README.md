@@ -26,17 +26,15 @@ AI / 日常开发优先使用统一入口：
 ```bash
 ./tools/context 爆炸
 ./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
-./tools/coverage
+./tools/verify test explosion_test
+./tools/verify changed --list
 ./tools/verify changed
-./tools/verify fast
-./tools/verify manual
 ```
 
 `snapshot` 会将行动前后状态、差异、事件、不变量和数值计算 trace 写入
 `artifacts/verify/snapshot.json`。详细约定见 `AGENTS.md`。
 
-`coverage` 只把独立设计契约覆盖到的“宝石 × 槽位 × 等级”计为可信。可用
-`SEMANTIC_COVERAGE_MIN=50 ./tools/coverage` 设置最低覆盖率门禁。
+`verify test` 是日常首选，只运行明确指定的测试；`verify changed` 按改动领域选择测试。无参数执行 `verify` 也等价于 `changed`，不会默认跑大套件。`fast` 仅用于有明确跨系统风险的改动，`all` 默认只在 CI 或明确要求时运行，`manual` 只运行压力/调试探针。加 `--list` 可只查看选择结果而不启动 Godot。所有 `verify` 模式都会执行语义覆盖检查；需要单独审计时，可用 `SEMANTIC_COVERAGE_MIN=50 ./tools/coverage` 设置最低覆盖率门禁。
 
 主场景无头启动：
 
@@ -50,19 +48,13 @@ godot --headless --path . --quit-after 2
 godot --headless --path . res://scenes/battle/battle_scene.tscn --quit-after 3
 ```
 
-战斗回归基线（提交战斗相关改动前至少跑完这一组）：
+聚焦诊断仍可直接执行单个测试，例如：
 
 ```bash
-godot --headless --path . --script res://scripts/tests/encounter_load_test.gd && godot --headless --path . --script res://scripts/tests/ai_test.gd && godot --headless --path . --script res://scripts/tests/smoke_test.gd
+godot --headless --path . --script res://scripts/tests/explosion_test.gd
 ```
 
-命中/障碍物专项回归：
-
-```bash
-godot --headless --path . --script res://scripts/tests/explosion_test.gd && godot --headless --path . --script res://scripts/tests/prop_entity_test.gd && godot --headless --path . --script res://scripts/tests/stone_bow_guard_test.gd && godot --headless --path . --script res://scripts/tests/split_shot_test.gd
-```
-
-手动探针 / 压力验证（不再包含在 `./tools/verify all` 中）：
+手动探针 / 压力验证（不包含在 `changed`、`fast` 或 `all` 中）：
 
 ```bash
 ./tools/verify manual
@@ -70,7 +62,7 @@ godot --headless --path . --script res://scripts/tests/manual/damage_debug_test.
 godot --headless --path . --script res://scripts/tests/manual/battle_stress_test.gd
 ```
 
-约定：只要改动了 `scripts/battle/`、`scripts/rules/`、`scripts/ui/` 或战斗场景资源，都要重新执行上面两组命令，确认战斗场景可启动、主流程可跑通、隔障碍攻击/分裂攻击没有回归。
+约定：不要在修改前先跑测试。修改后优先执行单个相关测试；涉及数个相关文件时才用 `verify changed`。不要固定串行重复执行 `changed`、`fast`、`all` 和手工测试；本地 `all` 只在明确要求时运行。
 
 教学关冒烟测试（拔爆炸 → 嵌黑槽 → 击杀引爆）：
 

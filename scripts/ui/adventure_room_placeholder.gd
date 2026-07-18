@@ -34,19 +34,24 @@ func _refresh_room_view(room_view: Dictionary) -> void:
 	_body.text = summary
 	var state := str(room_view.get("state", "AWAITING_DECISION"))
 	var payload: Dictionary = room_view.get("payload", {})
+	var is_event := payload.has("event")
 	if payload.has("shop"):
 		_render_shop_view(payload.get("shop", {}), summary)
-	elif payload.has("event"):
+	elif is_event:
 		_render_event_view(payload.get("event", {}), summary, state == "RESOLVED")
+	_back_btn.visible = not is_event
+	_continue_btn.visible = not is_event or state == "RESOLVED"
 	if state == "RESOLVED":
 		_continue_btn.text = "继续"
 	else:
-		_continue_btn.text = "离开商店" if payload.has("shop") else ("事件已查看" if payload.has("event") else "确认")
+		_continue_btn.text = "离开商店" if payload.has("shop") else "确认"
 
 
 func _on_continue_pressed() -> void:
 	var room_view := RoomFlowService.get_room_view(_room_id)
 	var payload: Dictionary = room_view.get("payload", {})
+	if payload.has("event") and str(room_view.get("state", "")) != "RESOLVED":
+		return
 	if str(room_view.get("state", "")) == "RESOLVED" or payload.has("shop") or payload.has("event"):
 		AdventureService.finish_room_and_return()
 		return
@@ -105,13 +110,20 @@ func _render_event_view(event_view: Dictionary, summary: String, resolved: bool)
 		var option_dict := option as Dictionary
 		var btn := Button.new()
 		btn.text = str(option_dict.get("label", "选择"))
+		btn.custom_minimum_size = Vector2(0, 46)
+		btn.disabled = not bool(option_dict.get("enabled", true))
+		var disabled_reason := str(option_dict.get("disabled_reason", ""))
+		if btn.disabled and not disabled_reason.is_empty():
+			btn.text = "%s（%s）" % [btn.text, disabled_reason]
+			btn.tooltip_text = disabled_reason
 		BattleUiTheme.apply_button(btn, "end")
-		btn.pressed.connect(func() -> void:
-			_refresh_room_view(RoomFlowService.submit_room_command(_room_id, {
-				"action": "choose_option",
-				"option_id": str(option_dict.get("id", "")),
-			}))
-		)
+		if not btn.disabled:
+			btn.pressed.connect(func() -> void:
+				_refresh_room_view(RoomFlowService.submit_room_command(_room_id, {
+					"action": "choose_option",
+					"option_id": str(option_dict.get("id", "")),
+				}))
+			)
 		_vbox.add_child(btn)
 		_dynamic_nodes.append(btn)
 

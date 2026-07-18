@@ -41,6 +41,7 @@ static func apply_burning(
 		"duration": _default_duration("burning"),
 		"source_uid": source_uid,
 	})
+	GemEffects.run_unit_hooks(state, unit, Constants.SLOT_BLUE, GemEffects.TIMING_OWNER_DAMAGED, {"reason": "tile_fire", "damage": 0, "events": state.get_combat_event_sink() if state.has_combat_event_sink() else []})
 
 
 static func apply_armor(
@@ -509,8 +510,7 @@ static func tick_unit_turn_start(state: GameState, unit: UnitState) -> void:
 	_tick_phase(state, unit, _StatusRegistry.TICK_TURN_START)
 
 
-## Resolve one carrier's completed action window. Ground stay is applied before
-## damage-over-time so ending a turn in a hazard has an immediate cost.
+## Legacy one-unit helper; battle flow resolves DOT at full-round end.
 static func tick_unit_turn_end(
 	state: GameState,
 	unit: UnitState,
@@ -523,7 +523,7 @@ static func tick_unit_turn_end(
 	_tick_phase(state, unit, _StatusRegistry.TICK_TURN_END, events)
 
 
-## Board-wide effects advance once after every unit has completed its own turn.
+## Board-wide non-DOT effects advance once after every unit has completed its own turn.
 static func tick_round_end_environment(
 	state: GameState,
 	events: Array[Dictionary] = []

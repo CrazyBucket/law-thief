@@ -124,7 +124,7 @@ static func acquire_run_gem(gem_id: String) -> Dictionary:
 	return run_service.claim_battle_gem(room_id, gem_id, room_type)
 
 
-static func acquire_run_relic(relic_id: String) -> bool:
+static func acquire_run_relic(relic_id: String, state: GameState = null) -> bool:
 	var run_service := _service("RunService")
 	if run_service == null or relic_id.is_empty():
 		return false
@@ -132,7 +132,16 @@ static func acquire_run_relic(relic_id: String) -> bool:
 	var adventure_service := _service("AdventureService")
 	var room_id := str(game_service.pending_room_id) if game_service != null else ""
 	var room_type := str(adventure_service.pending_room_type) if adventure_service != null else ""
-	return bool(run_service.claim_battle_relic(room_id, relic_id, room_type).get("ok", false))
+	var result: Dictionary = run_service.claim_battle_relic(room_id, relic_id, room_type)
+	if not bool(result.get("ok", false)):
+		return false
+	if state != null and not bool(result.get("duplicate", false)):
+		var registry := _service("RelicEffectRegistry")
+		if registry != null:
+			registry.apply_acquired_relic(relic_id, "battle_start", state)
+		run_service.capture_player_battle_state(state)
+		run_service.save_run()
+	return true
 
 
 static func mark_reward_pending(

@@ -99,10 +99,11 @@ func submit_room_command(room_id: String, command: Dictionary) -> Dictionary:
 				{"event": EventService.get_event_view(room_id)},
 			)
 		var result: Dictionary = event_result.get("result", {})
+		var event_resolved := bool(result.get("resolved", false))
 		return _response(
 			true,
 			room_id,
-			"RESOLVED",
+			"RESOLVED" if event_resolved else "AWAITING_DECISION",
 			result,
 			[],
 			[],

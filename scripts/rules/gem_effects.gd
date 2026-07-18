@@ -1,6 +1,5 @@
 class_name GemEffects
 extends RefCounted
-
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const EntityRules = preload("res://scripts/rules/entity_rules.gd")
 const GemEchoRules = preload("res://scripts/rules/gem_echo_rules.gd")
@@ -15,17 +14,11 @@ const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const _UnitSpawnService = preload("res://scripts/rules/unit_spawn_service.gd")
 const _GemLightVisuals = preload("res://scripts/rules/gem_light_visuals.gd")
 const _GemExplosionRules = preload("res://scripts/rules/gem_explosion_rules.gd")
-
 const _Displacement = preload("res://scripts/rules/displacement.gd")
-
-
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
-
-
 static func _relic_effect_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
-
 const TIMING_ACTIVE := "active"
 const TIMING_TURN_START := "turn_start"
 const TIMING_TURN_END := "turn_end"
@@ -36,7 +29,6 @@ const TIMING_FORCED_MOVE := "forced_move"   # 被强制位移时（击退、引�
 const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻击）
 
 const MODE_TRIGGER := "trigger"
-
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -46,7 +38,6 @@ const ABILITY_BLACK_DEATH := "black_death"
 const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
-
 const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"arc",
 	"gravity",
@@ -59,13 +50,9 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"counter",
 	"echo",
 ]
-
 const SPLIT_ORIGIN_SLOT_PREFIX := "split_origin_slot:"
-
-
 static func split_origin_slot_key(gem_uid: String) -> String:
 	return "%s%s" % [SPLIT_ORIGIN_SLOT_PREFIX, gem_uid]
-
 static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
 	var gem_ctx := GemTagResolver.build_context(state, unit, slot_type, timing)
 	var triggered_tags: Dictionary = {}
@@ -83,7 +70,6 @@ static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String,
 		hook_ctx["gem_tag_context"] = gem_ctx
 		_run_slot_hook(state, unit, slot, timing, hook_ctx)
 
-
 static func tick_turn_start(state: GameState) -> void:
 	var to_remove: Array[UnitState] = []
 	for unit in state.units.values():
@@ -97,7 +83,6 @@ static func tick_turn_start(state: GameState) -> void:
 		state.unregister_unit(unit)
 		state.battle_temp_flags.erase("split_blue_temp_expire:%s" % unit.uid)
 	state.purge_dead_controllable()
-
 
 static func run_blue_poison_turn_end_spreads(state: GameState, acting_unit_uid: String) -> void:
 	if state == null or acting_unit_uid.is_empty():
@@ -405,7 +390,12 @@ static func on_red_action(state: GameState, unit: UnitState, intent: IntentState
 	var slot := unit.get_slot(Constants.SLOT_RED)
 	if slot == null or slot.gem_uid.is_empty():
 		return [] as Array[Dictionary]
-	return _behavior_for(unit).execute_red_action(state, unit, intent)
+	var raw_events: Array = _behavior_for(unit).execute_red_action(state, unit, intent)
+	var events: Array[Dictionary] = []
+	for event in raw_events:
+		if event is Dictionary:
+			events.append(event as Dictionary)
+	return events
 
 
 static func cross_explosion_cells(center: Vector2i) -> Array[Vector2i]:
@@ -512,6 +502,11 @@ static func explode_cross_at(
 	var cells: Array[Vector2i] = cross_explosion_cells(center)
 	events.append(_EventBuilder.explode(center, 1, {"pattern": "cross", "cells": cells, "source_uid": source_uid}))
 	state.log("爆炸宝石十字爆炸于 %s" % center)
+	var hit_entities: Dictionary = {}
+	var center_entity := state.get_entity_at(center)
+	if center_damage > 0 and center_entity != null and center_entity.alive and center_entity.max_hp > 0:
+		hit_entities[center_entity.uid] = true
+		EntityRules.damage_entity(state, center_entity, center_damage, source_uid, events)
 	if center_damage > 0:
 		var center_unit := state.get_unit_at(center)
 		if center_unit != null and center_unit.alive and center_unit.uid != source_uid:
@@ -541,6 +536,10 @@ static func explode_cross_at(
 	for cell in BoardUtils.neighbors4(center):
 		if not BoardUtils.in_bounds(state, cell):
 			continue
+		var hit_entity := state.get_entity_at(cell)
+		if hit_entity != null and hit_entity.alive and hit_entity.max_hp > 0 and not hit_entities.has(hit_entity.uid):
+			hit_entities[hit_entity.uid] = true
+			EntityRules.damage_entity(state, hit_entity, cross_damage, source_uid, events)
 		var hit_unit := state.get_unit_at(cell)
 		if hit_unit == null or not hit_unit.alive:
 			continue
@@ -1608,14 +1607,12 @@ static func light_context_with_path_dye(state: GameState, cells: Array[Vector2i]
 
 static func light_dye_element_at(state: GameState, cell: Vector2i) -> String:
 	return _GemLightVisuals.dye_element_at(state, cell)
-
-
 static func light_context_with_dye(gem_ctx: Dictionary, dye: String) -> Dictionary:
 	return _GemLightVisuals.context_with_dye(gem_ctx, dye)
 
 
 static func light_dye_transitions(state: GameState, cells: Array[Vector2i]) -> Array[Dictionary]:
-	return _GemLightVisuals.dye_transitions(state, cells)
+	return _events_from_ctx({"events": _GemLightVisuals.dye_transitions(state, cells)})
 
 
 static func apply_light_colored_status(
@@ -1939,15 +1936,17 @@ static func _calc_arc_damage(base_damage: int, state: GameState = null) -> int:
 		if registry != null:
 			mult = float(registry.query_modifier("arc_damage_mult", state))
 	return maxi(1, int(base_damage * CombatConfig.arc_chain_damage_ratio() * mult))
-
-
 static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
 	var raw: Variant = ctx.get("events", null)
-	if raw is Array:
-		return raw as Array[Dictionary]
-	return [] as Array[Dictionary]
-
-
+	if raw is Array[Dictionary]:
+		return raw
+	var events: Array[Dictionary] = []
+	if not raw is Array:
+		return events
+	for event in raw:
+		if event is Dictionary:
+			events.append(event as Dictionary)
+	return events
 ## 攻击水域：对相连水域及其边缘格上的所有潮湿单位各造成一次电弧伤害
 static func apply_water_conduction(
 	state: GameState,

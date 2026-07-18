@@ -85,6 +85,54 @@ func _run_tests() -> void:
 		"option_id": "pay_for_heal",
 	})
 	assert(pay.get("ok", false), "pay option should succeed after meeting condition")
+
+	adventure_service.start_new_run(20260717)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	adventure_service.pending_room_label = "事件"
+	node = adventure_service.get_current_node()
+	node.room_type = "EVENT"
+	node.properties["event_id"] = "event_abandoned_cache"
+	room_id = str(adventure_service.current_room_id())
+	view = room_flow_service.enter_room(room_id)
+	event_view = view.get("payload", {}).get("event", {})
+	assert(str(event_view.get("node_id", "")) == "start", "graph event should open at its entry node")
+	var take_cache_gold: Dictionary = room_flow_service.submit_room_command(room_id, {
+		"action": "choose_option",
+		"option_id": "take_gold",
+	})
+	assert(take_cache_gold.get("ok", false), "graph event call should succeed")
+	assert(str(take_cache_gold.get("state", "")) == "AWAITING_DECISION", "next transition should keep the event open")
+	assert(economy_service.get_balance("gold") == 10, "graph event should dispatch its configured function call")
+	event_view = take_cache_gold.get("payload", {}).get("event", {})
+	assert(str(event_view.get("node_id", "")) == "gold_taken", "choice should advance to its configured result node")
+	var saved_event: Dictionary = run_service.get_room_state(room_id).get("snapshot", {}).get("event", {})
+	assert(str(saved_event.get("node_id", "")) == "gold_taken", "current event node should persist in the room snapshot")
+	var finish_cache: Dictionary = room_flow_service.submit_room_command(room_id, {
+		"action": "choose_option",
+		"option_id": "leave",
+	})
+	assert(str(finish_cache.get("state", "")) == "RESOLVED", "finish option should resolve the event room")
+	assert(run_service.is_room_resolved(room_id), "finished graph event should mark the room resolved")
+
+	adventure_service.start_new_run(20260718)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	adventure_service.pending_room_label = "事件"
+	node = adventure_service.get_current_node()
+	node.room_type = "EVENT"
+	node.properties["event_id"] = "event_cracked_forge"
+	room_id = str(adventure_service.current_room_id())
+	view = room_flow_service.enter_room(room_id)
+	event_view = view.get("payload", {}).get("event", {})
+	options = event_view.get("options", [])
+	assert(bool((options[0] as Dictionary).get("enabled", false)), "gem option should be enabled when no gem is carried")
+	var take_gem: Dictionary = room_flow_service.submit_room_command(room_id, {
+		"action": "choose_option",
+		"option_id": "take_gem",
+	})
+	assert(take_gem.get("ok", false), "configured grant_gem call should succeed")
+	assert(str(run_service.get_run().carried_gem.get("gem_id", "")) == "gem_explosion", "event should grant its configured gem")
 	run_service.end_run()
 	print("EVENT_SERVICE_TEST_PASS")
 	quit()

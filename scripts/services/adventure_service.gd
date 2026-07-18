@@ -8,6 +8,7 @@ const AdventureProgressionConfig = preload("res://scripts/core/adventure_progres
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const SHOP_SCENE := "res://scenes/adventure/shop_scene.tscn"
+const EVENT_SCENE := "res://scenes/adventure/event_scene.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 
 var map_seed: int = 20260525
@@ -95,7 +96,9 @@ func get_room_scene_path(room_type: String) -> String:
 			return BATTLE_SCENE
 		"SHOP":
 			return SHOP_SCENE
-		"REST_SITE", "EVENT":
+		"EVENT":
+			return EVENT_SCENE
+		"REST_SITE":
 			return PLACEHOLDER_SCENE
 		_:
 			return PLACEHOLDER_SCENE
@@ -257,7 +260,7 @@ func _navigate_to_room(room_type: String) -> void:
 			})
 			RunService.save_run()
 			TransitionManager.change_scene(
-				SHOP_SCENE if room_type == "SHOP" else PLACEHOLDER_SCENE,
+				get_room_scene_path(room_type),
 				TransitionManager.Style.CHECKERBOARD,
 				0.38,
 				{"columns": 10, "cover_color": Color.BLACK},

@@ -65,5 +65,155 @@
         "effects": []
       }
     ]
+  },
+  "event_abandoned_cache": {
+    "entry": "start",
+    "nodes": {
+      "start": {
+        "title": "塌墙后的储藏室",
+        "body": "潮湿的墙砖后藏着一只旧铁箱。里面有一袋钱，也有几包还能使用的药粉。",
+        "options": [
+          {
+            "id": "take_gold",
+            "label": "拿走 {amount_ref:event_cache_gold} 金币",
+            "conditions": [],
+            "calls": [
+              {
+                "function": "grant_resource",
+                "args": {"resource_id": "gold", "amount_ref": "event_cache_gold"}
+              }
+            ],
+            "next": "gold_taken"
+          },
+          {
+            "id": "use_medicine",
+            "label": "使用药粉，恢复 {amount_ref:event_cache_heal} 点生命",
+            "conditions": [],
+            "calls": [
+              {
+                "function": "heal_player",
+                "args": {"amount_ref": "event_cache_heal"}
+              }
+            ],
+            "next": "medicine_used"
+          }
+        ]
+      },
+      "gold_taken": {
+        "title": "旧日积蓄",
+        "body": "钱袋比看起来更沉。你收好金币，把空铁箱推回阴影里。",
+        "options": [
+          {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
+        ]
+      },
+      "medicine_used": {
+        "title": "苦涩药粉",
+        "body": "药粉带着铁锈味，但伤口很快止住了血。",
+        "options": [
+          {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
+        ]
+      }
+    }
+  },
+  "event_field_medic": {
+    "entry": "start",
+    "nodes": {
+      "start": {
+        "title": "巷口的医生",
+        "body": "一名蒙面医生守着便携药箱。他不问来历，只在木牌上写下价钱。",
+        "options": [
+          {
+            "id": "pay_for_treatment",
+            "label": "支付 {amount_ref:event_medic_cost} 金币，恢复 {amount_ref:event_medic_heal} 点生命",
+            "conditions": [
+              {"type": "resource_gte", "resource_id": "gold", "amount_ref": "event_medic_cost"}
+            ],
+            "calls": [
+              {
+                "function": "spend_resource",
+                "args": {"resource_id": "gold", "amount_ref": "event_medic_cost"}
+              },
+              {
+                "function": "heal_player",
+                "args": {"amount_ref": "event_medic_heal"}
+              }
+            ],
+            "next": "treated"
+          },
+          {
+            "id": "decline",
+            "label": "婉拒治疗",
+            "conditions": [],
+            "calls": [],
+            "next": "declined"
+          }
+        ]
+      },
+      "treated": {
+        "title": "干净的绷带",
+        "body": "医生动作利落。最后一个绷带结打好时，他已经开始收拾药箱。",
+        "options": [
+          {"id": "leave", "label": "道谢后离开", "conditions": [], "calls": [], "finish": true}
+        ]
+      },
+      "declined": {
+        "title": "各走各路",
+        "body": "医生没有挽留，只把木牌翻回空白的一面。",
+        "options": [
+          {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
+        ]
+      }
+    }
+  },
+  "event_cracked_forge": {
+    "entry": "start",
+    "nodes": {
+      "start": {
+        "title": "熄灭的嵌炉",
+        "body": "废弃工坊中央，一颗爆炸宝石仍卡在冷却的嵌炉里。旁边的废料抽屉没有上锁。",
+        "options": [
+          {
+            "id": "take_gem",
+            "label": "取出爆炸宝石",
+            "conditions": [
+              {"type": "carried_gem_empty"}
+            ],
+            "calls": [
+              {
+                "function": "grant_gem",
+                "args": {"gem_id": "gem_explosion"}
+              }
+            ],
+            "next": "gem_taken"
+          },
+          {
+            "id": "search_drawer",
+            "label": "翻找废料，获得 {amount_ref:event_forge_gold} 金币",
+            "conditions": [],
+            "calls": [
+              {
+                "function": "grant_resource",
+                "args": {"resource_id": "gold", "amount_ref": "event_forge_gold"}
+              }
+            ],
+            "next": "gold_taken"
+          }
+        ]
+      },
+      "gem_taken": {
+        "title": "尚存余温",
+        "body": "宝石离开嵌炉时闪了一下。你握紧它，直到那点危险的余温平静下来。",
+        "options": [
+          {"id": "leave", "label": "离开工坊", "conditions": [], "calls": [], "finish": true}
+        ]
+      },
+      "gold_taken": {
+        "title": "零碎收获",
+        "body": "抽屉里只有一些被遗忘的零钱。至少它们比那颗不安分的宝石可靠。",
+        "options": [
+          {"id": "leave", "label": "离开工坊", "conditions": [], "calls": [], "finish": true}
+        ]
+      }
+    }
   }
 }

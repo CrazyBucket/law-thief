@@ -2,7 +2,20 @@ name: verify
 
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "doc/**"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "doc/**"
+      - "docs/**"
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:

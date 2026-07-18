@@ -302,7 +302,7 @@ static func _execute_melee(
 	var result := CombatRules.melee_attack(state, unit, target, charge_bonus)
 	if not result.get("ok", false):
 		return [] as Array[Dictionary]
-	return result.get("events", [] as Array[Dictionary])
+	return _events_from_result(result)
 
 
 static func _execute_ranged(
@@ -325,7 +325,15 @@ static func _execute_ranged(
 	var result := CombatRules.ranged_attack(state, unit, aim_cell, max_range, payload)
 	if not result.get("ok", false):
 		return [] as Array[Dictionary]
-	return result.get("events", [] as Array[Dictionary])
+	return _events_from_result(result)
+
+
+static func _events_from_result(result: Dictionary) -> Array[Dictionary]:
+	var events: Array[Dictionary] = []
+	for event in result.get("events", []):
+		if event is Dictionary:
+			events.append(event as Dictionary)
+	return events
 
 
 static func _execute_move(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:

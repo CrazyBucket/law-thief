@@ -1,0 +1,238 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/event_scene.gd" id="1_event"]
+[ext_resource type="Texture2D" path="res://assets/ui/main_menu_bg.png" id="2_backdrop"]
+
+[node name="EventScene" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_event")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_backdrop")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(0.42, 0.38, 0.58, 1)
+
+[node name="DarkWash" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.025, 0.027, 0.047, 0.66)
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 18
+
+[node name="Layout" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TopBar" type="PanelContainer" parent="SafeArea/Layout"]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+
+[node name="Row" type="HBoxContainer" parent="SafeArea/Layout/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="TitleRule" type="ColorRect" parent="SafeArea/Layout/TopBar/Row"]
+custom_minimum_size = Vector2(4, 36)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.65, 0.52, 0.92, 1)
+
+[node name="HeaderTitle" type="Label" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "Event"
+
+[node name="Spacer" type="Control" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ChapterLabel" type="Label" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Act"
+
+[node name="Main" type="HBoxContainer" parent="SafeArea/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="ArtFrame" type="PanelContainer" parent="SafeArea/Layout/Main"]
+custom_minimum_size = Vector2(470, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ArtStack" type="Control" parent="SafeArea/Layout/Main/ArtFrame"]
+custom_minimum_size = Vector2(0, 560)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="EventArtwork" type="TextureRect" parent="SafeArea/Layout/Main/ArtFrame/ArtStack"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+texture_filter = 1
+
+[node name="ArtShade" type="ColorRect" parent="SafeArea/Layout/Main/ArtFrame/ArtStack"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.055, 0.052, 0.09, 0.4)
+
+[node name="ArtFallback" type="CenterContainer" parent="SafeArea/Layout/Main/ArtFrame/ArtStack"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Glyph" type="Label" parent="SafeArea/Layout/Main/ArtFrame/ArtStack/ArtFallback"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 86
+text = "◆"
+
+[node name="TopFade" type="ColorRect" parent="SafeArea/Layout/Main/ArtFrame/ArtStack"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 120.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.03, 0.03, 0.055, 0.5)
+
+[node name="BottomFade" type="ColorRect" parent="SafeArea/Layout/Main/ArtFrame/ArtStack"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -150.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.03, 0.03, 0.055, 0.66)
+
+[node name="StoryColumn" type="VBoxContainer" parent="SafeArea/Layout/Main"]
+custom_minimum_size = Vector2(610, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="StoryPanel" type="PanelContainer" parent="SafeArea/Layout/Main/StoryColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="StoryMargin" type="MarginContainer" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 18
+
+[node name="StoryVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Eyebrow" type="Label" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Encounter"
+
+[node name="EventTitle" type="Label" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Event Title"
+autowrap_mode = 2
+
+[node name="Rule" type="HSeparator" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox"]
+layout_mode = 2
+
+[node name="EventBody" type="RichTextLabel" parent="SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox"]
+custom_minimum_size = Vector2(0, 180)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/normal_font_size = 18
+text = "Event body"
+fit_content = false
+scroll_active = true
+
+[node name="ChoicePanel" type="PanelContainer" parent="SafeArea/Layout/Main/StoryColumn"]
+custom_minimum_size = Vector2(0, 270)
+layout_mode = 2
+
+[node name="ChoiceMargin" type="MarginContainer" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="ChoiceVBox" type="VBoxContainer" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ChoiceHeading" type="Label" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Choose"
+
+[node name="ChoiceRule" type="HSeparator" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox"]
+layout_mode = 2
+
+[node name="OptionList" type="VBoxContainer" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="FeedbackLabel" type="Label" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="ContinueButton" type="Button" parent="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+text = "Continue"
+
+[connection signal="pressed" from="SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/ContinueButton" to="." method="_on_continue_pressed"]
