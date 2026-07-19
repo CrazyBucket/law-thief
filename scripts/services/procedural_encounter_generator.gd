@@ -20,6 +20,8 @@ const _ENEMY_POOL := [
 	{"def_id": "unit_bomb_rat", "cost": 1, "weight": 5, "min_chapter": 1, "footprint": Vector2i.ONE, "max_count": 3},
 	{"def_id": "unit_patrol_guard", "cost": 2, "weight": 4, "min_chapter": 1, "footprint": Vector2i.ONE, "max_count": 2},
 	{"def_id": "unit_stone_bow_guard", "cost": 2, "weight": 3, "min_chapter": 1, "footprint": Vector2i.ONE, "max_count": 2},
+	{"def_id": "unit_ruffled_crow", "cost": 2, "weight": 3, "min_chapter": 1, "footprint": Vector2i.ONE, "max_count": 2},
+	{"def_id": "unit_rolling_armadillo", "cost": 2, "weight": 3, "min_chapter": 1, "footprint": Vector2i.ONE, "max_count": 2},
 	{"def_id": "unit_fission_slime", "cost": 3, "weight": 2, "min_chapter": 2, "footprint": Vector2i(2, 2), "max_count": 1},
 	{"def_id": "unit_law_worm", "cost": 1, "weight": 1, "min_chapter": 2, "footprint": Vector2i.ONE, "max_count": 1, "allow_empty_gems": true, "requires": "unit_broodmother"},
 	{"def_id": "unit_broodmother", "cost": 3, "weight": 4, "min_chapter": 2, "footprint": Vector2i.ONE, "max_count": 1, "allow_empty_gems": true},

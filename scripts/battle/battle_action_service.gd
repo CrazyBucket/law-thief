@@ -158,6 +158,8 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		return _fail("不能攻击自己")
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
 		return _fail("光束只能朝八个方向发射")
+	if GemEffects.unit_has_red_impact(state, player) and not GemEffects.is_valid_impact_aim(player, target_pos):
+		return _fail("冲击只能朝四个方向发动")
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return _fail("目标超出射程")
@@ -169,7 +171,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		state,
 		player,
 		target_pos,
-		max_range,
+		CombatConfig.attack_range(),
 		{
 			"aim_cell": target_pos,
 			"ignore_attack_block": unlimited,

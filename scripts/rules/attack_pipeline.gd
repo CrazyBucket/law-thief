@@ -14,8 +14,8 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const DamageContext = preload("res://scripts/rules/damage_context.gd")
 const ShieldRules = preload("res://scripts/rules/shield_rules.gd")
 const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
-
-
+const AttackSegmentRules = preload("res://scripts/rules/attack_segment_rules.gd")
+const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
 static func _relic_effect_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 
@@ -43,6 +43,7 @@ const TAG_SPLIT_SHOT   := "split_shot"
 const TAG_LIGHT_BEAM   := "light_beam"
 const TAG_COUNTER      := "counter"
 const TAG_ECHO         := "echo"
+const TAG_IMPACT       := "impact_attack"
 
 const PROFILE_TAG_ALIASES: Dictionary = {
 	"fire_gem": "fire",
@@ -59,8 +60,8 @@ const ATTACK_TAGS_BY_GEM_TAG: Dictionary = {
 	"light": [TAG_LIGHT_BEAM],
 	"counter": [TAG_COUNTER],
 	"echo": [TAG_ECHO],
+	"impact": [TAG_IMPACT],
 }
-
 const HIT_TAG_HANDLERS: Array[Dictionary] = [
 	{"tag": TAG_EXPLOSIVE, "handler": "_apply_explosion_hit_tag"},
 	{"tag": TAG_POISON, "handler": "_apply_poison_hit_tag"},
@@ -69,8 +70,6 @@ const HIT_TAG_HANDLERS: Array[Dictionary] = [
 	{"tag": TAG_SLOW_ON_HIT, "handler": "_apply_slow_on_hit_tag"},
 	{"tag": TAG_ARC, "handler": "_apply_arc_hit_tag"},
 ]
-
-
 ## 以瞄准格为唯一空间锚点执行攻击（空地 / 单位共用）
 static func execute_aimed(
 	state: GameState,
@@ -91,9 +90,10 @@ static func execute_aimed(
 		return _fail("光束只能朝八个方向发射")
 	if not BoardUtils.can_unit_attack_cell(attacker, state, aim_cell, max_range):
 		return _fail("目标超出射程")
-
 	payload = payload.duplicate()
 	payload["aim_cell"] = aim_cell
+	payload["resolved_attack_range"] = max_range
+	payload["attack_event_id"] = AttackSegmentRules.next_attack_event_id(state, attacker)
 
 	var target := _resolve_unit_at_aim(state, attacker, aim_cell)
 	if initial_tags.has(TAG_MELEE):
@@ -116,7 +116,12 @@ static func execute_aimed(
 		target_uid = target.uid
 	state.on_attack_prepare.emit(attacker.uid, target_uid, ctx.tags.duplicate())
 	_phase_prepare(ctx)
-	if target != null and not ctx.target.alive:
+	if not ImpactRules.prepare_attack(ctx): return _finish_execute(state, ctx, _fail("冲击只能朝四个方向发动"))
+	if bool(ctx.payload.get("impact_finished_without_target", false)):
+		return _finish_execute(state, ctx, _ok(ctx.events))
+	if bool(ctx.payload.get("impact_blocked", false)) or not ctx.attacker.alive:
+		return _finish_execute(state, ctx, _ok(ctx.events))
+	if ctx.target != null and not ctx.target.alive:
 		return _finish_execute(state, ctx, _ok(ctx.events))
 	# 光束不是可偏转投射物；它只受墙和边界截断。
 	if ctx.has_tag(TAG_RANGED) and ctx.target != null and not ctx.has_tag(TAG_LIGHT_BEAM):
@@ -128,13 +133,9 @@ static func execute_aimed(
 		return _finish_execute(state, ctx, _ok(ctx.events))
 
 	_phase_damage_calculate(ctx)
-	_phase_hit(ctx)
+	AttackSegmentRules.execute_segments(ctx, _phase_hit, ImpactRules.prepare_segment)
 	_phase_post_attack(ctx)
-	_reorder_split_shot_events(ctx)
-
 	return _finish_execute(state, ctx, _ok(ctx.events))
-
-
 ## 兼容旧调用：目标单位锚点 = 其 pos，瞄准格可由 payload 覆盖
 static func execute(
 	state: GameState,
@@ -190,13 +191,15 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 			"rounding": "floor_then_min_1",
 			"result": ctx.base_damage,
 		})
-
 static func _phase_hit(ctx: AttackContext) -> void:
-	if ctx.target != null and ctx.payload.get("force_miss", false):
+	var segment_event_start := ctx.events.size()
+	if ctx.target != null and AttackSegmentRules.misses(ctx, _rng_service()):
 		ctx.state.log("%s 的攻击未命中 %s" % [ctx.attacker.uid, ctx.target.uid])
-		ctx.push_event({"type": "miss", "pos": ctx.target.pos, "attacker_uid": ctx.attacker.uid})
+		ctx.push_event(AttackSegmentRules.miss_event(ctx))
+		if ctx.has_tag(TAG_SPLIT_SHOT) and not ctx.has_tag(TAG_LIGHT_BEAM):
+			_apply_split_wings(ctx)
+		_reorder_split_shot_events(ctx, segment_event_start)
 		return
-
 	var reason: String = str(ctx.payload.get("damage_reason", ""))
 	if reason.is_empty():
 		if ctx.has_tag(TAG_RANGED):
@@ -205,11 +208,10 @@ static func _phase_hit(ctx: AttackContext) -> void:
 			reason = "melee_attack"
 		else:
 			reason = "attack"
-
 	if ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_light_beam(ctx, reason)
+		_reorder_split_shot_events(ctx, segment_event_start)
 		return
-
 	var hit_cell := ctx.aim_cell
 	if ctx.has_tag(TAG_RANGED):
 		var from_cell := BoardUtils.projectile_origin_cell(ctx.attacker, ctx.aim_cell)
@@ -219,14 +221,12 @@ static func _phase_hit(ctx: AttackContext) -> void:
 		_push_projectile_event(ctx, from_cell, hit_cell)
 		ctx.target = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
 	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, hit_cell)
-
 	_apply_tags_at_cell(ctx, hit_cell, ctx.target, reason)
-
+	if ctx.has_tag(TAG_SPLIT_SHOT):
+		_apply_split_wings(ctx)
+	_reorder_split_shot_events(ctx, segment_event_start)
 static func _phase_post_attack(ctx: AttackContext) -> void:
 	var killed := ctx.target != null and not ctx.target.alive
-
-	if ctx.has_tag(TAG_SPLIT_SHOT) and not ctx.has_tag(TAG_LIGHT_BEAM):
-		_apply_split_wings(ctx)
 
 	if ctx.has_tag(TAG_GRAVITY_AURA) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_gravity_aura(ctx)
@@ -271,7 +271,7 @@ static func _apply_tags_at_cell(
 			})
 	var dealt := 0
 	if target != null and target.alive:
-		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell, "active_attack": true})
+		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell, "active_attack": true, "attack_event_id": ctx.payload.get("current_attack_event_id", ""), "segment_index": ctx.payload.get("attack_segment_index", 0), "segment_count": ctx.payload.get("attack_segment_count", 1)})
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			_apply_direct_hit_extras(ctx, target)
@@ -348,6 +348,7 @@ static func _apply_direct_hit_extras(ctx: AttackContext, target: UnitState) -> v
 	if target == null or not target.alive:
 		return
 	_ContactResolver.on_attack_contact(ctx.state, ctx.attacker, target)
+	ImpactRules.apply_hit(ctx, target)
 	if ctx.has_tag(TAG_KNOCKBACK) and target.alive:
 		var knockback_origin := FootprintRules.nearest_cell_to(ctx.attacker, target.pos, ctx.attacker.pos)
 		_Displacement.knockback(
@@ -874,22 +875,24 @@ static func _data_registry() -> Node:
 
 
 static func _finish_execute(state: GameState, ctx: AttackContext, result: Dictionary) -> Dictionary:
+	GemEffects.flush_stored_flurry_after_attacks(state, AttackSegmentRules.event_ids(ctx))
 	state.unbind_combat_events()
 	CombatRules.end_deferred_death_hooks(state)
 	GemEffects.end_explosion_reaction_chain()
 	if ctx.payload.get("debug_trace", false):
 		result["trace"] = ctx.trace
 	return result
-
-
-static func _reorder_split_shot_events(ctx: AttackContext) -> void:
+static func _reorder_split_shot_events(ctx: AttackContext, start_index: int = 0) -> void:
 	if not ctx.has_tag(TAG_SPLIT_SHOT):
 		return
+	start_index = clampi(start_index, 0, ctx.events.size())
+	var prefix := ctx.events.slice(0, start_index)
+	var segment_events := ctx.events.slice(start_index)
 	if ctx.has_tag(TAG_LIGHT_BEAM):
 		var beams: Array[Dictionary] = []
 		var beam_damages: Array[Dictionary] = []
 		var beam_other: Array[Dictionary] = []
-		for ev in ctx.events:
+		for ev in segment_events:
 			match str(ev.get("type", "")):
 				"light_beam":
 					beams.append(ev)
@@ -901,27 +904,25 @@ static func _reorder_split_shot_events(ctx: AttackContext) -> void:
 				_:
 					beam_other.append(ev)
 		ctx.events.clear()
+		ctx.events.append_array(prefix)
 		ctx.events.append_array(beams)
 		ctx.events.append_array(beam_damages)
 		ctx.events.append_array(beam_other)
 		return
 	var projs: Array[Dictionary] = []
 	var resolution: Array[Dictionary] = []
-	for ev in ctx.events:
+	for ev in segment_events:
 		match str(ev.get("type", "")):
 			"projectile", "projectile_deflect":
 				projs.append(ev)
 			_:
 				resolution.append(ev)
 	ctx.events.clear()
+	ctx.events.append_array(prefix)
 	ctx.events.append_array(projs)
 	# 只把弹道提升为同一轮齐射；命中后的爆炸、电弧和伤害必须保留原始因果顺序。
 	ctx.events.append_array(resolution)
-
-
 static func _ok(events: Array[Dictionary]) -> Dictionary:
 	return {"ok": true, "events": events}
-
-
 static func _fail(reason: String) -> Dictionary:
 	return {"ok": false, "reason": reason, "events": [] as Array[Dictionary]}

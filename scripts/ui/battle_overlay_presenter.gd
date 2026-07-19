@@ -40,6 +40,10 @@ func present(legacy_highlights: Dictionary, context: Dictionary = {}) -> Diction
 			})
 		Constants.ACTION_ATTACK:
 			_append_overlay(result, "attack_range", result.get("attack_range", []))
+			_append_route(result, "impact", context.get("attack_route", []), {
+				"arrow_reverse": false,
+				"unit_uid": str(context.get("source_uid", "")),
+			})
 			var effect_options := {"source_uid": str(context.get("source_uid", ""))}
 			if context.has("target_cell"):
 				effect_options["target_cell"] = context["target_cell"]

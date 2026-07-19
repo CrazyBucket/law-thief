@@ -9,6 +9,8 @@ const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const DamageContext = preload("res://scripts/rules/damage_context.gd")
 const _UnitRewardRules = preload("res://scripts/rules/unit_reward_rules.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -69,7 +71,10 @@ static func apply_damage(
 	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
 	state.log("%s 受到 %d 点伤害 (%s)" % [unit.uid, final_amount, reason])
 	state.on_damage_taken.emit(unit.uid, final_amount, reason)
+	if unit.alive and actual_hp_loss > 0:
+		BehaviorRegistry.get_behavior(unit.behavior_id).on_damage_taken(state, unit, actual_hp_loss, source_uid)
 	if unit.alive and unit.hp > 0 and actual_hp_loss > 0:
+		ImpactRules.run_blue_after_damage(state, unit, source_uid, actual_hp_loss, resolved_damage_context)
 		_GemEffects.run_blue_split_after_damage(state, unit, reason, actual_hp_loss)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
@@ -105,6 +110,8 @@ static func apply_true_damage(
 	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
 	state.log("%s 受到 %d 点真实伤害 (%s)" % [unit.uid, amount, reason])
 	state.on_damage_taken.emit(unit.uid, amount, reason)
+	if unit.alive and actual_hp_loss > 0:
+		BehaviorRegistry.get_behavior(unit.behavior_id).on_damage_taken(state, unit, actual_hp_loss, source_uid)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
 	return amount

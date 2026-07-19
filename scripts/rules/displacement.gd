@@ -135,7 +135,7 @@ static func _push_directional(
 		if not _footprint_in_bounds(state, unit, next):
 			_append_collision_motion(events, unit, next, source_uid, "wall_collision", "boundary")
 			var dmg := _resolve_collision_damage(collision_damage, i)
-			if dmg > 0:
+			if dmg > 0 and not bool(damage_context.get("suppress_mover_collision_damage", false)):
 				_deal_unit_collision_damage(
 					state, unit, source_uid, dmg, "wall_collision", events, damage_context
 				)
@@ -150,9 +150,10 @@ static func _push_directional(
 					events, unit, next, source_uid, "entity_collision", "entity", entity.uid, entity.entity_id
 				)
 			if dmg > 0:
-				_deal_unit_collision_damage(
-					state, unit, source_uid, dmg, "entity_collision", events, damage_context
-				)
+				if not bool(damage_context.get("suppress_mover_collision_damage", false)):
+					_deal_unit_collision_damage(
+						state, unit, source_uid, dmg, "entity_collision", events, damage_context
+					)
 				for entity in blocking_entities:
 					if entity.max_hp > 0:
 						EntityRules.damage_entity(state, entity, dmg, source_uid, events)
@@ -167,9 +168,10 @@ static func _push_directional(
 				)
 			var dmg := _resolve_collision_damage(collision_damage, i)
 			if dmg > 0:
-				_deal_unit_collision_damage(
-					state, unit, source_uid, dmg, "unit_collision", events, damage_context
-				)
+				if not bool(damage_context.get("suppress_mover_collision_damage", false)):
+					_deal_unit_collision_damage(
+						state, unit, source_uid, dmg, "unit_collision", events, damage_context
+					)
 				for blocker in blocking_units:
 					_deal_unit_collision_damage(
 						state, blocker, unit.uid, dmg, "unit_collision", events, damage_context

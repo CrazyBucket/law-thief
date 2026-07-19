@@ -248,6 +248,45 @@
       {"slot_type": "black"}
     ]
   },
+  "unit_ruffled_crow": {
+    "display_name_key": "unit.ruffled_crow.name",
+    "max_hp": 16,
+    "move_points": 3,
+    "speed": 11,
+    "base_attack": 6,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "ruffled_crow",
+    "balance": {
+      "hit_chance": 0.9,
+      "segment_damage_ratio": 0.4,
+      "feather_hit_penalty": 0.1,
+      "min_hit_chance": 0.2
+    },
+    "tags": ["unit:ruffled_crow", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red", "gem_id": "gem_flurry"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
+  "unit_rolling_armadillo": {
+    "display_name_key": "unit.rolling_armadillo.name",
+    "max_hp": 18,
+    "move_points": 2,
+    "speed": 10,
+    "base_attack": 4,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "rolling_armadillo",
+    "spawn_gem_slots": [],
+    "tags": ["unit:rolling_armadillo", "unit:mobile"],
+    "slots": [
+      {"slot_type": "red", "gem_id": "gem_impact"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
   "unit_overload_enforcer": {
     "display_name_key": "unit.overload_enforcer.name",
     "max_hp": 32,

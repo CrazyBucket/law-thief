@@ -93,6 +93,14 @@ static func on_unit_death(_state: GameState, _unit: UnitState) -> void:
 	pass
 
 
+static func on_turn_start(_state: GameState, _unit: UnitState) -> void:
+	pass
+
+
+static func on_damage_taken(_state: GameState, _unit: UnitState, _amount: int, _source_uid: String = "") -> void:
+	pass
+
+
 static func build_melee_intent(state: GameState, unit: UnitState, _move_path: Array[Vector2i], intent: IntentState) -> void:
 	var base_damage := CombatRules.attack_damage(state, unit)
 	intent.base_damage = base_damage
@@ -149,6 +157,7 @@ static func is_single_target_damage_reason(reason: String) -> bool:
 		"ice_attack",
 		"split_attack",
 		"split_wing",
+		"impact_attack",
 		Constants.DAMAGE_REASON_SLAM,
 	]
 	return reason in SINGLE_TARGET_REASONS
@@ -248,6 +257,16 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 			if not echo_result.get("ok", false):
 				return [] as Array[Dictionary]
 			return _events_from_result(echo_result)
+		"impact_attack":
+			var impact_target: UnitState = state.units.get(intent.target_uid, null)
+			if impact_target == null or not impact_target.alive:
+				return [] as Array[Dictionary]
+			var impact_result := CombatRules.ranged_attack(
+				state, unit, impact_target.pos, CombatConfig.attack_range()
+			)
+			if not impact_result.get("ok", false):
+				return [] as Array[Dictionary]
+			return _events_from_result(impact_result)
 		"light_beam":
 			var light_target: UnitState = state.units.get(intent.target_uid, null)
 			if light_target == null or not light_target.alive:

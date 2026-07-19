@@ -25,6 +25,9 @@ const REASON_TAGS: Dictionary = {
 	"light_judgement": "light",
 	"gravity_collision": "gravity",
 	"gravity_deflect": "gravity",
+	"impact_attack": "impact",
+	"impact_collision": "impact",
+	"impact_dash_collision": "impact",
 	"counter_red": "counter",
 	"counter_blue": "counter",
 	"counter_black": "counter",
@@ -60,13 +63,7 @@ static func from_options(
 	var raw_context: Variant = opts.get("damage_context", {})
 	if raw_context is Dictionary and not (raw_context as Dictionary).is_empty():
 		var context: Dictionary = raw_context
-		return create(
-			source_uid,
-			reason,
-			context.get("damage_tags", []),
-			context.get("gem_tag_context", {}),
-			bool(context.get("active_attack", false))
-		)
+		return normalize(source_uid, reason, context)
 	return create(
 		source_uid,
 		reason,
@@ -77,13 +74,17 @@ static func from_options(
 
 
 static func normalize(source_uid: String, reason: String, context: Dictionary = {}) -> Dictionary:
-	return create(
+	var result := create(
 		source_uid,
 		reason,
 		context.get("damage_tags", []),
 		context.get("gem_tag_context", {}),
 		bool(context.get("active_attack", false))
 	)
+	for field_id in ["attack_event_id", "attack_segment_index", "attack_segment_count"]:
+		if context.has(field_id):
+			result[field_id] = context[field_id]
+	return result
 
 
 static func with_actual_damage(context: Dictionary, actual_hp_loss: int) -> Dictionary:

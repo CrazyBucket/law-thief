@@ -34,6 +34,24 @@ static func displacement_impact(
 	return ev
 
 
+static func impact_charge(
+	uid: String,
+	from_pos: Vector2i,
+	to_pos: Vector2i,
+	target_pos: Vector2i,
+	opts: Dictionary = {}
+) -> Dictionary:
+	var ev := {
+		"type": "impact_charge",
+		"uid": uid,
+		"from": from_pos,
+		"to": to_pos,
+		"target_pos": target_pos,
+	}
+	_copy_optional(ev, opts, ["source_uid", "target_uid", "steps"])
+	return ev
+
+
 static func damage(unit: UnitState, amount: int, opts: Dictionary = {}) -> Dictionary:
 	var pos: Vector2i = opts.get("pos", unit.pos if unit != null else Vector2i.ZERO)
 	var uid := unit.uid if unit != null else str(opts.get("uid", opts.get("victim_uid", "")))
@@ -45,7 +63,7 @@ static func damage(unit: UnitState, amount: int, opts: Dictionary = {}) -> Dicti
 		"damage": amount,
 		"is_crit": bool(opts.get("is_crit", false)),
 	}
-	_copy_optional(ev, opts, ["attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags"])
+	_copy_optional(ev, opts, ["attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
 	return ev
 
 
@@ -56,7 +74,7 @@ static func damage_at(pos: Vector2i, amount: int, opts: Dictionary = {}) -> Dict
 		"damage": amount,
 		"is_crit": bool(opts.get("is_crit", false)),
 	}
-	_copy_optional(ev, opts, ["uid", "victim_uid", "attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags"])
+	_copy_optional(ev, opts, ["uid", "victim_uid", "attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
 	if ev.has("uid") and not ev.has("victim_uid"):
 		ev["victim_uid"] = ev["uid"]
 	elif ev.has("victim_uid") and not ev.has("uid"):

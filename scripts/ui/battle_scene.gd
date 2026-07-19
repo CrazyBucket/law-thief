@@ -500,13 +500,16 @@ func setup(encounter_id: String) -> void:
 
 func _start_battle(encounter_id: String) -> void:
 	_encounter_id = encounter_id
+	var editor_battle := _editor_available()
+	if editor_battle and not _editor_session_active:
+		_begin_editor_session()
 	_battle_end_applied = false
 	_board.clear_gem_visuals()
 	_hide_preview_panel(true)
 	_tracked_player_uid = ""
 	_editor_dummy_stats.clear()
 	_editor_bound_state = null
-	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
+	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id, not editor_battle)
 	_generated_export_btn.sync_for_state(_controller.state)
 	_bind_editor_state_signals()
 	_mark_visible_enemies_seen()
@@ -583,13 +586,16 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			if atk_res.get("ok", false):
 				var from_pos: Vector2i = atk_res.get("from_pos", Vector2i(-1, -1))
 				var to_pos: Vector2i = atk_res.get("to_pos", cell)
-				var player := _controller.state.get_player()
-				if player != null:
-					_board.start_strike_effect(player.uid, to_pos)
 				var attack_events: Array = atk_res.get("attack_events", [])
+				var is_impact_attack := attack_events.any(func(ev):
+					return str(ev.get("type", "")) == "impact_charge"
+				)
+				var player := _controller.state.get_player()
+				if player != null and not is_impact_attack:
+					_board.start_strike_effect(player.uid, to_pos)
 				var has_attack_visual := false
 				for ev in attack_events:
-					if str(ev.get("type", "")) in ["projectile", "light_beam"]:
+					if str(ev.get("type", "")) in ["projectile", "light_beam", "impact_charge"]:
 						has_attack_visual = true
 						break
 				if not has_attack_visual and from_pos.x >= 0:
@@ -606,7 +612,20 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
-				if unit != null and unit.alive:
+				var extractable_ground: Array[String] = []
+				if action == Constants.ACTION_EXTRACT:
+					for gem_uid in state.get_dropped_gem_uids_at(cell):
+						if _controller.check_dropped_gem_action(gem_uid).get("ok", false):
+							extractable_ground.append(gem_uid)
+				if not extractable_ground.is_empty():
+					_set_inspect_target(cell)
+					_slot_popup.show_for_dropped_gems(
+						extractable_ground,
+						state,
+						get_viewport().get_mouse_position(),
+						_controller.check_dropped_gem_action
+					)
+				elif unit != null and unit.alive:
 					_set_inspect_target(cell)
 					_sync_unit_slot_panels()
 				else:
@@ -926,8 +945,9 @@ func _confirm_leave_battle() -> void:
 		_message_label.text = tr("battle.leave.busy")
 		return
 	_dismiss_popup()
+	var editor_battle := GameService.pending_battle_mode == "editor"
 	GameService.pending_battle_mode = "normal"
-	if RunService.is_run_active():
+	if not editor_battle and RunService.is_run_active():
 		if _controller != null and _controller.state != null:
 			RunService.capture_player_battle_state(_controller.state)
 		if GameService.adventure_return and RunService.get_run_phase() != "BATTLE_REWARD":
@@ -1036,6 +1056,9 @@ func _apply_battle_end(result: String) -> void:
 	var end_turn := _controller.state.turn_index if _controller.state != null else 0
 	_phase_badge.text = "结束 · 第%d回合" % end_turn
 	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
+	if GameService.pending_battle_mode == "editor":
+		_finish_battle_and_navigate(result)
+		return
 	if result == "win" and RunService.is_run_active():
 		_settlement_gold_amount = _grant_combat_gold_once()
 		var room_id := GameService.pending_room_id
@@ -2626,6 +2649,8 @@ func _begin_editor_session() -> void:
 	_editor_run_snapshot = {}
 	if run_service != null and run_service.has_method("snapshot_active_run"):
 		_editor_run_snapshot = run_service.snapshot_active_run()
+	if run_service != null and run_service.has_method("begin_temporary_run"):
+		run_service.begin_temporary_run()
 
 
 func _end_editor_session() -> void:

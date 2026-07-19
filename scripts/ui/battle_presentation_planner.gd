@@ -15,6 +15,7 @@ const _POLICIES: Dictionary = {
 	"arc": {"kind": "electrical", "mode": MODE_PARALLEL},
 	"lightning": {"kind": "electrical", "mode": MODE_PARALLEL},
 	"damage": {"kind": "damage", "mode": MODE_PARALLEL},
+	"impact_charge": {"kind": "impact", "mode": MODE_PARALLEL},
 	"move_step": {"kind": "move", "mode": "auto"},
 	"displacement_impact": {"kind": "move", "mode": "auto"},
 	"poison_burst": {"kind": "area_fx", "mode": MODE_PARALLEL},
@@ -56,6 +57,10 @@ static func build(events: Array) -> Dictionary:
 			i += 1
 			continue
 		match str(_POLICIES[event_type].get("kind", "single")):
+			"impact":
+				var impact_result := _build_impact_beat(events, i)
+				beats.append(impact_result.beat)
+				i = impact_result.next_index
 			"projectile":
 				var projectile_result := _build_projectile_beat(events, i)
 				beats.append(projectile_result.beat)
@@ -114,6 +119,31 @@ static func _build_projectile_beat(events: Array, start: int) -> Dictionary:
 		"beat": _beat("projectile", MODE_PARALLEL, visuals.items, impacts.items, [], start, impacts.next_index),
 		"next_index": impacts.next_index,
 	}
+
+
+static func _build_impact_beat(events: Array, start: int) -> Dictionary:
+	var charge: Dictionary = events[start]
+	var charge_uid := str(charge.get("uid", ""))
+	var charge_motions: Array = []
+	var i := start + 1
+	while i < events.size():
+		var event_type := str(events[i].get("type", ""))
+		if event_type not in ["move_step", "displacement_impact"] \
+		or str(events[i].get("uid", "")) != charge_uid:
+			break
+		charge_motions.append(events[i])
+		i += 1
+	var impacts: Array = []
+	while i < events.size() and str(events[i].get("type", "")) == "damage":
+		impacts.append(events[i])
+		i += 1
+	var impact_motions: Array = []
+	while i < events.size() and str(events[i].get("type", "")) in ["move_step", "displacement_impact"]:
+		impact_motions.append(events[i])
+		i += 1
+	var beat := _beat("impact", MODE_PARALLEL, [charge], impacts, [], start, i, impact_motions)
+	beat["charge_motions"] = charge_motions
+	return {"beat": beat, "next_index": i}
 
 
 static func _build_visual_impact_beat(

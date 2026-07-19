@@ -54,7 +54,7 @@ func apply(event: Dictionary) -> void:
 			if entity != null:
 				entity.alive = false
 				_display_state.bump_revision()
-		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam", "move_step", "displacement_impact":
+		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam", "impact_charge", "move_step", "displacement_impact":
 			pass
 
 

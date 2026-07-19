@@ -50,6 +50,8 @@ const UNIT_BALANCE_NUMERIC_KEYS := {
 	"slam_push_steps": true,
 	"trample_damage": true,
 	"trample_collision_damage": true,
+	"hit_chance": true, "segment_damage_ratio": true,
+	"feather_hit_penalty": true, "min_hit_chance": true,
 }
 
 const GEM_RARITIES := [
@@ -60,7 +62,6 @@ const GEM_RARITIES := [
 	"legendary",
 	"boss",
 ]
-
 const UNIT_DEF_FIELDS := {
 	"display_name_key": true,
 	"max_hp": true,
@@ -138,8 +139,8 @@ const UNIT_BALANCE_REQUIRED_BY_BEHAVIOR := {
 		"trample_damage",
 		"trample_collision_damage",
 	],
+	"ruffled_crow": ["hit_chance", "segment_damage_ratio", "feather_hit_penalty", "min_hit_chance"],
 }
-
 const COMBAT_CONFIG_NUMERIC_KEYS := {
 	"attack_range": true,
 	"extract_range": true,
@@ -236,7 +237,7 @@ const GEM_EFFECT_LEVEL_TAG_KEYS := [
 	"explosion",
 	"poison",
 	"fire",
-	"gravity",
+	"gravity", "impact",
 	"arc",
 	"split",
 	"light",
@@ -257,7 +258,7 @@ const GEM_EFFECT_LEVEL_VALUE_TYPES := {
 	"spread_count": "number",
 	"burning_bonus_spread_count": "number",
 	"pull_steps": "number",
-	"range_bonus": "number",
+	"range_bonus": "number", "knockback_offset": "number", "knockback_steps": "number",
 	"bounce_hops": "number",
 	"range": "number",
 	"damage_ratio": "number",
@@ -345,7 +346,7 @@ const GEM_EFFECT_LEVEL_FIELDS := {
 	"red:explosion": ["blast_pattern", "center_damage_ratio", "splash_base_attack_ratio"],
 	"red:poison": ["fog_pattern", "duration_bonus", "hit_poison_stacks", "hit_poison_duration"],
 	"red:fire": ["spread_count", "burning_bonus_spread_count"],
-	"red:gravity": ["pull_steps", "range_bonus"],
+	"red:gravity": ["pull_steps", "range_bonus"], "red:impact": ["range_bonus", "knockback_offset"],
 	"red:arc": ["bounce_hops", "range"],
 	"red:split": ["damage_ratio", "light_direction_offsets"],
 	"red:light": ["damage_ratio", "exposed_stacks", "pierce_blockers", "beam_power", "beam_width"],
@@ -355,7 +356,7 @@ const GEM_EFFECT_LEVEL_FIELDS := {
 	"blue:explosion": ["detonate_on_any_damage", "detonate_on_burning", "detonate_on_explosion", "blast_pattern", "damage_ratio", "pillar_radius", "pillar_damage"],
 	"blue:poison": ["turn_end_spread", "copy_debuff_on_contact", "copy_debuff_on_damaged", "contact_poison_stacks", "contact_poison_duration", "turn_end_poison_stacks", "turn_end_poison_duration", "pillar_radius", "pillar_poison_stacks", "pillar_poison_duration"],
 	"blue:fire": ["create_fire_on_contact", "double_burning_on_already_burning", "contact_burning_stacks"],
-	"blue:gravity": ["deflect_chance", "redirect_enemy_only", "redirect_radius", "slow_on_damaged", "root_on_damaged", "pillar_pull_radius", "pillar_pull_steps"],
+	"blue:gravity": ["deflect_chance", "redirect_enemy_only", "redirect_radius", "slow_on_damaged", "root_on_damaged", "pillar_pull_radius", "pillar_pull_steps"], "blue:impact": ["knockback_steps"],
 	"blue:arc": ["rebound_chance"],
 	"blue:split": ["redirect_mode", "redirect_ratio", "redirect_radius", "temp_clone_count", "temp_clone_hp", "temp_clone_stat_ratio", "temp_clone_duration", "temp_clone_per_turn_limit"],
 	"blue:light": ["reflect_beams", "reflect_damage_ratio", "reflect_exposed_stacks", "reflect_power", "reflect_impact_size"],
@@ -365,7 +366,7 @@ const GEM_EFFECT_LEVEL_FIELDS := {
 	"black:explosion": ["chain_followup", "damage_multiplier"],
 	"black:poison": ["spawn_fog", "fog_radius", "debuff_copies", "debuff_spread_radius"],
 	"black:fire": ["prefer_occupied_cells", "death_fire_radius", "death_fire_count", "death_fire_duration"],
-	"black:gravity": ["pull_steps", "apply_slow", "apply_root"],
+	"black:gravity": ["pull_steps", "apply_slow", "apply_root"], "black:impact": ["knockback_steps"],
 	"black:arc": ["strike_radius", "strike_count", "strike_all_targets"],
 	"black:split": ["clone_count", "stat_ratio"],
 	"black:light": ["beam_width", "beam_power", "impact_size", "blind_on_survive"],
@@ -390,7 +391,7 @@ const GEM_EFFECT_LEVEL_INTEGER_NON_NEGATIVE_FIELDS := {
 	"spread_count": true,
 	"burning_bonus_spread_count": true,
 	"pull_steps": true,
-	"range_bonus": true,
+	"range_bonus": true, "knockback_steps": true,
 	"bounce_hops": true,
 	"range": true,
 	"exposed_stacks": true,

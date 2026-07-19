@@ -12,6 +12,7 @@ const _PresentationPlanner = preload("res://scripts/ui/battle_presentation_plann
 const _REQUIRED_FIELDS: Dictionary = {
 	"move_step": ["uid", "from", "to"],
 	"displacement_impact": ["uid", "from", "contact"],
+	"impact_charge": ["uid", "from", "to", "target_pos"],
 	"damage":    ["uid", "victim_uid", "pos", "damage", "is_crit"],
 	"explode":   ["pos"],
 	"projectile": ["from", "to"],

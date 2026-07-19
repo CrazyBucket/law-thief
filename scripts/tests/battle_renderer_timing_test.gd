@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ImpactPresenter = preload("res://scripts/ui/impact_animation_presenter.gd")
+
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -51,6 +53,16 @@ func _run() -> void:
 	])
 	assert(float(arc_timing.impact_time) > 0.0)
 	assert(float(arc_timing.impact_time) < float(arc_timing.duration))
+	var impact_timing: Dictionary = ImpactPresenter.play(board, {
+		"type": "impact_charge",
+		"uid": player.uid,
+		"from": player.pos,
+		"to": player.pos + Vector2i(2, 0),
+		"target_pos": player.pos + Vector2i(3, 0),
+		"steps": 2,
+	})
+	assert(float(impact_timing.impact_time) > 0.0, "impact should have a visible windup and travel phase")
+	assert(float(impact_timing.impact_time) < float(impact_timing.duration), "impact should retain recovery after contact")
 	await create_timer(maxf(float(blast_timing.duration), float(arc_timing.duration)) + 0.1).timeout
 	battle_scene.queue_free()
 	await process_frame

@@ -10,6 +10,8 @@ const _MAP := {
 	"fission_slime": preload("res://scripts/rules/behaviors/behavior_fission_slime.gd"),
 	"law_worm": preload("res://scripts/rules/behaviors/behavior_law_worm.gd"),
 	"broodmother": preload("res://scripts/rules/behaviors/behavior_broodmother.gd"),
+	"ruffled_crow": preload("res://scripts/rules/behaviors/behavior_ruffled_crow.gd"),
+	"rolling_armadillo": preload("res://scripts/rules/behaviors/behavior_rolling_armadillo.gd"),
 	"training_dummy": preload("res://scripts/rules/behaviors/behavior_training_dummy.gd"),
 }
 

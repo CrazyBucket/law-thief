@@ -252,6 +252,8 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "反击"))
 		"echo_attack":
 			results.append_array(AiRedSkillScorer.echo(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+		"impact_attack":
+			results.append_array(AiRedSkillScorer.impact(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
 	return results
 
 

@@ -17,6 +17,8 @@ const _GemExplosionRules = preload("res://scripts/rules/gem_explosion_rules.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 const _ColoredSlimeRules = preload("res://scripts/rules/colored_slime_rules.gd")
 const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
+const FlurryRules = preload("res://scripts/rules/flurry_rules.gd")
+const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
 static func _relic_effect_registry() -> Node:
@@ -42,6 +44,7 @@ const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
 const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"arc",
+	"impact",
 	"gravity",
 	"ice",
 	"poison",
@@ -51,6 +54,7 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"light",
 	"counter",
 	"echo",
+	"flurry",
 ]
 const SPLIT_ORIGIN_SLOT_PREFIX := "split_origin_slot:"
 static func begin_explosion_reaction_chain() -> void:
@@ -97,6 +101,53 @@ static func run_blue_explosion_after_damage(state: GameState, unit: UnitState, c
 			if relic_registry != null:
 				relic_registry.fire_event("blue_gem_triggered", state, {"actor_uid": unit.uid})
 		return
+
+
+static func flush_stored_flurry_after_attacks(state: GameState, attack_event_ids: Array[String]) -> void:
+	if state == null or attack_event_ids.is_empty():
+		return
+	var pending_variant: Variant = state.battle_temp_flags.get("pending_stored_flurry", {})
+	if not pending_variant is Dictionary:
+		return
+	var pending: Dictionary = pending_variant
+	for attack_event_id in attack_event_ids:
+		var gains_variant: Variant = pending.get(attack_event_id, {})
+		if gains_variant is Dictionary:
+			for unit_uid in (gains_variant as Dictionary).keys():
+				var unit: UnitState = state.units.get(str(unit_uid), null)
+				if unit != null and unit.alive:
+					FlurryRules.add_stored(
+						state,
+						unit,
+						int((gains_variant as Dictionary)[unit_uid]),
+						unit.uid
+					)
+		pending.erase(attack_event_id)
+	if pending.is_empty():
+		state.battle_temp_flags.erase("pending_stored_flurry")
+	else:
+		state.battle_temp_flags["pending_stored_flurry"] = pending
+
+static func _queue_stored_flurry_after_attack(
+	state: GameState,
+	owner: UnitState,
+	damage_context: Dictionary,
+	stacks: int
+) -> void:
+	if stacks <= 0 or not DamageContext.is_active_attack(damage_context):
+		return
+	var attack_event_id := str(damage_context.get("attack_event_id", ""))
+	if attack_event_id.is_empty():
+		return
+	var pending_variant: Variant = state.battle_temp_flags.get("pending_stored_flurry", {})
+	var pending: Dictionary = pending_variant if pending_variant is Dictionary else {}
+	var gains_variant: Variant = pending.get(attack_event_id, {})
+	var gains: Dictionary = gains_variant if gains_variant is Dictionary else {}
+	# 同一攻击事件只记录一次；多段伤害不会重复获得蓄连。
+	if not gains.has(owner.uid):
+		gains[owner.uid] = stacks
+		pending[attack_event_id] = gains
+		state.battle_temp_flags["pending_stored_flurry"] = pending
 
 static func tick_turn_start(state: GameState) -> void:
 	var to_remove: Array[UnitState] = []
@@ -389,15 +440,26 @@ static func unit_has_red_light(state: GameState, unit: UnitState) -> bool:
 	return _unit_has_red_active_profile(state, unit, "light")
 
 
+static func unit_has_red_impact(state: GameState, unit: UnitState) -> bool:
+	return _unit_has_red_active_profile(state, unit, "impact")
+
+
+static func is_valid_impact_aim(attacker: UnitState, target_pos: Vector2i) -> bool:
+	return ImpactRules.is_valid_aim(attacker, target_pos)
+
+
+static func impact_preview_path(state: GameState, attacker: UnitState, aim_cell: Vector2i, max_range: int) -> Array[Vector2i]:
+	return ImpactRules.preview_path(state, attacker, aim_cell, max_range)
+
+
+static func impact_target_in_direction(state: GameState, attacker: UnitState, aim_cell: Vector2i, max_range: int) -> UnitState:
+	return ImpactRules.target_in_direction(state, attacker, aim_cell, max_range)
+
+
 static func red_attack_range_bonus(state: GameState, unit: UnitState) -> int:
 	if state == null or unit == null:
 		return 0
-	if not _unit_has_red_active_profile(state, unit, "gravity"):
-		return 0
-	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_RED, TIMING_ACTIVE)
-	var gravity_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-	var level_def: Dictionary = _data_registry().get_gem_effect_level_def("gravity", Constants.SLOT_RED, gravity_level)
-	return int(level_def["range_bonus"])
+	return ImpactRules.red_range_bonus(state, unit)
 
 
 static func red_attack_range(state: GameState, unit: UnitState, base_range: int = -1) -> int:
@@ -460,10 +522,11 @@ static func blue_explosion_damage(base_attack: int, gem_ctx: Dictionary) -> int:
 
 
 static func black_explosion_damage(base_attack: int, gem_ctx: Dictionary) -> int:
-	return _GemExplosionRules.scaled_damage(
+	var damage := _GemExplosionRules.scaled_damage(
 		base_attack,
 		_GemExplosionRules.black_damage_multiplier(_explosion_level_def(gem_ctx, Constants.SLOT_BLACK))
 	)
+	return FlurryRules.scaled_repeat_damage(damage, gem_ctx)
 
 
 static func _explosion_level_def(gem_ctx: Dictionary, fallback_slot: String = Constants.SLOT_RED) -> Dictionary:
@@ -791,6 +854,8 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 					)
 				)
 			return true
+		"impact":
+			return false
 		"arc":
 			var arc_target_uid: String = ctx.get("target_uid", "")
 			var arc_anchor: Vector2i = owner.pos
@@ -928,6 +993,8 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 				if bool(gravity_level_def["root_on_damaged"]):
 					StatusRules.apply_rooted(state, source, 1, owner.uid)
 			return true
+		"impact":
+			return false
 		"arc":
 			var rng := _rng_service()
 			var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
@@ -993,6 +1060,15 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 			if gem_ctx.is_empty():
 				gem_ctx = GemTagResolver.build_context(state, owner, Constants.SLOT_BLUE, TIMING_OWNER_DAMAGED, _slot)
 			_apply_blue_echo(state, owner, source, gem_ctx, ctx)
+			return true
+		"flurry":
+			var damage_context: Dictionary = ctx.get("damage_context", {})
+			_queue_stored_flurry_after_attack(
+				state,
+				owner,
+				damage_context,
+				FlurryRules.blue_flurry_value(state, owner)
+			)
 			return true
 	return false
 
@@ -1075,6 +1151,16 @@ static func _run_death_hooks_with_events(
 	)
 	for gem in death_gems:
 		_run_unit_death_effect_with_events(state, unit, gem, out_events, gem_ctx)
+	var repeat_count := FlurryRules.black_flurry_value(gem_ctx)
+	for repeat_index in range(repeat_count):
+		var repeat_ctx := gem_ctx.duplicate(true)
+		repeat_ctx["effect_strength"] = FlurryRules.BLACK_REPEAT_STRENGTH
+		repeat_ctx["flurry_repeat"] = true
+		repeat_ctx["flurry_repeat_index"] = repeat_index
+		for gem in death_gems:
+			if str(_data_registry().get_gem_tag(gem)) == "flurry":
+				continue
+			_run_unit_death_effect_with_events(state, unit, gem, out_events, repeat_ctx)
 
 
 static func _black_death_order_index(gem: GemState) -> int:
@@ -1113,7 +1199,14 @@ static func _run_unit_death_effect_with_events(
 				out_events
 			)
 			if bool(level_def["chain_followup"]):
-				_append_black_explosion_chain(state, owner, evs, out_events, gem_ctx, maxi(1, owner.base_attack))
+				_append_black_explosion_chain(
+					state,
+					owner,
+					evs,
+					out_events,
+					gem_ctx,
+					FlurryRules.scaled_repeat_damage(maxi(1, owner.base_attack), gem_ctx)
+				)
 			end_explosion_reaction_chain()
 			return true
 		"poison":
@@ -1132,36 +1225,17 @@ static func _run_unit_death_effect_with_events(
 				state,
 				owner,
 				int(poison_level_def["debuff_spread_radius"]),
-				int(poison_level_def["debuff_copies"])
+				FlurryRules.scaled_repeat_int(int(poison_level_def["debuff_copies"]), gem_ctx, 1),
+				gem_ctx
 			)
 			return true
 		"gravity":
-			# 死亡时将 3x3 范围内单位拉向自身（产生 move_step 事件）
-			var gravity_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-			var gravity_level_def: Dictionary = _effect_level_def("gravity", _effect_level_scope(gem_ctx, Constants.SLOT_BLACK), gravity_level)
-			for unit in state.units.values():
-				if not unit.alive or unit.uid == owner.uid:
-					continue
-				if BoardUtils.chebyshev(owner.pos, unit.pos) > CombatConfig.explosion_death_radius():
-					continue
-				_Displacement.pull_toward(
-					state,
-					unit,
-					owner.pos,
-					int(gravity_level_def["pull_steps"]),
-					owner.uid,
-					out_events,
-					-1,
-					false,
-					false,
-					DamageContext.create(
-						owner.uid, "gravity_collision", ["gravity"], gem_ctx
-					)
-				)
-				if bool(gravity_level_def["apply_slow"]):
-					StatusRules.apply_slowed(state, unit, 1, owner.uid)
-				if bool(gravity_level_def["apply_root"]):
-					StatusRules.apply_rooted(state, unit, 1, owner.uid)
+			if GemTagResolver.has_tag(gem_ctx, "impact"):
+				return true
+			ImpactRules.resolve_black_death(state, owner, out_events, gem_ctx)
+			return true
+		"impact":
+			ImpactRules.resolve_black_death(state, owner, out_events, gem_ctx)
 			return true
 		"arc":
 			# 黑槽导电：死亡落雷，按同 tag 数量扩展命中目标数量。
@@ -1239,6 +1313,7 @@ static func _run_unit_death_effect_with_events(
 				var actual_hp_loss := maxi(0, int(gem_ctx.get("damage", 0)))
 				var damage_multiplier := float(level_def["damage_multiplier"])
 				var amount := maxi(0, int(round(float(actual_hp_loss) * damage_multiplier)))
+				amount = FlurryRules.scaled_repeat_damage(amount, gem_ctx) if amount > 0 else 0
 				if amount > 0:
 					_damage_unit_event(state, source, amount, owner.uid, "counter_black", out_events)
 				if source.alive:
@@ -1251,6 +1326,8 @@ static func _run_unit_death_effect_with_events(
 			return true
 		"echo":
 			_apply_black_echo(state, owner, out_events, gem_ctx)
+			return true
+		"flurry":
 			return true
 	return false
 
@@ -1309,7 +1386,7 @@ static func _apply_lightning_death_strike(
 	_true_damage_unit_event(
 		state,
 		strike_target,
-		CombatConfig.lightning_death_damage(),
+		FlurryRules.scaled_repeat_damage(CombatConfig.lightning_death_damage(), gem_ctx),
 		owner.uid,
 		"lightning_death",
 		impact_events,
@@ -1384,7 +1461,10 @@ static func _resolve_black_light(
 		var exposed: StatusInstance = unit.get_status(Constants.STATUS_LIGHT_EXPOSED)
 		if exposed == null:
 			continue
-		var damage := maxi(1, exposed.stacks * CombatRules.attack_damage(state, owner))
+		var damage := FlurryRules.scaled_repeat_damage(
+			maxi(1, exposed.stacks * CombatRules.attack_damage(state, owner)),
+			gem_ctx
+		)
 		out_events.append(build_light_beam_event(
 			owner.pos,
 			unit.pos,
@@ -1817,7 +1897,7 @@ static func _poison_turn_end_source_uids(snapshot: Dictionary, owner_uid: String
 
 static func _should_skip_black_death_tag(state: GameState, owner: UnitState, tag: String, gem_ctx: Dictionary) -> bool:
 	# Echo depth represents an intentional replay of a tag already resolved for this owner.
-	if int(gem_ctx.get("echo_depth", 0)) > 0:
+	if int(gem_ctx.get("echo_depth", 0)) > 0 or bool(gem_ctx.get("flurry_repeat", false)):
 		return false
 	var death_chain_id := int(gem_ctx.get("death_chain_id", 0))
 	if death_chain_id <= 0 or tag.is_empty():
@@ -2029,7 +2109,7 @@ static func _scatter_fire_on_death(
 	var level_def: Dictionary = _data_registry().get_gem_effect_level_def("fire", level_scope, level)
 	var radius := int(level_def["death_fire_radius"])
 	var count := int(level_def["death_fire_count"])
-	var duration := int(level_def["death_fire_duration"])
+	var duration := FlurryRules.scaled_repeat_int(int(level_def["death_fire_duration"]), gem_ctx, 1)
 	if radius < 0 or count <= 0 or duration <= 0:
 		return
 	var all_cells: Array[Vector2i] = []
@@ -2062,7 +2142,13 @@ static func _scatter_fire_on_death(
 
 
 ## 死亡转移负面：将 owner 身上所有负面状态随机转给 radius 内存活的敌方单位
-static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState, radius: int, copies_per_debuff: int = 1) -> void:
+static func _transfer_debuffs_to_random_units(
+	state: GameState,
+	owner: UnitState,
+	radius: int,
+	copies_per_debuff: int = 1,
+	gem_ctx: Dictionary = {}
+) -> void:
 	var debuffs: Array[StatusInstance] = []
 	for s in owner.statuses:
 		if StatusRegistry.status_type(s.status_id) == StatusRegistry.TYPE_DEBUFF:
@@ -2087,8 +2173,14 @@ static func _transfer_debuffs_to_random_units(state: GameState, owner: UnitState
 			var pick := int(rng.roll_int("gem_death_spread_%s_%d" % [owner.uid, i], 0, remaining.size() - 1))
 			var target: UnitState = remaining[pick]
 			remaining.remove_at(pick)
-			var copy := StatusInstance.create(debuff.status_id, debuff.stacks, debuff.duration, owner.uid, debuff.payload.duplicate(true))
-			copy.value = debuff.value
+			var copy := StatusInstance.create(
+				debuff.status_id,
+				FlurryRules.scaled_repeat_int(debuff.stacks, gem_ctx, 1),
+				FlurryRules.scaled_repeat_int(debuff.duration, gem_ctx, 1) if debuff.duration > 0 else 0,
+				owner.uid,
+				debuff.payload.duplicate(true)
+			)
+			copy.value = FlurryRules.scaled_repeat_int(debuff.value, gem_ctx, 1) if debuff.value > 0 else 0
 			_CombatTransaction.begin_from_state(state).apply_status(target, copy, {"emit_event": false, "reason": "black_debuff_spread"})
 			state.log("%s 死亡将 %s 转给 %s" % [owner.uid, StatusRegistry.display_name(debuff.status_id), target.uid])
 
@@ -2151,7 +2243,7 @@ static func _split_black_ratio_for_context(gem_ctx: Dictionary) -> float:
 	if level < 1:
 		return 0.0
 	var level_def: Dictionary = _effect_level_def("split", _effect_level_scope(gem_ctx, Constants.SLOT_BLACK), level)
-	return float(level_def["stat_ratio"])
+	return float(level_def["stat_ratio"]) * float(gem_ctx.get("effect_strength", 1.0))
 
 
 static func _try_spawn_split_blue_temp_clone(

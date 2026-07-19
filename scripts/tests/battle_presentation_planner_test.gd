@@ -7,6 +7,8 @@ const Validator = preload("res://scripts/debug/event_validator.gd")
 func _initialize() -> void:
 	print("=== Battle Presentation Planner Test ===")
 	_test_split_is_one_parallel_volley()
+	_test_impact_is_one_timed_charge()
+	_test_flurry_impact_is_two_serial_charges()
 	_test_blast_damage_is_an_impact()
 	_test_arc_hop_is_parallel_and_impacts_after_visuals()
 	_test_unknown_event_requires_a_policy()
@@ -31,6 +33,48 @@ func _test_split_is_one_parallel_volley() -> void:
 	assert(beat.mode == Planner.MODE_PARALLEL)
 	assert(beat.visuals.size() == 3)
 	assert(beat.impacts.size() == 3)
+
+
+func _test_impact_is_one_timed_charge() -> void:
+	var events := [
+		{"type": "impact_charge", "uid": "roller", "from": Vector2i(1, 3), "to": Vector2i(3, 3), "target_pos": Vector2i(4, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(1, 3), "to": Vector2i(2, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(3, 3)},
+		_damage("target", Vector2i(4, 3), 6),
+		{"type": "move_step", "uid": "target", "from": Vector2i(4, 3), "to": Vector2i(5, 3)},
+	]
+	var result := Planner.build(events)
+	assert(result.violations.is_empty())
+	assert(result.beats.size() == 1)
+	var beat: Dictionary = result.beats[0]
+	assert(beat.kind == "impact")
+	assert(beat.charge_motions.size() == 2, "charge movement should use the dedicated fast dash")
+	assert(beat.impacts.size() == 1, "damage should land at the charge impact frame")
+	assert(beat.impact_motions.size() == 1, "target knockback should start at impact")
+
+
+func _test_flurry_impact_is_two_serial_charges() -> void:
+	var events := [
+		{"type": "impact_charge", "uid": "roller", "from": Vector2i(0, 3), "to": Vector2i(2, 3), "target_pos": Vector2i(3, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(0, 3), "to": Vector2i(1, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(1, 3), "to": Vector2i(2, 3)},
+		_damage("target", Vector2i(3, 3), 4),
+		{"type": "move_step", "uid": "target", "from": Vector2i(3, 3), "to": Vector2i(4, 3)},
+		{"type": "move_step", "uid": "target", "from": Vector2i(4, 3), "to": Vector2i(5, 3)},
+		{"type": "impact_charge", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(4, 3), "target_pos": Vector2i(5, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(3, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(3, 3), "to": Vector2i(4, 3)},
+		_damage("target", Vector2i(5, 3), 4),
+		{"type": "move_step", "uid": "target", "from": Vector2i(5, 3), "to": Vector2i(6, 3)},
+		{"type": "move_step", "uid": "target", "from": Vector2i(6, 3), "to": Vector2i(7, 3)},
+	]
+	var result := Planner.build(events)
+	assert(result.violations.is_empty())
+	assert(result.beats.size() == 2, "flurry impact should remain two serial charge beats")
+	for beat in result.beats:
+		assert(beat.kind == "impact")
+		assert(beat.impacts.size() == 1)
+		assert(beat.impact_motions.size() == 2)
 
 
 func _test_blast_damage_is_an_impact() -> void:

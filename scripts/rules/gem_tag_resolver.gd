@@ -7,11 +7,13 @@ const TAG_ORDER: Array[String] = [
 	"poison",
 	"arc",
 	"gravity",
+	"impact",
 	"ice",
 	"split",
 	"light",
 	"counter",
 	"echo",
+	"flurry",
 ]
 
 

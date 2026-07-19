@@ -1439,6 +1439,8 @@ func _route_color(kind: String) -> Color:
 			return Color(0.72, 0.96, 1.0, 0.82)
 		"intent":
 			return Color(UiPalette.INTENT_ATTACK.lightened(0.08), 0.36)
+		"impact":
+			return Color(UiPalette.INTENT_ATTACK.lightened(0.18), 0.82)
 		"map_focus":
 			return Color(UiPalette.TEXT_GOLD.lightened(0.06), 0.82)
 		"map_choice":

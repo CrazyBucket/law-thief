@@ -21,6 +21,7 @@ func _run_test() -> void:
 	_test_light_level_preview_matches_execution()
 	_test_light_split_preview_tracks_each_beam()
 	_test_split_preview_uses_resolved_shot_count()
+	_test_flurry_split_preview_matches_segmented_volley()
 	_test_split_preview_counts_large_target_per_projectile()
 	_test_trample_preview_composes_configured_damage()
 	_test_player_query_uses_structured_lethal_prediction()
@@ -266,6 +267,50 @@ func _test_split_preview_uses_resolved_shot_count() -> void:
 		assert(target.hp == 97, "all five previewed split shots should resolve for 3 damage")
 	_assert_valid_state(state, "split_preview")
 	print("  [OK] split preview uses configured ratio and resolved shot count")
+
+
+func _test_flurry_split_preview_matches_segmented_volley() -> void:
+	var builder := ScenarioBuilder.new("fission_slime_test", 3506, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(1, 3))
+	builder.set_stats(player, {"base_attack": 10})
+	builder.mount_gems(player, Constants.SLOT_RED, [Constants.GEM_FLURRY, Constants.GEM_SPLIT])
+	var targets: Array[UnitState] = []
+	for target_data in [
+		["intent_flurry_split_main", Vector2i(4, 3)],
+		["intent_flurry_split_up", Vector2i(3, 2)],
+		["intent_flurry_split_down", Vector2i(3, 4)],
+	]:
+		targets.append(builder.add_unit(
+			str(target_data[0]),
+			"unit_patrol_guard",
+			Constants.TEAM_ENEMY,
+			target_data[1],
+			{"hp": 100, "max_hp": 100}
+		))
+	var state := builder.finish()
+	var intent := IntentState.new()
+	intent.type = "ranged_attack"
+	intent.source_uid = player.uid
+	intent.target_uid = targets[0].uid
+	intent.base_damage = 10
+	intent.damage = 10
+	IntentPreviewRules.populate_damage(state, player, intent)
+	assert(intent.damage_components.size() == 1, "flurry plus split should expose one segmented volley component")
+	var component: IntentDamageComponent = intent.damage_components[0]
+	assert(component.damage_per_hit == 2, "split damage should receive flurry decay before segment distribution")
+	assert(component.instance_count == 6, "two flurry segments should each preview all three split shots")
+	for target in targets:
+		assert(intent.predicted_raw_damage_to(target.uid) == 4, "each split target should preview both flurry segments")
+	assert("6" in intent.preview_text and "2" in intent.preview_text, "split intent text should expose segmented shot count and damage")
+	var result := CombatRules.ranged_attack(state, player, targets[0].pos)
+	assert(result.get("ok", false), "previewed flurry plus split volley should execute")
+	_assert_valid_events(result.get("events", []), "flurry_split_preview")
+	for target in targets:
+		assert(target.hp == 96, "flurry plus split execution should match its preview")
+	_assert_valid_state(state, "flurry_split_preview")
+	print("  [OK] flurry plus split preview matches segmented volley")
 
 
 func _test_split_preview_counts_large_target_per_projectile() -> void:

@@ -3,6 +3,7 @@ extends RefCounted
 
 const PresentationPlanner = preload("res://scripts/ui/battle_presentation_planner.gd")
 const PresentationStateApplierScript = preload("res://scripts/ui/presentation_state_applier.gd")
+const ImpactPresenter = preload("res://scripts/ui/impact_animation_presenter.gd")
 
 const BLAST_IMPACT_DELAY := 0.12
 const BLAST_RECOVERY_DELAY := 0.63
@@ -127,6 +128,8 @@ func _play_beat(beat: Dictionary) -> void:
 	var visuals: Array = beat.get("visuals", [])
 	var impacts: Array = beat.get("impacts", [])
 	match kind:
+		"impact":
+			await _play_impact_beat(beat)
 		"projectile":
 			await _play_projectile_volley(visuals)
 			if not impacts.is_empty():
@@ -157,6 +160,37 @@ func _play_beat(beat: Dictionary) -> void:
 				_prime_event_state(event)
 				await _play_anim_event(event)
 				_apply_event_state(event)
+
+
+func _play_impact_beat(beat: Dictionary) -> void:
+	var visuals: Array = beat.get("visuals", [])
+	if visuals.is_empty():
+		return
+	var charge: Dictionary = visuals[0]
+	var charge_motions: Array = beat.get("charge_motions", [])
+	for motion in charge_motions:
+		_prime_event_state(motion)
+	var timing: Dictionary = {}
+	if _board.has_method("play_impact_charge"):
+		timing = _board.play_impact_charge(charge, charge_motions)
+	else:
+		timing = ImpactPresenter.play(_board, charge, charge_motions)
+	if timing.is_empty():
+		timing = {"duration": _scaled_anim_time(0.42), "impact_time": _scaled_anim_time(0.24)}
+	await _await_real_delay(float(timing.get("impact_time", 0.0)))
+	for motion in charge_motions:
+		_apply_event_state(motion)
+	var impacts: Array = beat.get("impacts", [])
+	if not impacts.is_empty():
+		_play_damage_batch(impacts)
+		_board.queue_redraw()
+	var impact_motions: Array = beat.get("impact_motions", [])
+	var move_duration := _start_parallel_motion_batch(impact_motions)
+	var recovery := maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
+	await _await_real_delay(maxf(recovery, move_duration))
+	for motion in impact_motions:
+		_apply_event_state(motion)
+	_apply_event_state(charge)
 
 
 func _play_light_beam_cluster(cluster: Dictionary) -> void:

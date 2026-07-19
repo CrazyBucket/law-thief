@@ -63,9 +63,19 @@ func _fire_relic_event(event_id: String, battle_state: GameState, payload: Dicti
 # 战斗启动
 # ═══════════════════════════════════════════════════════════════════════════
 
-func start_encounter(encounter_id: String, seed_value: int = 0, room_id: String = "") -> void:
+func start_encounter(
+	encounter_id: String,
+	seed_value: int = 0,
+	room_id: String = "",
+	restore_run_player_state: bool = true
+) -> void:
 	_ensure_services()
-	state = _data_registry().create_battle_state(encounter_id, seed_value, room_id)
+	state = _data_registry().create_battle_state(
+		encounter_id,
+		seed_value,
+		room_id,
+		restore_run_player_state
+	)
 	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
 	state.battle_temp_flags.clear()

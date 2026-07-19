@@ -9,6 +9,7 @@ class DummyBoard:
 	var lightning_bolts: Array = []
 	var damage_effects: Array = []
 	var parallel_moves: Array = []
+	var impact_charges: Array = []
 	var hit_units: Array[String] = []
 	var operations: Array[String] = []
 	var redraw_count: int = 0
@@ -61,6 +62,11 @@ class DummyBoard:
 		operations.append("move")
 		return 0.0
 
+	func play_impact_charge(event: Dictionary, motions: Array) -> Dictionary:
+		impact_charges.append({"event": event.duplicate(true), "motions": motions.duplicate(true)})
+		operations.append("impact_charge")
+		return {"duration": 0.0, "impact_time": 0.0}
+
 	func play_unit_hit(uid: String) -> void:
 		hit_units.append(uid)
 
@@ -103,6 +109,25 @@ func _run_test() -> void:
 	assert(board.projectile_batches.size() == 1, "split projectiles should use one volley task")
 	assert(board.projectile_batches[0].size() == 3, "the volley should start all three projectiles together")
 	assert(board.operations == ["projectile_volley", "damage"], "projectile damage must wait for the volley impact")
+	board.operations.clear()
+	await player.play_events([
+		{"type": "impact_charge", "uid": "roller", "from": Vector2i(1, 3), "to": Vector2i(3, 3), "target_pos": Vector2i(4, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(1, 3), "to": Vector2i(2, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(3, 3)},
+		{"type": "damage", "pos": Vector2i(4, 3), "damage": 6, "uid": "impact_target", "victim_uid": "impact_target", "is_crit": false},
+		{"type": "move_step", "uid": "impact_target", "from": Vector2i(4, 3), "to": Vector2i(5, 3)},
+	])
+	assert(board.impact_charges.size() == 1 and board.impact_charges[0].motions.size() == 2)
+	assert(board.operations == ["impact_charge", "damage", "move"], "impact damage and knockback must start at the charge impact frame")
+	board.operations.clear()
+	await player.play_events([
+		{"type": "impact_charge", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(4, 3), "target_pos": Vector2i(5, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(2, 3), "to": Vector2i(3, 3)},
+		{"type": "move_step", "uid": "roller", "from": Vector2i(3, 3), "to": Vector2i(4, 3)},
+		{"type": "damage", "pos": Vector2i(5, 3), "damage": 4, "uid": "impact_target", "victim_uid": "impact_target", "is_crit": false},
+		{"type": "move_step", "uid": "impact_target", "from": Vector2i(5, 3), "to": Vector2i(6, 3)},
+	])
+	assert(board.operations == ["impact_charge", "damage", "move"], "a follow-up impact must replay charge before its own damage and knockback")
 	board.operations.clear()
 	await player.play_events([
 		{"type": "arc", "from": Vector2i(3, 3), "pos": Vector2i(3, 3), "target_pos": Vector2i(5, 1)},

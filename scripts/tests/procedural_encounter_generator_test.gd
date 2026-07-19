@@ -50,6 +50,14 @@ func _test_generation_contracts() -> void:
 
 
 func _test_enemy_pool_coverage() -> void:
+	var chapter_one_seen: Dictionary = {}
+	for seed_value in range(1, 201):
+		var encounter := _Generator.generate(seed_value, 1, "chapter_one_coverage_%d" % seed_value)
+		for enemy in encounter.get("enemies", []):
+			chapter_one_seen[str(enemy.get("def_id", ""))] = true
+	assert(chapter_one_seen.has("unit_ruffled_crow"), "ruffled crows must be available from chapter 1")
+	assert(chapter_one_seen.has("unit_rolling_armadillo"), "rolling armadillos must be available from chapter 1")
+
 	var seen: Dictionary = {}
 	var mother_encounters := 0
 	var worm_encounters := 0
@@ -67,7 +75,7 @@ func _test_enemy_pool_coverage() -> void:
 			assert(encounter_defs.has("unit_broodmother"), "a law worm must never be generated without its broodmother")
 	for expected_id in [
 		"unit_bomb_rat", "unit_patrol_guard", "unit_stone_bow_guard",
-		"unit_fission_slime", "unit_law_worm", "unit_broodmother",
+		"unit_ruffled_crow", "unit_rolling_armadillo", "unit_fission_slime", "unit_law_worm", "unit_broodmother",
 	]:
 		assert(seen.has(expected_id), "chapter 3 procedural samples must include %s" % expected_id)
 	assert(mother_encounters > worm_encounters, "broodmothers should be the usual initial law-worm-family encounter")

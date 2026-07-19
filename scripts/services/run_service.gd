@@ -1,5 +1,4 @@
 extends Node
-
 const RUN_SAVE_FILE_NAME := "run_save.json"
 const RUN_SAVE_VERSION := 1
 const RUN_SAVE_SCHEMA_VERSION := 2
@@ -7,16 +6,15 @@ const RUN_RULESET_VERSION := 2
 const RUN_MIN_SUPPORTED_SCHEMA_VERSION := 1
 const RunPlayerHealth = preload("res://scripts/services/run_player_health.gd")
 const RunRecordBuilder = preload("res://scripts/services/run_record_builder.gd")
-
 var _run: RunState = null
 var _progress_payload: Dictionary = {}
-
+var _persistence_suspended: bool = false
 
 func _ready() -> void:
 	reload_for_active_slot()
 
-
 func start_run(master_seed: int, map_seed: int) -> void:
+	_persistence_suspended = false
 	_run = RunState.create(master_seed, map_seed)
 	_progress_payload = {}
 	_run.run_phase = "MAP"
@@ -27,8 +25,6 @@ func start_run(master_seed: int, map_seed: int) -> void:
 	RngService.start_run(master_seed)
 	DebugService.log_info("RunService: new run master_seed=%d map_seed=%d" % [master_seed, map_seed])
 	save_run()
-
-
 func end_run() -> void:
 	_clear_run_save()
 	_run = null
@@ -38,14 +34,11 @@ func end_run() -> void:
 		"run_invalid_reason": "",
 	})
 
-
 func is_run_active() -> bool:
 	return _run != null
 
-
 func get_run() -> RunState:
 	return _run
-
 
 func snapshot_active_run() -> Dictionary:
 	if _run == null:
@@ -56,8 +49,18 @@ func snapshot_active_run() -> Dictionary:
 		"progress_payload": _progress_payload.duplicate(true),
 	}
 
+## Creates an in-memory run for an editor session. Its mutations must never
+## replace the player's saved run; restore_run_snapshot() ends this scope.
+func begin_temporary_run(master_seed: int = 1, map_seed: int = 1) -> void:
+	_run = RunState.create(master_seed, map_seed)
+	_progress_payload = {}
+	_run.run_phase = "MAP"
+	_run.pending_decision = {}
+	_persistence_suspended = true
+	RngService.start_run(master_seed)
 
 func restore_run_snapshot(snapshot: Dictionary) -> void:
+	_persistence_suspended = false
 	if not bool(snapshot.get("active", false)):
 		_clear_run_save()
 		_run = null
@@ -73,24 +76,20 @@ func restore_run_snapshot(snapshot: Dictionary) -> void:
 	_run = RunState.from_dict(raw_run as Dictionary)
 	var raw_progress: Variant = snapshot.get("progress_payload", {})
 	_progress_payload = (raw_progress as Dictionary).duplicate(true) if raw_progress is Dictionary else {}
-	save_run()
-
+	save_run(false)
 
 func get_current_chapter() -> int:
 	if _run == null:
 		return 1
 	return maxi(1, _run.current_chapter)
 
-
 func get_progress_payload() -> Dictionary:
 	return _progress_payload.duplicate(true)
-
 
 func set_progress_payload(progress: Dictionary) -> void:
 	_progress_payload = progress.duplicate(true)
 	if _run != null:
 		save_run()
-
 
 func acquire_relic(relic_id: String) -> void:
 	if _run == null:
@@ -559,10 +558,11 @@ func get_weight_ctx(state: GameState = null) -> Dictionary:
 
 
 
-func save_run() -> void:
-	if _run == null:
+func save_run(capture_battle_state: bool = true) -> void:
+	if _run == null or _persistence_suspended:
 		return
-	capture_player_battle_state()
+	if capture_battle_state:
+		capture_player_battle_state()
 	var data := {
 		"version": RUN_SAVE_VERSION,
 		"save_schema_version": RUN_SAVE_SCHEMA_VERSION,

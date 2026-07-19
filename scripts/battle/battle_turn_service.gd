@@ -5,6 +5,7 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
@@ -84,6 +85,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 			"events": events,
 			"presentation_state": presentation_state,
 		}
+	BehaviorRegistry.get_behavior(enemy.behavior_id).on_turn_start(ctrl.state, enemy)
 	StatusRules.tick_unit_turn_start(ctrl.state, enemy)
 	if enemy.has_status(Constants.STATUS_PARALYZED):
 		enemy.remove_status(Constants.STATUS_PARALYZED)

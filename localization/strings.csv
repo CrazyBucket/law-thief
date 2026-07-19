@@ -102,6 +102,8 @@ unit.small_slime_white.name,白色小史莱姆,White Small Slime
 unit.small_slime_yellow.name,黄色小史莱姆,Yellow Small Slime
 unit.law_worm.name,噬律蛆,Law-Eater Grub
 unit.broodmother.name,畸变蛆母,Mutant Broodmother
+unit.ruffled_crow.name,乱羽鸦,Ruffled Crow
+unit.rolling_armadillo.name,滚甲兽,Rolling Armadillo
 unit.overload_enforcer.name,执律者,Overload Enforcer
 unit.law_beast.name,律兽,Law Beast
 unit.training_dummy.name,训练稻草人,Training Dummy
@@ -177,12 +179,24 @@ gem.effect.counter.enemy_red_action,反击 ({damage}),Counter ({damage})
 gem.effect.counter.blue_damaged,被动：受击后对来源反击一次,Passive: strike the source back once after taking damage
 gem.effect.counter.black_death,死亡：对击杀来源反弹等额伤害,Death: deal equal reflected damage back to the killer
 gem.echo.name,回响,Echo
+gem.flurry.name,连击,Flurry
+gem.flurry.symbol,连,F
+gem.impact.name,冲击,Impact
+gem.impact.symbol,冲,I
 gem.echo.symbol,响,Echo
 gem.intent.echo_attack,回响 ({damage}),Echo ({damage})
+gem.intent.impact_attack,冲击攻击 ({damage}),Impact Attack ({damage})
+gem.effect.impact.unit_red_active,主动攻击变为冲击攻击：冲刺并按移动距离增伤，命中后击退,Active attacks become Impact Attacks: dash, gain damage from distance moved, then knock the target back
+gem.effect.impact.enemy_red_action,冲击攻击 ({damage}),Impact Attack ({damage})
+gem.effect.impact.blue_damaged,受到主动攻击伤害并存活后，向远离来源方向弹飞,After surviving active attack damage, launch away from its source
+gem.effect.impact.black_death,死亡时将接触自身占地的单位向外冲击,On death, knock units touching the full footprint outward
 gem.effect.echo.unit_red_active,触发：1级回响1个tag，2级回响2个tag，3级首个tag强化并追加一次50%回响,Trigger: level 1 echoes 1 tag, level 2 echoes 2 tags, level 3 empowers the first tag and adds one 50% follow-up
 gem.effect.echo.enemy_red_action,回响 ({damage}),Echo ({damage})
 gem.effect.echo.blue_damaged,被动：受击时回响已嵌入tag，每回合一次，3级首个tag强化,Passive: echo embedded tags when damaged once per turn; level 3 empowers the first tag
 gem.effect.echo.black_death,死亡：回响其他黑槽tag，沿用递归与 death_chain 防护,Death: echo other black-slot tags while respecting recursion and death-chain guards
+gem.effect.flurry.unit_red_active,主动攻击的连击值 +1,Active attacks gain +1 Flurry
+gem.effect.flurry.blue_damaged,每次受到一整次攻击后获得 1 层蓄连,Gain 1 Stored Flurry after each complete attack received
+gem.effect.flurry.black_death,其他黑槽效果额外结算 1 次，强度为 40%,Repeat each other black-slot effect once at 40% strength
 gem.split.name,分裂,Split
 gem.split.symbol,裂,Split
 gem.intent.split_attack,分裂射击 ({damage}×{hits}),Split Shot ({damage}x{hits})
@@ -257,6 +271,9 @@ gem.level.red.light,光 Lv{level}：{damage_ratio}伤害，施加{exposed_stacks
 gem.level.red.ice,寒冰 Lv{level}：施加{hit_slowed_stacks}层减速，最低移动力{slowed_min_move_points}；减速目标冻结：{freeze_if_target_slowed},Ice Lv{level}: {hit_slowed_stacks} slowed with {slowed_min_move_points} minimum move; freeze slowed target: {freeze_if_target_slowed}
 gem.level.red.counter,反击 Lv{level}：标记{mark_duration}回合；反击携带TAG：{retaliation_with_tags}；击杀刷新攻击：{grant_extra_attack_on_kill},Counter Lv{level}: mark for {mark_duration} turn(s); retaliation carries tags: {retaliation_with_tags}; refresh attack on kill: {grant_extra_attack_on_kill}
 gem.level.red.echo,回响 Lv{level}：回响{echo_tag_count}个 tag，追加{followup_ratio}伤害,Echo Lv{level}: echo {echo_tag_count} tags with {followup_ratio} follow-up damage
+gem.level.red.impact,冲击 Lv{level}：射程+{range_bonus}，击退距离=冲刺距离{knockback_offset},Impact Lv{level}: +{range_bonus} range; knockback equals dash distance {knockback_offset}
+gem.level.blue.impact,冲击 Lv{level}：受主动攻击后弹飞{knockback_steps}格，免疫自身撞击伤害,Impact Lv{level}: launch {knockback_steps} cells after an active attack; ignore self collision damage
+gem.level.black.impact,冲击 Lv{level}：死亡时将接触单位向外冲击{knockback_steps}格,Impact Lv{level}: on death, knock touching units outward {knockback_steps} cells
 gem.level.blue.poison,剧毒 Lv{level}：接触施加{contact_poison_stacks}层中毒，回合末传播：{turn_end_spread},Poison Lv{level}: contact poison {contact_poison_stacks}; turn-end spread: {turn_end_spread}
 gem.level.blue.explosion,爆炸 Lv{level}：火焰/位移/爆炸触发，任意受伤触发：{detonate_on_any_damage}；{blast_pattern}，伤害{damage_ratio}基础攻击,Explosion Lv{level}: fire/displacement/explosion trigger; any-damage trigger {detonate_on_any_damage}; {blast_pattern} at {damage_ratio} base attack
 gem.level.blue.gravity,引力 Lv{level}：偏转概率{deflect_chance}，受伤减速：{slow_on_damaged}，定身：{root_on_damaged},Gravity Lv{level}: {deflect_chance} deflect; slow {slow_on_damaged}; root {root_on_damaged}

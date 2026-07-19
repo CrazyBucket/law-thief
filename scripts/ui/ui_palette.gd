@@ -124,7 +124,7 @@ static func intent_color(intent_type: String) -> Color:
 			return HEAL_GREEN
 		"ranged_attack":
 			return BLIND_SAND
-		"explosion_attack", "charge_explode", "fire_attack":
+		"explosion_attack", "charge_explode", "fire_attack", "impact_attack":
 			return FIRE_ORANGE
 		"pull":
 			return BIND_VIOLET
@@ -138,7 +138,7 @@ static func intent_color(intent_type: String) -> Color:
 			return AI_MAGENTA
 		"move":
 			return INTENT_MOVE
-		"lawless_extract", "lawless_attack", "lawless_move":
+		"lawless_extract", "lawless_attack", "lawless_move", "rolling_uncontrolled":
 			return DISORDER_RED
 		"black_suicide":
 			return SLOT_BLACK_DEEP.lightened(0.15)

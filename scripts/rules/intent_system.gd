@@ -26,6 +26,8 @@ const ATTACK_INTENT_TYPES := [
 	"light_beam",
 	"counter_attack",
 	"echo_attack",
+	"impact_attack",
+	"rolling_uncontrolled",
 	"trample",
 	"slam_attack",
 	"lawless_attack",
@@ -276,7 +278,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 			anim_events.append_array(_execute_melee(state, unit, intent, move_start_pos))
 		"ranged_attack":
 			anim_events.append_array(_execute_ranged(state, unit, intent, move_start_pos))
-		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack", "light_beam", "counter_attack", "echo_attack":
+		"explosion_attack", "charge_explode", "pull", "poison_attack", "arc_attack", "fire_attack", "ice_attack", "split_attack", "light_beam", "counter_attack", "echo_attack", "impact_attack":
 			anim_events.append_array(_behavior_for(unit).execute_red_action(state, unit, intent))
 		"extract":
 			_execute_extract(state, unit, intent)

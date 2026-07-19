@@ -126,6 +126,10 @@ static func short_label(status: StatusInstance) -> String:
 			return "殖"
 		Constants.STATUS_BROODMOTHER_CRISIS:
 			return "危殖"
+		Constants.STATUS_STORED_FLURRY:
+			return "蓄%d" % status.stacks
+		Constants.STATUS_STARTLED_FEATHER:
+			return "羽%d" % status.stacks
 	return display_name(status.status_id)
 
 
@@ -138,7 +142,7 @@ static func icon_badge(status: StatusInstance) -> String:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
-		Constants.STATUS_DISARMED, Constants.STATUS_EXTRA_ATTACK, Constants.STATUS_EXTRA_MOVE:
+		Constants.STATUS_DISARMED, Constants.STATUS_EXTRA_ATTACK, Constants.STATUS_EXTRA_MOVE, Constants.STATUS_STORED_FLURRY, Constants.STATUS_STARTLED_FEATHER:
 			return str(status.stacks)
 	return ""
 
@@ -197,6 +201,10 @@ static func tooltip(status: StatusInstance) -> String:
 			return "繁殖节律：在攻击与分裂之间交替"
 		Constants.STATUS_BROODMOTHER_CRISIS:
 			return "危机繁殖：全身空槽，每次行动分裂两只噬律蛆"
+		Constants.STATUS_STORED_FLURRY:
+			return "蓄连：下次主动攻击的连击值 +%d，攻击完成后清零" % status.stacks
+		Constants.STATUS_STARTLED_FEATHER:
+			return "惊羽：乱羽攻击 +%d 次，当前命中率 %d%%" % [status.stacks, maxi(20, 90 - status.stacks * 10)]
 	return display_name(status.status_id)
 
 
@@ -342,6 +350,22 @@ static var _DEFS: Dictionary = {
 		"type": TYPE_SYSTEM,
 		"color": UiPalette.DISORDER_RED,
 		"stack_rule": STACK_REPLACE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_STORED_FLURRY: {
+		"display_name": "蓄连",
+		"type": TYPE_BUFF,
+		"color": UiPalette.EXPOSE_YELLOW,
+		"stack_rule": STACK_VALUE,
+		"tick_phase": TICK_NONE,
+		"blocks_movement": false,
+	},
+	Constants.STATUS_STARTLED_FEATHER: {
+		"display_name": "惊羽",
+		"type": TYPE_SYSTEM,
+		"color": UiPalette.DISORDER_RED,
+		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
 		"blocks_movement": false,
 	},

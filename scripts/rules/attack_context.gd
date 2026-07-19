@@ -42,13 +42,19 @@ func push_event(event: Dictionary) -> void:
 
 func build_damage_context(reason: String, opts: Dictionary = {}) -> Dictionary:
 	var gem_ctx: Dictionary = opts.get("gem_tag_context", payload.get("gem_tag_context", {}))
-	return DamageContext.create(
+	var context := DamageContext.create(
 		attacker.uid,
 		reason,
 		opts.get("damage_tags", []),
 		gem_ctx,
 		bool(opts.get("active_attack", false))
 	)
+	var attack_event_id := str(payload.get("current_attack_event_id", payload.get("attack_event_id", "")))
+	if not attack_event_id.is_empty():
+		context["attack_event_id"] = attack_event_id
+	context["attack_segment_index"] = int(payload.get("attack_segment_index", 0))
+	context["attack_segment_count"] = int(payload.get("attack_segment_count", 1))
+	return context
 
 
 func damage_unit(unit: UnitState, amount: int, reason: String, opts: Dictionary = {}) -> int:

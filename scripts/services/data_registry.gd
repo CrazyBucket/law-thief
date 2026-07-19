@@ -49,7 +49,6 @@ var _encounters: Dictionary = {}
 var _relic_defs: Dictionary = {}
 var _uid_counter: int = 0
 
-
 func _ready() -> void:
 	_register_gem_effect_profiles()
 	_load_gem_effect_levels_from_json()
@@ -66,7 +65,7 @@ func _ready() -> void:
 	_validate_adventure_progression_refs()
 	_load_relic_defs_from_json()
 
-func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "") -> GameState:
+func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "", restore_run_player_state: bool = true) -> GameState:
 	var encounter: Dictionary = _encounters.get(encounter_id, {})
 	var current_chapter := 1
 	var pending_room_type := ""
@@ -97,8 +96,9 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 		Callable(self, "_next_uid")
 	)
 	var player := state.get_player()
-	_apply_run_slot_overrides(player)
-	_restore_run_player_state(state, player)
+	if restore_run_player_state:
+		_apply_run_slot_overrides(player)
+		_restore_run_player_state(state, player)
 	for enemy_data in _resolve_encounter_enemies(encounter, encounter_id):
 		var enemy_uid := _next_uid(enemy_data.get("def_id", "enemy"))
 		var def: Dictionary = _unit_defs[enemy_data.get("def_id", "unit_bomb_rat")].duplicate(true)
@@ -139,8 +139,6 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	EncounterContentDiagnostics.report(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
-
-
 func create_battle_state_from_editor_payload(encounter_id: String, encounter: Dictionary, seed_value: int = 0) -> GameState:
 	if encounter.is_empty():
 		push_error("Encounter payload is empty: %s" % encounter_id)
@@ -1036,6 +1034,7 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_TILE_TURN_START: {"key": "gem.effect.gravity.tile_turn_start"},
 			},
 		},
+		"impact": {"enemy_intent": {"type": "impact_attack", "preview_key": "gem.intent.impact_attack", "damage_mode": "base_attack", "damage": 0}, "ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.impact.unit_red_active"}, ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.impact.enemy_red_action"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.impact.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.impact.black_death"}}},
 		"arc": {
 			"enemy_intent": {
 				"type": "arc_attack",
@@ -1134,8 +1133,8 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.echo.black_death"},
 			},
 		},
+		"flurry": {"ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.flurry.unit_red_active"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.flurry.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.flurry.black_death"}}},
 	}
-
 
 func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
 	var gem_id := _gem_id_from_ref(gem_ref)
@@ -1145,8 +1144,6 @@ func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
 		if not gem.def_overrides.is_empty():
 			base = _deep_merge_dict(base, gem.def_overrides)
 	return base
-
-
 func _effect_profile(profile_id: String) -> Dictionary:
 	return _gem_effect_profiles.get(profile_id, {})
 

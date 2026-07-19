@@ -925,6 +925,113 @@
       }
     },
     {
+      "id": "impact/red/1_dash_damage_knockback_minus_one",
+      "covers": ["gem_impact:red:1"],
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "gems": ["gem_impact"],
+      "expect": {"damage": 12, "target_pos": [5, 3], "event_counts": {"move_step": 3}}
+    },
+    {
+      "id": "impact/red/2_dash_damage_equal_knockback",
+      "covers": ["gem_impact:red:2"],
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "gems": ["gem_impact", "gem_impact"],
+      "expect": {"damage": 12, "target_pos": [6, 3], "event_counts": {"move_step": 4}}
+    },
+    {
+      "id": "impact/red/3_dash_damage_knockback_plus_one",
+      "covers": ["gem_impact:red:3"],
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "gems": ["gem_impact", "gem_impact", "gem_impact"],
+      "expect": {"damage": 12, "target_pos": [7, 3], "event_counts": {"move_step": 5}}
+    },
+    {
+      "id": "combo/impact_split/red_impact_suppresses_split",
+      "covers": ["combo:impact_split:red"],
+      "player_pos": [1, 3],
+      "target_pos": [4, 3],
+      "gems": ["gem_impact", "gem_split"],
+      "extra_units": [
+        {"uid": "impact_split_wing", "pos": [3, 2], "stats": {"hp": 100, "max_hp": 100}}
+      ],
+      "expect": {
+        "damage": 12,
+        "unit_damages": {"impact_split_wing": 0},
+        "target_pos": [5, 3],
+        "event_counts": {"impact_charge": 1, "projectile": 0}
+      }
+    },
+    {
+      "id": "combo/impact_flurry/red_repeats_complete_impacts",
+      "covers": ["combo:impact_flurry:red"],
+      "player_pos": [0, 3],
+      "target_pos": [3, 3],
+      "target_stats": {"hp": 100, "max_hp": 100},
+      "gems": ["gem_impact", "gem_impact", "gem_flurry"],
+      "expect": {
+        "damage": 8,
+        "target_pos": [7, 3],
+        "event_counts": {"impact_charge": 2, "damage": 2, "projectile": 0}
+      }
+    },
+    {
+      "id": "impact/blue/1_launch_two_after_active_damage",
+      "covers": ["gem_impact:blue:1"],
+      "player_pos": [0, 3],
+      "target_pos": [1, 3],
+      "mounts": [{"uid": "contract_target", "slot": "blue", "gems": ["gem_impact"]}],
+      "expect": {"damage": 10, "target_pos": [3, 3], "event_counts": {"move_step": 2}}
+    },
+    {
+      "id": "impact/blue/2_launch_three_after_active_damage",
+      "covers": ["gem_impact:blue:2"],
+      "player_pos": [0, 3],
+      "target_pos": [1, 3],
+      "mounts": [{"uid": "contract_target", "slot": "blue", "gems": ["gem_impact", "gem_impact"]}],
+      "expect": {"damage": 10, "target_pos": [4, 3], "event_counts": {"move_step": 3}}
+    },
+    {
+      "id": "impact/blue/3_launch_four_after_active_damage",
+      "covers": ["gem_impact:blue:3"],
+      "player_pos": [0, 3],
+      "target_pos": [1, 3],
+      "mounts": [{"uid": "contract_target", "slot": "blue", "gems": ["gem_impact", "gem_impact", "gem_impact"]}],
+      "expect": {"damage": 10, "target_pos": [5, 3], "event_counts": {"move_step": 4}}
+    },
+    {
+      "id": "impact/black/1_push_touching_two",
+      "covers": ["gem_impact:black:1"],
+      "player_pos": [0, 3],
+      "target_pos": [2, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [{"uid": "contract_target", "slot": "black", "gems": ["gem_impact"]}],
+      "extra_units": [{"uid": "impact_black_neighbor", "team": "player", "pos": [3, 3]}],
+      "expect": {"damage": 10, "unit_positions": {"impact_black_neighbor": [5, 3]}, "event_counts": {"move_step": 2}}
+    },
+    {
+      "id": "impact/black/2_push_touching_three",
+      "covers": ["gem_impact:black:2"],
+      "player_pos": [0, 3],
+      "target_pos": [2, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [{"uid": "contract_target", "slot": "black", "gems": ["gem_impact", "gem_impact"]}],
+      "extra_units": [{"uid": "impact_black_neighbor", "team": "player", "pos": [3, 3]}],
+      "expect": {"damage": 10, "unit_positions": {"impact_black_neighbor": [6, 3]}, "event_counts": {"move_step": 3}}
+    },
+    {
+      "id": "impact/black/3_push_touching_four",
+      "covers": ["gem_impact:black:3"],
+      "player_pos": [0, 3],
+      "target_pos": [2, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [{"uid": "contract_target", "slot": "black", "gems": ["gem_impact", "gem_impact", "gem_impact"]}],
+      "extra_units": [{"uid": "impact_black_neighbor", "team": "player", "pos": [3, 3]}],
+      "expect": {"damage": 10, "unit_positions": {"impact_black_neighbor": [7, 3]}, "event_counts": {"move_step": 4}}
+    },
+    {
       "id": "gravity/black/1_pull_nearby_units",
       "covers": ["gem_gravity:black:1"],
       "player_stats": {"base_attack": 20},
@@ -1732,6 +1839,117 @@
             "blinded": {"duration": 1}
           }
         }
+      }
+    },
+    {
+      "id": "flurry/red/one_adds_a_segment_and_applies_total_decay",
+      "covers": ["gem_flurry:red:1"],
+      "player_stats": {"base_attack": 10},
+      "gems": ["gem_flurry"],
+      "expect": {
+        "damage": 8,
+        "event_counts": {"damage": 2},
+        "event_matches": [
+          {"type": "damage", "damage": 4, "segment_count": 2}
+        ]
+      }
+    },
+    {
+      "id": "flurry/blue/multi_hit_grants_once_per_attack_event",
+      "covers": ["gem_flurry:red:2", "gem_flurry:blue:1"],
+      "gems": ["gem_flurry", "gem_flurry"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 9,
+        "event_counts": {"damage": 3},
+        "unit_statuses": {
+          "contract_target": {
+            "stored_flurry": {"stacks": 1}
+          }
+        }
+      }
+    },
+    {
+      "id": "flurry/black/repeats_other_effect_at_forty_percent",
+      "covers": ["gem_flurry:black:1"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"player": 28},
+        "event_counts": {"damage": 3}
+      }
+    },
+    {
+      "id": "flurry/red/three_reaches_full_total_multiplier",
+      "covers": ["gem_flurry:red:3"],
+      "player_stats": {"base_attack": 10},
+      "gems": ["gem_flurry", "gem_flurry", "gem_flurry"],
+      "expect": {
+        "damage": 8,
+        "event_counts": {"damage": 4},
+        "event_matches": [
+          {"type": "damage", "damage": 2, "segment_count": 4}
+        ]
+      }
+    },
+    {
+      "id": "flurry/blue/two_grant_two_stored_layers_once",
+      "covers": ["gem_flurry:blue:2"],
+      "gems": ["gem_flurry"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_flurry", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 8,
+        "event_counts": {"damage": 2},
+        "unit_statuses": {"contract_target": {"stored_flurry": {"stacks": 2}}}
+      }
+    },
+    {
+      "id": "flurry/blue/three_grant_three_stored_layers_once",
+      "covers": ["gem_flurry:blue:3"],
+      "gems": ["gem_flurry"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_flurry", "gem_flurry", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 8,
+        "event_counts": {"damage": 2},
+        "unit_statuses": {"contract_target": {"stored_flurry": {"stacks": 3}}}
+      }
+    },
+    {
+      "id": "flurry/black/two_add_two_forty_percent_repeats",
+      "covers": ["gem_flurry:black:2"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter", "gem_flurry", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"player": 36},
+        "event_counts": {"damage": 4}
+      }
+    },
+    {
+      "id": "flurry/black/three_add_three_forty_percent_repeats",
+      "covers": ["gem_flurry:black:3"],
+      "player_stats": {"base_attack": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_counter", "gem_flurry", "gem_flurry", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 20,
+        "unit_damages": {"player": 44},
+        "event_counts": {"damage": 5}
       }
     }
   ]

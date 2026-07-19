@@ -108,6 +108,17 @@ func _test_battle_scene_click_inspect() -> void:
 	scene.call("_on_cell_clicked", guard.pos)
 	await process_frame
 	assert(str(scene.get("_inspect_uid")) == guard.uid, "clicking a unit should inspect that unit")
+	var registry: Node = root.get_node("DataRegistry")
+	var ground_gem: GemState = registry.create_gem_instance("ui_ground_extract", Constants.GEM_IMPACT, {})
+	ctrl.state.gems[ground_gem.uid] = ground_gem
+	assert(GemTransfer.to_ground(ctrl.state, ground_gem, guard.pos, {"source_unit_uid": guard.uid}))
+	ctrl.select_action(Constants.ACTION_EXTRACT)
+	scene.call("_on_cell_clicked", guard.pos)
+	await process_frame
+	var slot_popup: Control = scene.get("_slot_popup")
+	assert(slot_popup.visible and bool(slot_popup.get("_is_dropped_mode")), "a ground gem under a living unit should open the ground picker")
+	scene.call("_on_popup_dropped_gem_selected", ground_gem.uid)
+	assert(ctrl.state.held_gem_uid == ground_gem.uid, "the ground picker should extract the selected gem into hand")
 	var entity_cell := _first_empty_cell(ctrl.state)
 	assert(entity_cell.x >= 0, "empty cell should exist for entity inspect")
 	ctrl.state.add_entity(EntityState.create("ui_click_entity", Constants.ENTITY_BARREL, entity_cell))

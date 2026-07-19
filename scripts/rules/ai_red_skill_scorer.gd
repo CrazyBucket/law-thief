@@ -64,6 +64,24 @@ static func echo(
 	return [candidate]
 
 
+static func impact(
+	state: GameState,
+	enemy: UnitState,
+	from_pos: Vector2i,
+	player: UnitState,
+	profile: Dictionary,
+	action_type: int
+) -> Array:
+	var max_range := GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
+	if not BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range):
+		return []
+	var candidate := CandidateFactory.targeted(action_type, from_pos, player.uid)
+	var damage := previewed_red_damage_to(state, enemy, from_pos, player)
+	candidate.score = float(damage) * _weight(profile, "w_damage")
+	candidate.description = "冲击攻击"
+	return [candidate]
+
+
 static func poison(
 	state: GameState,
 	enemy: UnitState,

@@ -89,6 +89,10 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 			var hit_preview := _attack_hit_preview_cells(state, player, hover_cell)
 			result["effect_preview"] = hit_preview
 			overlay_context["target_cell"] = hover_cell
+			if GemEffects.unit_has_red_impact(state, player):
+				overlay_context["attack_route"] = GemEffects.impact_preview_path(
+					state, player, hover_cell, GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
+				)
 		else:
 			var effect_preview := _attack_effect_preview(state, player)
 			result["effect_preview"] = effect_preview
@@ -187,13 +191,16 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 			var can_attack_now := ctrl.editor_unlimited_actions_enabled() \
 				or (StatusRules.can_attack(player) and (not state.player_acted or StatusRules.has_extra_attack(player)))
 			var attack_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
-			if can_attack_now and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, attack_range):
+			var valid_impact_aim := not GemEffects.unit_has_red_impact(state, player) \
+				or GemEffects.is_valid_impact_aim(player, cell)
+			if can_attack_now and valid_impact_aim and cell != player.pos and BoardUtils.can_unit_attack_cell(player, state, cell, attack_range):
 				if blocking != null and blocking.is_indestructible() and unit == null:
 					lines.append("射击会被障碍挡下")
 				elif tile.has_tile_tag(Constants.TAG_TILE_WATER) and GemEffects.unit_has_red_arc(state, player):
 					lines.append("水面导电：相连水域与潮湿单位会连锁")
 				else:
-					lines.append("射击预览：%d 伤害" % CombatRules.attack_damage(state, player))
+					var attack_label := "冲击" if GemEffects.unit_has_red_impact(state, player) else "射击"
+					lines.append("%s预览：%d 伤害" % [attack_label, CombatRules.attack_damage(state, player)])
 				if unit != null:
 					lines.append_array(_death_gem_preview_lines(state, unit))
 		Constants.ACTION_EXTRACT:
@@ -240,6 +247,10 @@ func get_action_hint() -> String:
 				var player: UnitState = ctrl.state.get_player()
 				if player != null and not StatusRules.can_attack(player):
 					return StatusRules.attack_block_reason(player)
+			if ctrl.state != null:
+				var player: UnitState = ctrl.state.get_player()
+				if player != null and GemEffects.unit_has_red_impact(ctrl.state, player):
+					return "冲击待命 · 射程 %d" % GemEffects.red_attack_range(ctrl.state, player)
 			return "射击待命 · 射程 %d" % CombatConfig.attack_range()
 		Constants.ACTION_EXTRACT:
 			return "拔取宝石"
@@ -325,12 +336,15 @@ func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	var uses_light := GemEffects.unit_has_red_light(state, player)
+	var uses_impact := GemEffects.unit_has_red_impact(state, player)
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
 			if pos in player.occupied_cells():
 				continue
 			if uses_light and not GemEffects.is_valid_light_aim(player, pos):
+				continue
+			if uses_impact and not GemEffects.is_valid_impact_aim(player, pos):
 				continue
 			if not BoardUtils.can_unit_attack_cell(player, state, pos, max_range):
 				continue
@@ -359,9 +373,10 @@ func _cached_reachable_cells(
 func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited: bool) -> Array:
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	var uses_light := GemEffects.unit_has_red_light(state, player)
+	var uses_impact := GemEffects.unit_has_red_impact(state, player)
 	var key := [
 		state.get_instance_id(), state.revision, player.uid, player.pos,
-		player.footprint_size, max_range, uses_light, unlimited,
+		player.footprint_size, max_range, uses_light, uses_impact, unlimited,
 	]
 	if key != _attack_range_cache_key:
 		_attack_range_cache_key = key
@@ -400,9 +415,16 @@ func _attack_hit_preview_cells(state: GameState, player: UnitState, target_pos: 
 		return []
 	if GemEffects.unit_has_red_light(state, player) and not GemEffects.is_valid_light_aim(player, target_pos):
 		return []
+	if GemEffects.unit_has_red_impact(state, player) and not GemEffects.is_valid_impact_aim(player, target_pos):
+		return []
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	if not BoardUtils.can_unit_attack_cell(player, state, target_pos, max_range):
 		return []
+	if GemEffects.unit_has_red_impact(state, player):
+		var impact_target := GemEffects.impact_target_in_direction(state, player, target_pos, max_range)
+		if impact_target == null:
+			return []
+		target_pos = impact_target.pos
 	var profile := IntentPreviewRules.build_red_attack_profile(
 		state,
 		player,
@@ -437,6 +459,8 @@ func _attack_effect_preview(state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
 		if not unit.alive or unit.uid == player.uid:
+			continue
+		if GemEffects.unit_has_red_impact(state, player) and not GemEffects.is_valid_impact_aim(player, unit.pos):
 			continue
 		if not BoardUtils.can_unit_reach_unit(
 			player,

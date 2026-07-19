@@ -399,7 +399,7 @@ static func _execute_player_ai_control(state: GameState, player: UnitState, out_
 				state,
 				player,
 				attack_target.pos,
-				max_range,
+				CombatConfig.attack_range(),
 				{"aim_cell": attack_target.pos}
 			)
 			if attack_result.get("ok", false):

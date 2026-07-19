@@ -2,6 +2,7 @@ class_name IntentPreviewRules
 extends RefCounted
 
 const IntentDamageComponentType = preload("res://scripts/data/intent_damage_component.gd")
+const FlurryRules = preload("res://scripts/rules/flurry_rules.gd")
 const LightBeamRules = preload("res://scripts/rules/light_beam_rules.gd")
 const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
@@ -19,6 +20,7 @@ const PIPELINE_ATTACK_TYPES: Array[String] = [
 	"light_beam",
 	"counter_attack",
 	"echo_attack",
+	"impact_attack",
 	"broodmother_ranged_attack",
 ]
 
@@ -133,7 +135,7 @@ static func populate_effects(intent: IntentState) -> void:
 				"source_uid": intent.source_uid,
 				"metadata": {"unit_id": "unit_broodmother"},
 			}))
-		"pull", "trample":
+		"pull", "trample", "impact_attack", "rolling_uncontrolled":
 			intent.preview_effects.append(PreviewEffect.create("displacement", intent.affected_cells, {
 				"source_uid": intent.source_uid,
 				"target_uid": intent.target_uid,
@@ -154,6 +156,10 @@ static func build_red_attack_profile(
 		Constants.SLOT_RED,
 		GemEffects.TIMING_ACTIVE
 	)
+	if GemTagResolver.has_tag(gem_ctx, "impact"):
+		var target := state.get_unit_at(aim_cell)
+		if target != null and target.alive:
+			base_damage += maxi(0, BoardUtils.distance_between_unit_at_and_unit(unit, anchor, target) - 1)
 	if GemTagResolver.has_tag(gem_ctx, "light"):
 		return _build_light_profile(state, unit, anchor, aim_cell, base_damage, gem_ctx)
 	if GemTagResolver.has_tag(gem_ctx, "split"):
@@ -283,21 +289,28 @@ static func _build_split_profile(
 	var forbidden := BoardUtils.footprint_cells_at(unit.footprint_size, anchor)
 	var split_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
 	var hit_cells := SplitShotRules.all_hit_cells(origin, aim_cell, forbidden, split_level)
+	var flurry_value := FlurryRules.red_flurry_value(state, unit) + FlurryRules.stored(unit)
+	var segment_count := 1 + flurry_value
+	var split_damage := GemEffects.red_split_damage(state, unit, base_damage, gem_ctx)
+	var segment_damage := FlurryRules.segment_damage(split_damage, 1, flurry_value)
+	var repeated_hit_cells: Array[Vector2i] = []
+	for _segment_index in range(segment_count):
+		repeated_hit_cells.append_array(hit_cells)
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
 		return _build_explosion_profile(
 			state,
 			unit,
-			hit_cells,
+			repeated_hit_cells,
 			gem_ctx,
 			false,
-			GemEffects.red_split_damage(state, unit, base_damage, gem_ctx)
+			segment_damage
 		)
 	return {
 		"components": [IntentDamageComponentType.create(
 			"split",
-			GemEffects.red_split_damage(state, unit, base_damage, gem_ctx),
-			hit_cells.size(),
-			_target_hits_for_impact_cells(state, unit.uid, hit_cells),
+			segment_damage,
+			repeated_hit_cells.size(),
+			_target_hits_for_impact_cells(state, unit.uid, repeated_hit_cells),
 			hit_cells
 		)],
 		"affected_cells": hit_cells,
@@ -423,6 +436,8 @@ static func _refresh_dynamic_preview_text(intent: IntentState) -> void:
 			params["beams"] = primary.instance_count
 		else:
 			key = "gem.intent.light_beam"
+	elif intent.type == "impact_attack":
+		key = "gem.intent.impact_attack"
 	if key.is_empty():
 		return
 	var i18n: Node = Engine.get_main_loop().root.get_node_or_null("I18nService")

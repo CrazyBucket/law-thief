@@ -16,6 +16,8 @@ const _GEM_TEXTURE_PATHS: Dictionary = {
 	Constants.GEM_LIGHT: "%sgem_light.png" % GEM_ROOT,
 	Constants.GEM_COUNTER: "%sgem_counter.png" % GEM_ROOT,
 	Constants.GEM_ECHO: "%sgem_echo.png" % GEM_ROOT,
+	Constants.GEM_FLURRY: "%sgem_flurry.png" % GEM_ROOT,
+	Constants.GEM_IMPACT: "%sgem_impact.png" % GEM_ROOT,
 }
 
 var _texture_cache: Dictionary = {}

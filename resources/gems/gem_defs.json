@@ -195,5 +195,40 @@
       "blue_damaged": "echo",
       "black_death": "echo"
     }
+  },
+  "gem_flurry": {
+    "display_name_key": "gem.flurry.name",
+    "symbol_key": "gem.flurry.symbol",
+    "symbol": "连",
+    "color": [0.95, 0.35, 0.55, 1.0],
+    "tag": "flurry",
+    "element": "flurry",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "common",
+    "ability_profiles": {
+      "unit_red_active": "flurry",
+      "blue_damaged": "flurry",
+      "black_death": "flurry"
+    }
+  },
+  "gem_impact": {
+    "display_name_key": "gem.impact.name",
+    "symbol_key": "gem.impact.symbol",
+    "symbol": "冲",
+    "color": [1.0, 0.42, 0.12, 1.0],
+    "tag": "impact",
+    "element": "impact",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "common",
+    "ability_profiles": {
+      "unit_red_active": "impact",
+      "enemy_red_action": "impact",
+      "blue_damaged": "impact",
+      "black_death": "impact"
+    }
   }
 }
