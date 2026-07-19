@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LEGACY_DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
+
+if [[ -n "${DESIGN_ROOT:-}" ]]; then
+  RESOLVED_DESIGN_ROOT="$DESIGN_ROOT"
+elif [[ -d "$ROOT/../learning-notes/game/design/law-thief" ]]; then
+  RESOLVED_DESIGN_ROOT="$ROOT/../learning-notes/game/design/law-thief"
+else
+  RESOLVED_DESIGN_ROOT="$LEGACY_DESIGN_ROOT"
+fi
+
+SCRIPT="$RESOLVED_DESIGN_ROOT/tools/design_context.py"
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "DESIGN_TOOL_MISSING $SCRIPT" >&2
+  echo "Set DESIGN_ROOT to the local game/design/law-thief directory." >&2
+  exit 2
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON=python
+else
+  echo "Python 3 is required." >&2
+  exit 2
+fi
+
+exec "$PYTHON" "$SCRIPT" --design-root "$RESOLVED_DESIGN_ROOT" --code-root "$ROOT" "$@"

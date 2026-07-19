@@ -9,6 +9,7 @@ const AdventureProgressionConfig = preload("res://scripts/core/adventure_progres
 const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
 const EncounterEnemyResolver = preload("res://scripts/services/encounter_enemy_resolver.gd")
 const EncounterCatalogLoader = preload("res://scripts/services/encounter_catalog_loader.gd")
+const ProceduralEncounterGenerator = preload("res://scripts/services/procedural_encounter_generator.gd")
 const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
 const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
@@ -25,13 +26,14 @@ const _GEM_EFFECT_LEVEL_PERCENT_FIELDS := {
 	"deflect_chance": true,
 	"rebound_chance": true,
 	"damage_ratio": true,
+	"center_damage_ratio": true,
+	"splash_base_attack_ratio": true,
 	"reflect_damage_ratio": true,
 	"stat_ratio": true,
 	"followup_ratio": true,
 	"redirect_ratio": true,
 	"temp_clone_stat_ratio": true,
 }
-
 var _gem_effect_profiles: Dictionary = {}
 var _gem_effect_levels: Dictionary = {}
 var _gem_defs: Dictionary = {}
@@ -64,7 +66,6 @@ func _ready() -> void:
 	_validate_adventure_progression_refs()
 	_load_relic_defs_from_json()
 
-
 func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "") -> GameState:
 	var encounter: Dictionary = _encounters.get(encounter_id, {})
 	var current_chapter := 1
@@ -75,9 +76,6 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	var run_svc: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
 	if run_svc != null and run_svc.has_method("get_current_chapter"):
 		current_chapter = int(run_svc.call("get_current_chapter"))
-	if encounter.is_empty():
-		push_error("Encounter not found: %s" % encounter_id)
-		return null
 	_uid_counter = 0
 	if seed_value != 0:
 		# 外部显式提供种子（如单元测试、重放）：以此初始化 master seed
@@ -86,6 +84,11 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	# master seed 不存在时（首次裸启）退化为时间戳，行为与旧逻辑一致
 	var combat_seed := RngService.derive_combat_seed(encounter_id, room_id)
 	RngService.reset_state(combat_seed, "combat:%s" % encounter_id)
+	if encounter_id == ProceduralEncounterGenerator.ENCOUNTER_ID:
+		encounter = ProceduralEncounterGenerator.generate(combat_seed, current_chapter, room_id)
+	if encounter.is_empty():
+		push_error("Encounter not found: %s" % encounter_id)
+		return null
 	var state := BattleStateFactory.create_base_state(
 		encounter_id,
 		encounter.get("player_spawn", Vector2i(3, 2)),
@@ -131,6 +134,8 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 	IntentSystem.refresh_all_intents(state)
 	# 所有单位就位后建立 O(1) 占格索引（多格单位 footprint 一并注册）
 	state.rebuild_occupancy()
+	if encounter_id == ProceduralEncounterGenerator.ENCOUNTER_ID:
+		ProceduralEncounterGenerator.freeze_initial_blueprint(state, encounter)
 	EncounterContentDiagnostics.report(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
@@ -186,13 +191,9 @@ func get_encounter_ids(include_hidden: bool = false) -> Array:
 	return ids
 
 
-## Resolve hand-authored encounter composition after the combat RNG context is active.
-## `enemies` are always included, one weighted `enemy_groups` entry is included as a
-## whole formation, and every `random_enemies` slot rolls one candidate at its preset
-## position. Keeping these rolls here makes reloads deterministic for a run/room seed.
+## Resolve fixed, grouped, and random-slot enemies inside the combat RNG context.
 func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> Array[Dictionary]:
 	return EncounterEnemyResolver.resolve(encounter, encounter_id, Callable(RngService, "weighted_pick"))
-
 
 func next_runtime_uid(prefix: String) -> String:
 	return _next_uid(prefix)
@@ -947,7 +948,7 @@ func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
 			resolved_damage = damage
 			params["damage"] = damage
 		"cross_burst":
-			resolved_damage = CombatConfig.explosion_cross_damage()
+			resolved_damage = damage + maxi(1, roundi(float(damage) * 0.2))
 			params["damage"] = resolved_damage
 		_:
 			if resolved_damage != 0 and not params.has("damage"):
@@ -997,9 +998,8 @@ func _register_gem_effect_profiles() -> void:
 				"damage": 0,
 			},
 			"ability_descriptions": {
-					ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active", "params": {"damage": CombatConfig.explosion_damage()}},
-					ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action", "params": {"damage": CombatConfig.explosion_damage()}},
-				ABILITY_BLUE_TURN_START: {"key": "gem.effect.explosion.blue_turn_start"},
+					ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active"},
+					ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.explosion.black_death"},
 				ABILITY_TILE_ACTIVE: {"key": "gem.effect.explosion.tile_active"},
 				ABILITY_TILE_TURN_START: {"key": "gem.effect.explosion.tile_turn_start"},

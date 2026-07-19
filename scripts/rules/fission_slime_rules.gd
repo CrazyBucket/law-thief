@@ -2,6 +2,7 @@ class_name FissionSlimeRules
 extends RefCounted
 
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const DamageContext = preload("res://scripts/rules/damage_context.gd")
 
 const EnemyBehavior = preload("res://scripts/rules/behaviors/enemy_behavior.gd")
 
@@ -260,6 +261,7 @@ static func execute_trample(
 	# star_relocate 内部会先施加 skill_damage，然后搜索落点并结算落点地形
 	Displacement.star_relocate(state, target, target.pos, unit.uid, events, {
 		"initial_damage": total_skill_dmg,
+		"damage_context": DamageContext.create(unit.uid, "trample", [], {}, true),
 	})
 
 	return events

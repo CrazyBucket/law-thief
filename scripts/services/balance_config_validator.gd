@@ -248,6 +248,8 @@ const GEM_EFFECT_LEVEL_TAG_KEYS := [
 const GEM_EFFECT_LEVEL_VALUE_TYPES := {
 	"blast_pattern": "string",
 	"damage_multiplier": "number",
+	"center_damage_ratio": "number",
+	"splash_base_attack_ratio": "number",
 	"fog_pattern": "string",
 	"duration_bonus": "number",
 	"hit_poison_stacks": "number",
@@ -283,8 +285,8 @@ const GEM_EFFECT_LEVEL_VALUE_TYPES := {
 	"pillar_poison_duration": "number",
 	"detonate_on_any_damage": "bool",
 	"detonate_on_burning": "bool",
+	"detonate_on_explosion": "bool",
 	"pillar_damage": "number",
-	"turn_start_damage": "number",
 	"deflect_chance": "number",
 	"redirect_enemy_only": "bool",
 	"slow_on_damaged": "bool",
@@ -339,9 +341,8 @@ const GEM_EFFECT_LEVEL_VALUE_TYPES := {
 	"vulnerable_duration": "number",
 	"disarm_stacks": "number",
 }
-
 const GEM_EFFECT_LEVEL_FIELDS := {
-	"red:explosion": ["blast_pattern", "damage_multiplier"],
+	"red:explosion": ["blast_pattern", "center_damage_ratio", "splash_base_attack_ratio"],
 	"red:poison": ["fog_pattern", "duration_bonus", "hit_poison_stacks", "hit_poison_duration"],
 	"red:fire": ["spread_count", "burning_bonus_spread_count"],
 	"red:gravity": ["pull_steps", "range_bonus"],
@@ -351,7 +352,7 @@ const GEM_EFFECT_LEVEL_FIELDS := {
 	"red:ice": ["hit_slowed_stacks", "slowed_min_move_points", "freeze_if_target_slowed"],
 	"red:counter": ["mark_duration", "retaliation_with_tags", "grant_extra_attack_on_kill"],
 	"red:echo": ["echo_tag_count", "followup_ratio"],
-	"blue:explosion": ["detonate_on_any_damage", "detonate_on_burning", "blast_pattern", "pillar_radius", "pillar_damage", "turn_start_damage"],
+	"blue:explosion": ["detonate_on_any_damage", "detonate_on_burning", "detonate_on_explosion", "blast_pattern", "damage_ratio", "pillar_radius", "pillar_damage"],
 	"blue:poison": ["turn_end_spread", "copy_debuff_on_contact", "copy_debuff_on_damaged", "contact_poison_stacks", "contact_poison_duration", "turn_end_poison_stacks", "turn_end_poison_duration", "pillar_radius", "pillar_poison_stacks", "pillar_poison_duration"],
 	"blue:fire": ["create_fire_on_contact", "double_burning_on_already_burning", "contact_burning_stacks"],
 	"blue:gravity": ["deflect_chance", "redirect_enemy_only", "redirect_radius", "slow_on_damaged", "root_on_damaged", "pillar_pull_radius", "pillar_pull_steps"],
@@ -372,13 +373,10 @@ const GEM_EFFECT_LEVEL_FIELDS := {
 	"black:counter": ["damage_multiplier", "vulnerable_duration", "disarm_stacks"],
 	"black:echo": ["echo_tag_count", "first_tag_repeat_count"],
 }
-
 const GEM_EFFECT_LEVEL_OPTIONAL_FIELDS := {
 	"black:arc": ["strike_count"],
 }
-
 const GEM_EFFECT_LEVEL_KEYS := ["1", "2", "3"]
-
 const GEM_EFFECT_LEVEL_ENUM_VALUES := {
 	"blast_pattern": ["cross", "square"],
 	"fog_pattern": ["single", "cross"],
@@ -413,7 +411,6 @@ const GEM_EFFECT_LEVEL_INTEGER_NON_NEGATIVE_FIELDS := {
 	"pillar_poison_stacks": true,
 	"pillar_poison_duration": true,
 	"pillar_damage": true,
-	"turn_start_damage": true,
 	"pillar_pull_radius": true,
 	"pillar_pull_steps": true,
 	"reflect_beams": true,
@@ -439,6 +436,8 @@ const GEM_EFFECT_LEVEL_INTEGER_NON_NEGATIVE_FIELDS := {
 }
 
 const GEM_EFFECT_LEVEL_UNIT_INTERVAL_FIELDS := {
+	"center_damage_ratio": true,
+	"splash_base_attack_ratio": true,
 	"deflect_chance": true,
 	"rebound_chance": true,
 	"damage_ratio": true,
@@ -497,7 +496,7 @@ const RELIC_MODIFIER_VALUE_UNITS := {
 	"overlay_move_cost_reduction": {"kind": "flat", "unit": "move_cost"},
 	"arc_bounce_count_bonus": {"kind": "flat", "unit": "target_count"},
 	"collision_damage_mult": {"kind": "multiplier", "unit": "damage"},
-	"armor_lock_break_bonus": {"kind": "flat", "unit": "damage"},
+	"armor_break_bonus": {"kind": "flat", "unit": "damage"},
 	"move_bonus": {"kind": "flat", "unit": "move_points"},
 	"extract_range_bonus": {"kind": "flat", "unit": "range"},
 	"insert_range_bonus": {"kind": "flat", "unit": "range"},

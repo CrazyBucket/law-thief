@@ -47,9 +47,16 @@ func _test_relic_source_weights_config() -> void:
 	if reg == null:
 		return
 	var shop_weights: Dictionary = reg.get_relic_source_weights("shop")
-	_expect(abs(float(shop_weights.get("boss", 0.0)) - 15.0) < 0.001, "shop relic boss weight should come from config")
+	_expect(not shop_weights.has("boss"), "shop relic pool should exclude boss rarity")
+	var normal_weights: Dictionary = reg.get_relic_source_weights("normal_chest")
+	_expect(not normal_weights.has("boss"), "normal combat relic pool should exclude boss rarity")
 	var elite_weights: Dictionary = reg.get_relic_source_weights("elite_combat")
 	_expect(abs(float(elite_weights.get("rare", 0.0)) - 40.0) < 0.001, "elite relic rare weight should come from config")
+	_expect(float(elite_weights.get("boss", 0.0)) > 0.0, "elite relic pool should allow boss rarity")
+	_expect(float(reg.get_relic_source_weights("large_chest").get("boss", 0.0)) > 0.0, "boss reward relic pool should allow boss rarity")
+	for source in ["shop", "normal_chest"]:
+		for relic_id in reg.get_relic_pool(source):
+			_expect(reg.get_relic_rarity(relic_id) != "boss", "%s should not expose boss relic %s" % [source, relic_id])
 	var source_ids: Array[String] = reg.get_relic_source_ids()
 	_expect("shop" in source_ids and "normal_chest" in source_ids, "relic source ids should come from config")
 	_expect(reg.get_relic_source_weights("missing_relic_source").is_empty(), "unknown relic sources should not fall back to common-only weights")
@@ -78,6 +85,18 @@ func _test_gem_pool_config() -> void:
 		known_tags[reg.get_gem_tag(gem_id)] = true
 	var errors := BalanceConfigValidator.validate_gem_pools(raw, known_tags)
 	_expect(errors.is_empty(), "gem pools should pass strict validation")
+	_expect(reg.get_gem_pool_tier("gem_explosion") == 1, "explosion pool tier should remain unchanged")
+	_expect(reg.get_gem_rarity("gem_explosion") == "uncommon", "explosion rarity should be upgraded")
+	_expect(reg.get_gem_rarity("gem_light") == "uncommon", "light rarity should be tier 2")
+	_expect(reg.get_gem_pool_tier("gem_light") == 2, "light should remain pool tier 2")
+	for tier_three_rarity_gem in ["gem_split", "gem_counter", "gem_echo"]:
+		_expect(reg.get_gem_rarity(tier_three_rarity_gem) == "rare", "%s rarity should be tier 3" % tier_three_rarity_gem)
+	_expect(reg.get_gem_pool_tier("gem_split") == 2, "split pool tier should remain unchanged")
+	_expect(reg.get_gem_pool_tier("gem_counter") == 2, "counter pool tier should remain unchanged")
+	_expect(reg.get_gem_pool_tier("gem_echo") == 3, "echo pool tier should remain unchanged")
+	for tier_one_gem in ["gem_poison", "gem_gravity", "gem_conductive", "gem_fire", "gem_ice"]:
+		_expect(reg.get_gem_pool_tier(tier_one_gem) == 1, "%s should be pool tier 1" % tier_one_gem)
+		_expect(reg.get_gem_rarity(tier_one_gem) == "common", "%s rarity should be tier 1" % tier_one_gem)
 	var invalid := raw.duplicate(true)
 	invalid.erase("global")
 	invalid["normal_chest"]["source_tier"] = 0
@@ -341,7 +360,7 @@ func _test_relic_numeric_refs_config() -> void:
 				{"on": "battle_start", "action": "heal", "target": "player", "amount_ref": "relic_cracked_amulet_shield"},
 				{"on": "battle_start", "action": "add_temp_move", "amount_ref": "missing_ref"},
 				{"modifier": "arc_damage_mult", "value": 1.2},
-				{"modifier": "attack_miss_chance", "value_ref": "relic_crowbar_armor_lock_break_bonus"},
+				{"modifier": "attack_miss_chance", "value_ref": "relic_crowbar_armor_break_bonus"},
 				{"modifier": "first_damage_cap", "value_ref": "relic_cracked_amulet_shield"},
 				{"on": "battle_start", "action": "apply_max_hp_reduction", "ratio_ref": "relic_cracked_amulet_shield"}
 			],
@@ -367,7 +386,7 @@ func _test_relic_numeric_refs_config() -> void:
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[1].amount_ref unit mismatch: relic_cracked_amulet_shield expected hp got shield"), "relic defs should reject wrong amount-ref units")
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[2].amount_ref unknown: missing_ref"), "relic defs should reject unknown amount refs")
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[3].value should use value_ref in authored config"), "relic defs should reject authored inline modifier values")
-	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[4].value_ref kind mismatch: relic_crowbar_armor_lock_break_bonus expected ratio got flat"), "relic defs should reject wrong modifier ref kinds")
+	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[4].value_ref kind mismatch: relic_crowbar_armor_break_bonus expected ratio got flat"), "relic defs should reject wrong modifier ref kinds")
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[5].value_ref unit mismatch: relic_cracked_amulet_shield expected damage got shield"), "relic defs should reject wrong first-damage-cap ref units")
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.effects[6].ratio_ref kind mismatch: relic_cracked_amulet_shield expected ratio got flat"), "relic defs should reject wrong ratio ref kinds")
 	_expect(_contains_error(invalid_def_errors, "relic_defs.broken_relic.weight_rules[0].value should use value_ref in authored config"), "relic defs should reject authored inline weight thresholds")
@@ -459,10 +478,8 @@ func _test_gem_effect_level_config() -> void:
 	var missing_field_errors := BalanceConfigValidator.validate_gem_effect_levels(missing_field)
 	_expect(_contains_error(missing_field_errors, "gem_effect_levels.blue.light.3.reflect_power missing"), "gem effect levels validator should require complete rows for every group")
 	var missing_blue_runtime_fields: Dictionary = raw.duplicate(true)
-	(((missing_blue_runtime_fields[Constants.SLOT_BLUE] as Dictionary)["explosion"] as Dictionary)["1"] as Dictionary).erase("turn_start_damage")
 	(((missing_blue_runtime_fields[Constants.SLOT_BLUE] as Dictionary)["gravity"] as Dictionary)["1"] as Dictionary).erase("redirect_radius")
 	var missing_blue_runtime_errors := BalanceConfigValidator.validate_gem_effect_levels(missing_blue_runtime_fields)
-	_expect(_contains_error(missing_blue_runtime_errors, "gem_effect_levels.blue.explosion.1.turn_start_damage missing"), "blue explosion should author its turn-start damage")
 	_expect(_contains_error(missing_blue_runtime_errors, "gem_effect_levels.blue.gravity.1.redirect_radius missing"), "blue gravity should author its redirect radius")
 	var foreign_field: Dictionary = raw.duplicate(true)
 	var red_explosion_level_one: Dictionary = ((foreign_field[Constants.SLOT_RED] as Dictionary)["explosion"] as Dictionary)["1"]
@@ -533,7 +550,7 @@ func _test_gem_effect_level_config() -> void:
 	var invalid_values := {
 		Constants.SLOT_RED: {
 			"explosion": {
-				"1": {"blast_pattern": "circle", "damage_multiplier": 0},
+				"1": {"blast_pattern": "circle", "center_damage_ratio": -0.1, "splash_base_attack_ratio": 1.1},
 			},
 			"split": {
 				"1": {"damage_ratio": 1.1, "light_direction_offsets": [0, 0]},
@@ -571,7 +588,8 @@ func _test_gem_effect_level_config() -> void:
 	}
 	var invalid_value_errors := BalanceConfigValidator.validate_gem_effect_levels(invalid_values)
 	_expect(_contains_error(invalid_value_errors, "blast_pattern should be one of cross, square"), "gem effect levels validator should reject invalid enum values")
-	_expect(_contains_error(invalid_value_errors, "damage_multiplier should be positive"), "gem effect levels validator should reject non-positive multipliers")
+	_expect(_contains_error(invalid_value_errors, "center_damage_ratio should be in [0, 1]"), "gem effect levels validator should reject non-positive explosion ratios")
+	_expect(_contains_error(invalid_value_errors, "splash_base_attack_ratio should be in [0, 1]"), "gem effect levels validator should reject explosion ratios above one")
 	_expect(_contains_error(invalid_value_errors, "damage_ratio should be in [0, 1]"), "gem effect levels validator should reject out-of-range ratios")
 	_expect(_contains_error(invalid_value_errors, "light_direction_offsets should not contain duplicate offsets"), "gem effect levels validator should reject duplicate split directions")
 	_expect(_contains_error(invalid_value_errors, "deflect_chance should be in [0, 1]"), "gem effect levels validator should reject out-of-range chances")
@@ -676,7 +694,7 @@ func _test_unit_and_hazard_balance_config() -> void:
 	_expect(_contains_error(invalid_unit_def_errors, "unit_defs.unit_stone_bow_guard.balance.misspelled_score is unknown"), "unit balance validator should reject unknown numeric knobs")
 	_expect(_contains_error(invalid_unit_def_errors, "unit_defs.unit_fission_slime.balance.trample_collision_damage missing"), "fission balance schema should require collision damage")
 	var patrol := UnitState.from_def("patrol_test", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i.ZERO, reg.get_unit_def("unit_patrol_guard"))
-	_expect(PatrolGuardRules.rampage_move_points(patrol) == 4, "patrol guard rampage move bonus should come from unit config")
+	_expect(PatrolGuardRules.rampage_move_points(patrol) == 3, "patrol guard rampage move bonus should come from unit config")
 	var stone_bow_range := StoneBowGuardRules.attack_range_for(Vector2i.ZERO, [])
 	_expect(stone_bow_range == 4, "stone bow deployed range should come from unit config")
 	_expect(abs(float(reg.get_unit_balance_value("unit_stone_bow_guard", "hold_position_bonus", 0.0)) - 120.0) < 0.001, "stone bow hold-position score should come from unit config")

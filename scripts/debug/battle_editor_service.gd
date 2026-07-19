@@ -6,6 +6,7 @@ const DoodlePropSprites = preload("res://scripts/ui/doodle_prop_sprites.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const EncounterCodec = preload("res://scripts/debug/battle_editor_encounter_codec.gd")
 const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
+const EncounterExportService = preload("res://scripts/debug/encounter_export_service.gd")
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
 	get:
@@ -479,18 +480,7 @@ func _ensure_run_for_relic_edit() -> Node:
 
 
 func _export_encounter(payload: Dictionary) -> Dictionary:
-	var encounter_id := str(payload.get("encounter_id", ""))
-	if encounter_id.is_empty():
-		encounter_id = "editor_export_%s" % _ctrl.state.encounter_id
-	var encounter := _build_export_encounter()
-	var lines := JSON.stringify(encounter, "\t").split("\n")
-	return _ok({
-		"message": "exported encounter %s" % encounter_id,
-		"lines": lines,
-		"warnings": EncounterContentDiagnostics.refresh_messages(_ctrl.state),
-		"encounter": encounter,
-		"encounter_id": encounter_id,
-	})
+	return EncounterExportService.export(_ctrl.state, payload)
 
 
 func _import_encounter_file(payload: Dictionary) -> Dictionary:

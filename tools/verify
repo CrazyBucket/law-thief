@@ -79,6 +79,13 @@ if ! "$ROOT/tools/source_encoding_guard" >"$SOURCE_ENCODING_LOG" 2>&1; then
   exit 1
 fi
 
+DESIGN_SYNC_LOG="$REPORT_DIR/design_sync_guard.log"
+if ! bash "$ROOT/tools/design_sync_guard" >"$DESIGN_SYNC_LOG" 2>&1; then
+  echo "VERIFY_FAIL design_sync_guard (see artifacts/verify/design_sync_guard.log)"
+  cat "$DESIGN_SYNC_LOG"
+  exit 1
+fi
+
 COMBAT_ARCHITECTURE_LOG="$REPORT_DIR/combat_architecture_guard.log"
 if ! bash "$ROOT/tools/combat_architecture_guard" >"$COMBAT_ARCHITECTURE_LOG" 2>&1; then
   echo "VERIFY_FAIL combat_architecture_guard (see artifacts/verify/combat_architecture_guard.log)"
@@ -145,6 +152,7 @@ start="$(date +%s)"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
 cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$DESIGN_SYNC_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$COMBAT_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$UI_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$PLAYER_COPY_LOG" | tee -a "$REPORT_DIR/verify.log"

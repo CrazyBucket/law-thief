@@ -1,4 +1,4 @@
 @echo off
 setlocal
-bash -lc "cd ""$(wslpath '%CD%')"" && bash ./tools/context %*"
+call "%~dp0design.cmd" find %*
 exit /b %ERRORLEVEL%

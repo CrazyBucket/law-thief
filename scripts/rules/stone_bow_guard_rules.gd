@@ -119,7 +119,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	var reachable: Array[Vector2i] = []
 	if StatusRules.can_move(enemy):
 		reachable = BoardUtils.reachable_cells(
-			state, enemy.pos, enemy.move_points, enemy.uid, {}, cell_blockers
+			state, enemy.pos, enemy.move_points, enemy.uid, {}, cell_blockers, enemy
 		)
 	reachable.append(enemy.pos)
 
@@ -129,7 +129,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if move_pos != enemy.pos:
 			var move_path := BoardUtils.path_toward(
-				state, enemy.pos, move_pos, enemy.move_points, enemy.uid, {}, cell_blockers
+				state, enemy.pos, move_pos, enemy.move_points, enemy.uid, {}, cell_blockers, enemy
 			)
 			if move_path.is_empty() or move_path[move_path.size() - 1] != move_pos:
 				continue

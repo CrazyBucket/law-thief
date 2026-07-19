@@ -21,7 +21,7 @@ func _run_tests() -> void:
 	_test_pull_gravity_no_contact_hooks()
 	_test_dash_toward_basic()
 	_test_dash_toward_blocked()
-	_test_overlay_not_doubled_on_pass_through()
+	_test_overlay_settles_only_at_landing()
 	_test_large_unit_knockback_wall()
 	_test_large_unit_pull_boundary()
 	_test_invariants_after_all_moves()
@@ -211,7 +211,7 @@ func _test_dash_toward_blocked() -> void:
 
 # ─── 地块覆盖层不重复 ─────────────────────────────────────────────────────────
 
-func _test_overlay_not_doubled_on_pass_through() -> void:
+func _test_overlay_settles_only_at_landing() -> void:
 	var state := _make_state()
 	var unit := _make_unit(state, "u", Constants.TEAM_ENEMY, Vector2i(2, 3))
 	state.get_tile(Vector2i(3, 3)).add_modifier(Constants.TILE_MOD_POISON_FOG, 3)
@@ -219,10 +219,9 @@ func _test_overlay_not_doubled_on_pass_through() -> void:
 	Displacement.knockback(state, unit, Vector2i(0, 3), 2, "", events, 0)
 	assert(unit.pos == Vector2i(4, 3), "unit should land at (4,3): got %s" % unit.pos)
 	var poison: StatusInstance = unit.get_status(Constants.STATUS_POISON)
-	assert(poison != null, "unit should have poison after passing through poison_fog")
-	assert(poison.stacks == 1, "overlay should apply exactly once: stacks=%d" % poison.stacks)
-	assert(BattleInvariantChecker.assert_valid(state, "overlay_not_doubled"))
-	print("  [OK] overlay not doubled on pass-through tile")
+	assert(poison == null, "an intermediate poison_fog cell must not apply landing status")
+	assert(BattleInvariantChecker.assert_valid(state, "overlay_landing_only"))
+	print("  [OK] overlay status settles only on the final footprint")
 
 
 # ─── 多格单位 ─────────────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@ extends SceneTree
 
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+const DamageContext = preload("res://scripts/rules/damage_context.gd")
 
 const PROFILES: Array[String] = [
 	"explosion",
@@ -268,7 +270,14 @@ func _test_blue_light_reflects_ranged_attack() -> void:
 	_ensure_blue_slots(victim, 2)
 	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["light", "light"])
 	var attacker_hp := attacker.hp
-	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	CombatRules.apply_damage(
+		state,
+		victim,
+		6,
+		attacker.uid,
+		"ranged_attack",
+		DamageContext.create(attacker.uid, "ranged_attack", [], {}, true)
+	)
 	if attacker.hp >= attacker_hp:
 		_fail("[blue_light_reflect] attacker should take reflected light damage")
 		return
@@ -286,7 +295,14 @@ func _test_blue_counter_reflects_damage() -> void:
 	_ensure_blue_slots(victim, 1)
 	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["counter"])
 	var attacker_hp := attacker.hp
-	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	CombatRules.apply_damage(
+		state,
+		victim,
+		6,
+		attacker.uid,
+		"ranged_attack",
+		DamageContext.create(attacker.uid, "ranged_attack", [], {}, true)
+	)
 	if attacker.hp >= attacker_hp:
 		_fail("[blue_counter] attacker should take reflected damage")
 		return
@@ -301,7 +317,14 @@ func _test_blue_counter_level_two_carries_tags() -> void:
 	_ensure_blue_slots(victim, 2)
 	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["counter", "counter"])
 	_mount_on_slots(state, victim, Constants.SLOT_RED, ["fire_gem"])
-	CombatRules.apply_damage(state, victim, 6, attacker.uid, "ranged_attack")
+	CombatRules.apply_damage(
+		state,
+		victim,
+		6,
+		attacker.uid,
+		"ranged_attack",
+		DamageContext.create(attacker.uid, "ranged_attack", [], {}, true)
+	)
 	if not attacker.has_status(Constants.STATUS_BURNING):
 		_fail("[blue_counter_l2] attacker should be burning from carried tag")
 		return

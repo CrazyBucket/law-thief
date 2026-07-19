@@ -62,7 +62,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 		"source_uid": player.uid,
 	}
 	var move_budget := ctrl.player_move_budget(player)
-	if action == Constants.ACTION_MOVE and (unlimited or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))):
+	if action == Constants.ACTION_MOVE and (unlimited or ctrl.can_use_action(Constants.ACTION_MOVE)):
 		var reachable := _cached_reachable_cells(state, player, move_budget, unlimited)
 		result["reachable"] = reachable
 		if hover_cell in reachable and hover_cell != player.pos:
@@ -178,8 +178,10 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 	match ctrl.selected_action:
 		Constants.ACTION_MOVE:
 			var move_budget := ctrl.player_move_budget(player)
-			var can_move_now := ctrl.editor_unlimited_actions_enabled() or ((not state.player_moved or StatusRules.has_extra_move(player)) and StatusRules.can_move(player))
-			if can_move_now and cell in BoardUtils.reachable_cells(state, player.pos, move_budget):
+			var can_move_now := ctrl.editor_unlimited_actions_enabled() or ctrl.can_use_action(Constants.ACTION_MOVE)
+			if can_move_now and cell in BoardUtils.reachable_cells(
+				state, player.pos, move_budget, player.uid, {}, {}, player
+			):
 				lines.append("落点可达")
 		Constants.ACTION_ATTACK:
 			var can_attack_now := ctrl.editor_unlimited_actions_enabled() \
@@ -326,7 +328,7 @@ func _attack_target_cells(state: GameState, player: UnitState) -> Array:
 	for x in range(Constants.BOARD_SIZE.x):
 		for y in range(Constants.BOARD_SIZE.y):
 			var pos := Vector2i(x, y)
-			if pos == player.pos:
+			if pos in player.occupied_cells():
 				continue
 			if uses_light and not GemEffects.is_valid_light_aim(player, pos):
 				continue
@@ -342,17 +344,25 @@ func _cached_reachable_cells(
 	move_budget: int,
 	unlimited: bool
 ) -> Array:
-	var key := [state.get_instance_id(), state.revision, player.uid, player.pos, move_budget, unlimited]
+	var key := [
+		state.get_instance_id(), state.revision, player.uid, player.pos,
+		player.footprint_size, move_budget, unlimited,
+	]
 	if key != _reachable_cache_key:
 		_reachable_cache_key = key
-		_reachable_cache = BoardUtils.reachable_cells(state, player.pos, move_budget)
+		_reachable_cache = BoardUtils.reachable_cells(
+			state, player.pos, move_budget, player.uid, {}, {}, player
+		)
 	return _reachable_cache.duplicate()
 
 
 func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited: bool) -> Array:
 	var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 	var uses_light := GemEffects.unit_has_red_light(state, player)
-	var key := [state.get_instance_id(), state.revision, player.uid, player.pos, max_range, uses_light, unlimited]
+	var key := [
+		state.get_instance_id(), state.revision, player.uid, player.pos,
+		player.footprint_size, max_range, uses_light, unlimited,
+	]
 	if key != _attack_range_cache_key:
 		_attack_range_cache_key = key
 		_attack_range_cache = _attack_target_cells(state, player)

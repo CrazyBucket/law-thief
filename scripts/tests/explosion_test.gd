@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 
 
 func _initialize() -> void:
@@ -10,6 +11,7 @@ func _initialize() -> void:
 func _run() -> void:
 	print("=== Explosion Test ===")
 	_test_cross_splash_damages_neighbor()
+	_test_cross_splash_damages_friendly_unit()
 	_test_multicell_target_no_splash_self()
 	_test_radius_explosion_dedupes_multicell()
 	_test_aim_cell_shifts_cross_center()
@@ -18,6 +20,7 @@ func _run() -> void:
 	_test_red_explosion_level_4_clamps_to_level_3()
 	_test_active_trigger_level_2_uses_square()
 	_test_active_trigger_level_4_clamps_to_level_3()
+	_test_blue_explosion_triggers_after_forced_displacement()
 	print("EXPLOSION_TEST_PASS")
 	quit()
 
@@ -34,10 +37,29 @@ func _test_cross_splash_damages_neighbor() -> void:
 	var neighbor := _spawn_guard(state, primary.pos + Vector2i(1, 0))
 	state.rebuild_occupancy()
 	var neighbor_hp := neighbor.hp
+	var primary_hp := primary.hp
 	var result := ctrl.try_attack_cell(primary.pos)
 	assert(result.get("ok", false))
-	assert(neighbor.hp < neighbor_hp, "orthogonal neighbor should take cross splash")
+	assert(primary_hp - primary.hp == 12, "level 1 center should take 10 direct + 2 explosion damage")
+	assert(neighbor_hp - neighbor.hp == 6, "level 1 neighbor should take 60% base_attack splash")
 	print("  [OK] cross splash hits neighbor")
+
+
+func _test_cross_splash_damages_friendly_unit() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("tutorial_001", 43)
+	var state := ctrl.state
+	var player := state.get_player()
+	_equip_red_explosion(state, player)
+	var primary := _guards(state)[0]
+	var ally := _spawn_guard(state, primary.pos + Vector2i(1, 0))
+	ally.team = Constants.TEAM_PLAYER
+	state.rebuild_occupancy()
+	var hp_before := ally.hp
+	var result := ctrl.try_attack_cell(primary.pos)
+	assert(result.get("ok", false))
+	assert(hp_before - ally.hp == 6, "explosion splash should damage friendly units")
+	print("  [OK] explosion splash is friendly fire")
 
 
 func _test_multicell_target_no_splash_self() -> void:
@@ -134,7 +156,7 @@ func _test_red_explosion_level_3_doubles_square_damage() -> void:
 	var result := ctrl.try_attack_cell(primary.pos)
 	assert(result.get("ok", false))
 	var dealt := hp_before - primary.hp
-	assert(dealt >= CombatConfig.explosion_cross_damage() * 2, "level 3 explosion should deal double damage, got %d" % dealt)
+	assert(dealt == 15, "level 3 center should take 10 direct + 50%% center damage, got %d" % dealt)
 	var explode_ev := _first_explode_event(result.get("attack_events", []))
 	assert(explode_ev.get("pattern", "") == "square", "level 3 explosion should use square pattern")
 	print("  [OK] red explosion level 3 double damage")
@@ -158,7 +180,7 @@ func _test_red_explosion_level_4_clamps_to_level_3() -> void:
 	assert(result.get("ok", false))
 	assert(soak.hp < hp_before, "diagonal unit should take square explosion damage")
 	var dealt := hp_before - soak.hp
-	assert(dealt == CombatConfig.explosion_cross_damage() * 2, "four gems should clamp to authored level 3 damage, got %d" % dealt)
+	assert(dealt == player.base_attack, "four gems should clamp to level 3 100%% base_attack splash, got %d" % dealt)
 	var explode_ev := _first_explode_event(result.get("attack_events", []))
 	assert(explode_ev.get("pattern", "") == "square", "four gems should clamp to authored level 3 pattern")
 	print("  [OK] red explosion count above max clamps to level 3")
@@ -204,8 +226,40 @@ func _test_active_trigger_level_4_clamps_to_level_3() -> void:
 	var red_slot: SlotState = player.slots_accepting(Constants.SLOT_RED)[0]
 	var ok := GemEffects.trigger_gem(state, player.uid, red_slot, events, "", primary.pos)
 	assert(ok, "active trigger should succeed")
-	assert(hp_before - soak.hp == CombatConfig.explosion_cross_damage() * 2, "active trigger should clamp to authored level 3 damage")
+	assert(hp_before - soak.hp == player.base_attack, "active trigger should clamp to level 3 100% base_attack splash")
 	print("  [OK] active explosion count above max clamps to level 3")
+
+
+func _test_blue_explosion_triggers_after_forced_displacement() -> void:
+	var builder := ScenarioBuilder.new("fission_slime_test", 2030, true)
+	var player := builder.player()
+	builder.move(player, Vector2i(1, 3))
+	var carrier := builder.add_unit(
+		"blue_explosion_carrier",
+		"unit_patrol_guard",
+		Constants.TEAM_ENEMY,
+		Vector2i(3, 3),
+		{"hp": 100, "max_hp": 100, "base_attack": 10}
+	)
+	var victim := builder.add_unit(
+		"blue_explosion_victim",
+		"unit_patrol_guard",
+		Constants.TEAM_PLAYER,
+		Vector2i(5, 3),
+		{"hp": 100, "max_hp": 100}
+	)
+	builder.clear_slots(carrier)
+	builder.mount_gems(carrier, Constants.SLOT_BLUE, [Constants.GEM_EXPLOSION])
+	var state := builder.finish()
+	var events: Array[Dictionary] = []
+	var carrier_hp := carrier.hp
+	var victim_hp := victim.hp
+	Displacement.knockback(state, carrier, Vector2i(2, 3), 1, player.uid, events, 0)
+	assert(carrier.pos == Vector2i(4, 3), "carrier should complete the forced move before detonating")
+	assert(carrier.hp == carrier_hp, "blue explosion should not damage its carrier")
+	assert(victim_hp - victim.hp == 6, "forced displacement should trigger 60%% base_attack blue explosion")
+	assert(events.any(func(ev): return ev.get("type", "") == "explode"), "forced displacement should emit an explosion")
+	print("  [OK] blue explosion triggers after forced displacement")
 
 
 func _equip_red_explosion(state: GameState, unit: UnitState) -> void:

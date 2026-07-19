@@ -7,6 +7,7 @@ Start with read-only inspection. Before changing battle or gem behavior, gather 
 
 ```bash
 ./tools/context <relevant Chinese or English terms>
+./tools/design affected
 ./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
 ```
 
@@ -21,21 +22,48 @@ Machine-readable output is written under `artifacts/verify/`.
 Only executable cases in `tests/contracts/gem_semantics.json` count as semantic verification.
 Green ordinary tests do not imply that uncovered gem semantics are correct.
 
+## Design Context And Documentation Sync
+
+`DESIGN_INDEX.md` in the external design root is the single entry point for humans and AI.
+Do not hand-edit generated `AI_CONTEXT*.md` files. Use:
+
+```bash
+./tools/design find <terms>
+./tools/design topic <terms> [--copy]
+./tools/design build
+./tools/design check
+./tools/design affected
+./tools/design sync-check --strict
+./tools/design refresh
+```
+
+Before changing product behavior or numeric semantics, run `design affected` and read the listed
+authority sources. Update the matching authoritative design document in the same task as the code,
+then run `design refresh` to rebuild and check the generated chat contexts. Generated contexts are
+local ignored artifacts. `verify` refreshes them and runs the strict design sync guard when the local
+design repository is available. For a pure refactor with provably unchanged behavior, set a
+non-empty `DESIGN_SYNC_SKIP_REASON` for that verification run; do not use it for unfinished docs.
+
+The design tool locates a sibling `learning-notes/game/design/law-thief` checkout by default and
+also accepts `DESIGN_ROOT`. Windows users can run the same commands through `tools\design.cmd`.
+
 ## Design Semantics
 
-The external design root is:
+The external design root is normally discovered as:
 
 ```text
-/Users/jinhuiwu/code/learning-notes/game/design/law-thief
+../learning-notes/game/design/law-thief
 ```
+
+If the repositories are not siblings, set `DESIGN_ROOT` to the absolute design directory. The
+legacy `/Users/jinhuiwu/code/learning-notes/game/design/law-thief` path remains a fallback.
 
 Read sources in this order:
 
 1. `详细设计/宝石/宝石_v1.md` for gem slot/count behavior.
 2. `详细设计/数值/数值设计_v1.md` for formulas and numeric intent.
 3. `GDD.md` for current product intent.
-4. `Technical_Architecture.md` for architecture and invariants.
-5. Repository tests and implementation describe current behavior, not necessarily correct semantics.
+4. Repository tests and implementation describe current behavior, not necessarily correct semantics.
 
 When sources conflict, explicitly report the conflict before changing behavior. Do not silently
 make implementation, tests, and localization agree with an assumption.
@@ -125,5 +153,6 @@ tools/ui_visual_regression      capture/compare fixed UI scenarios at three reso
 scripts/rules/gem_effects.gd     gem effect execution
 scripts/rules/gem_tag_resolver.gd gem count/level semantics
 scripts/rules/attack_pipeline.gd attack calculation and tags
+scripts/services/procedural_encounter_generator.gd deterministic normal-battle generation
 resources/gems/                  gem definitions and pools
 ```

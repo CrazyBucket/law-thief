@@ -10,6 +10,7 @@ const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const SHOP_SCENE := "res://scenes/adventure/shop_scene.tscn"
 const EVENT_SCENE := "res://scenes/adventure/event_scene.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
+const PROCEDURAL_NORMAL_ENCOUNTER_ID := "procedural_normal"
 
 var map_seed: int = 20260525
 var map_matrix: Array = []
@@ -232,7 +233,14 @@ func import_progress(progress: Dictionary) -> bool:
 func _navigate_to_room(room_type: String) -> void:
 	GameService.pending_room_id = current_room_id()
 	match room_type:
-		"NORMAL_COMBAT", "ELITE_COMBAT":
+		"NORMAL_COMBAT":
+			var encounter_id := PROCEDURAL_NORMAL_ENCOUNTER_ID
+			GameService.adventure_return = true
+			GameService.start_battle(encounter_id)
+			_mark_pending_battle(encounter_id)
+			RunService.save_run()
+			get_tree().change_scene_to_file(BATTLE_SCENE)
+		"ELITE_COMBAT":
 			var pool: Array[String] = AdventureProgressionConfig.combat_encounters(room_type)
 			if pool.is_empty():
 				push_error("AdventureService: combat encounter pool is empty: %s" % room_type)

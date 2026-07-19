@@ -74,8 +74,11 @@
       ],
       "expect": {
         "damage": 12,
-        "unit_damages": {"contract_target": 12, "cross_target": 12, "diag_target": 0},
-        "event_matches": [{"type": "explode", "pattern": "cross"}]
+        "unit_damages": {"contract_target": 12, "cross_target": 6, "diag_target": 0},
+        "event_matches": [
+          {"type": "explode", "pattern": "cross"},
+          {"type": "damage", "reason": "explosion_cross", "is_crit": false}
+        ]
       }
     },
     {
@@ -87,8 +90,8 @@
         {"uid": "diag_target", "pos": [4, 2]}
       ],
       "expect": {
-        "damage": 12,
-        "unit_damages": {"contract_target": 12, "cross_target": 12, "diag_target": 12},
+        "damage": 13,
+        "unit_damages": {"contract_target": 13, "cross_target": 8, "diag_target": 8},
         "event_matches": [{"type": "explode", "pattern": "square"}]
       }
     },
@@ -101,8 +104,8 @@
         {"uid": "diag_target", "pos": [4, 2]}
       ],
       "expect": {
-        "damage": 24,
-        "unit_damages": {"contract_target": 24, "cross_target": 24, "diag_target": 24},
+        "damage": 15,
+        "unit_damages": {"contract_target": 15, "cross_target": 10, "diag_target": 10},
         "event_matches": [{"type": "explode", "pattern": "square"}]
       }
     },
@@ -725,7 +728,7 @@
       "expect": {
         "unit_damages": {
           "contract_target": 5,
-          "light_explosion_end_neighbor": 17
+          "light_explosion_end_neighbor": 11
         },
         "event_matches": [
           {"type": "light_beam", "width": 1.0},
@@ -769,6 +772,7 @@
       "mounts": [
         {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion"]}
       ],
+      "target_stats": {"base_attack": 10},
       "extra_units": [
         {"uid": "blue_cross_target", "pos": [6, 3]},
         {"uid": "blue_diag_target", "pos": [6, 2]}
@@ -778,7 +782,51 @@
       ],
       "expect": {
         "damage": 1,
-        "unit_damages": {"contract_target": 1, "blue_cross_target": 12, "blue_diag_target": 0}
+        "unit_damages": {"contract_target": 1, "blue_cross_target": 6, "blue_diag_target": 0}
+      }
+    },
+    {
+      "id": "explosion/blue/1_forced_displacement_detonates_cross",
+      "covers": ["gem_explosion:blue:1"],
+      "player_stats": {"base_attack": 0},
+      "player_pos": [1, 3],
+      "target_pos": [3, 3],
+      "target_stats": {"base_attack": 10, "hp": 100, "max_hp": 100},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_forced_move_target", "pos": [5, 3], "stats": {"hp": 100, "max_hp": 100}}
+      ],
+      "post_steps": [
+        {"type": "knockback", "target": "contract_target", "source": "player", "origin": [2, 3], "steps": 1}
+      ],
+      "expect": {
+        "damage": 0,
+        "target_pos": [4, 3],
+        "unit_damages": {"contract_target": 0, "blue_forced_move_target": 6},
+        "event_matches": [{"type": "explode", "pattern": "cross", "pos": [4, 3]}]
+      }
+    },
+    {
+      "id": "explosion/blue/1_explosion_chain_triggers_each_carrier_once",
+      "covers": ["gem_explosion:blue:1"],
+      "player_stats": {"base_attack": 0},
+      "target_stats": {"base_attack": 10, "hp": 100, "max_hp": 100},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion"]},
+        {"uid": "blue_chain_target", "slot": "blue", "gems": ["gem_explosion"]}
+      ],
+      "extra_units": [
+        {"uid": "blue_chain_target", "pos": [6, 3], "stats": {"base_attack": 10, "hp": 100, "max_hp": 100}}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 1, "reason": "explosion"}
+      ],
+      "expect": {
+        "damage": 7,
+        "unit_damages": {"contract_target": 7, "blue_chain_target": 6},
+        "event_counts": {"explode": 2}
       }
     },
     {
@@ -787,13 +835,14 @@
       "mounts": [
         {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion", "gem_explosion"]}
       ],
+      "target_stats": {"base_attack": 10},
       "extra_units": [
         {"uid": "blue_cross_target", "pos": [6, 3]},
         {"uid": "blue_diag_target", "pos": [6, 2]}
       ],
       "expect": {
         "damage": 10,
-        "unit_damages": {"contract_target": 10, "blue_cross_target": 12, "blue_diag_target": 0},
+        "unit_damages": {"contract_target": 10, "blue_cross_target": 6, "blue_diag_target": 0},
         "event_matches": [{"type": "explode", "pos": [5, 3]}]
       }
     },
@@ -803,13 +852,14 @@
       "mounts": [
         {"uid": "contract_target", "slot": "blue", "gems": ["gem_explosion", "gem_explosion", "gem_explosion"]}
       ],
+      "target_stats": {"base_attack": 10},
       "extra_units": [
         {"uid": "blue_cross_target", "pos": [6, 3]},
         {"uid": "blue_diag_target", "pos": [6, 2]}
       ],
       "expect": {
         "damage": 10,
-        "unit_damages": {"contract_target": 10, "blue_cross_target": 12, "blue_diag_target": 12},
+        "unit_damages": {"contract_target": 10, "blue_cross_target": 6, "blue_diag_target": 6},
         "event_matches": [{"type": "explode", "pattern": "square", "pos": [5, 3]}]
       }
     },
@@ -819,7 +869,7 @@
       "player_stats": {"base_attack": 20},
       "player_pos": [1, 3],
       "target_pos": [4, 3],
-      "target_stats": {"hp": 20, "max_hp": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
       "mounts": [
         {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion"]}
       ],
@@ -828,7 +878,7 @@
       ],
       "expect": {
         "damage": 20,
-        "unit_damages": {"contract_target": 20, "black_blast_target": 12},
+        "unit_damages": {"contract_target": 20, "black_blast_target": 10},
         "event_counts": {"explode": 1}
       }
     },
@@ -838,17 +888,17 @@
       "player_stats": {"base_attack": 20},
       "player_pos": [1, 3],
       "target_pos": [4, 3],
-      "target_stats": {"hp": 20, "max_hp": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
       "mounts": [
         {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion", "gem_explosion"]}
       ],
       "extra_units": [
-        {"uid": "black_blast_target", "pos": [5, 3], "stats": {"hp": 12, "max_hp": 12}},
-        {"uid": "black_chain_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+        {"uid": "black_blast_target", "team": "player", "pos": [5, 3], "stats": {"hp": 10, "max_hp": 10}},
+        {"uid": "black_chain_target", "team": "player", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
       ],
       "expect": {
         "damage": 20,
-        "unit_damages": {"contract_target": 20, "black_blast_target": 12, "black_chain_target": 12},
+        "unit_damages": {"contract_target": 20, "black_blast_target": 10, "black_chain_target": 10},
         "event_min_counts": {"explode": 2},
         "event_matches": [{"type": "explode", "pattern": "cross", "pos": [5, 3]}]
       }
@@ -859,18 +909,18 @@
       "player_stats": {"base_attack": 20},
       "player_pos": [1, 3],
       "target_pos": [4, 3],
-      "target_stats": {"hp": 20, "max_hp": 20},
+      "target_stats": {"hp": 20, "max_hp": 20, "base_attack": 10},
       "mounts": [
         {"uid": "contract_target", "slot": "black", "gems": ["gem_explosion", "gem_explosion", "gem_explosion"]}
       ],
       "extra_units": [
-        {"uid": "black_blast_target", "pos": [5, 3], "stats": {"hp": 24, "max_hp": 24}},
+        {"uid": "black_blast_target", "team": "player", "pos": [5, 3], "stats": {"hp": 20, "max_hp": 20}},
         {"uid": "black_diag_target", "pos": [5, 2], "stats": {"hp": 80, "max_hp": 80}},
-        {"uid": "black_chain_target", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
+        {"uid": "black_chain_target", "team": "player", "pos": [6, 3], "stats": {"hp": 80, "max_hp": 80}}
       ],
       "expect": {
         "damage": 20,
-        "unit_damages": {"contract_target": 20, "black_blast_target": 24, "black_diag_target": 24, "black_chain_target": 12},
+        "unit_damages": {"contract_target": 20, "black_blast_target": 20, "black_diag_target": 20, "black_chain_target": 10},
         "event_matches": [{"type": "explode", "pattern": "cross", "pos": [5, 3]}]
       }
     },
@@ -1430,12 +1480,9 @@
     {
       "id": "counter/blue/1_reflect_damage",
       "covers": ["gem_counter:blue:1"],
-      "player_stats": {"base_attack": 0},
+      "player_stats": {"base_attack": 6},
       "mounts": [
         {"uid": "contract_target", "slot": "blue", "gems": ["gem_counter"]}
-      ],
-      "post_steps": [
-        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 6, "reason": "ranged_attack"}
       ],
       "expect": {
         "damage": 6,
@@ -1454,7 +1501,7 @@
         {"uid": "contract_target", "slot": "red", "gems": ["gem_fire"]}
       ],
       "post_steps": [
-        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 6, "reason": "ranged_attack"}
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 6, "reason": "ranged_attack", "active_attack": true}
       ],
       "expect": {
         "damage": 6,
@@ -1479,7 +1526,7 @@
         {"uid": "player", "slot": "blue", "gems": ["gem_counter", "gem_counter", "gem_counter"]}
       ],
       "post_steps": [
-        {"type": "combat_apply_damage", "target": "player", "source": "contract_target", "amount": 6, "reason": "ranged_attack"}
+        {"type": "combat_apply_damage", "target": "player", "source": "contract_target", "amount": 6, "reason": "ranged_attack", "active_attack": true}
       ],
       "expect": {
         "unit_damages": {
@@ -1490,6 +1537,27 @@
           "player": {
             "extra_move": {"stacks": 1}
           }
+        }
+      }
+    },
+    {
+      "id": "counter/blue/reactive_arc_does_not_counter",
+      "covers": ["gem_counter:blue:1"],
+      "target_pos": [7, 3],
+      "aim_cell": [4, 3],
+      "player_stats": {"base_attack": 10, "hp": 80, "max_hp": 80},
+      "target_stats": {"hp": 80, "max_hp": 80},
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_counter"]},
+        {"uid": "player", "slot": "blue", "gems": ["gem_conductive", "gem_conductive", "gem_conductive"]}
+      ],
+      "post_steps": [
+        {"type": "combat_apply_damage", "target": "contract_target", "source": "player", "amount": 10, "reason": "arc"}
+      ],
+      "expect": {
+        "unit_damages": {
+          "contract_target": 10,
+          "player": 0
         }
       }
     },

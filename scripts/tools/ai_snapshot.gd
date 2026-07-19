@@ -70,7 +70,6 @@ func _run() -> void:
 			"%s/详细设计/宝石/宝石_v1.md" % design_root,
 			"%s/详细设计/数值/数值设计_v1.md" % design_root,
 			"%s/GDD.md" % design_root,
-			"%s/Technical_Architecture.md" % design_root,
 		],
 		"warning": "设计文档可能互相冲突；修改语义前必须指出冲突，并以详细设计优先。",
 	}

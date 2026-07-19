@@ -37,6 +37,7 @@ func begin_enemy_phase() -> Dictionary:
 		return {"events": [] as Array[Dictionary], "presentation_state": null}
 	var ending_player: UnitState = ctrl.state.get_player()
 	StatusRules.consume_disarm(ending_player)
+	ctrl.state.clear_split_move()
 	# 若队列中还有待操控单位，切换后继续玩家回合
 	if _try_activate_next_controllable(ctrl):
 		return {"events": [] as Array[Dictionary], "presentation_state": null}
@@ -137,6 +138,7 @@ func finish_enemy_phase() -> Dictionary:
 	ctrl.state.bootstrap_split_controllable_turn()
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	ctrl.state.clear_split_move()
 	for unit in ctrl.state.units.values():
 		if unit.team == Constants.TEAM_ENEMY:
 			StatusRules.clear_extra_action_statuses(unit)
@@ -244,6 +246,7 @@ func _try_inherit_split_clone(ctrl) -> bool:
 	ctrl.selected_unit_uid = heir.uid
 	ctrl.state.player_moved = false
 	ctrl.state.player_acted = false
+	ctrl.state.clear_split_move()
 	ctrl.state.log("玩家死亡，%s 接班" % heir.uid)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl._emit_changed()

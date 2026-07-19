@@ -55,7 +55,7 @@ const AMOUNT_REF_KINDS := [
 ]
 
 const ENCOUNTER_FIELDS := {
-	"catalog_visible": true,
+	"catalog_visible": true, "schema_version": true, "floor_seed": true, "generation": true,
 	"player_spawn": true,
 	"enemies": true,
 	"enemy_groups": true,

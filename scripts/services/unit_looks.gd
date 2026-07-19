@@ -18,7 +18,7 @@ const _BODY_COLORS := {
 var _face_texture_cache: Dictionary = {}
 var _knight_sheet_inst = null
 var _player_sheet_inst = null
-var _slime_sheet_inst = null
+var _slime_sheet_insts: Dictionary = {}
 var _gem_sheet_inst = null
 
 
@@ -34,10 +34,10 @@ func _sheet_player():
 	return _player_sheet_inst
 
 
-func _sheet_slime():
-	if _slime_sheet_inst == null:
-		_slime_sheet_inst = SLIME_SPRITES_SCRIPT.new("green")
-	return _slime_sheet_inst
+func _sheet_slime(variant: String = "green"):
+	if not _slime_sheet_insts.has(variant):
+		_slime_sheet_insts[variant] = SLIME_SPRITES_SCRIPT.new(variant)
+	return _slime_sheet_insts[variant]
 
 
 func _sheet_gem():
@@ -54,11 +54,12 @@ func get_unit_texture(unit_def_id: String = "") -> Texture2D:
 		var player_tex: Texture2D = _sheet_player().portrait_texture()
 		_face_texture_cache[cache_key] = player_tex
 		return player_tex
-	if unit_def_id == "unit_fission_slime":
-		var slime_key := "slime_face"
+	if SLIME_SPRITES_SCRIPT.supports_unit(unit_def_id):
+		var variant := SLIME_SPRITES_SCRIPT.variant_for_unit(unit_def_id)
+		var slime_key := "slime_face_%s" % variant
 		if _face_texture_cache.has(slime_key):
 			return _face_texture_cache[slime_key] as Texture2D
-		var slime_tex: Texture2D = _sheet_slime().portrait_texture()
+		var slime_tex: Texture2D = _sheet_slime(variant).portrait_texture()
 		_face_texture_cache[slime_key] = slime_tex
 		return slime_tex
 	if _face_texture_cache.has("doodle_face"):
@@ -71,7 +72,7 @@ func get_unit_texture(unit_def_id: String = "") -> Texture2D:
 func sprite_modulate_for_unit(team: String, unit_def_id: String) -> Color:
 	if team == Constants.TEAM_PLAYER:
 		return Color.WHITE
-	if unit_def_id == "unit_fission_slime":
+	if SLIME_SPRITES_SCRIPT.supports_unit(unit_def_id):
 		return Color.WHITE
 	var body: Color = _BODY_COLORS.get(unit_def_id, Color(0.74, 0.75, 0.82))
 	return Color.WHITE.lerp(body.lightened(0.1), 0.52)

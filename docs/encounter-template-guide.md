@@ -1,5 +1,9 @@
 # Encounter template guide
 
+Normal adventure battles currently use the deterministic procedural generator in
+`scripts/services/procedural_encounter_generator.gd`. Tutorials, elites, bosses, authored set pieces,
+and future editor-produced map batches continue to use the JSON format documented below.
+
 Battle maps are hand-authored 8×8 templates under `resources/encounters/`. A template may combine all three enemy composition forms:
 
 - `enemies`: fixed monsters at fixed positions; always spawned.
@@ -38,3 +42,15 @@ Map hazards use existing encounter fields:
 - `entities`: `entity_rock`, `entity_prop`, `entity_spike`, or `entity_barrel`.
 
 Keep at least one readable route between player and enemies, and avoid placing blocking entities on any unit footprint.
+
+## Saving generated encounters
+
+The generated battle keeps an immutable initial blueprint after enemy gems have been resolved. In a
+debug build, normal generated battles expose a top-bar `导出地图` button that saves this untouched
+blueprint under `user://exported_encounters/`; entering editor mode is not required. The export still
+contains enemies that died or moved during play.
+
+The debug battle console command `/export generated [encounter_id]` provides the same export as a
+fallback or when a custom encounter id is needed.
+
+Use `/export encounter [encounter_id]` when the desired output is the current edited battle state.

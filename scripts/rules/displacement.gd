@@ -124,7 +124,7 @@ static func _push_directional(
 	var tx := _CombatTransaction.begin(state, events).bind_event_sink()
 
 	while i < remaining:
-		var step_vec := _step_vector(unit.pos, reference_pos, dir)
+		var step_vec := _step_vector(unit, reference_pos, dir)
 		if step_vec == Vector2i.ZERO:
 			break
 		var next := unit.pos + step_vec
@@ -142,33 +142,41 @@ static func _push_directional(
 			break
 
 		# ─── 撞静态实体（立即截停，按 max_hp 分单/双伤）───────────────────
-		var entity := _blocking_entity_at_anchor(state, unit, next)
-		if entity != null:
-			_append_collision_motion(
-				events, unit, next, source_uid, "entity_collision", "entity", entity.uid, entity.entity_id
-			)
+		var blocking_entities := _blocking_entities_at_anchor(state, unit, next)
+		if not blocking_entities.is_empty():
 			var dmg := _resolve_collision_damage(collision_damage, i)
-			EntityRules.on_unit_collide_entity(
-				state, unit, entity, source_uid, events, dmg, damage_context
-			)
+			for entity in blocking_entities:
+				_append_collision_motion(
+					events, unit, next, source_uid, "entity_collision", "entity", entity.uid, entity.entity_id
+				)
+			if dmg > 0:
+				_deal_unit_collision_damage(
+					state, unit, source_uid, dmg, "entity_collision", events, damage_context
+				)
+				for entity in blocking_entities:
+					if entity.max_hp > 0:
+						EntityRules.damage_entity(state, entity, dmg, source_uid, events)
 			break
 
 		# ─── 撞可位移单位（立即截停，A/B 同伤，不链推）─────────────────────
-		var blocker := _blocking_unit_at_anchor(state, unit, next)
-		if blocker != null:
-			_append_collision_motion(
-				events, unit, next, source_uid, "unit_collision", "unit", blocker.uid
-			)
+		var blocking_units := _blocking_units_at_anchor(state, unit, next)
+		if not blocking_units.is_empty():
+			for blocker in blocking_units:
+				_append_collision_motion(
+					events, unit, next, source_uid, "unit_collision", "unit", blocker.uid
+				)
 			var dmg := _resolve_collision_damage(collision_damage, i)
 			if dmg > 0:
 				_deal_unit_collision_damage(
 					state, unit, source_uid, dmg, "unit_collision", events, damage_context
 				)
-				_deal_unit_collision_damage(
-					state, blocker, unit.uid, dmg, "unit_collision", events, damage_context
-				)
+				for blocker in blocking_units:
+					_deal_unit_collision_damage(
+						state, blocker, unit.uid, dmg, "unit_collision", events, damage_context
+					)
 			if not skip_contact_hooks:
-				_ContactResolver.on_collision(state, unit, blocker)
+				for blocker in blocking_units:
+					_ContactResolver.on_collision(state, unit, blocker)
 			break
 
 		# ─── 正常移动一格 ───────────────────────────────────────────────────
@@ -186,10 +194,9 @@ static func _push_directional(
 			"reason": "forced_displacement",
 		}))
 
-		var moved_tile := state.get_tile(next)
 		var _ice_registry := _relic_effect_registry()
 		var _ice_immune: bool = _ice_registry != null and bool(_ice_registry.query_modifier("tile_effect_immune", state))
-		if not _ice_immune and moved_tile.has_ground_tag(Constants.GROUND_TAG_ICE):
+		if not _ice_immune and _footprint_has_ground_tag(state, unit, Constants.GROUND_TAG_ICE):
 			remaining += 1
 
 		i += 1
@@ -312,20 +319,42 @@ static func _deal_unit_collision_damage(
 	tx.damage_unit(unit, final_amount, source_uid, reason, {"damage_context": damage_context})
 
 
-static func _blocking_entity_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> EntityState:
+static func _blocking_entities_at_anchor(
+	state: GameState,
+	unit: UnitState,
+	anchor: Vector2i
+) -> Array[EntityState]:
+	var result: Array[EntityState] = []
+	var seen: Dictionary = {}
 	for cell in BoardUtils.footprint_cells_at(unit.footprint_size, anchor):
 		var entity := state.get_entity_at(cell)
-		if entity != null and entity.alive and entity.blocks_movement():
-			return entity
-	return null
+		if entity != null and entity.alive and entity.blocks_movement() and not seen.has(entity.uid):
+			seen[entity.uid] = true
+			result.append(entity)
+	return result
 
 
-static func _blocking_unit_at_anchor(state: GameState, unit: UnitState, anchor: Vector2i) -> UnitState:
+static func _blocking_units_at_anchor(
+	state: GameState,
+	unit: UnitState,
+	anchor: Vector2i
+) -> Array[UnitState]:
+	var result: Array[UnitState] = []
+	var seen: Dictionary = {}
 	for cell in BoardUtils.footprint_cells_at(unit.footprint_size, anchor):
 		var blocker := state.get_unit_at(cell)
-		if blocker != null and blocker.uid != unit.uid:
-			return blocker
-	return null
+		if blocker != null and blocker.uid != unit.uid and not seen.has(blocker.uid):
+			seen[blocker.uid] = true
+			result.append(blocker)
+	return result
+
+
+static func _footprint_has_ground_tag(state: GameState, unit: UnitState, tag: String) -> bool:
+	for cell in unit.occupied_cells():
+		var tile := state.get_tile(cell)
+		if tile != null and tile.has_ground_tag(tag):
+			return true
+	return false
 
 
 static func _footprint_in_bounds(state: GameState, unit: UnitState, anchor: Vector2i) -> bool:
@@ -335,12 +364,14 @@ static func _footprint_in_bounds(state: GameState, unit: UnitState, anchor: Vect
 	return true
 
 
-static func _step_vector(current: Vector2i, reference: Vector2i, dir: Direction) -> Vector2i:
+static func _step_vector(unit: UnitState, reference: Vector2i, dir: Direction) -> Vector2i:
+	var current_center_twice := unit.pos * 2 + unit.footprint_size - Vector2i.ONE
+	var reference_twice := reference * 2
 	match dir:
 		Direction.AWAY:
-			return _away_step(current, reference)
+			return _away_step(current_center_twice, reference_twice)
 		Direction.TOWARD:
-			return _toward_step(current, reference)
+			return _toward_step(current_center_twice, reference_twice)
 		Direction.NORTH:
 			return Vector2i(0, -1)
 		Direction.SOUTH:

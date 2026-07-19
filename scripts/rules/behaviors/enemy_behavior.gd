@@ -282,7 +282,10 @@ static func execute_custom_intent(
 			var target: UnitState = state.units.get(intent.target_uid, null)
 			if target != null and target.alive and BoardUtils.manhattan(unit.pos, target.pos) == 1:
 				var tx := _CombatTransaction.begin(state, events)
-				tx.damage_unit(target, intent.damage, unit.uid, "lawless_attack", {"is_crit": true})
+				tx.damage_unit(target, intent.damage, unit.uid, "lawless_attack", {
+					"is_crit": true,
+					"active_attack": true,
+				})
 			return {
 				"handled": true,
 				"events": events,
@@ -397,5 +400,8 @@ static func _enemy_red_damage_events(
 		return [] as Array[Dictionary]
 	var events: Array[Dictionary] = []
 	var tx := _CombatTransaction.begin(state, events)
-	tx.damage_unit(target, amount, unit.uid, reason, {"is_crit": is_crit})
+	tx.damage_unit(target, amount, unit.uid, reason, {
+		"is_crit": is_crit,
+		"active_attack": true,
+	})
 	return events

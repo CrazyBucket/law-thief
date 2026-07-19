@@ -33,7 +33,7 @@ func _run_tests() -> void:
 	assert(choose_rule.get("ok", false), "choosing rule option should succeed")
 	assert((run_service.get_adventure_rules() as Array).size() == 1, "rule option should append run rule")
 	var grant: Dictionary = economy_service.grant("gold", 10, "combat_reward", {"transaction_id": "event_rule_gold"})
-	assert(int((grant.get("entry", {}) as Dictionary).get("after", 0)) == 11, "event-added rule should modify later gold gains")
+	assert(int((grant.get("entry", {}) as Dictionary).get("after", 0)) == 96, "event-added rule should modify later gold gains")
 
 	adventure_service.start_new_run(20260613)
 	adventure_service.current_pos = Vector2i.ZERO
@@ -44,6 +44,7 @@ func _run_tests() -> void:
 	node.properties["event_id"] = "event_debug_relief"
 	room_id = str(adventure_service.current_room_id())
 	room_flow_service.enter_room(room_id)
+	run_service.set_resource_balance("gold", 0)
 	event_view = root.get_node("EventService").get_event_view(room_id)
 	options = event_view.get("options", [])
 	assert(str((options[0] as Dictionary).get("label", "")) == "拿 8 金币", "amount-ref label should render configured gold")
@@ -64,7 +65,8 @@ func _run_tests() -> void:
 	node.properties["event_id"] = "event_debug_toll"
 	room_id = str(adventure_service.current_room_id())
 	view = room_flow_service.enter_room(room_id)
-	event_view = view.get("payload", {}).get("event", {})
+	run_service.set_resource_balance("gold", 0)
+	event_view = root.get_node("EventService").get_event_view(room_id)
 	options = event_view.get("options", [])
 	assert(options.size() == 2, "toll event should expose two options")
 	assert(str(event_view.get("body", "")) == "一台还在运转的旧闸机要求你缴纳 5 金币，否则什么都不给。", "amount-ref body should render configured toll text")
@@ -103,7 +105,7 @@ func _run_tests() -> void:
 	})
 	assert(take_cache_gold.get("ok", false), "graph event call should succeed")
 	assert(str(take_cache_gold.get("state", "")) == "AWAITING_DECISION", "next transition should keep the event open")
-	assert(economy_service.get_balance("gold") == 10, "graph event should dispatch its configured function call")
+	assert(economy_service.get_balance("gold") == 105, "graph event should dispatch its configured function call")
 	event_view = take_cache_gold.get("payload", {}).get("event", {})
 	assert(str(event_view.get("node_id", "")) == "gold_taken", "choice should advance to its configured result node")
 	var saved_event: Dictionary = run_service.get_room_state(room_id).get("snapshot", {}).get("event", {})

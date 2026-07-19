@@ -69,7 +69,8 @@ func _test_stone_bow_shot_preview_matches_execution() -> void:
 	state.rebuild_occupancy()
 	IntentSystem.refresh_unit_intent(state, bow)
 	assert(bow.intent.type == "ranged_attack", "bow should preview ranged attack")
-	assert(bow.intent.damage == CombatConfig.explosion_cross_damage(), "bow should preview configured explosion damage")
+	var expected_damage := bow.base_attack + roundi(float(bow.base_attack) * 0.2)
+	assert(bow.intent.damage == expected_damage, "bow should preview direct plus center explosion damage")
 	assert(player.pos in bow.intent.affected_cells, "bow should preview the explosion blast cells")
 	var hp_before := player.hp
 	var events := IntentSystem.execute_intent(state, bow)

@@ -22,8 +22,8 @@ func _test_spawn_stats() -> void:
 	controller.start_encounter("patrol_guard_test", 42)
 	var guard := _find_guard(controller.state)
 	assert(guard != null, "patrol guard should exist")
-	assert(guard.max_hp >= 24 and guard.max_hp <= 28, "hp should be 24+roll, got %d" % guard.max_hp)
-	assert(guard.move_points == 3, "base move should be 3")
+	assert(guard.max_hp >= 18 and guard.max_hp <= 22, "hp should be 18+roll, got %d" % guard.max_hp)
+	assert(guard.move_points == 2, "base move should be 2")
 	assert(guard.base_attack == 6, "atk should be 6")
 	print("  [OK] spawn hp=%d mv=%d atk=%d" % [guard.max_hp, guard.move_points, guard.base_attack])
 
@@ -100,10 +100,10 @@ func _test_blind_rampage() -> void:
 	PatrolGuardRules.on_red_gem_stolen(state, guard, gem_uid)
 	assert(StatusRules.is_lawless(guard), "should be lawless")
 	assert(StatusRules.is_vulnerable(guard), "rampage should apply vulnerable")
-	assert(PatrolGuardRules.rampage_move_points(guard) == 4, "rampage move should be 4")
+	assert(PatrolGuardRules.rampage_move_points(guard) == 3, "rampage move should be 3")
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.preview_text.begins_with("暴走"), "intent should show rampage prefix")
-	print("  [OK] blind rampage: vulnerable + 4 move + 暴走 intent")
+	print("  [OK] blind rampage: vulnerable + 3 move + 暴走 intent")
 
 
 func _find_guard(state: GameState) -> UnitState:

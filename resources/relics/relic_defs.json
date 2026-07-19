@@ -36,6 +36,17 @@
       {"modifier": "chaos_launcher_active", "value": true}
     ]
   },
+  "relic_vernier_caliper": {
+    "name": "游标卡尺",
+    "desc": "每回合的机动可分为两段。第一段后暂存剩余移动力；束缚、麻痹或移动力降低会使暂存失效或减少。",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"modifier": "split_move_enabled", "value": true}
+    ]
+  },
   "relic_autopsy_log": {
     "name": "验尸记录",
     "desc": "用黑色宝石击杀敌人后，回复 {relic_numeric_ref:relic_autopsy_log_heal} 点生命。",
@@ -203,13 +214,13 @@
   },
   "relic_crowbar": {
     "name": "应急撬棍",
-    "desc": "攻击时对目标的护甲锁造成额外 {relic_numeric_ref:relic_crowbar_armor_lock_break_bonus} 点结构伤害。",
+    "desc": "攻击时额外削减目标 {relic_numeric_ref:relic_crowbar_armor_break_bonus} 点护甲。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
     "unique": false,
     "effects": [
-      {"modifier": "armor_lock_break_bonus", "value_ref": "relic_crowbar_armor_lock_break_bonus"}
+      {"modifier": "armor_break_bonus", "value_ref": "relic_crowbar_armor_break_bonus"}
     ]
   },
   "relic_adrenaline": {

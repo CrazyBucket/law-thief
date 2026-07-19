@@ -26,14 +26,14 @@ func _run_tests() -> void:
 		"room_id": combat_room_id,
 	})
 	assert(combat_result.get("ok", false), "combat gold grant should succeed")
+	var combat_entry_1: Dictionary = combat_result.get("entry", {})
+	var normal_reward_range: Dictionary = economy_service.get_combat_reward_range("NORMAL_COMBAT")
+	assert(int(combat_entry_1.get("final_amount", 0)) >= int(normal_reward_range.get("min", 0)) and int(combat_entry_1.get("final_amount", 0)) <= int(normal_reward_range.get("max", 0)), "first combat reward should stay inside the configured range")
 	run_service.mark_room_resolved(combat_room_id, {
 		"room_id": combat_room_id,
 		"room_type": "NORMAL_COMBAT",
 		"summary": "普通战胜利。",
 	})
-	var normal_reward_range: Dictionary = economy_service.get_combat_reward_range("NORMAL_COMBAT")
-	assert(economy_service.get_balance("gold") >= int(normal_reward_range.get("min", 0)) and economy_service.get_balance("gold") <= int(normal_reward_range.get("max", 0)), "first combat should grant gold inside the configured normal range")
-
 	var event_room_id := _room_id_for(adventure_service, path_cells[1], "EVENT", {"event_id": "event_debug_cache"})
 	var event_view: Dictionary = room_flow_service.enter_room(event_room_id)
 	assert(event_view.get("ok", false), "event enter should succeed")

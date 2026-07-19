@@ -9,12 +9,11 @@
     "pool_tier": 1,
     "max_stack_level": 3,
     "combos": ["fire", "poison"],
-    "rarity": "common",
+    "rarity": "uncommon",
     "ability_profiles": {
       "player_skill": "explosion",
       "unit_red_active": "explosion",
       "enemy_red_action": "explosion",
-      "blue_turn_start": "explosion",
       "blue_damaged": "explosion",
       "black_death": "explosion",
       "tile_active": "explosion",
@@ -52,7 +51,7 @@
     "pool_tier": 1,
     "max_stack_level": 3,
     "combos": [],
-    "rarity": "rare",
+    "rarity": "common",
     "ability_profiles": {
       "player_skill": "gravity",
       "unit_red_active": "gravity",
@@ -73,7 +72,7 @@
     "pool_tier": 1,
     "max_stack_level": 3,
     "combos": [],
-    "rarity": "uncommon",
+    "rarity": "common",
     "ability_profiles": {
       "player_skill": "arc",
       "unit_red_active": "arc",
@@ -92,7 +91,7 @@
     "pool_tier": 1,
     "max_stack_level": 3,
     "combos": ["explosion", "poison"],
-    "rarity": "uncommon",
+    "rarity": "common",
     "ability_profiles": {
       "player_skill": "fire_gem",
       "unit_red_active": "fire_gem",
@@ -111,7 +110,7 @@
     "pool_tier": 1,
     "max_stack_level": 3,
     "combos": [],
-    "rarity": "uncommon",
+    "rarity": "common",
     "ability_profiles": {
       "player_skill": "ice",
       "unit_red_active": "ice",
@@ -130,7 +129,7 @@
     "pool_tier": 2,
     "max_stack_level": 3,
     "combos": [],
-    "rarity": "epic",
+    "rarity": "rare",
     "allow_random_pool": true,
     "ability_profiles": {
       "player_skill": "split",
@@ -150,7 +149,7 @@
     "pool_tier": 2,
     "max_stack_level": 3,
     "combos": ["explosion", "poison", "fire", "arc", "ice"],
-    "rarity": "rare",
+    "rarity": "uncommon",
     "ability_profiles": {
       "player_skill": "light",
       "unit_red_active": "light",
@@ -188,7 +187,7 @@
     "pool_tier": 3,
     "max_stack_level": 3,
     "combos": [],
-    "rarity": "epic",
+    "rarity": "rare",
     "ability_profiles": {
       "player_skill": "echo",
       "unit_red_active": "echo",

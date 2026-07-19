@@ -25,6 +25,8 @@ AI / 日常开发优先使用统一入口：
 
 ```bash
 ./tools/context 爆炸
+./tools/design topic '爆炸|槽位' --copy
+./tools/design affected
 ./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
 ./tools/verify test explosion_test
 ./tools/verify changed --list
@@ -33,6 +35,12 @@ AI / 日常开发优先使用统一入口：
 
 `snapshot` 会将行动前后状态、差异、事件、不变量和数值计算 trace 写入
 `artifacts/verify/snapshot.json`。详细约定见 `AGENTS.md`。
+
+设计文档使用统一入口 `DESIGN_INDEX.md`，位于相邻的 `learning-notes/game/design/law-thief/`。
+`./tools/design find <关键词>` 会按权威顺序定位语义；`topic` 会提取可直接复制给普通聊天
+AI 的相关章节；`copy combat` 或 `copy chat` 会生成并复制单文件上下文。设计或行为更新后运行
+`./tools/design refresh`。Windows PowerShell / CMD 使用等价的
+`tools\design.cmd ...`，不依赖 WSL。
 
 `verify test` 是日常首选，只运行明确指定的测试；`verify changed` 按改动领域选择测试。无参数执行 `verify` 也等价于 `changed`，不会默认跑大套件。`fast` 仅用于有明确跨系统风险的改动，`all` 默认只在 CI 或明确要求时运行，`manual` 只运行压力/调试探针。加 `--list` 可只查看选择结果而不启动 Godot。所有 `verify` 模式都会执行语义覆盖检查；需要单独审计时，可用 `SEMANTIC_COVERAGE_MIN=50 ./tools/coverage` 设置最低覆盖率门禁。
 

@@ -25,7 +25,7 @@ func _test_registry_accessors() -> void:
 	_expect(reg.get_gem_tag(Constants.GEM_EXPLOSION) == "explosion", "explosion tag should load from JSON")
 	_expect(reg.get_gem_tag(Constants.GEM_FIRE) == "fire", "fire tag should hide legacy fire_gem profile")
 	_expect(reg.get_gem_element(Constants.GEM_CONDUCTIVE) == "electric", "conductive element should be electric")
-	_expect(reg.get_gem_pool_tier(Constants.GEM_SPLIT) == 2, "split should be tier 2")
+	_expect(reg.get_gem_pool_tier(Constants.GEM_SPLIT) == 2, "split pool tier should remain tier 2")
 	_expect(reg.get_gem_max_stack_level(Constants.GEM_EXPLOSION) == 3, "explosion max stack should be 3")
 	print("  [OK] registry accessors")
 
@@ -33,10 +33,13 @@ func _test_registry_accessors() -> void:
 func _test_source_tier_filtering() -> void:
 	var reg := _registry()
 	var normal_chapter_1: Array[String] = reg.get_spawnable_gem_ids_for_source("normal_chest", 1)
-	_expect(Constants.GEM_EXPLOSION in normal_chapter_1, "normal chapter 1 should include explosion")
-	_expect(not Constants.GEM_SPLIT in normal_chapter_1, "normal chapter 1 should exclude split")
+	_expect(Constants.GEM_EXPLOSION in normal_chapter_1, "normal chapter 1 should retain explosion pool access")
+	_expect(not Constants.GEM_SPLIT in normal_chapter_1, "normal chapter 1 should exclude tier 2 split")
 	var elite_chapter_2: Array[String] = reg.get_spawnable_gem_ids_for_source("elite_combat", 2)
-	_expect(Constants.GEM_SPLIT in elite_chapter_2, "elite chapter 2 should include split")
+	_expect(Constants.GEM_EXPLOSION in elite_chapter_2, "elite chapter 2 should include explosion")
+	_expect(Constants.GEM_SPLIT in elite_chapter_2, "elite chapter 2 should retain split pool access")
+	var boss_chapter_3: Array[String] = reg.get_spawnable_gem_ids_for_source("boss_reward", 3)
+	_expect(Constants.GEM_SPLIT in boss_chapter_3, "boss chapter 3 should include split")
 	print("  [OK] source tier filtering")
 
 

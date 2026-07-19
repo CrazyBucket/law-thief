@@ -113,9 +113,10 @@ func _test_explosion_attack_does_not_suicide() -> void:
 	state.rebuild_occupancy()
 	IntentSystem.refresh_unit_intent(state, guard)
 	assert(guard.intent.type == "explosion_attack", "explosion gem should use explosion_attack, got %s" % guard.intent.type)
+	var expected_damage := guard.base_attack + roundi(float(guard.base_attack) * 0.2)
 	assert(
-		guard.intent.damage == CombatConfig.explosion_cross_damage(),
-		"intent preview should show cross burst %d, got %d" % [CombatConfig.explosion_cross_damage(), guard.intent.damage]
+		guard.intent.damage == expected_damage,
+		"intent preview should include direct and center blast damage %d, got %d" % [expected_damage, guard.intent.damage]
 	)
 	var guard_hp := guard.hp
 	var player_hp := player.hp
@@ -123,14 +124,14 @@ func _test_explosion_attack_does_not_suicide() -> void:
 	assert(guard.alive, "explosion attack should not kill the attacker")
 	assert(guard.hp == guard_hp, "attacker should take no self damage")
 	var dealt := player_hp - player.hp
-	assert(dealt >= CombatConfig.explosion_cross_damage(), "cross burst should deal %d+, got %d" % [CombatConfig.explosion_cross_damage(), dealt])
+	assert(dealt == expected_damage, "direct hit plus center blast should deal %d, got %d" % [expected_damage, dealt])
 	assert(events.any(func(e): return e.get("type", "") == "explode"), "should emit explode event")
 	var dmg_ev: Dictionary = {}
 	for ev in events:
 		if ev.get("type", "") == "damage" and ev.get("pos", Vector2i.ZERO) == player.pos:
 			dmg_ev = ev
 			break
-	assert(int(dmg_ev.get("damage", 0)) >= CombatConfig.explosion_cross_damage(), "damage event should reflect cross burst")
+	assert(int(dmg_ev.get("damage", 0)) > 0, "damage event should include the direct or center blast hit")
 	print("  [OK] explosion attack cross burst without suicide")
 
 

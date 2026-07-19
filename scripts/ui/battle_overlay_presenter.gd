@@ -34,7 +34,10 @@ func present(legacy_highlights: Dictionary, context: Dictionary = {}) -> Diction
 	match action:
 		Constants.ACTION_MOVE:
 			_append_overlay(result, "move", result.get("reachable", []))
-			_append_route(result, "move", context.get("move_route", []), {"arrow_reverse": false})
+			_append_route(result, "move", context.get("move_route", []), {
+				"arrow_reverse": false,
+				"unit_uid": str(context.get("source_uid", "")),
+			})
 		Constants.ACTION_ATTACK:
 			_append_overlay(result, "attack_range", result.get("attack_range", []))
 			var effect_options := {"source_uid": str(context.get("source_uid", ""))}

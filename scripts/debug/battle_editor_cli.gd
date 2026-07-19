@@ -304,13 +304,13 @@ func _run_editor_relic_command(ctrl, tokens: Array, start_index: int) -> Diction
 
 func _run_editor_export_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
 	var export_start := start_index
-	if tokens.size() > start_index and _normalize_editor_noun(tokens[start_index]) == "encounter":
+	var export_generated := tokens.size() > start_index and str(tokens[start_index]).to_lower() == "generated"
+	if tokens.size() > start_index and (_normalize_editor_noun(tokens[start_index]) == "encounter" or export_generated):
 		export_start += 1
 	var encounter_id := ""
 	if tokens.size() > export_start:
 		encounter_id = str(tokens[export_start])
-	return ctrl.run_editor_action("export_encounter", {"encounter_id": encounter_id})
-
+	return ctrl.run_editor_action("export_encounter", {"encounter_id": encounter_id, "generated": export_generated})
 
 func _run_editor_import_command(ctrl, tokens: Array, start_index: int) -> Dictionary:
 	if tokens.size() <= start_index:
@@ -1201,9 +1201,9 @@ func _editor_help_lines() -> Array[String]:
 		"    - example: /relic add relic_prism",
 		"  /relic remove <relic_id>",
 		"    - example: /relic remove relic_prism",
-		"  /export [encounter] [encounter_id]",
-		"    - example: /export encounter custom_level_001",
-		"    - exports strict JSON with entities and overlays",
+		"  /export [encounter|generated] [encounter_id]",
+		"    - current state: /export encounter custom_level_001",
+		"    - untouched generated blueprint: /export generated favorite_seed",
 		"  /import <file_path>",
 		"    - example: /import /tmp/editor_case.json",
 	]

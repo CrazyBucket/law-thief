@@ -159,7 +159,7 @@ static func build_red_attack_profile(
 	if GemTagResolver.has_tag(gem_ctx, "split"):
 		return _build_split_profile(state, unit, anchor, aim_cell, base_damage, gem_ctx)
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
-		return _build_explosion_profile(state, unit, [aim_cell], gem_ctx, false)
+		return _build_explosion_profile(state, unit, [aim_cell], gem_ctx, false, base_damage)
 	var cells: Array[Vector2i] = [aim_cell]
 	return {
 		"components": [IntentDamageComponentType.create(
@@ -262,7 +262,7 @@ static func _build_light_profile(
 		affected_cells
 	)]
 	if GemTagResolver.has_tag(gem_ctx, "explosion") and not endpoints.is_empty():
-		var explosion_profile := _build_explosion_profile(state, unit, endpoints, gem_ctx, true)
+		var explosion_profile := _build_explosion_profile(state, unit, endpoints, gem_ctx, true, base_damage)
 		components.append_array(explosion_profile.get("components", []))
 		_append_unique_cells(affected_cells, explosion_profile.get("affected_cells", []))
 	return {
@@ -284,7 +284,14 @@ static func _build_split_profile(
 	var split_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "split"))
 	var hit_cells := SplitShotRules.all_hit_cells(origin, aim_cell, forbidden, split_level)
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
-		return _build_explosion_profile(state, unit, hit_cells, gem_ctx, false)
+		return _build_explosion_profile(
+			state,
+			unit,
+			hit_cells,
+			gem_ctx,
+			false,
+			GemEffects.red_split_damage(state, unit, base_damage, gem_ctx)
+		)
 	return {
 		"components": [IntentDamageComponentType.create(
 			"split",
@@ -302,10 +309,11 @@ static func _build_explosion_profile(
 	unit: UnitState,
 	centers: Array[Vector2i],
 	gem_ctx: Dictionary,
-	light_endpoint: bool
+	light_endpoint: bool,
+	attack_damage: int
 ) -> Dictionary:
 	var affected_cells: Array[Vector2i] = []
-	var target_hits: Array[String] = []
+	var components: Array = []
 	for center in centers:
 		var blast_cells: Array[Vector2i]
 		if light_endpoint:
@@ -314,18 +322,37 @@ static func _build_explosion_profile(
 			blast_cells = GemEffects.red_explosion_blast_cells(center, gem_ctx)
 		blast_cells = _in_bounds_cells(state, blast_cells)
 		_append_unique_cells(affected_cells, blast_cells)
-		target_hits.append_array(_target_hits_for_cells(state, unit.uid, blast_cells))
-	var damage := CombatConfig.explosion_cross_damage()
-	if not light_endpoint:
-		damage = GemEffects.explosion_scaled_damage(damage, gem_ctx)
-	return {
-		"components": [IntentDamageComponentType.create(
+		var center_cells: Array[Vector2i] = [center]
+		var center_hits := _target_hits_for_cells(state, unit.uid, center_cells)
+		if not light_endpoint:
+			components.append(IntentDamageComponentType.create(
+				"direct",
+				attack_damage + GemEffects.red_explosion_center_damage(attack_damage, gem_ctx),
+				1,
+				center_hits,
+				center_cells
+			))
+		else:
+			components.append(IntentDamageComponentType.create(
+				"explosion_center",
+				GemEffects.red_explosion_center_damage(attack_damage, gem_ctx),
+				1,
+				center_hits,
+				center_cells
+			))
+		var splash_cells: Array[Vector2i] = []
+		for cell in blast_cells:
+			if cell != center:
+				splash_cells.append(cell)
+		components.append(IntentDamageComponentType.create(
 			"explosion",
-			damage,
-			centers.size(),
-			target_hits,
-			affected_cells
-		)],
+			GemEffects.red_explosion_splash_damage(unit.base_attack, gem_ctx),
+			1,
+			_target_hits_for_cells(state, unit.uid, splash_cells),
+			splash_cells
+		))
+	return {
+		"components": components,
 		"affected_cells": affected_cells,
 	}
 

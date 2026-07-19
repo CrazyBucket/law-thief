@@ -22,7 +22,8 @@ func play(beams: Array, config: Dictionary) -> float:
 			spec.get("color", Color(1.0, 0.96, 0.58)),
 			float(spec.get("width", 1.0)),
 			spec.get("fx", spec),
-			config
+			config,
+			spec.get("from_screen", null)
 		)
 		if beam == null:
 			continue
@@ -44,9 +45,13 @@ func _create_beam(
 	beam_color: Color,
 	beam_width: float,
 	fx: Dictionary,
-	config: Dictionary
+	config: Dictionary,
+	visual_from: Variant = null
 ) -> Node2D:
-	var from_screen := _anchor(from_grid, config) + _IsoCoordinates.visual_vec(Vector2(0, float(config.get("source_drop", 0.0))))
+	var from_screen := _anchor(from_grid, config)
+	if visual_from is Vector2:
+		from_screen = visual_from + _IsoCoordinates.visual_vec(Vector2(0, float(config.get("plane_height", 0.0))))
+	from_screen += _IsoCoordinates.visual_vec(Vector2(0, float(config.get("source_drop", 0.0))))
 	var to_screen := _anchor(to_grid, config)
 	var delta := to_screen - from_screen
 	if delta.length() < 1.0:

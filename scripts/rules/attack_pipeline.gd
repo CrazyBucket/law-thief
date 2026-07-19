@@ -12,6 +12,8 @@ const SplitShotRules = preload("res://scripts/rules/split_shot_rules.gd")
 const AttackContext = preload("res://scripts/rules/attack_context.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const DamageContext = preload("res://scripts/rules/damage_context.gd")
+const ShieldRules = preload("res://scripts/rules/shield_rules.gd")
+const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -106,6 +108,7 @@ static func execute_aimed(
 		ctx.add_tag(tag)
 
 	CombatRules.begin_deferred_death_hooks(ctx.events)
+	GemEffects.begin_explosion_reaction_chain()
 	state.bind_combat_events(ctx.events)
 
 	var target_uid := ""
@@ -145,7 +148,6 @@ static func execute(
 	var aim_cell := _resolve_aim_cell(payload, target.pos)
 	return execute_aimed(state, attacker, aim_cell, initial_tags, payload)
 
-
 static func _phase_prepare(ctx: AttackContext) -> void:
 	_gem_hooks_prepare(ctx)
 	if ctx.attacker.uid == ctx.state.player_uid:
@@ -156,7 +158,6 @@ static func _phase_prepare(ctx: AttackContext) -> void:
 				var rng := _rng_service()
 				if rng != null and bool(rng.chance("goggles_miss_%d" % ctx.state.turn_index, miss_chance)):
 					ctx.payload["force_miss"] = true
-
 
 static func _phase_damage_calculate(ctx: AttackContext) -> void:
 	ctx.base_damage = CombatRules.attack_damage(ctx.state, ctx.attacker)
@@ -190,7 +191,6 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 			"result": ctx.base_damage,
 		})
 
-
 static func _phase_hit(ctx: AttackContext) -> void:
 	if ctx.target != null and ctx.payload.get("force_miss", false):
 		ctx.state.log("%s 的攻击未命中 %s" % [ctx.attacker.uid, ctx.target.uid])
@@ -222,7 +222,6 @@ static func _phase_hit(ctx: AttackContext) -> void:
 
 	_apply_tags_at_cell(ctx, hit_cell, ctx.target, reason)
 
-
 static func _phase_post_attack(ctx: AttackContext) -> void:
 	var killed := ctx.target != null and not ctx.target.alive
 
@@ -244,7 +243,6 @@ static func _phase_post_attack(ctx: AttackContext) -> void:
 	if killed and not ctx.has_tag(TAG_NO_KILL_PROC):
 		_gem_hooks_on_kill(ctx)
 
-
 ## 单格命中：直伤、十字爆炸、元素 tag 均在此结算（主弹与分裂翼弹共用）
 static func _apply_tags_at_cell(
 	ctx: AttackContext,
@@ -265,18 +263,19 @@ static func _apply_tags_at_cell(
 		if ctx.has_tag(TAG_EXPLOSIVE):
 			ctx.push_trace({
 				"phase": "hit",
-				"operation": "apply_explosion_damage_multiplier",
-				"value": GemEffects.explosion_damage_multiplier(gem_ctx),
-				"base_explosion_damage": CombatConfig.explosion_cross_damage(),
-				"result": GemEffects.explosion_scaled_damage(CombatConfig.explosion_cross_damage(), gem_ctx),
+				"operation": "resolve_explosion_damage",
+				"attack_damage": ctx.base_damage,
+				"base_attack": ctx.attacker.base_attack,
+				"center_damage": GemEffects.red_explosion_center_damage(ctx.base_damage, gem_ctx),
+				"splash_damage": GemEffects.red_explosion_splash_damage(ctx.attacker.base_attack, gem_ctx),
 			})
 	var dealt := 0
-	if target != null and target.alive and not ctx.has_tag(TAG_EXPLOSIVE):
-		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell})
+	if target != null and target.alive:
+		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell, "active_attack": true})
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			_apply_direct_hit_extras(ctx, target)
-	elif not ctx.has_tag(TAG_EXPLOSIVE):
+	else:
 		var entity := ctx.state.get_entity_at(hit_cell)
 		if entity != null and entity.alive and entity.max_hp > 0:
 			EntityRules.damage_entity(ctx.state, entity, ctx.base_damage, ctx.attacker.uid, ctx.events)
@@ -296,7 +295,6 @@ static func _apply_tags_at_cell(
 		GemComboResolver.apply_after_attack_hit(ctx.state, hit_cell, gem_ctx, ctx.events)
 
 	_try_apply_chaos_launcher_at_cell(ctx, hit_cell, hit_unit)
-
 
 static func _apply_hit_tag_handler(
 	ctx: AttackContext,
@@ -327,7 +325,6 @@ static func _apply_hit_tag_handler(
 		"_apply_arc_hit_tag":
 			_apply_arc_at_cell(ctx, hit_cell, hit_unit, gem_ctx)
 
-
 static func _apply_arc_at_cell(
 	ctx: AttackContext,
 	hit_cell: Vector2i,
@@ -347,16 +344,16 @@ static func _apply_arc_at_cell(
 			gem_ctx
 		)
 
-
 static func _apply_direct_hit_extras(ctx: AttackContext, target: UnitState) -> void:
 	if target == null or not target.alive:
 		return
 	_ContactResolver.on_attack_contact(ctx.state, ctx.attacker, target)
 	if ctx.has_tag(TAG_KNOCKBACK) and target.alive:
+		var knockback_origin := FootprintRules.nearest_cell_to(ctx.attacker, target.pos, ctx.attacker.pos)
 		_Displacement.knockback(
 			ctx.state,
 			target,
-			ctx.attacker.pos,
+			knockback_origin,
 			1,
 			ctx.attacker.uid,
 			ctx.events,
@@ -367,10 +364,9 @@ static func _apply_direct_hit_extras(ctx: AttackContext, target: UnitState) -> v
 	if ctx.attacker.uid == ctx.state.player_uid and target.alive:
 		var _registry := _relic_effect_registry()
 		if _registry != null:
-			var break_bonus: int = int(_registry.query_modifier("armor_lock_break_bonus", ctx.state))
+			var break_bonus: int = int(_registry.query_modifier("armor_break_bonus", ctx.state))
 			if break_bonus > 0:
 				_apply_crowbar_break(ctx, target, break_bonus)
-
 
 static func _apply_poison_at_cell(
 	ctx: AttackContext,
@@ -403,7 +399,6 @@ static func _apply_poison_at_cell(
 			ctx.attacker.uid
 		)
 
-
 static func _apply_fire_tile_at_cell(
 	ctx: AttackContext,
 	cell: Vector2i,
@@ -425,19 +420,26 @@ static func _apply_fire_tile_at_cell(
 			ctx.push_event({"type": "fire_burst", "pos": spread_cell, "spread": true})
 	TileRules.end_overlay_batch(ctx.state)
 
-
 static func _apply_cross_explosion_at(ctx: AttackContext, center: Vector2i) -> void:
 	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
 	var blast_pattern := GemEffects.explosion_blast_pattern(gem_ctx)
-	var damage := GemEffects.explosion_scaled_damage(CombatConfig.explosion_cross_damage(), gem_ctx)
+	var center_damage := GemEffects.red_explosion_center_damage(ctx.base_damage, gem_ctx)
+	var splash_damage := GemEffects.red_explosion_splash_damage(ctx.attacker.base_attack, gem_ctx)
 	if blast_pattern == "square":
-		var square_events := GemEffects.explode_square_at(ctx.state, center, ctx.attacker.uid, damage, gem_ctx)
+		var square_events := GemEffects.explode_square_at(
+			ctx.state,
+			center,
+			ctx.attacker.uid,
+			splash_damage,
+			gem_ctx,
+			{"center_damage": center_damage}
+		)
 		for ev in square_events:
 			ctx.events.append(ev)
 		return
 	var opts: Dictionary = {
-		"center_damage": damage,
-		"cross_damage": damage,
+		"center_damage": center_damage,
+		"cross_damage": splash_damage,
 		"gem_tag_context": gem_ctx,
 	}
 	var cross_events := GemEffects.explode_cross_at(
@@ -466,7 +468,7 @@ static func _apply_gravity_aura(ctx: AttackContext) -> void:
 		GemEffects.pull_unit_toward_with_events(
 			ctx.state,
 			ctx.target,
-			ctx.attacker.pos,
+			FootprintRules.nearest_cell_to(ctx.attacker, ctx.target.pos, ctx.attacker.pos),
 			int(level_def["pull_steps"]),
 			ctx.attacker.uid,
 			DamageContext.create(
@@ -563,6 +565,7 @@ static func _apply_single_light_beam(
 		var dealt := ctx.damage_unit(target, damage, "light_beam" if reason.is_empty() else reason, {
 			"pos": target.pos,
 			"gem_tag_context": traveled_ctx,
+			"active_attack": true,
 		})
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
@@ -582,7 +585,8 @@ static func _apply_single_light_beam(
 	if GemTagResolver.has_tag(gem_ctx, "explosion"):
 		var end_cell: Vector2i = cells[cells.size() - 1]
 		var blast := GemEffects.explode_cross_at(ctx.state, end_cell, ctx.attacker.uid, {
-			"center_damage": CombatConfig.explosion_cross_damage(),
+			"center_damage": GemEffects.red_explosion_center_damage(ctx.base_damage, gem_ctx),
+			"cross_damage": GemEffects.red_explosion_splash_damage(ctx.attacker.base_attack, gem_ctx),
 			"gem_tag_context": gem_ctx,
 		})
 		ctx.events.append_array(blast)
@@ -722,7 +726,9 @@ static func _try_deflect(ctx: AttackContext) -> void:
 		else:
 			var new_target: UnitState = candidates[int(rng.roll_int("pipeline_gravity_redirect_%s" % ctx.target.uid, 0, candidates.size() - 1))]
 			ctx.state.log("%s 被引力偏转，投射物转向 %s" % [ctx.target.uid, new_target.uid])
-			ctx.push_event({"type": "projectile_deflect", "from": ctx.target.pos, "to": new_target.pos})
+			ctx.push_event({"type": "projectile_deflect",
+				"from": BoardUtils.projectile_origin_cell(ctx.target, new_target.pos), "to": new_target.pos,
+				"source_uid": ctx.target.uid})
 			ctx.target = new_target
 			ctx.aim_cell = new_target.pos
 		break
@@ -809,12 +815,7 @@ static func _apply_chaos_launcher_effect(
 static func _apply_crowbar_break(ctx: AttackContext, target: UnitState, break_damage: int) -> void:
 	if target == null or not target.alive:
 		return
-	for slot in target.slots:
-		if not slot.locked or slot.lock_type != Constants.LOCK_ARMOR:
-			continue
-		var dealt := ctx.damage_unit(target, break_damage, "crowbar_break")
-		if dealt > 0:
-			StatusRules.apply_exposed(ctx.state, target, slot, ctx.state.turn_index)
+	ShieldRules.damage(ctx.state, target, break_damage)
 
 
 static func compute_split_wing_cells(attacker_pos: Vector2i, aim_pos: Vector2i) -> Array[Vector2i]:
@@ -822,11 +823,8 @@ static func compute_split_wing_cells(attacker_pos: Vector2i, aim_pos: Vector2i) 
 
 
 static func _push_projectile_event(ctx: AttackContext, from_pos: Vector2i, to_pos: Vector2i) -> void:
-	ctx.push_event({
-		"type": "projectile",
-		"from": from_pos,
-		"to": to_pos,
-	})
+	ctx.push_event({"type": "projectile", "from": from_pos, "to": to_pos,
+		"source_uid": ctx.attacker.uid})
 
 
 static func _apply_split_wings(ctx: AttackContext) -> void:
@@ -878,6 +876,7 @@ static func _data_registry() -> Node:
 static func _finish_execute(state: GameState, ctx: AttackContext, result: Dictionary) -> Dictionary:
 	state.unbind_combat_events()
 	CombatRules.end_deferred_death_hooks(state)
+	GemEffects.end_explosion_reaction_chain()
 	if ctx.payload.get("debug_trace", false):
 		result["trace"] = ctx.trace
 	return result

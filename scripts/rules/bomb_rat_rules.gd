@@ -89,6 +89,7 @@ static func execute_plunder_steal(state: GameState, unit: UnitState, intent: Int
 		var tx := _CombatTransaction.begin(state, events)
 		tx.damage_unit(target, intent.damage, unit.uid, "bomb_rat_plunder", {
 			"keep_facing": true,
+			"active_attack": true,
 		})
 		if target.alive and _force_steal_nearest_gem(state, unit, target, events):
 			StatusRules.clear_lawless(unit)

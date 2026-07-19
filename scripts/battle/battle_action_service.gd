@@ -45,27 +45,35 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	if not unlimited and not StatusRules.can_act(player):
 		return _fail(StatusRules.action_block_reason(player))
 	var consume_bonus_move := false
+	var consume_split_move := false
 	if not unlimited and state.player_moved:
-		if not StatusRules.has_extra_move(player):
+		if ctrl.stored_split_move_remaining(player) > 0:
+			consume_split_move = true
+		elif StatusRules.has_extra_move(player):
+			consume_bonus_move = true
+		else:
 			return _fail("本回合已移动")
-		consume_bonus_move = true
 	if not unlimited and not StatusRules.can_move(player):
 		var block_reason := StatusRules.move_block_reason(player)
 		return _fail(block_reason if not block_reason.is_empty() else "无法移动")
 	var move_budget := ctrl.player_move_budget(player)
-	var reachable := BoardUtils.reachable_cells(state, player.pos, move_budget)
+	var reachable := BoardUtils.reachable_cells(
+		state, player.pos, move_budget, player.uid, {}, {}, player
+	)
 	if not target_pos in reachable:
 		return _fail("无法移动到该格")
 	var path := BoardUtils.astar_path(state, player.pos, target_pos, move_budget, player.uid, {
 		"allow_partial_path": false
-	})
+	}, {}, player)
 	if path.is_empty():
 		return _fail("无法规划路径")
 	var presentation_state: GameState = state.clone()
 	var previous := player.pos
+	var spent_move := 0
 	var move_events: Array[Dictionary] = []
 	var tx := _CombatTransaction.begin(state, move_events).bind_event_sink()
 	for step in path:
+		spent_move += ceili(BoardUtils.unit_step_cost(state, player, step))
 		tx.move_unit(player, step, {"reason": "player_move"})
 		TileRules.on_unit_moved_through(state, player, step)
 		if not player.alive:
@@ -80,7 +88,14 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 	if not unlimited:
 		if consume_bonus_move:
 			StatusRules.consume_extra_move(player)
+		if consume_split_move:
+			state.clear_split_move()
 		state.player_moved = true
+		if not consume_bonus_move and not consume_split_move \
+		and ctrl.split_move_enabled() and player.alive \
+		and StatusRules.can_act(player) and StatusRules.can_move(player):
+			state.store_split_move(player.uid, move_budget, spent_move)
+			state.reconcile_split_move(player.uid, StatusRules.effective_move_points(player, player.move_points))
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
 	state.log("玩家移动到 %s" % target_pos)
 	ctrl._check_battle_end()

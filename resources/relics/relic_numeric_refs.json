@@ -12,7 +12,7 @@
   "relic_gas_mask_overlay_move_cost_reduction": {"value": 1, "kind": "flat", "unit": "move_cost"},
   "relic_copper_wire_arc_bounce_bonus": {"value": 1, "kind": "flat", "unit": "target_count"},
   "relic_broken_rib_collision_damage_mult": {"value": 1.5, "kind": "multiplier", "unit": "damage"},
-  "relic_crowbar_armor_lock_break_bonus": {"value": 4, "kind": "flat", "unit": "damage"},
+  "relic_crowbar_armor_break_bonus": {"value": 4, "kind": "flat", "unit": "damage"},
   "relic_adrenaline_move_bonus": {"value": 1, "kind": "flat", "unit": "move_points"},
   "relic_adrenaline_extract_range_bonus": {"value": 1, "kind": "flat", "unit": "range"},
   "relic_adrenaline_insert_range_bonus": {"value": 1, "kind": "flat", "unit": "range"},

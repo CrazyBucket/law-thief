@@ -34,6 +34,10 @@ var entities: Dictionary = {}  # uid → EntityState
 var held_gem_uid: String = ""
 var player_moved: bool = false
 var player_acted: bool = false
+## 游标卡尺分段移动暂存。capacity 只会随间隔中的移动力降低而下调，不因后续增益回升。
+var split_move_uid: String = ""
+var split_move_remaining: int = 0
+var split_move_capacity: int = 0
 ## 当前回合仍待操控的友方单位队列（首个已成为 player_uid，后续依次激活）
 var controllable_queue: Array[String] = []
 var combat_log: Array[String] = []
@@ -42,6 +46,8 @@ var transaction_trace: Array[Dictionary] = []
 ## Runtime-only authoring diagnostics; never used to decide combat behavior.
 var content_warnings: Array[Dictionary] = []
 var encounter_id: String = ""
+## Immutable initial snapshot for generated encounters. Export uses this instead of mutated battle state.
+var generated_encounter_blueprint: Dictionary = {}
 var result: String = ""
 var overload_pending: bool = false
 var overload_pending_turn: int = 0
@@ -97,6 +103,34 @@ func get_player() -> UnitState:
 	return units.get(player_uid, null)
 
 
+func clear_split_move() -> void:
+	split_move_uid = ""
+	split_move_remaining = 0
+	split_move_capacity = 0
+
+
+func store_split_move(unit_uid: String, capacity: int, spent: int) -> void:
+	clear_split_move()
+	var remaining := maxi(0, capacity - spent)
+	if unit_uid.is_empty() or remaining <= 0:
+		return
+	split_move_uid = unit_uid
+	split_move_capacity = capacity
+	split_move_remaining = remaining
+
+
+func reconcile_split_move(unit_uid: String, current_capacity: int) -> int:
+	if split_move_uid != unit_uid or split_move_remaining <= 0:
+		clear_split_move()
+		return 0
+	if current_capacity < split_move_capacity:
+		split_move_remaining = maxi(0, split_move_remaining - (split_move_capacity - current_capacity))
+		split_move_capacity = current_capacity
+	if split_move_remaining <= 0:
+		clear_split_move()
+	return split_move_remaining
+
+
 # ─── 友方可操控队列 ───────────────────────────────────────────────────────────
 
 ## 把一批单位按顺序推入队列，并立即激活第一个（设为 player_uid）
@@ -112,6 +146,7 @@ func push_controllable_batch(uids: Array, activate_first: bool = true) -> void:
 		player_uid = uids[0]
 		player_moved = false
 		player_acted = false
+		clear_split_move()
 
 
 ## 弹出队列头部的下一个存活单位并激活；返回激活的 uid，失败返回空串
@@ -124,6 +159,7 @@ func activate_next_controllable() -> String:
 			player_uid = next_uid
 			player_moved = false
 			player_acted = false
+			clear_split_move()
 			return next_uid
 		controllable_queue.pop_front()
 	return ""
@@ -168,6 +204,7 @@ func bootstrap_split_controllable_turn() -> void:
 		controllable_queue.clear()
 		player_moved = false
 		player_acted = false
+		clear_split_move()
 		return
 	var uids: Array = clones.map(func(c: UnitState) -> String: return c.uid)
 	push_controllable_batch(uids, true)
@@ -302,11 +339,15 @@ func clone() -> GameState:
 	snapshot.held_gem_uid = held_gem_uid
 	snapshot.player_moved = player_moved
 	snapshot.player_acted = player_acted
+	snapshot.split_move_uid = split_move_uid
+	snapshot.split_move_remaining = split_move_remaining
+	snapshot.split_move_capacity = split_move_capacity
 	snapshot.controllable_queue = controllable_queue.duplicate()
 	snapshot.combat_log = combat_log.duplicate(true)
 	snapshot.transaction_trace = transaction_trace.duplicate(true)
 	snapshot.content_warnings = content_warnings.duplicate(true)
 	snapshot.encounter_id = encounter_id
+	snapshot.generated_encounter_blueprint = generated_encounter_blueprint.duplicate(true)
 	snapshot.result = result
 	snapshot.overload_pending = overload_pending
 	snapshot.overload_pending_turn = overload_pending_turn

@@ -10,6 +10,7 @@ const BattleEventPlayerScript = preload("res://scripts/ui/battle_event_player.gd
 const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
 const BattleHudPresenterScript = preload("res://scripts/ui/battle_hud_presenter.gd")
 const BattleEditorPanelScript = preload("res://scripts/ui/battle_editor_panel.gd")
+const GeneratedEncounterExportButtonScript = preload("res://scripts/ui/generated_encounter_export_button.gd")
 const RichTooltip = preload("res://scripts/ui/rich_tooltip.gd")
 const BattleRewardOverlay = preload("res://scripts/ui/battle_reward_overlay.gd")
 const BattleRewardCardFactory = preload("res://scripts/ui/battle_reward_card_factory.gd")
@@ -84,6 +85,7 @@ var _held_banner_icon: TextureRect = null
 var _held_banner_label: Label = null
 var _console_layer: CanvasLayer = null
 var _console: Control = null
+var _generated_export_btn = null
 var _preview_view: BattlePreviewPanel = null
 var _relic_reward_overlay: Node = null
 var _relic_detail_overlay: Node = null
@@ -174,6 +176,7 @@ func _ready() -> void:
 	_board.editor_tool_drag_hovered.connect(_on_editor_tool_drag_hovered)
 	_board.editor_tool_dropped.connect(_on_editor_tool_dropped)
 	_apply_ui_theme()
+	_create_generated_export_button()
 	_ensure_preview_view().hide(true)
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -318,6 +321,13 @@ func _create_level_console() -> void:
 	_console = EditorConsoleScene.instantiate()
 	_console.command_submitted.connect(_on_console_submitted)
 	_console_layer.add_child(_console)
+
+
+func _create_generated_export_button() -> void:
+	_generated_export_btn = GeneratedEncounterExportButtonScript.new()
+	_generated_export_btn.setup(_controller)
+	$HudLayer/TopBar/HBox.add_child(_generated_export_btn)
+	BattleUiTheme.apply_button(_generated_export_btn, "ghost")
 
 
 func _create_editor_ui() -> void:
@@ -497,6 +507,7 @@ func _start_battle(encounter_id: String) -> void:
 	_editor_dummy_stats.clear()
 	_editor_bound_state = null
 	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id)
+	_generated_export_btn.sync_for_state(_controller.state)
 	_bind_editor_state_signals()
 	_mark_visible_enemies_seen()
 	_inspect_uid = _controller.selected_unit_uid

@@ -35,7 +35,8 @@ static func create(
 	source_uid: String,
 	reason: String,
 	damage_tags: Array = [],
-	gem_tag_context: Dictionary = {}
+	gem_tag_context: Dictionary = {},
+	active_attack: bool = false
 ) -> Dictionary:
 	var tags := _normalized_tags(damage_tags)
 	if tags.is_empty() and not gem_tag_context.is_empty():
@@ -47,6 +48,7 @@ static func create(
 		"reason": reason,
 		"damage_tags": tags,
 		"gem_tag_context": gem_tag_context.duplicate(true),
+		"active_attack": active_attack,
 	}
 
 
@@ -62,13 +64,15 @@ static func from_options(
 			source_uid,
 			reason,
 			context.get("damage_tags", []),
-			context.get("gem_tag_context", {})
+			context.get("gem_tag_context", {}),
+			bool(context.get("active_attack", false))
 		)
 	return create(
 		source_uid,
 		reason,
 		opts.get("damage_tags", []),
-		opts.get("gem_tag_context", {})
+		opts.get("gem_tag_context", {}),
+		bool(opts.get("active_attack", false))
 	)
 
 
@@ -77,7 +81,8 @@ static func normalize(source_uid: String, reason: String, context: Dictionary = 
 		source_uid,
 		reason,
 		context.get("damage_tags", []),
-		context.get("gem_tag_context", {})
+		context.get("gem_tag_context", {}),
+		bool(context.get("active_attack", false))
 	)
 
 
@@ -94,6 +99,10 @@ static func tags(context: Dictionary) -> Array[String]:
 static func gem_context(context: Dictionary) -> Dictionary:
 	var raw: Variant = context.get("gem_tag_context", {})
 	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
+
+
+static func is_active_attack(context: Dictionary) -> bool:
+	return bool(context.get("active_attack", false))
 
 
 static func _normalized_tags(raw_tags: Variant) -> Array[String]:

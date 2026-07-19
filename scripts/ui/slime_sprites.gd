@@ -11,6 +11,15 @@ const WALK_FRAMES := 6
 const STRIKE_FRAMES := 6
 const TARGET_CONTENT_HEIGHT := 52.0
 const FOOT_PAD_PX := 2
+const UNIT_VARIANTS := {
+	"unit_fission_slime": "green",
+	"unit_small_slime_blue": "blue",
+	"unit_small_slime_dark": "dark",
+	"unit_small_slime_green": "green",
+	"unit_small_slime_pink": "pink",
+	"unit_small_slime_white": "white",
+	"unit_small_slime_yellow": "yellow",
+}
 
 const _FACING_TO_ROW: Dictionary = {
 	"Forward": 0,
@@ -30,6 +39,14 @@ var _pose_cache: Dictionary = {}
 
 func _init(variant: String = "green") -> void:
 	_variant = variant
+
+
+static func supports_unit(unit_def_id: String) -> bool:
+	return UNIT_VARIANTS.has(unit_def_id)
+
+
+static func variant_for_unit(unit_def_id: String) -> String:
+	return str(UNIT_VARIANTS.get(unit_def_id, "green"))
 
 
 func portrait_texture() -> Texture2D:

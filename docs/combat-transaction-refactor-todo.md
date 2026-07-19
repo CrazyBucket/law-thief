@@ -303,7 +303,7 @@ BoardUtils.projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, targ
 - [x] 禁止新增战斗规则中的直接 `unit.pos = ...`，构造/clone 除外。
 - [x] 将运行时 `spawn`、`die`、`status` 状态变更入口迁移到事务层；底层合并器和死亡钩子保留在事务内部。
 - [x] Snapshot 输出中增加 `transaction_trace`，便于复盘。
-- [x] 文档更新到 `docs/system-stability-roadmap.md`，外部 `Technical_Architecture.md` 同步声明事务边界。
+- [x] 文档更新到 `docs/system-stability-roadmap.md`；当时同步的外部旧架构文档现已删除。
 
 ## Closure Evidence
 

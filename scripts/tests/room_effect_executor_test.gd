@@ -13,6 +13,7 @@ func _run_tests() -> void:
 	var run_service: Node = root.get_node("RunService")
 	var executor: Node = root.get_node("RoomEffectExecutor")
 	adventure_service.start_new_run(20260615)
+	run_service.set_resource_balance("gold", 0)
 
 	var blocked_condition: Dictionary = executor.evaluate_conditions([
 		{"type": "resource_gte", "resource_id": "gold", "amount_ref": "event_debug_toll_cost"}

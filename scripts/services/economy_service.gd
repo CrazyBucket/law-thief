@@ -19,7 +19,55 @@ func get_balance(resource_id: String = "gold") -> int:
 
 
 func get_starting_gold() -> int:
+	var model := _economy_model()
+	if not model.is_empty() and model.has("G_init"):
+		return int(model.get("G_init", 0))
 	return int(_required_config_value("starting_gold"))
+
+
+func get_economy_model() -> Dictionary:
+	return _economy_model().duplicate(true)
+
+
+func get_model_price(price_id: String) -> int:
+	var model := _economy_model()
+	var prices: Variant = model.get("prices", {})
+	if not prices is Dictionary or not (prices as Dictionary).has(price_id):
+		return 0
+	return roundi(float(model.get("mu", 0.0)) * float((prices as Dictionary).get(price_id, 0.0)))
+
+
+func roll_event_gold(event_kind: String, roll_key: String = "") -> int:
+	var model := _economy_model()
+	if model.is_empty():
+		return 0
+	var normalized_kind := event_kind.to_lower()
+	var mean := float(model.get("event_positive_mu", 0.0))
+	var deviation := float(model.get("sigma_event_pos", 0.0))
+	if normalized_kind in ["negative", "neg", "loss"]:
+		mean = float(model.get("event_negative_mu", 0.0))
+		deviation = float(model.get("sigma_event_neg", 0.0))
+	var amount := _roll_model_amount(mean, deviation, ["event_gold", normalized_kind, roll_key])
+	return amount
+
+
+func get_event_economy_expectation() -> Dictionary:
+	var model := _economy_model()
+	if model.is_empty():
+		return {}
+	var unit := float(model.get("mu", 0.0))
+	var positive := unit * float(model.get("event_positive_mu", 0.0))
+	var negative := unit * float(model.get("event_negative_mu", 0.0))
+	var positive_rate := float(model.get("event_positive_rate", 0.0))
+	var negative_rate := float(model.get("event_negative_rate", 0.0))
+	return {
+		"include_events": bool(model.get("include_events", false)),
+		"positive_gold": roundi(positive),
+		"negative_gold": roundi(negative),
+		"positive_rate": positive_rate,
+		"negative_rate": negative_rate,
+		"expected_gold_per_event": roundi(positive * positive_rate + negative * negative_rate),
+	}
 
 
 func get_combat_reward_range(room_type: String) -> Dictionary:
@@ -30,6 +78,19 @@ func get_combat_reward_range(room_type: String) -> Dictionary:
 
 
 func get_combat_reward(room_type: String, roll_key: String = "") -> int:
+	var model := _economy_model()
+	if not model.is_empty():
+		var tier := _combat_reward_tier(room_type)
+		var mean := float(model.get("combat_normal_mu", 0.0))
+		var deviation := float(model.get("sigma_combat", 0.0))
+		match tier:
+			"elite":
+				mean = float(model.get("combat_elite_mu", mean))
+				deviation = float(model.get("sigma_elite", deviation))
+			"boss":
+				mean = float(model.get("combat_boss_mu", mean))
+				deviation = float(model.get("sigma_boss", deviation))
+		return _roll_model_amount(mean, deviation, ["combat_reward", tier, roll_key])
 	return _roll_integer_range(
 		get_combat_reward_range(room_type),
 		["combat_reward", _combat_reward_tier(room_type), roll_key]
@@ -37,6 +98,9 @@ func get_combat_reward(room_type: String, roll_key: String = "") -> int:
 
 
 func get_shop_price_range(item_type: String, rarity: String = "default") -> Dictionary:
+	var model_range := _get_model_shop_price_range(item_type, rarity)
+	if not model_range.is_empty():
+		return model_range
 	var all_prices := _config.get("shop_prices", {}) as Dictionary
 	var normalized_type := item_type.to_lower()
 	var raw_type_prices: Variant = all_prices.get(normalized_type, {})
@@ -50,6 +114,15 @@ func get_shop_price_range(item_type: String, rarity: String = "default") -> Dict
 
 
 func roll_shop_price(item_type: String, rarity: String, roll_key: String) -> int:
+	var model := _economy_model()
+	var model_price := _model_shop_price(item_type, rarity)
+	if not model.is_empty() and model_price > 0:
+		var seed_value := RngService.derive_seed(["shop_price", item_type.to_lower(), rarity.to_lower(), roll_key])
+		var rng := RngService.create_rng(seed_value, "economy_price")
+		var price_sigma := float(model.get("price_sigma", 0.0))
+		var sampled := float(model_price) * rng.randfn(1.0, price_sigma)
+		var price_range := get_shop_price_range(item_type, rarity)
+		return clampi(roundi(sampled), int(price_range.get("min", model_price)), int(price_range.get("max", model_price)))
 	return _roll_integer_range(
 		get_shop_price_range(item_type, rarity),
 		["shop_price", item_type.to_lower(), rarity.to_lower(), roll_key]
@@ -219,6 +292,58 @@ func _load_config() -> void:
 	_config = raw.duplicate(true) if errors.is_empty() else {}
 
 
+func _economy_model() -> Dictionary:
+	var raw_model: Variant = _config.get("economy_model", {})
+	return (raw_model as Dictionary) if raw_model is Dictionary else {}
+
+
+func _model_shop_price(item_type: String, rarity: String) -> int:
+	var normalized_type := item_type.to_lower()
+	var normalized_rarity := rarity.to_lower()
+	var price_id := ""
+	match normalized_type:
+		"card", "gem":
+			match normalized_rarity:
+				"uncommon":
+					price_id = "uncommon_card"
+				"rare":
+					price_id = "rare_card"
+				"epic":
+					price_id = "uncommon_relic"
+				"legendary":
+					price_id = "rare_relic"
+				_:
+					price_id = "basic_card"
+		"relic":
+			match normalized_rarity:
+				"uncommon":
+					price_id = "uncommon_relic"
+				"rare", "boss":
+					price_id = "rare_relic"
+				_:
+					price_id = "basic_relic"
+		"consumable":
+			price_id = "potion"
+		"remove", "service":
+			price_id = "remove"
+		_:
+			return 0
+	return get_model_price(price_id)
+
+
+func _get_model_shop_price_range(item_type: String, rarity: String) -> Dictionary:
+	var base_price := _model_shop_price(item_type, rarity)
+	if base_price <= 0:
+		return {}
+	var model := _economy_model()
+	var price_sigma := float(model.get("price_sigma", 0.0))
+	var spread := roundi(float(base_price) * price_sigma * 2.0)
+	return {
+		"min": maxi(1, base_price - spread),
+		"max": base_price + spread,
+	}
+
+
 func _required_config_value(key: String) -> Variant:
 	if _config.has(key):
 		return _config[key]
@@ -306,3 +431,21 @@ func _roll_integer_range(range_def: Dictionary, seed_parts: Array) -> int:
 	var seed_value := RngService.derive_seed(seed_parts)
 	var rng := RngService.create_rng(seed_value, "economy")
 	return rng.randi_range(min_value, max_value)
+
+
+func _roll_model_amount(mean: float, deviation: float, seed_parts: Array) -> int:
+	var model := _economy_model()
+	var unit := float(model.get("mu", 1.0))
+	var seed_value := RngService.derive_seed(seed_parts)
+	var rng := RngService.create_rng(seed_value, "economy_model")
+	var sampled := unit * rng.randfn(mean, deviation)
+	var kind := str(seed_parts[0]) if not seed_parts.is_empty() else ""
+	var tier := str(seed_parts[1]) if seed_parts.size() > 1 else ""
+	var range_def: Dictionary = {}
+	if kind == "combat_reward":
+		range_def = get_combat_reward_range(tier)
+	else:
+		return roundi(sampled)
+	var lower := int(range_def.get("min", 0))
+	var upper := int(range_def.get("max", maxi(lower, roundi(sampled))))
+	return clampi(roundi(sampled), lower, upper)

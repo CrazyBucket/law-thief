@@ -137,6 +137,7 @@ var _anim := BoardAnimationHostState.new()
 var _knight_sprites: RefCounted = null ## DoodleKnightSprites
 var _player_sprites: RefCounted = null ## FemaleAdventurerSprites
 var _slime_sprites: RefCounted = null ## SlimeSprites
+var _slime_sprites_by_variant: Dictionary = {}
 var _gem_sprites: RefCounted = null ## DoodleGemSprites
 var _prop_sprites: RefCounted = null ## DoodlePropSprites
 var _fx_textures: RefCounted = null
@@ -218,6 +219,7 @@ func _ready() -> void:
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
 	_player_sprites = PLAYER_SPRITES_SCRIPT.new()
 	_slime_sprites = SLIME_SPRITES_SCRIPT.new("green")
+	_slime_sprites_by_variant["green"] = _slime_sprites
 	_gem_sprites = GEM_SPRITES_SCRIPT.new()
 	_prop_sprites = PROP_SPRITES_SCRIPT.new()
 	_fx_textures = BoardFxTexturesClass.new()
@@ -1223,9 +1225,13 @@ func _draw_overlay_routes() -> void:
 		if path.size() < 2:
 			continue
 		var points := PackedVector2Array()
+		var route_unit: UnitState = null
+		var route_uid := str(route.get("unit_uid", ""))
+		if state != null and not route_uid.is_empty():
+			route_unit = state.units.get(route_uid, null)
 		for raw_cell in path:
 			var cell: Vector2i = raw_cell
-			points.append(grid_to_screen(cell))
+			points.append(_footprint_screen_center_at(route_unit, cell))
 		if points.size() < 2:
 			continue
 		var kind := str(route.get("kind", ""))
@@ -1534,7 +1540,7 @@ func _uses_player_sprite(unit: UnitState) -> bool:
 
 
 func _uses_slime_sprite(unit: UnitState) -> bool:
-	return unit.unit_def_id == "unit_fission_slime"
+	return SLIME_SPRITES_SCRIPT.supports_unit(unit.unit_def_id)
 
 
 func _uses_animated_idle(unit: UnitState) -> bool:
@@ -1640,7 +1646,11 @@ func _resolve_player_pose(unit_uid: String, facing: String) -> Dictionary:
 
 
 func _resolve_slime_pose(unit: UnitState, facing: String) -> Dictionary:
-	if _slime_sprites == null:
+	var variant := SLIME_SPRITES_SCRIPT.variant_for_unit(unit.unit_def_id)
+	if not _slime_sprites_by_variant.has(variant):
+		_slime_sprites_by_variant[variant] = SLIME_SPRITES_SCRIPT.new(variant)
+	var slime_sprites: RefCounted = _slime_sprites_by_variant.get(variant, null)
+	if slime_sprites == null:
 		return {}
 	var display_facing := facing
 	if not _anim.strike_elapsed.has(unit.uid) and not _anim.move_offsets.has(unit.uid):
@@ -1663,7 +1673,7 @@ func _resolve_slime_pose(unit: UnitState, facing: String) -> Dictionary:
 		anim = "Walk"
 		var walk_t: float = float(_anim.walk_phase.get(unit.uid, 0.0))
 		frame = int(walk_t * _SLIME_WALK_FPS) % _SLIME_ANIM_FRAMES
-	var pose: Dictionary = _slime_sprites.pose_frame(display_facing, anim, frame)
+	var pose: Dictionary = slime_sprites.pose_frame(display_facing, anim, frame)
 	if pose.is_empty():
 		return {}
 	var base_size := IsoCoordinates.visual_vec(Vector2(62.0, 70.0))
@@ -2186,7 +2196,13 @@ func _facing_from_grid_pos(from_grid: Vector2i, to_grid: Vector2i) -> String:
 
 
 func _get_unit_screen_center(unit: UnitState) -> Vector2:
-	var cells := unit.occupied_cells()
+	return _footprint_screen_center_at(unit, unit.pos)
+
+
+func _footprint_screen_center_at(unit: UnitState, anchor: Vector2i) -> Vector2:
+	if unit == null:
+		return grid_to_screen(anchor)
+	var cells := BoardUtils.footprint_cells_at(unit.footprint_size, anchor)
 	var total_screen := Vector2.ZERO
 	for cell in cells:
 		total_screen += grid_to_screen(cell)
@@ -3309,12 +3325,25 @@ func _puff_sprite_paths() -> PackedStringArray:
 # ═══════════════════════════════════════════════════════════════════════════
 
 ## 播放玩家投射物：从 from_grid 飞向 to_grid，走贝塞尔弧线
-func play_projectile(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
-	play_projectiles([ {"from": from_grid, "to": to_grid, "color": proj_color}])
-
-
-func play_projectile_task(from_grid: Vector2i, to_grid: Vector2i, proj_color: Color = Color(0.95, 0.92, 0.45)) -> void:
-	play_projectile(from_grid, to_grid, proj_color)
+func play_projectile(
+	from_grid: Vector2i,
+	to_grid: Vector2i,
+	proj_color: Color = Color(0.95, 0.92, 0.45),
+	source_uid: String = ""
+) -> void:
+	play_projectiles([{
+		"from": from_grid,
+		"to": to_grid,
+		"color": proj_color,
+		"source_uid": source_uid,
+	}])
+func play_projectile_task(
+	from_grid: Vector2i,
+	to_grid: Vector2i,
+	proj_color: Color = Color(0.95, 0.92, 0.45),
+	source_uid: String = ""
+) -> void:
+	play_projectile(from_grid, to_grid, proj_color, source_uid)
 	await projectile_animation_finished
 
 
@@ -3325,7 +3354,15 @@ func play_projectiles(shots: Array) -> void:
 		animation_finished.emit()
 		projectile_animation_finished.emit()
 		return
-	_projectile_fx.play(shots, _animation_speed_scale)
+	var visual_shots: Array = []
+	for raw_shot in shots:
+		var shot: Dictionary = raw_shot.duplicate(true)
+		var source_uid := str(shot.get("source_uid", ""))
+		var source: UnitState = state.units.get(source_uid, null) if state != null else null
+		if source != null:
+			shot["from_screen"] = _get_unit_screen_center(source) + IsoCoordinates.visual_vec(Vector2(0, -20))
+		visual_shots.append(shot)
+	_projectile_fx.play(visual_shots, _animation_speed_scale)
 
 
 func play_projectiles_task(shots: Array) -> void:
@@ -3360,7 +3397,16 @@ func play_light_beams(beams: Array) -> float:
 	_ensure_combat_visual_layers()
 	if _light_beam_fx == null:
 		return 0.0
-	return _light_beam_fx.play(beams, _light_beam_fx_config())
+	var visual_beams: Array = []
+	for raw_beam in beams:
+		var beam: Dictionary = raw_beam.duplicate(true)
+		var fx: Dictionary = beam.get("fx", {})
+		var source_uid := str(beam.get("source_uid", fx.get("source_uid", "")))
+		var source: UnitState = state.units.get(source_uid, null) if state != null else null
+		if source != null:
+			beam["from_screen"] = _get_unit_screen_center(source)
+		visual_beams.append(beam)
+	return _light_beam_fx.play(visual_beams, _light_beam_fx_config())
 
 
 func play_light_beams_task(beams: Array) -> void:

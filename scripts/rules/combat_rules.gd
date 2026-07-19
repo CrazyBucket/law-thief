@@ -63,7 +63,7 @@ static func apply_damage(
 		final_amount,
 		resolved_damage_context
 	)
-	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount)
+	_apply_blue_reactive_effects(state, unit, source_uid, reason, final_amount, resolved_damage_context)
 	var actual_hp_loss := mini(unit.hp, maxi(0, final_amount))
 	unit.hp -= final_amount
 	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
@@ -89,7 +89,17 @@ static func apply_true_damage(
 		return 0
 	var resolved_damage_context := DamageContext.normalize(source_uid, reason, damage_context)
 	if reason == "burning" or reason == "tile_fire":
-		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount)
+		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount, resolved_damage_context)
+	else:
+		var blue_ctx := {
+			"source_uid": source_uid,
+			"reason": reason,
+			"damage": amount,
+			"damage_context": resolved_damage_context,
+		}
+		if state.has_combat_event_sink():
+			blue_ctx["events"] = state.get_combat_event_sink()
+		_GemEffects.run_blue_explosion_after_damage(state, unit, blue_ctx)
 	var actual_hp_loss := mini(unit.hp, amount)
 	unit.hp -= amount
 	_record_damage_pair(state, unit.uid, source_uid, actual_hp_loss)
@@ -404,8 +414,20 @@ static func current_armor(state: GameState, unit: UnitState) -> int:
 	return current_shield(state, unit)
 
 
-static func _apply_blue_reactive_effects(state: GameState, owner: UnitState, source_uid: String, reason: String, damage: int = 0) -> void:
-	var ctx := {"source_uid": source_uid, "reason": reason, "damage": damage}
+static func _apply_blue_reactive_effects(
+	state: GameState,
+	owner: UnitState,
+	source_uid: String,
+	reason: String,
+	damage: int = 0,
+	damage_context: Dictionary = {}
+) -> void:
+	var ctx := {
+		"source_uid": source_uid,
+		"reason": reason,
+		"damage": damage,
+		"damage_context": damage_context,
+	}
 	if state.has_combat_event_sink():
 		ctx["events"] = state.get_combat_event_sink()
 	GemEffects.run_unit_hooks(

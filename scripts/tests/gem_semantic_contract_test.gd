@@ -5,6 +5,7 @@ const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
 const CombatRules = preload("res://scripts/rules/combat_rules.gd")
 const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
+const DisplacementRules = preload("res://scripts/rules/displacement.gd")
 const CONTRACT_PATH := "res://tests/contracts/gem_semantics.json"
 
 var _failed := false
@@ -373,7 +374,10 @@ func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, 
 				int(raw_step.get("amount", 0)),
 				source.uid,
 				str(raw_step.get("reason", "attack")),
-				{"pos": target.pos}
+				{
+					"pos": target.pos,
+					"active_attack": bool(raw_step.get("active_attack", false)),
+				}
 			)
 		"combat_apply_damage":
 			var target: UnitState = tracked_units.get(str(raw_step.get("target", "")), null)
@@ -382,12 +386,32 @@ func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, 
 			_check(source != null, "post_step", "missing combat damage source %s" % str(raw_step.get("source", "")))
 			if target == null or source == null:
 				return
-			CombatRules.apply_damage(
-				state,
+			var tx := CombatTransaction.begin(state, events)
+			tx.damage_unit(
 				target,
 				int(raw_step.get("amount", 0)),
 				source.uid,
-				str(raw_step.get("reason", "attack"))
+				str(raw_step.get("reason", "attack")),
+				{
+					"pos": target.pos,
+					"active_attack": bool(raw_step.get("active_attack", false)),
+				}
+			)
+		"knockback":
+			var target: UnitState = tracked_units.get(str(raw_step.get("target", "")), null)
+			var source: UnitState = tracked_units.get(str(raw_step.get("source", "")), null)
+			_check(target != null, "post_step", "missing knockback target %s" % str(raw_step.get("target", "")))
+			_check(source != null, "post_step", "missing knockback source %s" % str(raw_step.get("source", "")))
+			if target == null or source == null:
+				return
+			DisplacementRules.knockback(
+				state,
+				target,
+				_vector_from_variant(raw_step.get("origin", source.pos)),
+				int(raw_step.get("steps", 1)),
+				source.uid,
+				events,
+				0
 			)
 		"run_blue_poison_turn_end":
 			var owner: UnitState = tracked_units.get(str(raw_step.get("uid", "")), null)

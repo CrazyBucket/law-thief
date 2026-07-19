@@ -2,40 +2,4 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LEGACY_DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
-
-if [[ -n "${DESIGN_ROOT:-}" ]]; then
-  DESIGN_ROOT="$DESIGN_ROOT"
-else
-  LOCAL_DESIGN_ROOT="$ROOT/../learning-notes/game/design/law-thief"
-  if [[ -d "$LOCAL_DESIGN_ROOT" ]]; then
-    DESIGN_ROOT="$LOCAL_DESIGN_ROOT"
-  else
-    DESIGN_ROOT="$LEGACY_DESIGN_ROOT"
-  fi
-fi
-QUERY="${*:-宝石|倍率|伤害|叠加|取整}"
-
-cat <<EOF
-DESIGN_ROOT=$DESIGN_ROOT
-AUTHORITY_ORDER:
-1. $DESIGN_ROOT/详细设计/宝石/宝石_v1.md
-2. $DESIGN_ROOT/详细设计/数值/数值设计_v1.md
-3. $DESIGN_ROOT/GDD.md
-4. $DESIGN_ROOT/Technical_Architecture.md
-
-Conflicts must be reported before changing behavior. Detailed design wins by default.
-QUERY=$QUERY
-EOF
-
-if [[ ! -d "$DESIGN_ROOT" ]]; then
-  echo "DESIGN_ROOT_MISSING $DESIGN_ROOT"
-  echo "Set DESIGN_ROOT to the local design-doc path before relying on design search."
-  exit 0
-fi
-
-rg -n --glob '*.md' "$QUERY" \
-  "$DESIGN_ROOT/详细设计" \
-  "$DESIGN_ROOT/GDD.md" \
-  "$DESIGN_ROOT/Technical_Architecture.md" \
-  | head -200
+exec bash "$ROOT/tools/design" find "$@"

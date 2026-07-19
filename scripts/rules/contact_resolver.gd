@@ -1,5 +1,7 @@
-class_name ContactResolver
+class_name ContactResolve
 extends RefCounted
+
+const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 
 ## 接触时机定义
 const TIMING_COLLISION   := "collision"    # 碰撞（强制位移撞单位）
@@ -27,10 +29,7 @@ static func resolve_adjacent(state: GameState) -> void:
 	for unit in units:
 		if not unit.alive:
 			continue
-		for neighbor_pos in BoardUtils.neighbors4(unit.pos):
-			var other: UnitState = state.get_unit_at(neighbor_pos)
-			if other == null or not other.alive:
-				continue
+		for other in FootprintRules.adjacent_units(state, unit):
 			var pair_key := _pair_key(unit.uid, other.uid)
 			if processed.has(pair_key):
 				continue

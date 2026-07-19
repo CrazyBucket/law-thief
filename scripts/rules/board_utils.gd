@@ -3,11 +3,9 @@ extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
-
+const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 const _MIN_STEP_COST: float = 1.0
 const _FULL_PATH_BUDGET_FACTOR: float = 8.0
-
-
 static func in_bounds(state: GameState, pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.y >= 0 and pos.x < state.board_size.x and pos.y < state.board_size.y
 
@@ -123,6 +121,16 @@ static func tile_move_cost(state: GameState, pos: Vector2i) -> float:
 	return _step_cost_with_profile(state, pos, path_cost_profile())
 
 
+static func unit_step_cost(state: GameState, unit: UnitState, anchor_pos: Vector2i, cost_profile: Dictionary = {}) -> float:
+	var profile := path_cost_profile(cost_profile)
+	if unit == null:
+		return _step_cost_with_profile(state, anchor_pos, profile)
+	var cost := _MIN_STEP_COST
+	for cell in footprint_cells_for_unit_at(unit, anchor_pos):
+		cost = maxf(cost, _step_cost_with_profile(state, cell, profile))
+	return cost
+
+
 static func _step_cost_with_profile(state: GameState, pos: Vector2i, profile: Dictionary) -> float:
 	var base_step: float = float(profile["base_step_cost"])
 	var cost: float = base_step
@@ -212,7 +220,7 @@ static func astar_path(
 				if not is_passable(state, neighbor, ignore_uid, cell_blockers):
 					continue
 
-			var step_cost: float = _step_cost_with_profile(state, neighbor, profile)
+			var step_cost := unit_step_cost(state, moving_unit, neighbor, profile)
 			var tentative_g: float = current_g + step_cost
 
 			# 超过移动力上限则跳过
@@ -272,7 +280,7 @@ static func path_toward(
 	)
 	if bool(path_result.get("ok", false)):
 		var full_path: Array[Vector2i] = path_result.get("path", [] as Array[Vector2i])
-		return _trim_path_to_budget(state, full_path, max_steps, profile)
+		return _trim_path_to_budget(state, full_path, max_steps, profile, moving_unit)
 	if not bool(profile["allow_partial_path"]):
 		return [] as Array[Vector2i]
 	return astar_path(state, from_pos, to_pos, max_steps, ignore_uid, profile, cell_blockers, moving_unit)
@@ -313,7 +321,7 @@ static func _best_full_path_toward(
 		)
 		if goal != from_pos and (path.is_empty() or path[path.size() - 1] != goal):
 			continue
-		var cost := _path_cost(state, path, full_profile)
+		var cost := _path_cost(state, path, full_profile, moving_unit)
 		var goal_dist := manhattan(goal, to_pos)
 		if not found \
 		or cost < best_cost \
@@ -336,10 +344,10 @@ static func _full_path_budget(state: GameState, profile: Dictionary) -> int:
 	return int(ceili(float(cells) * base_cost * _FULL_PATH_BUDGET_FACTOR))
 
 
-static func _path_cost(state: GameState, path: Array[Vector2i], profile: Dictionary) -> float:
+static func _path_cost(state: GameState, path: Array[Vector2i], profile: Dictionary, moving_unit: UnitState = null) -> float:
 	var total := 0.0
 	for step in path:
-		total += _step_cost_with_profile(state, step, profile)
+		total += unit_step_cost(state, moving_unit, step, profile)
 	return total
 
 
@@ -347,12 +355,13 @@ static func _trim_path_to_budget(
 	state: GameState,
 	path: Array[Vector2i],
 	max_steps: int,
-	profile: Dictionary
+	profile: Dictionary,
+	moving_unit: UnitState = null
 ) -> Array[Vector2i]:
 	var trimmed: Array[Vector2i] = []
 	var spent := 0.0
 	for step in path:
-		var step_cost := _step_cost_with_profile(state, step, profile)
+		var step_cost := unit_step_cost(state, moving_unit, step, profile)
 		if spent + step_cost > float(max_steps):
 			break
 		spent += step_cost
@@ -444,7 +453,7 @@ static func reachable_cells(
 			else:
 				if not is_passable(state, neighbor, ignore_uid, cell_blockers):
 					continue
-			var cost: float = _step_cost_with_profile(state, neighbor, profile)
+			var cost := unit_step_cost(state, moving_unit, neighbor, profile)
 			var new_dist: float = dist + cost
 			if new_dist > float(move_points):
 				continue
@@ -568,7 +577,7 @@ static func can_unit_attack_cell(attacker: UnitState, state: GameState, cell: Ve
 	var target := state.get_unit_at(cell)
 	if target != null and target.alive and target.uid != attacker.uid:
 		return can_unit_reach_unit(attacker, target, max_range)
-	return is_within_manhattan_range_of_cell(attacker.pos, cell, max_range)
+	return distance_between_unit_at_and_cell(attacker, attacker.pos, cell) <= max_range
 
 
 static func can_unit_attack_cell_at(
@@ -702,16 +711,7 @@ static func projectile_origin_cell(attacker: UnitState, target_pos: Vector2i) ->
 static func projectile_origin_cell_at(attacker: UnitState, anchor: Vector2i, target_pos: Vector2i) -> Vector2i:
 	if attacker == null:
 		return target_pos
-	if attacker.footprint_size == Vector2i(1, 1):
-		return anchor
-	var best := anchor
-	var best_dist := 999999
-	for cell in footprint_cells_for_unit_at(attacker, anchor):
-		var dist := chebyshev(cell, target_pos)
-		if dist < best_dist:
-			best_dist = dist
-			best = cell
-	return best
+	return FootprintRules.nearest_cell_to(attacker, target_pos, anchor, true)
 
 
 static func resolve_projectile_impact(state: GameState, from_pos: Vector2i, to_pos: Vector2i) -> Vector2i:

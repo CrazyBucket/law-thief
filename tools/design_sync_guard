@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${DESIGN_ROOT:-}" ]]; then
+  RESOLVED_DESIGN_ROOT="$DESIGN_ROOT"
+elif [[ -d "$ROOT/../learning-notes/game/design/law-thief" ]]; then
+  RESOLVED_DESIGN_ROOT="$ROOT/../learning-notes/game/design/law-thief"
+elif [[ -d "/Users/jinhuiwu/code/learning-notes/game/design/law-thief" ]]; then
+  RESOLVED_DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
+else
+  echo "DESIGN_SYNC_UNAVAILABLE design repository not present; local guard skipped"
+  exit 0
+fi
+
+DESIGN_ROOT="$RESOLVED_DESIGN_ROOT" bash "$ROOT/tools/design" refresh

@@ -45,7 +45,7 @@ func _run_tests() -> void:
 	var grant: Dictionary = economy_service.grant("gold", 10, "combat_reward", {"transaction_id": "rule_gold_tx"})
 	assert(grant.get("ok", false), "grant should succeed under rule")
 	var entry: Dictionary = grant.get("entry", {})
-	assert(int(entry.get("after", 0)) == 11, "ledger after should reflect modified gain")
+	assert(int(entry.get("after", 0)) == 96, "ledger after should reflect modified gain from the configured starting balance")
 	assert((entry.get("modifiers", []) as Array).size() == 1, "modifier trace should be recorded")
 	run_service.end_run()
 	print("ADVENTURE_RULE_REGISTRY_TEST_PASS")

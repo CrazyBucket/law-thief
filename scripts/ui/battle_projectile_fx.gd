@@ -23,7 +23,7 @@ func play(shots: Array, speed_scale: float) -> void:
 	for shot in shots:
 		var from_grid: Vector2i = shot.get("from", Vector2i.ZERO)
 		var to_grid: Vector2i = shot.get("to", Vector2i.ZERO)
-		var from_screen := _screen_anchor(from_grid)
+		var from_screen: Vector2 = shot.get("from_screen", _screen_anchor(from_grid))
 		var to_screen := _screen_anchor(to_grid)
 		var midpoint := (from_screen + to_screen) * 0.5
 		var distance := from_screen.distance_to(to_screen)

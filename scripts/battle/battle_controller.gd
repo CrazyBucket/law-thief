@@ -232,7 +232,9 @@ func can_use_action(action: String) -> bool:
 		return false
 	match action:
 		Constants.ACTION_MOVE:
-			return not state.player_moved or StatusRules.has_extra_move(state.get_player())
+			return not state.player_moved \
+				or stored_split_move_remaining(player) > 0 \
+				or StatusRules.has_extra_move(player)
 		Constants.ACTION_ATTACK:
 			return player != null \
 				and StatusRules.can_attack(player) \
@@ -334,7 +336,28 @@ func player_move_budget(player: UnitState) -> int:
 		return 0
 	if editor_unlimited_actions_enabled():
 		return Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
-	return player.move_points
+	var current_capacity := StatusRules.effective_move_points(player, player.move_points)
+	var stored := stored_split_move_remaining(player, current_capacity)
+	return stored if stored > 0 else current_capacity
+
+
+func split_move_enabled() -> bool:
+	if state == null:
+		return false
+	var registry := _relic_effect_registry()
+	return registry != null and bool(registry.query_modifier("split_move_enabled", state))
+
+
+func stored_split_move_remaining(player: UnitState, current_capacity: int = -1) -> int:
+	if state == null or player == null or state.split_move_uid.is_empty():
+		return 0
+	if not split_move_enabled() or not player.alive or not StatusRules.can_act(player) or not StatusRules.can_move(player):
+		state.clear_split_move()
+		return 0
+	var capacity := current_capacity
+	if capacity < 0:
+		capacity = StatusRules.effective_move_points(player, player.move_points)
+	return state.reconcile_split_move(player.uid, capacity)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

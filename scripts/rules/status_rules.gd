@@ -2,12 +2,12 @@ class_name StatusRules
 extends RefCounted
 
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
+const _SplitMoveRules = preload("res://scripts/rules/split_move_rules.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const _StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
-
 
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
@@ -96,7 +96,7 @@ static func apply_rooted(
 	_apply(state, unit, Constants.STATUS_ROOTED, {
 		"duration": resolved_duration,
 		"source_uid": source_uid,
-	})
+	}); _SplitMoveRules.invalidate_if_blocked(state, unit)
 
 
 static func apply_exposed(state: GameState, unit: UnitState, slot: SlotState, turn_index: int) -> void:
@@ -248,7 +248,7 @@ static func apply_paralyzed(
 	_apply(state, unit, Constants.STATUS_PARALYZED, {
 		"duration": maxi(1, resolved_duration),
 		"source_uid": source_uid,
-	})
+	}); _SplitMoveRules.invalidate_if_blocked(state, unit)
 
 
 static func apply_slowed(
@@ -273,7 +273,7 @@ static func apply_slowed(
 	})
 	var applied: StatusInstance = unit.get_status(Constants.STATUS_SLOWED)
 	if applied != null:
-		applied.payload["min_move_points"] = merged_min
+		applied.payload["min_move_points"] = merged_min; _SplitMoveRules.reconcile_capacity(state, unit, effective_move_points(unit, unit.move_points))
 
 
 static func apply_wet(

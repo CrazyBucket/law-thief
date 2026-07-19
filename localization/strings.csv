@@ -94,6 +94,12 @@ unit.bomb_rat.name,炸弹鼠,Bomb Rat
 unit.patrol_guard.name,巡路甲兵,Patrol Guard
 unit.stone_bow_guard.name,石弓卫士,Stone Bow Guard
 unit.fission_slime.name,裂变史莱姆,Fission Slime
+unit.small_slime_blue.name,蓝色小史莱姆,Blue Small Slime
+unit.small_slime_dark.name,暗色小史莱姆,Dark Small Slime
+unit.small_slime_green.name,绿色小史莱姆,Green Small Slime
+unit.small_slime_pink.name,粉色小史莱姆,Pink Small Slime
+unit.small_slime_white.name,白色小史莱姆,White Small Slime
+unit.small_slime_yellow.name,黄色小史莱姆,Yellow Small Slime
 unit.law_worm.name,噬律蛆,Law-Eater Grub
 unit.broodmother.name,畸变蛆母,Mutant Broodmother
 unit.overload_enforcer.name,执律者,Overload Enforcer
@@ -106,11 +112,10 @@ gem.intent.pull,引力拉近+碰撞({damage}),Gravity Pull + Collision ({damage}
 gem.intent.arc_attack,电击 ({damage}),Arc Attack ({damage})
 gem.intent.fire_attack,烈焰攻击 ({damage}),Fire Attack ({damage})
 gem.intent.ice_attack,寒冰攻击 ({damage}),Ice Attack ({damage})
-gem.effect.explosion.player_skill,引爆：对目标格及周围造成 {damage} 伤害,Detonate: deal {damage} damage to target cell and nearby cells
-gem.effect.explosion.unit_red_active,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
-gem.effect.explosion.enemy_red_action,触发：自身格爆炸 ({damage}),Trigger: explode on the owner's cell ({damage})
-gem.effect.explosion.blue_turn_start,被动：回合开始对邻格敌人 1 伤害,Passive: deal 1 damage to an adjacent enemy at turn start
-gem.effect.explosion.black_death,死亡：爆炸波及周围 1 格,Death: explosion hits nearby cells within 1
+gem.effect.explosion.player_skill,引爆目标格；伤害随攻击与宝石等级提高,Detonate the target cell; damage scales with attack and gem level
+gem.effect.explosion.unit_red_active,攻击命中后爆炸；中心追加伤害并波及周围,Explode after an attack hits; deal bonus damage at the center and splash nearby
+gem.effect.explosion.enemy_red_action,攻击命中后爆炸；中心追加伤害并波及周围,Explode after an attack hits; deal bonus damage at the center and splash nearby
+gem.effect.explosion.black_death,死亡：以自身攻击引发 3×3 爆炸,Death: cause a 3×3 blast based on the owner's attack
 gem.effect.explosion.tile_turn_start,光环：1 格内敌人每回合 1 伤害,Aura: deal 1 damage each turn to enemies within 1 tile
 gem.effect.poison.player_skill,剧毒：目标周围 3x3 铺设毒雾并叠加中毒,Venom: create poison fog in a 3x3 area and add poison stacks
 gem.effect.poison.unit_red_active,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
@@ -242,7 +247,7 @@ gem.level.pattern.cross,十字,cross
 gem.level.pattern.square,3×3,3×3
 gem.level.pattern.single,单格,single cell
 gem.level.target.all,全部目标,all targets
-gem.level.red.explosion,爆炸 Lv{level}：{blast_pattern}爆炸，伤害×{damage_multiplier},Explosion Lv{level}: {blast_pattern} blast x{damage_multiplier} damage
+gem.level.red.explosion,爆炸 Lv{level}：{blast_pattern}；中心追加{center_damage_ratio}攻击伤害，周围造成{splash_base_attack_ratio}基础攻击伤害,Explosion Lv{level}: {blast_pattern}; +{center_damage_ratio} attack damage at center and {splash_base_attack_ratio} base attack splash
 gem.level.red.poison,剧毒 Lv{level}：{fog_pattern}毒雾，持续+{duration_bonus}回合,Poison Lv{level}: {fog_pattern} fog with +{duration_bonus} duration
 gem.level.red.fire,烈焰 Lv{level}：扩散{spread_count}格，燃烧目标额外扩散{burning_bonus_spread_count}格,Fire Lv{level}: spread {spread_count} cells with +{burning_bonus_spread_count} on burning targets
 gem.level.red.gravity,引力 Lv{level}：拉扯{pull_steps}格，攻击范围+{range_bonus},Gravity Lv{level}: pull {pull_steps} cells with +{range_bonus} range
@@ -253,7 +258,7 @@ gem.level.red.ice,寒冰 Lv{level}：施加{hit_slowed_stacks}层减速，最低
 gem.level.red.counter,反击 Lv{level}：标记{mark_duration}回合；反击携带TAG：{retaliation_with_tags}；击杀刷新攻击：{grant_extra_attack_on_kill},Counter Lv{level}: mark for {mark_duration} turn(s); retaliation carries tags: {retaliation_with_tags}; refresh attack on kill: {grant_extra_attack_on_kill}
 gem.level.red.echo,回响 Lv{level}：回响{echo_tag_count}个 tag，追加{followup_ratio}伤害,Echo Lv{level}: echo {echo_tag_count} tags with {followup_ratio} follow-up damage
 gem.level.blue.poison,剧毒 Lv{level}：接触施加{contact_poison_stacks}层中毒，回合末传播：{turn_end_spread},Poison Lv{level}: contact poison {contact_poison_stacks}; turn-end spread: {turn_end_spread}
-gem.level.blue.explosion,爆炸 Lv{level}：燃烧触发：{detonate_on_burning}，任意受伤触发：{detonate_on_any_damage}，形态{blast_pattern},Explosion Lv{level}: burning trigger {detonate_on_burning}; any-damage trigger {detonate_on_any_damage}; {blast_pattern}
+gem.level.blue.explosion,爆炸 Lv{level}：火焰/位移/爆炸触发，任意受伤触发：{detonate_on_any_damage}；{blast_pattern}，伤害{damage_ratio}基础攻击,Explosion Lv{level}: fire/displacement/explosion trigger; any-damage trigger {detonate_on_any_damage}; {blast_pattern} at {damage_ratio} base attack
 gem.level.blue.gravity,引力 Lv{level}：偏转概率{deflect_chance}，受伤减速：{slow_on_damaged}，定身：{root_on_damaged},Gravity Lv{level}: {deflect_chance} deflect; slow {slow_on_damaged}; root {root_on_damaged}
 gem.level.blue.arc,导电 Lv{level}：反弹概率{rebound_chance},Conductive Lv{level}: {rebound_chance} rebound chance
 gem.level.blue.split,分裂 Lv{level}：{redirect_radius}格内{redirect_mode}，转移比例{redirect_ratio}；临时分身{temp_clone_count}个（{temp_clone_hp}生命，{temp_clone_stat_ratio}属性，持续{temp_clone_duration}回合，每回合上限{temp_clone_per_turn_limit}）,Split Lv{level}: {redirect_mode} within {redirect_radius}; redirect {redirect_ratio}; {temp_clone_count} temporary clone(s) ({temp_clone_hp} HP, {temp_clone_stat_ratio} stats, {temp_clone_duration} turn(s), limit {temp_clone_per_turn_limit} per turn)

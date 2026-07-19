@@ -174,6 +174,7 @@ func _play_light_beam_cluster(cluster: Dictionary) -> void:
 			"color": beam_event.get("color", Color(1.0, 0.96, 0.58)),
 			"width": float(beam_event.get("width", 1.0)),
 			"fx": beam_event,
+			"source_uid": str(beam_event.get("source_uid", "")),
 		})
 	var duration := 0.0
 	if _board.has_method("play_light_beams"):
@@ -368,7 +369,12 @@ func _play_projectile_volley(batch: Array) -> void:
 	if batch.size() == 1:
 		var single: Dictionary = batch[0]
 		var projectile_color: Color = single.get("color", Color(0.95, 0.92, 0.45))
-		await _board.play_projectile_task(single.get("from", Vector2i.ZERO), single.get("to", Vector2i.ZERO), projectile_color)
+		await _board.play_projectile_task(
+			single.get("from", Vector2i.ZERO),
+			single.get("to", Vector2i.ZERO),
+			projectile_color,
+			str(single.get("source_uid", ""))
+		)
 	else:
 		var shots: Array = []
 		for projectile_event in batch:
@@ -376,6 +382,7 @@ func _play_projectile_volley(batch: Array) -> void:
 				"from": projectile_event.get("from", Vector2i.ZERO),
 				"to": projectile_event.get("to", Vector2i.ZERO),
 				"color": projectile_event.get("color", Color(0.95, 0.92, 0.45)),
+				"source_uid": str(projectile_event.get("source_uid", "")),
 			})
 		await _board.play_projectiles_task(shots)
 	await _await_anim_delay(0.08)
@@ -419,7 +426,12 @@ func _play_anim_event(ev: Dictionary) -> void:
 			await _await_anim_delay(0.36)
 		"projectile", "projectile_deflect":
 			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
-			await _board.play_projectile_task(ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO), projectile_color)
+			await _board.play_projectile_task(
+				ev.get("from", Vector2i.ZERO),
+				ev.get("to", Vector2i.ZERO),
+				projectile_color,
+				str(ev.get("source_uid", ""))
+			)
 			await _await_anim_delay(0.08)
 		"light_beam":
 			await _board.play_light_beam_task(

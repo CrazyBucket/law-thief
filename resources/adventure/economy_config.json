@@ -1,30 +1,73 @@
 {
-  "starting_gold": 0,
+  "starting_gold": 85,
+  "economy_model": {
+    "mu": 20,
+    "G_init": 85,
+    "acts": 3,
+    "nodes_per_act": 15,
+    "shops_per_act": 2,
+    "combat_normal_mu": 0.9,
+    "sigma_combat": 0.3,
+    "combat_elite_mu": 2,
+    "sigma_elite": 0.5,
+    "combat_boss_mu": 3,
+    "sigma_boss": 1,
+    "event_positive_mu": 1,
+    "event_positive_rate": 0.4,
+    "sigma_event_pos": 0.6,
+    "event_negative_mu": -1.5,
+    "event_negative_rate": 0.2,
+    "sigma_event_neg": 0.4,
+    "include_events": false,
+    "price_sigma": 0.15,
+    "prices": {
+      "basic_card": 1.75,
+      "uncommon_card": 4,
+      "rare_card": 7,
+      "basic_relic": 7,
+      "uncommon_relic": 9,
+      "rare_relic": 12,
+      "potion": 2,
+      "remove": 3.5
+    }
+  },
   "combat_rewards": {
-    "normal": {"min": 8, "max": 12},
-    "elite": {"min": 18, "max": 22},
-    "boss": {"min": 36, "max": 44}
+    "normal": {"min": 6, "max": 30},
+    "elite": {"min": 20, "max": 60},
+    "boss": {"min": 20, "max": 100}
   },
   "shop_prices": {
+    "card": {
+      "default": {"min": 24, "max": 46},
+      "basic": {"min": 24, "max": 46},
+      "uncommon": {"min": 56, "max": 104},
+      "rare": {"min": 98, "max": 182}
+    },
     "gem": {
-      "default": {"min": 12, "max": 18},
-      "common": {"min": 12, "max": 18},
-      "uncommon": {"min": 18, "max": 24},
-      "rare": {"min": 27, "max": 33},
-      "epic": {"min": 39, "max": 51},
-      "legendary": {"min": 57, "max": 73}
+      "default": {"min": 24, "max": 46},
+      "common": {"min": 24, "max": 46},
+      "uncommon": {"min": 56, "max": 104},
+      "rare": {"min": 98, "max": 182},
+      "epic": {"min": 126, "max": 234},
+      "legendary": {"min": 168, "max": 312}
     },
     "relic": {
-      "default": {"min": 25, "max": 35},
-      "common": {"min": 25, "max": 35},
-      "rare": {"min": 40, "max": 50},
-      "boss": {"min": 60, "max": 80}
+      "default": {"min": 98, "max": 182},
+      "basic": {"min": 98, "max": 182},
+      "common": {"min": 98, "max": 182},
+      "uncommon": {"min": 126, "max": 234},
+      "rare": {"min": 168, "max": 312},
+      "boss": {"min": 168, "max": 312}
     },
     "consumable": {
-      "default": {"min": 8, "max": 12},
-      "common": {"min": 8, "max": 12},
-      "uncommon": {"min": 13, "max": 17},
-      "rare": {"min": 20, "max": 26}
+      "default": {"min": 28, "max": 52},
+      "potion": {"min": 28, "max": 52},
+      "common": {"min": 28, "max": 52},
+      "uncommon": {"min": 56, "max": 104},
+      "rare": {"min": 98, "max": 182}
+    },
+    "remove": {
+      "default": {"min": 49, "max": 91}
     }
   },
   "amount_refs": {
@@ -33,11 +76,13 @@
     "event_debug_relief_heal": {"value": 4, "kind": "flat", "unit": "hp"},
     "event_debug_toll_cost": {"value": 5, "kind": "flat", "unit": "gold"},
     "event_debug_toll_heal": {"value": 4, "kind": "flat", "unit": "hp"},
-    "event_cache_gold": {"value": 10, "kind": "flat", "unit": "gold"},
+    "event_cache_gold": {"value": 20, "kind": "flat", "unit": "gold"},
     "event_cache_heal": {"value": 5, "kind": "flat", "unit": "hp"},
-    "event_medic_cost": {"value": 6, "kind": "flat", "unit": "gold"},
-    "event_medic_heal": {"value": 8, "kind": "flat", "unit": "hp"},
-    "event_forge_gold": {"value": 7, "kind": "flat", "unit": "gold"},
+    "event_medic_cost": {"value": 20, "kind": "flat", "unit": "gold"},
+    "event_medic_heal": {"value": 12, "kind": "flat", "unit": "hp"},
+    "event_forge_gold": {"value": 20, "kind": "flat", "unit": "gold"},
+    "event_positive_gold": {"value": 20, "kind": "flat", "unit": "gold"},
+    "event_negative_gold": {"value": 30, "kind": "flat", "unit": "gold"},
     "rest_site_heal_ratio": {"value": 0.2, "kind": "ratio", "unit": "max_hp"}
   }
 }

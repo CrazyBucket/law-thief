@@ -5,6 +5,8 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemEffectsScript = preload("res://scripts/rules/gem_effects.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const SlimeSprites = preload("res://scripts/ui/slime_sprites.gd")
+const ColoredSlimeRules = preload("res://scripts/rules/colored_slime_rules.gd")
 
 
 func _initialize() -> void:
@@ -18,6 +20,7 @@ func _run_test() -> void:
 	_test_black_split_can_extract()
 	_test_blue_only_on_single_target()
 	_test_clone_hp_ratio()
+	_test_colored_children_are_distinct_units()
 	_test_split_clones_partition_slots_and_gems()
 	_test_player_split_merge_preserves_gems_across_battles()
 	_test_split_gem_rewards_once_after_both_clones_die()
@@ -135,6 +138,31 @@ func _test_clone_hp_ratio() -> void:
 			break
 	assert(clone_hp == 10, "fission slime override should raise level 1 clone hp to 50%% of 20, got %d" % clone_hp)
 	print("  [OK] fission slime level 1 override raises clone hp to 50%%")
+
+
+func _test_colored_children_are_distinct_units() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 424242)
+	var state := controller.state
+	var slime := _find_slime(state)
+	var events: Array[Dictionary] = []
+	state.kill_unit(slime)
+	GemEffectsScript.on_unit_death(state, slime, events)
+	var children: Array[UnitState] = []
+	for unit in state.units.values():
+		if unit.alive and unit.split_origin_uid == slime.uid:
+			children.append(unit)
+	assert(children.size() == 2, "fission slime death should create two small slimes")
+	assert(children[0].unit_def_id != children[1].unit_def_id, "one split should use two different slime colors")
+	for child in children:
+		assert(child.unit_def_id in ColoredSlimeRules.CHILD_UNIT_IDS, "split child must use a colored small-slime definition")
+		assert(child.has_tag(Constants.TAG_UNIT_SMALL_SLIME), "small slime must have its own monster tag")
+		assert(child.unit_def_id != "unit_fission_slime", "small slime must not remain a resized fission-slime clone")
+		assert(child.behavior_id == "generic_melee" and child.footprint_size == Vector2i.ONE)
+	for child_id in ColoredSlimeRules.CHILD_UNIT_IDS:
+		var variant := SlimeSprites.variant_for_unit(child_id)
+		assert(SlimeSprites.new(variant).portrait_texture() != null, "colored slime sheet must load: %s" % child_id)
+	print("  [OK] split creates two distinct colored small-slime monsters and all six sheets load")
 
 
 func _test_split_clones_partition_slots_and_gems() -> void:

@@ -31,8 +31,9 @@ extends Node
 ##   attack_split_count         攻击分裂次数加成（叠加，整数）
 ##   arc_bounce_count_bonus     电弧弹射目标数加成（叠加，整数）
 ##   chaos_launcher_active      混沌发射器激活（bool）
+##   split_move_enabled         允许把每回合移动拆成两段（bool）
 ##   attack_miss_chance         攻击命中率降低（叠加，浮点）
-##   armor_lock_break_bonus     攻击护甲锁额外拆除伤害（叠加，整数）
+##   armor_break_bonus          普通攻击额外削减护甲（叠加，整数）
 ##   overlay_move_cost_reduction 地块覆盖层移动消耗减少（需 ctx.overlay_type）
 ##   split_red_damage_ratio     分裂红槽攻击伤害倍率覆盖（替换常量；取最大值）
 ##   split_blue_redirect_ratio  分裂蓝槽转移伤害比例覆盖（取最大值）
@@ -109,7 +110,8 @@ func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {})
 	var is_float := modifier_id == "attack_miss_chance"
 	var is_bool := (modifier_id.ends_with("_immune")
 		or modifier_id == "first_damage_absorb"
-		or modifier_id == "chaos_launcher_active")
+		or modifier_id == "chaos_launcher_active"
+		or modifier_id == "split_move_enabled")
 
 	for relic_id in owned:
 		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
