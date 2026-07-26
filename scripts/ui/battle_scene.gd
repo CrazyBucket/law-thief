@@ -538,6 +538,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		return
 	var unit := state.get_unit_at(cell)
 	var action := _controller.selected_action
+	if unit == null and action == Constants.ACTION_EXTRACT:
+		unit = state.get_corpse_at(cell)
 	if action.is_empty():
 		_dismiss_popup()
 		_set_inspect_target(cell)
@@ -613,7 +615,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 						get_viewport().get_mouse_position(),
 						_controller.check_dropped_gem_action
 					)
-				elif unit != null and unit.alive:
+				elif unit != null and (unit.alive or action == Constants.ACTION_EXTRACT):
 					_set_inspect_target(cell)
 					_sync_unit_slot_panels()
 				else:

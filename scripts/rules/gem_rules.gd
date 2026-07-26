@@ -136,11 +136,16 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 static func can_insert(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if state.held_gem_uid.is_empty():
 		return _fail("手中没有宝石")
-	if not slot.is_operable(state.turn_index):
-		return _fail("槽位被锁定")
+	if target_unit == null or not target_unit.alive:
+		return _fail("目标无效")
 	if BoardUtils.distance_between_units(actor, target_unit) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
+	# 分裂锁只禁用原槽效果与普通操作；过载会新建同色槽，不改写被锁槽。
+	if not slot.is_operable(state.turn_index):
+		if slot.is_split_disabled() and gem != null:
+			return _ok({"requires_overload": true})
+		return _fail("槽位被锁定")
 	if _OldMageBehavior.accepts_decoy_insert(state, target_unit, slot, gem):
 		return _ok({"requires_overload": false, "old_mage_decoy": true})
 	if gem != null:

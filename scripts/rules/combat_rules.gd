@@ -139,7 +139,7 @@ static func end_deferred_death_hooks(state: GameState) -> void:
 			_death_event_sink,
 			_death_hook_context(entry, chain_id)
 		)
-		_drop_enemy_gems_to_ground(state, unit)
+		_discard_suppressed_enemy_gems(state, unit)
 		_finalize_unit_death(state, unit, entry, _death_event_sink)
 		_active_death_chain_id = prev_chain_id
 	_pending_deaths.clear()
@@ -182,7 +182,7 @@ static func _kill_unit(
 			"reason": reason,
 			"lethal_damage": DamageContext.with_actual_damage(damage_context, actual_hp_loss),
 		}, death_chain_id))
-		_drop_enemy_gems_to_ground(state, unit)
+		_discard_suppressed_enemy_gems(state, unit)
 		_finalize_unit_death(state, unit, {
 			"source_uid": source_uid,
 			"reason": reason,
@@ -292,32 +292,12 @@ static func _grant_counter_kill_refresh(state: GameState, unit: UnitState) -> vo
 	StatusRules.grant_extra_attack(state, unit, 1, unit.uid)
 
 
-static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> void:
-	if state == null or unit == null or unit.team != Constants.TEAM_ENEMY:
+static func _discard_suppressed_enemy_gems(state: GameState, unit: UnitState) -> void:
+	if state == null or unit == null or unit.team != Constants.TEAM_ENEMY or _UnitRewardRules.can_drop_gems(unit):
 		return
-	var registry := _data_registry()
-	for unit_slot in unit.slots:
-		if unit_slot == null or unit_slot.gem_uid.is_empty():
-			continue
-		var gem: GemState = state.gems.get(unit_slot.gem_uid, null)
-		if gem == null:
-			unit_slot.gem_uid = ""
-			continue
-		if not _UnitRewardRules.can_drop_gems(unit):
-			_GemTransfer.remove(state, gem.uid)
-			continue
-		_GemTransfer.to_ground(state, gem, unit.pos, {
-			"source_unit_uid": unit.uid,
-			"reward_origin_uid": _UnitRewardRules.reward_group_uid(unit),
-			"source_slot_type": unit_slot.slot_type,
-		})
-		var gem_name := gem.gem_id
-		if registry != null:
-			gem_name = registry.get_gem_display_name(gem)
-		state.log("%s 掉落在 %s" % [
-			gem_name,
-			unit.pos,
-		])
+	for slot: SlotState in unit.slots:
+		if slot != null and not slot.gem_uid.is_empty():
+			_GemTransfer.remove(state, slot.gem_uid)
 
 
 static func _data_registry() -> Node:

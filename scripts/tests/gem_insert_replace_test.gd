@@ -1,6 +1,7 @@
 extends SceneTree
 
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
+const BattleSettlementService = preload("res://scripts/battle/battle_settlement_service.gd")
 
 
 func _initialize() -> void:
@@ -13,8 +14,10 @@ func _run_test() -> void:
 	_test_second_insert_overloads_without_replacing()
 	_test_forced_insert_keeps_held_visual_state_consistent()
 	_test_self_occupied_insert_creates_overload_slot()
-	_test_enemy_gems_drop_to_ground()
-	_test_ground_gem_can_be_extracted()
+	_test_split_locked_slot_can_overload_insert()
+	_test_enemy_gems_stay_on_corpse()
+	_test_corpse_gem_can_be_extracted()
+	_test_corpse_gem_can_be_embedded_at_settlement()
 	_test_slot_panels_only_show_in_operation_range()
 	print("GEM_INSERT_OVERLOAD_TEST_PASS")
 	quit()
@@ -154,7 +157,34 @@ func _test_self_occupied_insert_creates_overload_slot() -> void:
 	print("  [OK] self occupied insert creates overload slot")
 
 
-func _test_enemy_gems_drop_to_ground() -> void:
+func _test_split_locked_slot_can_overload_insert() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 11224)
+	var state := controller.state
+	var player := state.get_player()
+	assert(player != null, "locked overload fixture should have player")
+	_force_gem(state, player, Constants.SLOT_BLACK, Constants.GEM_SPLIT)
+	var locked_slot := player.get_slot(Constants.SLOT_BLACK)
+	locked_slot.locked = true
+	locked_slot.lock_type = Constants.LOCK_SPLIT_DISABLED
+	state.held_gem_uid = _make_gem(state, Constants.GEM_FIRE, player.uid)
+	var held_uid := state.held_gem_uid
+	var original_uid := locked_slot.gem_uid
+	var original_count := player.slots.size()
+	controller.select_action(Constants.ACTION_INSERT)
+	var result := controller.try_insert(player.uid, player.slots.find(locked_slot))
+	assert(result.get("ok", false) and bool(result.get("overload_armed", false)), "locked split slot should arm overload")
+	result = controller.try_insert(player.uid, player.slots.find(locked_slot))
+	assert(result.get("ok", false) and bool(result.get("overload_forced", false)), "locked split slot should accept forced overload")
+	assert(locked_slot.lock_type == Constants.LOCK_SPLIT_DISABLED and locked_slot.gem_uid == original_uid, "overload must not rewrite the locked split slot")
+	assert(player.slots.size() == original_count + 1, "locked split overload should append one slot")
+	var overload_slot: SlotState = player.slots[-1]
+	assert(overload_slot.is_overload_slot() and not overload_slot.is_split_disabled(), "new slot should be overload-only and operable")
+	assert(overload_slot.slot_type == Constants.SLOT_BLACK and overload_slot.gem_uid == held_uid, "new overload slot should inherit black color and hold the gem")
+	print("  [OK] split-locked slot can be used as an overload anchor")
+
+
+func _test_enemy_gems_stay_on_corpse() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("tutorial_001", 24601)
 	var state := controller.state
@@ -164,26 +194,30 @@ func _test_enemy_gems_drop_to_ground() -> void:
 		quit(1)
 		return
 	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
-	var dropped_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
+	var gem_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
 	var death_pos := rat.pos
 	CombatRules.apply_true_damage(state, rat, rat.hp, state.player_uid, "test")
-	var drop: Dictionary = state.dropped_gems.get(dropped_uid, {})
-	assert(not drop.is_empty(), "enemy gem should become a ground drop")
-	assert(drop.get("pos", Vector2i.ZERO) == death_pos, "ground drop should keep death position")
-	assert(state.gems.has(dropped_uid), "dropped gem should remain in state.gems")
-	assert(rat.get_slot(Constants.SLOT_RED).gem_uid.is_empty(), "dead enemy slot should no longer own dropped gem")
-	print("  [OK] enemy gems drop onto ground")
+	assert(state.dropped_gems.is_empty(), "enemy gem should not be detached into a ground drop")
+	assert(state.gems.has(gem_uid), "corpse gem should remain in state.gems")
+	assert(rat.get_slot(Constants.SLOT_RED).gem_uid == gem_uid, "dead enemy slot should retain its gem")
+	assert(state.get_corpse_at(death_pos) == rat, "dead gem carrier should remain as a corpse")
+	var offered := BattleSettlementService.dropped_gem_offer(state).any(
+		func(entry: Dictionary) -> bool: return str(entry.get("gem_uid", "")) == gem_uid
+	)
+	assert(offered, "corpse gem should remain available to battle settlement")
+	print("  [OK] enemy gems remain on the corpse")
 
 
-func _test_ground_gem_can_be_extracted() -> void:
+func _test_corpse_gem_can_be_extracted() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("tutorial_001", 24602)
 	var state := controller.state
 	var player := state.get_player()
 	var rat := _find_unit_by_def(state, "unit_bomb_rat")
-	assert(player != null and rat != null, "ground extract fixture should have player and rat")
+	assert(player != null and rat != null, "corpse extract fixture should have player and rat")
 	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
-	var dropped_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
+	var gem_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
+	var slot_index := rat.slots.find(rat.get_slot(Constants.SLOT_RED))
 	var death_pos := rat.pos
 	CombatRules.apply_true_damage(state, rat, rat.hp, state.player_uid, "test")
 	var moved_in_range := false
@@ -192,17 +226,41 @@ func _test_ground_gem_can_be_extracted() -> void:
 			state.move_unit(player, neighbor)
 			moved_in_range = true
 			break
-	assert(moved_in_range, "test should place player beside the ground gem")
+	assert(moved_in_range, "test should place player beside the corpse gem")
 	controller.select_action(Constants.ACTION_EXTRACT)
-	assert(controller.check_dropped_gem_action(dropped_uid).get("ok", false), "adjacent ground gem should be extractable")
+	assert(controller.check_slot_action(rat.uid, slot_index).get("ok", false), "adjacent corpse gem should be extractable")
 	var targets: Array = controller.get_highlights().get("targets", [])
-	assert(death_pos in targets, "extract highlights should include the ground gem cell")
-	var result := controller.try_extract_dropped(dropped_uid)
-	assert(result.get("ok", false), "ground gem extract should succeed")
-	assert(state.held_gem_uid == dropped_uid, "extracted ground gem should be held")
-	assert(not state.dropped_gems.has(dropped_uid), "extracted gem should leave the ground")
-	assert(BattleInvariantChecker.assert_valid(state, "gem_insert_replace.ground_extract"))
-	print("  [OK] ground gem can be extracted in combat")
+	assert(death_pos in targets, "extract highlights should include the corpse cell")
+	var result := controller.try_extract(rat.uid, slot_index)
+	assert(result.get("ok", false), "corpse gem extract should succeed")
+	assert(state.held_gem_uid == gem_uid, "extracted corpse gem should be held")
+	assert(rat.get_slot_by_index(slot_index).gem_uid.is_empty(), "extracted gem should leave the corpse")
+	assert(BattleInvariantChecker.assert_valid(state, "gem_insert_replace.corpse_extract"))
+	print("  [OK] corpse gem can be extracted in combat")
+
+
+func _test_corpse_gem_can_be_embedded_at_settlement() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 24603)
+	var state := controller.state
+	var player := state.get_player()
+	var rat := _find_unit_by_def(state, "unit_bomb_rat")
+	assert(player != null and rat != null, "corpse settlement fixture should have player and rat")
+	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
+	var gem_uid := rat.get_slot(Constants.SLOT_RED).gem_uid
+	var player_red := player.get_slot(Constants.SLOT_RED)
+	assert(player_red != null and player_red.gem_uid.is_empty(), "settlement fixture needs an empty red slot")
+	CombatRules.apply_true_damage(state, rat, rat.hp, state.player_uid, "test")
+	var result := BattleSettlementService.embed_dropped_gem(
+		state,
+		gem_uid,
+		player.slots.find(player_red)
+	)
+	assert(result.get("ok", false), "corpse gem should be embeddable from settlement")
+	assert(player_red.gem_uid == gem_uid, "settlement should move the corpse gem into the player slot")
+	assert(rat.get_slot(Constants.SLOT_RED).gem_uid.is_empty(), "settled gem should leave the corpse")
+	assert(BattleInvariantChecker.assert_valid(state, "gem_insert_replace.corpse_settlement"))
+	print("  [OK] corpse gem remains available at settlement")
 
 
 func _test_slot_panels_only_show_in_operation_range() -> void:

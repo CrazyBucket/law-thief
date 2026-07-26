@@ -1157,7 +1157,9 @@ static func _run_death_hooks_with_events(
 		repeat_ctx["flurry_repeat"] = true
 		repeat_ctx["flurry_repeat_index"] = repeat_index
 		for gem in death_gems:
-			if str(_data_registry().get_gem_tag(gem)) == "flurry":
+			var tag := str(_data_registry().get_gem_tag(gem))
+			# 黑槽分裂每次死亡固定只结算一次；连击不能把同一具尸体继续裂成更多单位。
+			if tag == "flurry" or tag == "split":
 				continue
 			_run_unit_death_effect_with_events(state, unit, gem, out_events, repeat_ctx)
 
@@ -2321,6 +2323,7 @@ static func _create_split_clone(
 	clone.hp = clone_max_hp
 
 	var inherit_slots := bool(options.get("inherit_slots", true))
+	var inherited_gem_slots: Array = options.get("inherited_gem_slots", slot_group)
 	for slot_data in slot_group if inherit_slots else []:
 		if slot_data == null:
 			continue
@@ -2330,7 +2333,13 @@ static func _create_split_clone(
 		new_slot.overload_slot = slot_data.is_overload_slot()
 		clone.slots.append(new_slot)
 		var orig_gem_uid: String = slot_data.gem_uid
-		if orig_gem_uid.is_empty():
+		var inherits_gem: bool = slot_data in inherited_gem_slots
+		# 分裂禁用锁跟随实际宝石，不复制到另一具分身的同位空槽。
+		if not inherits_gem and new_slot.is_split_disabled():
+			new_slot.locked = false
+			new_slot.lock_type = ""
+			new_slot.unlock_until_turn = -1
+		if orig_gem_uid.is_empty() or not inherits_gem:
 			continue
 		var orig_gem: GemState = state.gems.get(orig_gem_uid, null)
 		if orig_gem == null:
@@ -2400,11 +2409,13 @@ static func _spawn_split_clones(
 	var child_ids := _ColoredSlimeRules.child_unit_ids(owner, count, "split_black")
 	var clones: Array = []
 	for i in range(count):
-		var clone := _create_split_clone(state, owner, spawn_cells[i], slot_groups[i], ratio, {
+		# 两个分身都保留完整槽位结构；每颗宝石实例仍只由其中一个分身继承。
+		var clone := _create_split_clone(state, owner, spawn_cells[i], owner.slots, ratio, {
 			"allow_unit_ratio_override": true,
 			"allow_player_relic_override": true,
 			"grants_death_rewards": true,
 			"disabled_split_gem_uid": str(gem_ctx.get("split_trigger_gem_uid", "")),
+			"inherited_gem_slots": slot_groups[i],
 			"unit_def_id": child_ids[i] if i < child_ids.size() else owner.unit_def_id,
 		})
 		if clone == null:

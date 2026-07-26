@@ -16,6 +16,7 @@ const BattleLightBeamFx := preload("res://scripts/ui/battle_light_beam_fx.gd")
 const BattleProjectileFx := preload("res://scripts/ui/battle_projectile_fx.gd")
 const BattleParticleFx := preload("res://scripts/ui/battle_particle_fx.gd")
 const BattleSlotPanelLayout := preload("res://scripts/ui/battle_slot_panel_layout.gd")
+const BattleCorpseRenderer := preload("res://scripts/ui/battle_corpse_renderer.gd")
 const GemEchoVisuals := preload("res://scripts/ui/gem_echo_visuals.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
@@ -810,6 +811,7 @@ func _draw() -> void:
 		if state.get_unit_at(grid) == null and state.get_entity_at(grid) != null:
 			_draw_front_tile_overlay_at(grid, true)
 		_draw_dropped_gems_at_grid(grid)
+	BattleCorpseRenderer.draw(self, state, _unit_draw_context, _draw_gem_icons)
 	_draw_unit_ground_outlines()
 	_draw_gem_visuals(false)
 	for grid in _sorted_cells():
@@ -1027,7 +1029,9 @@ func pick_unit_slot(screen_pos: Vector2) -> Dictionary:
 	if state == null or slot_panel_action.is_empty():
 		return {}
 	for unit: UnitState in state.units.values():
-		if unit == null or not unit.alive or unit.slots.is_empty():
+		if unit == null or unit.slots.is_empty():
+			continue
+		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.unit_has_slotted_gems(unit)):
 			continue
 		if not _unit_slot_panel_in_range(unit):
 			continue
@@ -1942,7 +1946,9 @@ func _draw_unit_slot_panels() -> void:
 	if state == null or slot_panel_action.is_empty():
 		return
 	for unit: UnitState in state.units.values():
-		if unit == null or not unit.alive or unit.slots.is_empty():
+		if unit == null or unit.slots.is_empty():
+			continue
+		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.unit_has_slotted_gems(unit)):
 			continue
 		if not _unit_slot_panel_in_range(unit):
 			continue

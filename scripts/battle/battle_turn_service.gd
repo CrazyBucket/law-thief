@@ -270,17 +270,19 @@ func _merge_split_clones_on_win(ctrl) -> void:
 	var origin: UnitState = ctrl.state.units.get(origin_uid, null)
 	if origin == null:
 		return
-	var clones: Array[UnitState] = ctrl.state.get_alive_split_clones(origin_uid)
-	if clones.is_empty():
+	var living_clones: Array[UnitState] = ctrl.state.get_alive_split_clones(origin_uid)
+	if living_clones.is_empty():
 		return
+	var all_clones: Array[UnitState] = ctrl.state.get_split_clones(origin_uid)
 	var total_hp := 0
-	for clone in clones:
+	for clone in living_clones:
 		total_hp += clone.hp
 	var merged_hp := maxi(1, total_hp / CombatConfig.split_death_hp_merge_divisor())
-	if not _return_split_clone_gems(ctrl.state, origin, clones):
+	# 死亡分身作为尸体保留槽内宝石；胜利合并时与存活分身一起回收到原体。
+	if not _return_split_clone_gems(ctrl.state, origin, all_clones):
 		ctrl.state.log("战斗结算：分身宝石回归失败，保留分身以避免丢失")
 		return
-	for clone in clones:
+	for clone in all_clones:
 		ctrl.state.unregister_unit(clone)
 	origin.alive = true
 	origin.hp = mini(merged_hp, origin.max_hp)

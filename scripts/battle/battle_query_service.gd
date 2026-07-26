@@ -149,6 +149,7 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 		push_error("BattleQueryService: get_player() returned null in get_cell_preview")
 		return {}
 	var unit: UnitState = state.get_unit_at(cell)
+	unit = state.get_corpse_at(cell) if unit == null else unit
 	var tile: TileState = state.get_tile(cell)
 	var title: String = _data_registry().get_tile_display_name(tile.tile_id)
 	if ctrl.editor_unlimited_actions_enabled():
@@ -400,7 +401,8 @@ func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited:
 func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
-		if not unit.alive:
+		var is_extractable_corpse: bool = not unit.alive and ctrl.selected_action == Constants.ACTION_EXTRACT and state.unit_has_slotted_gems(unit)
+		if not unit.alive and not is_extractable_corpse:
 			continue
 		if not _unit_has_gem_slot_target(ctrl, state, player, unit):
 			continue

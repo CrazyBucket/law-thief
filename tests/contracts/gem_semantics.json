@@ -423,7 +423,7 @@
       }
     },
     {
-      "id": "split/black/1_partition_two_clones_at_thirty_percent",
+      "id": "split/black/1_retain_slots_partition_gems_at_thirty_percent",
       "covers": ["gem_split:black:1"],
       "gems": [],
       "player_stats": {"base_attack": 10},
@@ -438,7 +438,7 @@
           "origin": "contract_target",
           "count": 2,
           "each_stats": {"hp": 6, "max_hp": 6, "base_attack": 3, "move_points": 3, "speed": 3, "armor": 3},
-          "total_slots": 3,
+          "total_slots": 6,
           "total_gems": 1,
           "disabled_split_slots": 1,
           "dropped_gems": 0,
@@ -448,7 +448,7 @@
       }
     },
     {
-      "id": "split/black/2_partition_two_clones_at_fifty_percent",
+      "id": "split/black/2_retain_slots_partition_gems_at_fifty_percent",
       "covers": ["gem_split:black:2"],
       "gems": [],
       "player_stats": {"base_attack": 10},
@@ -463,9 +463,9 @@
           "origin": "contract_target",
           "count": 2,
           "each_stats": {"hp": 10, "max_hp": 10, "base_attack": 5, "move_points": 5, "speed": 5, "armor": 5},
-          "total_slots": 4,
+          "total_slots": 8,
           "total_gems": 2,
-          "disabled_split_slots": 2,
+          "disabled_split_slots": 1,
           "dropped_gems": 0,
           "source_slots_cleared": true,
           "source_gems_preserved": true
@@ -473,7 +473,7 @@
       }
     },
     {
-      "id": "split/black/3_partition_two_clones_at_eighty_percent",
+      "id": "split/black/3_retain_slots_partition_gems_at_eighty_percent",
       "covers": ["gem_split:black:3"],
       "gems": [],
       "player_stats": {"base_attack": 10},
@@ -488,9 +488,9 @@
           "origin": "contract_target",
           "count": 2,
           "each_stats": {"hp": 16, "max_hp": 16, "base_attack": 8, "move_points": 8, "speed": 8, "armor": 8},
-          "total_slots": 5,
+          "total_slots": 10,
           "total_gems": 3,
-          "disabled_split_slots": 3,
+          "disabled_split_slots": 1,
           "dropped_gems": 0,
           "source_slots_cleared": true,
           "source_gems_preserved": true

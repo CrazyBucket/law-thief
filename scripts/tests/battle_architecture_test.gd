@@ -75,7 +75,12 @@ func _test_spawn_provenance_and_reward_eligibility() -> void:
 	var reward_tx := _CombatTransaction.begin(state, reward_events)
 	assert(reward_tx.kill_unit(reward_unit, state.player_uid, "architecture_test"))
 	reward_tx.finish("battle_architecture.reward")
-	assert(state.dropped_gems.has(reward_gem.uid))
+	assert(reward_unit.get_slot(Constants.SLOT_RED).gem_uid == reward_gem.uid)
+	assert(
+		_Settlement.dropped_gem_offer(state).any(
+			func(entry: Dictionary) -> bool: return str(entry.get("gem_uid", "")) == reward_gem.uid
+		)
+	)
 	_assert_valid(state, no_reward_events, "spawn_no_reward")
 	_assert_valid(state, reward_events, "spawn_reward")
 	print("  [OK] spawn provenance is independent from reward eligibility")

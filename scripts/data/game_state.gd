@@ -174,11 +174,13 @@ func purge_dead_controllable() -> void:
 	)
 
 
-## 收集同一原体下的存活玩家死亡分身；蓝槽临时分身不进入接班/合并流程。
-func get_alive_split_clones(origin_uid: String) -> Array[UnitState]:
+## 收集同一原体下的玩家黑槽分裂体；蓝槽临时分身不进入接班/合并流程。
+func get_split_clones(origin_uid: String, alive_only: bool = false) -> Array[UnitState]:
 	var clones: Array[UnitState] = []
 	for unit in units.values():
-		if not unit.alive or unit.team != Constants.TEAM_PLAYER:
+		if unit.team != Constants.TEAM_PLAYER:
+			continue
+		if alive_only and not unit.alive:
 			continue
 		if not unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
 			continue
@@ -189,6 +191,10 @@ func get_alive_split_clones(origin_uid: String) -> Array[UnitState]:
 		clones.append(unit)
 	clones.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
 	return clones
+
+
+func get_alive_split_clones(origin_uid: String) -> Array[UnitState]:
+	return get_split_clones(origin_uid, true)
 
 
 ## 玩家回合开始时重建分身操控队列（每回合依次操控所有存活分身）
@@ -276,6 +282,29 @@ func get_unit_at(pos: Vector2i) -> UnitState:
 			if cell == pos:
 				return unit
 	return null
+
+
+## 尸体不占格，但保留槽位和宝石供拔取/战后回收。活单位始终由 get_unit_at 优先。
+func get_corpse_at(pos: Vector2i) -> UnitState:
+	var corpses: Array[UnitState] = []
+	for unit: UnitState in units.values():
+		if unit.alive or not unit_has_slotted_gems(unit):
+			continue
+		for cell in unit.occupied_cells():
+			if cell == pos:
+				corpses.append(unit)
+				break
+	corpses.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
+	return corpses[0] if not corpses.is_empty() else null
+
+
+func unit_has_slotted_gems(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	for slot: SlotState in unit.slots:
+		if slot != null and not slot.gem_uid.is_empty() and gems.has(slot.gem_uid):
+			return true
+	return false
 
 
 func get_alive_enemies() -> Array:
