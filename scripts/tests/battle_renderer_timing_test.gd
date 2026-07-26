@@ -14,6 +14,8 @@ func _run() -> void:
 	await process_frame
 	var board = battle_scene.get_node("BoardLayer/IsometricBoard")
 	var animation_state = board.get("_anim")
+	var shader_layer: Control = board.get("_beam_layer")
+	var prewarmed_shader_child_count := shader_layer.get_child_count()
 	var player = board.state.get_player()
 	assert(player != null)
 	board.play_unit_hit(player.uid)
@@ -51,6 +53,10 @@ func _run() -> void:
 		{"type": "arc", "from": Vector2i(3, 3), "target_pos": Vector2i(5, 2)},
 		{"type": "arc", "from": Vector2i(3, 3), "target_pos": Vector2i(5, 4)},
 	])
+	assert(
+		shader_layer.get_child_count() == prewarmed_shader_child_count,
+		"normal electrical volleys should reuse prewarmed shader nodes instead of allocating on impact"
+	)
 	assert(float(arc_timing.impact_time) > 0.0)
 	assert(float(arc_timing.impact_time) < float(arc_timing.duration))
 	var impact_timing: Dictionary = ImpactPresenter.play(board, {

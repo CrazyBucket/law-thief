@@ -1,5 +1,8 @@
 # 战斗表现层重构指南
 
+当前事件的完整并发与结算屏障矩阵见
+[`battle-animation-playback-policy.md`](battle-animation-playback-policy.md)。
+
 ## 目标
 
 这份文档不再描述“当前 `battle_scene.gd` 如何批处理事件”，而是定义战斗表现层接下来的重构方向，并持续记录当前重构进度。

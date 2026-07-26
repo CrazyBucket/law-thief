@@ -15,7 +15,7 @@ func set_states(display_state: GameState, runtime_state: GameState = null) -> vo
 func prime(event: Dictionary) -> void:
 	if _display_state == null:
 		return
-	if str(event.get("type", "")) != "move_step":
+	if str(event.get("type", "")) not in ["move_step", "knockback"]:
 		return
 	var uid := str(event.get("uid", ""))
 	var unit: UnitState = _display_state.units.get(uid, null)
@@ -54,7 +54,7 @@ func apply(event: Dictionary) -> void:
 			if entity != null:
 				entity.alive = false
 				_display_state.bump_revision()
-		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam", "impact_charge", "move_step", "displacement_impact":
+		"explode", "gem_flash", "projectile_deflect", "lightning", "frost_pulse", "arc", "light_beam", "impact_charge", "move_step", "displacement_impact", "knockback":
 			pass
 
 

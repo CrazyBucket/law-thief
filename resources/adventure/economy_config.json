@@ -83,6 +83,7 @@
     "event_forge_gold": {"value": 20, "kind": "flat", "unit": "gold"},
     "event_positive_gold": {"value": 20, "kind": "flat", "unit": "gold"},
     "event_negative_gold": {"value": 30, "kind": "flat", "unit": "gold"},
-    "rest_site_heal_ratio": {"value": 0.2, "kind": "ratio", "unit": "max_hp"}
+    "rest_site_heal_ratio": {"value": 0.2, "kind": "ratio", "unit": "max_hp"},
+    "rest_site_heal_flat": {"value": 12, "kind": "flat", "unit": "hp"}
   }
 }

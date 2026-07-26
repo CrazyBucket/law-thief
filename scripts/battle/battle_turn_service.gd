@@ -47,6 +47,7 @@ func begin_enemy_phase() -> Dictionary:
 	var player: UnitState = ctrl.state.get_player()
 	StatusRules.clear_extra_action_statuses(player)
 	if player != null and player.has_status(Constants.STATUS_PARALYZED):
+		ctrl.state.log("%s 因麻痹跳过回合" % player.uid)
 		player.remove_status(Constants.STATUS_PARALYZED)
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
 	ctrl._check_battle_end()
@@ -154,11 +155,17 @@ func finish_enemy_phase() -> Dictionary:
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)
 	ctrl._check_battle_end()
+	var auto_enemy_execution: Dictionary = {}
+	var player: UnitState = ctrl.state.get_player()
+	if ctrl.state.phase != Constants.PHASE_ENDED and player != null and player.has_status(Constants.STATUS_PARALYZED):
+		# 麻痹占用玩家自己的行动窗口；无需等待玩家再点一次结束回合。
+		auto_enemy_execution = begin_enemy_phase()
 	ctrl._emit_changed()
 	return {
 		"events": events,
 		"presentation_state": presentation_state,
 		"action": str(overload_result.get("action", "")),
+		"auto_enemy_execution": auto_enemy_execution,
 	}
 
 
@@ -341,4 +348,8 @@ func _is_available_split_origin_slot(
 	var index := origin.slots.find(candidate)
 	if index < 0 or reserved_slots.has(index):
 		return false
-	return candidate.slot_type == source_slot.slot_type and candidate.dual_type == source_slot.dual_type
+	return (
+		candidate.slot_type == source_slot.slot_type
+		and candidate.dual_type == source_slot.dual_type
+		and candidate.is_overload_slot() == source_slot.is_overload_slot()
+	)

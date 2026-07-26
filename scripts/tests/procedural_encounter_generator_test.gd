@@ -51,18 +51,27 @@ func _test_generation_contracts() -> void:
 
 func _test_enemy_pool_coverage() -> void:
 	var chapter_one_seen: Dictionary = {}
+	var chapter_one_slime_encounters := 0
 	for seed_value in range(1, 201):
 		var encounter := _Generator.generate(seed_value, 1, "chapter_one_coverage_%d" % seed_value)
+		var encounter_has_slime := false
 		for enemy in encounter.get("enemies", []):
-			chapter_one_seen[str(enemy.get("def_id", ""))] = true
+			var def_id := str(enemy.get("def_id", ""))
+			chapter_one_seen[def_id] = true
+			encounter_has_slime = encounter_has_slime or def_id == "unit_fission_slime"
+		if encounter_has_slime:
+			chapter_one_slime_encounters += 1
 	assert(chapter_one_seen.has("unit_ruffled_crow"), "ruffled crows must be available from chapter 1")
 	assert(chapter_one_seen.has("unit_rolling_armadillo"), "rolling armadillos must be available from chapter 1")
+	assert(chapter_one_seen.has("unit_fission_slime"), "fission slimes must be available in normal battles from chapter 1")
+	assert(chapter_one_slime_encounters >= 20, "fission slimes should have a perceptible chapter-1 appearance rate, got %d/200" % chapter_one_slime_encounters)
+	print("  [OK] chapter-1 fission slime frequency: %d/200 encounters" % chapter_one_slime_encounters)
 
 	var seen: Dictionary = {}
 	var mother_encounters := 0
 	var worm_encounters := 0
 	for seed_value in range(1, 401):
-		var encounter := _Generator.generate(seed_value, 3, "coverage_%d" % seed_value)
+		var encounter := _Generator.generate(seed_value, 1, "coverage_%d" % seed_value)
 		var encounter_defs: Dictionary = {}
 		for enemy in encounter.get("enemies", []):
 			var def_id := str(enemy.get("def_id", ""))
@@ -77,7 +86,7 @@ func _test_enemy_pool_coverage() -> void:
 		"unit_bomb_rat", "unit_patrol_guard", "unit_stone_bow_guard",
 		"unit_ruffled_crow", "unit_rolling_armadillo", "unit_fission_slime", "unit_law_worm", "unit_broodmother",
 	]:
-		assert(seen.has(expected_id), "chapter 3 procedural samples must include %s" % expected_id)
+		assert(seen.has(expected_id), "chapter 1 procedural samples must include %s" % expected_id)
 	assert(mother_encounters > worm_encounters, "broodmothers should be the usual initial law-worm-family encounter")
 	assert(not seen.has("unit_overload_enforcer") and not seen.has("unit_law_beast"), "special enemies stay in elite, boss, and overload encounters")
 

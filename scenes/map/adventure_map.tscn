@@ -84,6 +84,7 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="TopBar" type="PanelContainer" parent="HudLayer"]
+visible = false
 layout_mode = 1
 anchors_preset = 0
 offset_left = 20.0
@@ -119,11 +120,11 @@ visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "当前：起点"
-visible = false
 
 [node name="SummaryRow" type="HBoxContainer" parent="HudLayer/TopBar/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 7
+visible = false
 
 [node name="GoldChip" type="Label" parent="HudLayer/TopBar/VBox/SummaryRow"]
 layout_mode = 2
@@ -151,9 +152,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -338.0
-offset_top = 18.0
+offset_top = 84.0
 offset_right = -20.0
-offset_bottom = 72.0
+offset_bottom = 138.0
 grow_horizontal = 0
 
 [node name="ActionRow" type="HBoxContainer" parent="HudLayer/ActionPanel"]
@@ -182,9 +183,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -336.0
-offset_top = 92.0
+offset_top = 158.0
 offset_right = -20.0
-offset_bottom = 308.0
+offset_bottom = 374.0
 grow_horizontal = 0
 visible = false
 

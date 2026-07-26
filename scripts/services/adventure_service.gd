@@ -9,12 +9,14 @@ const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const PLACEHOLDER_SCENE := "res://scenes/adventure/room_placeholder.tscn"
 const SHOP_SCENE := "res://scenes/adventure/shop_scene.tscn"
 const EVENT_SCENE := "res://scenes/adventure/event_scene.tscn"
+const REST_SCENE := "res://scenes/adventure/rest_scene.tscn"
 const BATTLE_SCENE := "res://scenes/battle/battle_scene.tscn"
 const PROCEDURAL_NORMAL_ENCOUNTER_ID := "procedural_normal"
 
 var map_seed: int = 20260525
 var map_matrix: Array = []
 var current_pos: Vector2i = Vector2i.ZERO
+var travel_path: Array[Vector2i] = [Vector2i.ZERO]
 var run_active: bool = false
 var pending_room_type: String = ""
 var pending_room_label: String = ""
@@ -81,6 +83,7 @@ func enter_cell(cell: Vector2i) -> void:
 	if not can_enter_cell(cell):
 		return
 	current_pos = cell
+	travel_path.append(cell)
 	var node = get_current_node()
 	if node == null:
 		return
@@ -100,7 +103,7 @@ func get_room_scene_path(room_type: String) -> String:
 		"EVENT":
 			return EVENT_SCENE
 		"REST_SITE":
-			return PLACEHOLDER_SCENE
+			return REST_SCENE
 		_:
 			return PLACEHOLDER_SCENE
 
@@ -193,6 +196,7 @@ func reset_local_state() -> void:
 	map_seed = 20260525
 	map_matrix = []
 	current_pos = Vector2i.ZERO
+	travel_path = [Vector2i.ZERO]
 	run_active = false
 	pending_room_type = ""
 	pending_room_label = ""
@@ -203,6 +207,7 @@ func export_progress() -> Dictionary:
 		"map_seed": map_seed,
 		"current_chapter": get_current_chapter(),
 		"current_map_pos": _vec_to_dict(current_pos),
+		"travel_path": _serialize_travel_path(),
 		"run_active": run_active,
 		"pending_room_type": pending_room_type,
 		"pending_room_label": pending_room_label,
@@ -215,6 +220,7 @@ func import_progress(progress: Dictionary) -> bool:
 		return false
 	map_seed = int(progress.get("map_seed", map_seed))
 	current_pos = _dict_to_vec(progress.get("current_map_pos", {}), Vector2i.ZERO)
+	travel_path = _deserialize_travel_path(progress.get("travel_path", []), current_pos)
 	run_active = bool(progress.get("run_active", true))
 	pending_room_type = str(progress.get("pending_room_type", ""))
 	pending_room_label = str(progress.get("pending_room_label", ""))
@@ -318,6 +324,7 @@ func _restore_generated_map(seed_value: int, target_pos: Vector2i) -> void:
 	map_matrix = gen.generate(seed_value)
 	map_seed = seed_value
 	current_pos = target_pos
+	travel_path = [target_pos]
 	run_active = true
 	if pending_room_label.is_empty():
 		var current_node = get_current_node()
@@ -384,6 +391,22 @@ func _dicts_to_vec_array(raw_points: Variant) -> Array[Vector2i]:
 	return result
 
 
+func _serialize_travel_path() -> Array:
+	var result: Array[Dictionary] = []
+	for cell in travel_path:
+		result.append(_vec_to_dict(cell))
+	return result
+
+
+func _deserialize_travel_path(raw_path: Variant, fallback: Vector2i) -> Array[Vector2i]:
+	var result := _dicts_to_vec_array(raw_path)
+	if result.is_empty():
+		result.append(fallback)
+	elif result[-1] != fallback:
+		result.append(fallback)
+	return result
+
+
 func _vec_to_dict(point: Vector2i) -> Dictionary:
 	return {"x": point.x, "y": point.y}
 
@@ -408,6 +431,7 @@ func _begin_chapter_map(chapter: int, base_seed: int) -> void:
 	map_matrix = gen.generate(chapter_seed)
 	map_seed = chapter_seed
 	current_pos = Vector2i.ZERO
+	travel_path = [Vector2i.ZERO]
 	run_active = true
 	pending_room_type = "START"
 	var display: Dictionary = _AdventureRoomDisplay.get_display("START", chapter, get_chapter_count())

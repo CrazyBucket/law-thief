@@ -68,14 +68,14 @@ static func compute_broodmother_intent(
 	var crisis := sync_broodmother_crisis(state, unit)
 	if unit.get_status(Constants.STATUS_BROODMOTHER_CYCLE) == null:
 		StatusRules.set_broodmother_next_split(state, unit, true)
-	if crisis or StatusRules.broodmother_next_split(unit):
+	if StatusRules.broodmother_next_split(unit):
 		var split := IntentState.new()
 		split.type = "broodmother_split"
 		split.source_uid = unit.uid
 		split.target_pos = unit.pos
 		var available_cells := _available_brood_cells(state, unit.pos)
 		split.affected_cells = available_cells.slice(0, mini(BROOD_SIZE, available_cells.size()))
-		split.preview_text = "危机繁殖 · 分裂2只" if crisis else "恶性分裂 · 孵化2只"
+		split.preview_text = "危机繁殖 · 孵化2只" if crisis else "恶性分裂 · 孵化2只"
 		return split
 	var player := state.get_player()
 	if player == null or not player.alive:

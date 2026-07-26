@@ -701,7 +701,7 @@ func capture_player_battle_state(state: GameState = null) -> void:
 		if gem == null:
 			_run.player_slot_gems.append(_serialize_empty_slot_snapshot(slot))
 			continue
-		_run.player_slot_gems.append(_serialize_gem_snapshot(gem, slot.slot_type, slot.dual_type, slot.lock_type))
+		_run.player_slot_gems.append(_serialize_gem_snapshot(gem, slot.slot_type, slot.dual_type, slot.lock_type, slot.is_overload_slot()))
 	_run.carried_gem = {}
 	if not source_state.held_gem_uid.is_empty():
 		var carried: GemState = source_state.gems.get(source_state.held_gem_uid, null)
@@ -728,24 +728,22 @@ func _collect_weight_ctx_from_state(state: GameState, owned_gem_ids: Array[Strin
 			owned_gem_ids.append(held.gem_id)
 
 
-func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: String = "", lock_type: String = "") -> Dictionary:
+func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: String = "", lock_type: String = "", overload_slot: bool = false) -> Dictionary:
 	return {
 		"gem_id": gem.gem_id,
 		"def_overrides": gem.def_overrides.duplicate(true),
 		"slot_type": slot_type,
 		"dual_type": dual_type,
 		"lock_type": lock_type,
+		"overload_slot": overload_slot or lock_type == Constants.LOCK_OVERLOAD_SLOT,
 	}
-
-
 func _serialize_empty_slot_snapshot(slot: SlotState) -> Dictionary:
 	return {
 		"slot_type": slot.slot_type,
 		"dual_type": slot.dual_type,
 		"lock_type": slot.lock_type,
+		"overload_slot": slot.is_overload_slot(),
 	}
-
-
 func _active_battle_state() -> GameState:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:

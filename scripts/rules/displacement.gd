@@ -184,17 +184,19 @@ static func _push_directional(
 		# ─── 正常移动一格 ───────────────────────────────────────────────────
 		var from_pos := unit.pos
 		tx.move_unit(unit, next, {"emit_signal": false, "emit_event": false})
-		TileRules.on_unit_moved_through(state, unit, next, {
-			"forced": true,
-			"source_uid": source_uid,
-			"damage_context": damage_context,
-		})
 		state.on_unit_move.emit(unit.uid, from_pos, next)
 		events.append(_EventBuilder.move_step(unit.uid, from_pos, next, {
 			"forced": true,
 			"source_uid": source_uid,
 			"reason": "forced_displacement",
 		}))
+		TileRules.on_unit_moved_through(state, unit, next, {
+			"forced": true,
+			"source_uid": source_uid,
+			"damage_context": damage_context,
+		})
+		if not unit.alive:
+			break
 
 		var _ice_registry := _relic_effect_registry()
 		var _ice_immune: bool = _ice_registry != null and bool(_ice_registry.query_modifier("tile_effect_immune", state))
@@ -210,6 +212,7 @@ static func _push_directional(
 			"forced": true,
 			"source_uid": source_uid,
 			"damage_context": damage_context,
+			"skip_entity": true,
 		})
 		state.on_forced_displacement.emit(unit.uid, start_pos, unit.pos, source_uid)
 		if not skip_gem_hooks:

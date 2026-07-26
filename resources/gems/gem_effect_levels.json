@@ -28,7 +28,7 @@
     "arc": {
       "1": {"bounce_hops": 1, "range": 2},
       "2": {"bounce_hops": 2, "range": 2},
-      "3": {"bounce_hops": 2, "range": 3}
+      "3": {"bounce_hops": 3, "range": 3}
     },
     "split": {
       "1": {"damage_ratio": 0.7, "light_direction_offsets": [0, -1, 1]},

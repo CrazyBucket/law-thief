@@ -20,20 +20,26 @@ const GemEchoVisuals := preload("res://scripts/ui/gem_echo_visuals.gd")
 const BoardUtilsClass := preload("res://scripts/rules/board_utils.gd")
 const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const BattleShaderFxPoolScript = preload("res://scripts/ui/battle_shader_fx_pool.gd")
 const _Vpf := preload("res://scripts/ui/vfx_pack_frames.gd")
 const IntentIcons := preload("res://scripts/ui/intent_icons.gd")
+const OldMageBoardVisuals := preload("res://scripts/ui/old_mage_board_visuals.gd")
 const StatusIcons := preload("res://scripts/ui/status_icons.gd")
 const WaterTileShader := preload("res://scenes/battle/water_tile.gdshader")
 const FxLightningShader := preload("res://scenes/battle/fx_lightning_bolt.gdshader")
 const FxRadialBurstShader := preload("res://scenes/battle/fx_radial_burst.gdshader")
 const FxCloudPulseShader := preload("res://scenes/battle/fx_cloud_pulse.gdshader")
+const _LIGHTNING_FX_POOL_SIZE := 12
+const _RADIAL_FX_POOL_SIZE := 16
+const _CLOUD_FX_POOL_SIZE := 6
 const OverlayDriftShader := preload("res://scenes/battle/overlay_drift.gdshader")
 const GemEchoSmokeShader := preload("res://scenes/battle/gem_echo_smoke.gdshader")
 const WATER_BOTTOM := preload("res://assets/tiles/mew_water_bottom.png")
 const WATER_TOP := preload("res://assets/tiles/mew_water_top.png")
-const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.svg")
+const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.png")
 const ENTITY_BARREL_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Barrel_0.png")
 const ENTITY_ROCK_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Rock1_0.png")
+const ROUTE_ARROWS := [preload("res://assets/ui/route_arrows_generated/route_arrow_ne.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_se.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_sw.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_nw.png")]
 
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
@@ -147,6 +153,7 @@ var _light_beam_fx: BattleLightBeamFx = null
 var _projectile_fx: BattleProjectileFx = null
 var _particle_fx: BattleParticleFx = null
 var _shader_fx_seed: int = 0
+var _shader_fx_pool = BattleShaderFxPoolScript.new()
 
 @export_group("Light Beam FX")
 @export_range(2.0, 30.0, 0.5) var light_beam_base_half_width: float = 13.5
@@ -214,6 +221,11 @@ func _ready() -> void:
 	_board_texture = get_node_or_null("Grids")
 	_ensure_water_layers()
 	_ensure_combat_visual_layers()
+	_shader_fx_pool.configure(_beam_layer)
+	_shader_fx_pool.prewarm(FxLightningShader, _LIGHTNING_FX_POOL_SIZE)
+	_shader_fx_pool.prewarm(FxRadialBurstShader, _RADIAL_FX_POOL_SIZE)
+	_shader_fx_pool.prewarm(FxCloudPulseShader, _CLOUD_FX_POOL_SIZE)
+	call_deferred("_warm_shader_fx_rendering")
 	resized.connect(_update_origin)
 	_update_origin()
 	_knight_sprites = KNIGHT_SPRITES_SCRIPT.new()
@@ -225,6 +237,10 @@ func _ready() -> void:
 	_fx_textures = BoardFxTexturesClass.new()
 	set_process(true)
 	call_deferred("_sync_unit_orientations")
+
+
+func _warm_shader_fx_rendering() -> void:
+	_shader_fx_pool.warm_rendering([FxLightningShader, FxRadialBurstShader, FxCloudPulseShader])
 
 
 func _update_origin() -> void:
@@ -803,6 +819,7 @@ func _draw() -> void:
 			_draw_unit_body(unit)
 		if unit != null and unit.alive:
 			_draw_front_tile_overlay_at(grid, true)
+	_draw_overlay_routes(true)
 	for grid in _sorted_cells():
 		var entity := state.get_entity_at(grid)
 		if entity != null and entity.alive and not drawn_entity_ui.has(entity.uid):
@@ -855,22 +872,22 @@ func _spawn_shader_rect_fx(
 	if _beam_layer == null or shader == null:
 		return null
 	_shader_fx_seed += 1
-	var rect := ColorRect.new()
-	rect.name = "ShaderFx"
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rect.color = Color.WHITE
+	var shader_key: String = _shader_fx_pool.key_for(shader)
+	var rect: ColorRect = _shader_fx_pool.acquire(shader)
 	rect.size = fx_size
 	rect.position = center - fx_size * 0.5
 	rect.pivot_offset = fx_size * 0.5
 	rect.rotation = rotation
-	var material := ShaderMaterial.new()
-	material.shader = shader
+	var material := rect.material as ShaderMaterial
+	for old_key in rect.get_meta("shader_fx_param_keys", []):
+		material.set_shader_parameter(str(old_key), null)
 	material.set_shader_parameter("progress", 0.0)
 	material.set_shader_parameter("seed", float(_shader_fx_seed))
 	for key in params.keys():
 		material.set_shader_parameter(str(key), params[key])
-	rect.material = material
-	_beam_layer.add_child(rect)
+	rect.set_meta("shader_fx_param_keys", params.keys())
+	rect.visible = true
+	_beam_layer.move_child(rect, _beam_layer.get_child_count() - 1)
 	var tween := create_tween()
 	tween.tween_method(func(v: float) -> void:
 		if not is_instance_valid(rect):
@@ -881,7 +898,7 @@ func _spawn_shader_rect_fx(
 	, 0.0, 1.0, _scaled_duration(duration))
 	tween.tween_callback(func() -> void:
 		if is_instance_valid(rect):
-			rect.queue_free()
+			_shader_fx_pool.release(shader_key, rect)
 	)
 	return rect
 
@@ -1078,6 +1095,8 @@ func _draw_dropped_gems_at_grid(grid: Vector2i) -> void:
 			draw_texture_rect(tex, Rect2(pos - Vector2.ONE * size * 0.5, Vector2.ONE * size), false, tint)
 		else:
 			_draw_small_diamond(pos, size * 0.42, size * 0.32, tint)
+		if bool(drops[i].get("old_mage_pool", false)):
+			OldMageBoardVisuals.draw_pool_marker(self, pos, size)
 
 
 func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
@@ -1214,7 +1233,7 @@ func _draw_map_room_nameplate(cell: Vector2i, label: String, color: Color, prior
 	_draw_text_with_shadow(font, text_pos, label, font_size, UiPalette.TEXT_BRIGHT, UiPalette.TEXT_OUTLINE)
 
 
-func _draw_overlay_routes() -> void:
+func _draw_overlay_routes(arrow_only: bool = false) -> void:
 	if overlay_routes.is_empty():
 		return
 	for raw_route in overlay_routes:
@@ -1237,30 +1256,30 @@ func _draw_overlay_routes() -> void:
 		var kind := str(route.get("kind", ""))
 		var color := _route_color(kind)
 		var width := IsoCoordinates.visual(3.2 if kind == "move" else 3.0)
+		if arrow_only:
+			if bool(route.get("show_arrow", true)):
+				_draw_route_arrow(points, color, width, bool(route.get("arrow_reverse", false)))
+			continue
 		var outline := Color(0.02, 0.04, 0.06, minf(0.5, color.a + 0.18))
 		draw_polyline(points, outline, width + IsoCoordinates.visual(2.0), true)
 		draw_polyline(points, color, width, true)
-		_draw_route_arrow(points, color, width, bool(route.get("arrow_reverse", false)))
 
 
-func _draw_route_arrow(points: PackedVector2Array, color: Color, width: float, reverse_direction: bool) -> void:
+func _draw_route_arrow(points: PackedVector2Array, color: Color, _width: float, reverse_direction: bool) -> void:
 	if points.size() < 2:
 		return
-	var end_pos: Vector2 = points[points.size() - 1]
-	var prev_pos: Vector2 = points[points.size() - 2]
-	var direction: Vector2 = prev_pos - end_pos if reverse_direction else end_pos - prev_pos
+	var end_pos: Vector2 = points[0] if reverse_direction else points[points.size() - 1]
+	var prev_pos: Vector2 = points[1] if reverse_direction else points[points.size() - 2]
+	var direction: Vector2 = end_pos - prev_pos
 	if direction.length() < 0.01:
 		return
-	direction = direction.normalized()
-	var perp := Vector2(-direction.y, direction.x)
-	var tip := end_pos
-	var base := end_pos - direction * IsoCoordinates.visual(10.0)
-	var left := base + perp * IsoCoordinates.visual(5.5)
-	var right := base - perp * IsoCoordinates.visual(5.5)
-	var chevron := PackedVector2Array([left, tip, right])
-	var outline := Color(0.02, 0.04, 0.06, minf(0.55, color.a + 0.2))
-	draw_polyline(chevron, outline, width + IsoCoordinates.visual(2.0), true)
-	draw_polyline(chevron, color, width, true)
+	var texture: Texture2D
+	if direction.x >= 0.0:
+		texture = ROUTE_ARROWS[0] if direction.y < 0.0 else ROUTE_ARROWS[1]
+	else:
+		texture = ROUTE_ARROWS[3] if direction.y < 0.0 else ROUTE_ARROWS[2]
+	var draw_size := Vector2(IsoCoordinates.visual(64.0), IsoCoordinates.visual(32.0))
+	draw_texture_rect(texture, Rect2(end_pos - draw_size * 0.5, draw_size), false, Color(color.r, color.g, color.b, maxf(0.88, color.a)))
 
 
 func _draw_tile(grid: Vector2i) -> void:
@@ -1324,6 +1343,10 @@ func _tile_overlay_highlight(grid: Vector2i, overlays: Array) -> Color:
 
 func _overlay_priority(kind: String) -> int:
 	match kind:
+		"critical":
+			return 110
+		"safe":
+			return 100
 		"danger":
 			return 90
 		"effect":
@@ -1351,6 +1374,10 @@ func _overlay_priority(kind: String) -> int:
 
 func _overlay_base_color(kind: String) -> Color:
 	match kind:
+		"critical":
+			return UiPalette.HILITE_DANGER.lightened(0.1)
+		"safe":
+			return UiPalette.HILITE_REACH
 		"move":
 			return UiPalette.HILITE_MOVE
 		"attack_range":
@@ -1378,6 +1405,10 @@ func _overlay_base_color(kind: String) -> Color:
 
 func _overlay_fill_alpha(kind: String, pulse: float) -> float:
 	match kind:
+		"critical":
+			return 0.46 + pulse * 0.18
+		"safe":
+			return 0.28 + pulse * 0.12
 		"danger":
 			return 0.34 + pulse * 0.18
 		"effect":
@@ -1407,6 +1438,8 @@ func _overlay_outline_color(kind: String, pulse: float) -> Color:
 	var base := _overlay_base_color(kind)
 	var alpha: float = 0.62 + pulse * 0.22
 	match kind:
+		"critical", "safe", "target", "danger", "effect", "map_current", "map_focus":
+			alpha = 0.72 + pulse * 0.22
 		"move":
 			alpha = 0.58 + pulse * 0.18
 		"attack_range", "intent_path":
@@ -1415,14 +1448,12 @@ func _overlay_outline_color(kind: String, pulse: float) -> Color:
 			alpha = 0.26 + pulse * 0.08
 		"map_resolved":
 			alpha = 0.28
-		"map_current", "map_choice", "map_focus", "target", "danger", "effect":
-			alpha = 0.72 + pulse * 0.22
 	return Color(base, alpha)
 
 
 func _overlay_line_width(kind: String) -> float:
 	match kind:
-		"target", "danger", "effect", "map_current", "map_focus":
+		"critical", "safe", "target", "danger", "effect", "map_current", "map_focus":
 			return IsoCoordinates.visual(2.0)
 		"map_choice":
 			return IsoCoordinates.visual(1.8)
@@ -1447,6 +1478,8 @@ func _route_color(kind: String) -> Color:
 			return Color(UiPalette.ROOM_EXIT.lightened(0.14), 0.32)
 		"map_future":
 			return Color(UiPalette.EDGE_BRIGHT, 0.22)
+		"map_travel":
+			return Color(UiPalette.ROOM_START.lightened(0.12), 0.72)
 	return Color(UiPalette.TEXT_BRIGHT, 0.34)
 
 
@@ -2614,6 +2647,19 @@ func start_held_gem_extract(source_grid: Vector2i, gem: GemState) -> void:
 	_anim.held_gem_visual["arc_height"] = IsoCoordinates.visual(54.0)
 	_anim.held_gem_visual["orbit_angle"] = _orbit_angle_from_position(source_pos)
 	_anim.held_gem_visual["bob_time"] = randf() * TAU
+	queue_redraw()
+
+
+func show_held_gem_orbit(gem: GemState) -> void:
+	if gem == null:
+		return
+	var visual := _make_gem_visual(gem, _current_player_orbit_position({"orbit_angle": 0.0, "bob_time": 0.0}))
+	if visual.is_empty():
+		return
+	visual["phase"] = "orbit"
+	visual["orbit_angle"] = 0.0
+	visual["bob_time"] = 0.0
+	_anim.held_gem_visual = visual
 	queue_redraw()
 
 

@@ -18,7 +18,7 @@ func _run_tests() -> void:
 	assert(node != null, "current node should exist")
 	node.room_type = "REST_SITE"
 	run_service.get_run().player_hp = 5
-	run_service.get_run().player_max_hp = 10
+	run_service.get_run().player_max_hp = 100
 
 	var room_id: String = str(adventure_service.current_room_id())
 	assert(room_id == "chapter_1:0_0", "room id should include chapter, got %s" % room_id)
@@ -36,7 +36,8 @@ func _run_tests() -> void:
 	var heal_trace: Dictionary = result.get("heal_trace", {})
 	assert(absf(float(heal_trace.get("base_value", 0.0)) - 0.2) < 0.001, "rest base heal ratio should come from amount ref")
 	assert(absf(float(heal_trace.get("final_value", 0.0)) - 0.2) < 0.001, "rest heal ratio should remain base without rule")
-	assert(int(heal.get("amount", 0)) == 2, "rest heal should apply configured 20 percent")
+	assert(int(heal.get("amount", 0)) == 32, "rest heal should apply configured 20 percent plus 12 hp")
+	assert(int(heal.get("after_hp", 0)) == 37, "rest heal should report the post-heal health")
 
 	var resolved_again: Dictionary = room_flow_service.submit_room_command(room_id, {})
 	assert(str(resolved_again.get("summary", "")) == str(resolved.get("summary", "")), "repeat submit should be idempotent")

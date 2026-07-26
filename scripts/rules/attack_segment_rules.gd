@@ -13,8 +13,9 @@ static func next_attack_event_id(state: GameState, attacker: UnitState) -> Strin
 static func execute_segments(ctx: AttackContext, hit_callback: Callable, prepare_callback: Callable = Callable()) -> void:
 	var plan := _prepare(ctx)
 	for index in range(int(plan["count"])):
-		if ctx.target != null and not ctx.target.alive:
-			break
+		# The segment plan belongs to the attack, not to the target's lifetime.
+		# Later segments still resolve their visuals and cell-based effects after
+		# a lethal hit, while the damage layer ignores the defeated unit.
 		ctx.payload["attack_segment_index"] = index
 		ctx.payload["attack_segment_count"] = int(plan["count"])
 		ctx.payload["current_attack_event_id"] = _event_id(ctx, index)

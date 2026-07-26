@@ -101,6 +101,9 @@ static func on_unit_moved_through(
 	pos: Vector2i,
 	opts: Dictionary = {}
 ) -> void:
+	EntityRules.on_unit_entered(state, unit, opts)
+	if not unit.alive:
+		return
 	GemEffects.run_unit_hooks(
 		state,
 		unit,
@@ -125,7 +128,7 @@ static func finish_voluntary_move(state: GameState, unit: UnitState, start_pos: 
 	if unit.pos == start_pos:
 		return
 	on_unit_position_changed(state, unit, start_pos)
-	on_unit_entered(state, unit, start_pos)
+	on_unit_entered(state, unit, start_pos, {"skip_entity": true})
 
 
 # ─── Overlay 创建 ──────────────────────────────────────────────────────────────

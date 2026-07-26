@@ -11,6 +11,8 @@ func _run_test() -> void:
 	_test_poison_fog_enters_existing_fire()
 	_test_overlay_batch_waits_for_unit_entry()
 	_test_path_applies_overlay_only_at_destination()
+	_test_path_applies_spike_damage_per_crossed_cell()
+	_test_forced_path_applies_spike_collision_damage()
 	_test_large_unit_stay_checks_full_footprint()
 	_test_refreshing_existing_fire_waits_for_entry()
 	print("TILE_OVERLAY_REACTION_TEST_PASS")
@@ -79,6 +81,34 @@ func _test_path_applies_overlay_only_at_destination() -> void:
 	var poison := unit.get_status(Constants.STATUS_POISON)
 	assert(poison != null and poison.stacks == 1, "only the destination tile should apply one poison stack")
 	print("  [OK] path overlays resolve only at destination")
+
+
+func _test_path_applies_spike_damage_per_crossed_cell() -> void:
+	var fixture := _large_unit_fixture(Vector2i(1, 2), Vector2i.ONE)
+	var state: GameState = fixture["state"]
+	var unit: UnitState = fixture["unit"]
+	state.add_entity(EntityState.create("path_spike", Constants.ENTITY_SPIKE, Vector2i(2, 2)))
+	state.move_unit(unit, Vector2i(2, 2))
+	TileRules.on_unit_moved_through(state, unit, unit.pos)
+	assert(unit.hp == 15, "crossing a spike should immediately deal normal spike damage")
+	state.move_unit(unit, Vector2i(3, 2))
+	TileRules.on_unit_moved_through(state, unit, unit.pos)
+	TileRules.finish_voluntary_move(state, unit, Vector2i(1, 2))
+	assert(unit.hp == 15, "leaving the spike must not repeat its damage at the destination")
+	print("  [OK] crossed spike resolves during path movement")
+
+
+func _test_forced_path_applies_spike_collision_damage() -> void:
+	var fixture := _large_unit_fixture(Vector2i(1, 3), Vector2i.ONE)
+	var state: GameState = fixture["state"]
+	var unit: UnitState = fixture["unit"]
+	state.add_entity(EntityState.create("forced_path_spike", Constants.ENTITY_SPIKE, Vector2i(2, 3)))
+	var events: Array[Dictionary] = []
+	Displacement.push_cardinal(state, unit, Displacement.Direction.EAST, 2, "test_source", events)
+	assert(unit.hp == 10, "forced movement through a spike should use collision damage")
+	assert(unit.has_status(Constants.STATUS_VULNERABLE), "forced spike contact should apply vulnerable")
+	assert(unit.pos == Vector2i(3, 3), "forced movement should continue after crossing a passable spike")
+	print("  [OK] forced path resolves spike collision damage")
 
 
 func _test_large_unit_stay_checks_full_footprint() -> void:

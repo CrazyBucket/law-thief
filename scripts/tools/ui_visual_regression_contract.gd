@@ -21,7 +21,6 @@ const SCENARIOS := [
 		"id": "map_route",
 		"scene": "res://scenes/map/adventure_map.tscn",
 		"critical_controls": [
-			"HudLayer/TopBar",
 			"HudLayer/ActionPanel",
 			"HudLayer/PreviewPanel",
 		],
@@ -34,6 +33,16 @@ const SCENARIOS := [
 			"SafeArea/Layout/Main/ArtFrame",
 			"SafeArea/Layout/Main/StoryColumn/StoryPanel",
 			"SafeArea/Layout/Main/StoryColumn/ChoicePanel",
+		],
+	},
+	{
+		"id": "shop_room",
+		"scene": "res://scenes/adventure/shop_scene.tscn",
+		"critical_controls": [
+			"SafeArea/Layout/TopBar",
+			"SafeArea/Layout/TopBar/Row/LeaveButton",
+			"SafeArea/Layout/Main/InfoRail",
+			"SafeArea/Layout/Main/CatalogFrame",
 		],
 	},
 ]

@@ -1,0 +1,191 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/rest_scene.gd" id="1_rest"]
+[ext_resource type="Texture2D" path="res://assets/ui/rest_campfire_bg.png" id="2_backdrop"]
+
+[node name="RestScene" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_rest")
+
+[node name="Backdrop" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_backdrop")
+expand_mode = 1
+stretch_mode = 6
+texture_filter = 1
+
+[node name="NightWash" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.035, 0.048, 0.075, 0.5)
+
+[node name="SafeArea" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 84
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Layout" type="VBoxContainer" parent="SafeArea"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TopBar" type="PanelContainer" parent="SafeArea/Layout"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+
+[node name="Row" type="HBoxContainer" parent="SafeArea/Layout/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="FlameMark" type="Label" parent="SafeArea/Layout/TopBar/Row"]
+custom_minimum_size = Vector2(34, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "✦"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TitleGroup" type="VBoxContainer" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Title" type="Label" parent="SafeArea/Layout/TopBar/Row/TitleGroup"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Camp"
+
+[node name="Subtitle" type="Label" parent="SafeArea/Layout/TopBar/Row/TitleGroup"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Rest and recover"
+
+[node name="Spacer" type="Control" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SafetyLabel" type="Label" parent="SafeArea/Layout/TopBar/Row"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Safe"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Main" type="HBoxContainer" parent="SafeArea/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SceneSpacer" type="Control" parent="SafeArea/Layout/Main"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="RestCard" type="PanelContainer" parent="SafeArea/Layout/Main"]
+custom_minimum_size = Vector2(500, 0)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="Margin" type="MarginContainer" parent="SafeArea/Layout/Main/RestCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 22
+
+[node name="VBox" type="VBoxContainer" parent="SafeArea/Layout/Main/RestCard/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Eyebrow" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "By the fire"
+
+[node name="Heading" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Rest"
+
+[node name="Description" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Recover before you continue."
+autowrap_mode = 2
+
+[node name="RecoveryPanel" type="PanelContainer" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+custom_minimum_size = Vector2(0, 94)
+layout_mode = 2
+
+[node name="RecoveryRow" type="HBoxContainer" parent="SafeArea/Layout/Main/RestCard/Margin/VBox/RecoveryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="RecoveryMark" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox/RecoveryPanel/RecoveryRow"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "✦"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Copy" type="VBoxContainer" parent="SafeArea/Layout/Main/RestCard/Margin/VBox/RecoveryPanel/RecoveryRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="RecoveryTitle" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox/RecoveryPanel/RecoveryRow/Copy"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Recover health"
+
+[node name="RecoveryValue" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox/RecoveryPanel/RecoveryRow/Copy"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Restore 20% max HP + 12"
+
+[node name="ResultLabel" type="Label" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = ""
+autowrap_mode = 2
+
+[node name="ActionSpacer" type="Control" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RestButton" type="Button" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+text = "Rest by the fire"
+
+[node name="LeaveButton" type="Button" parent="SafeArea/Layout/Main/RestCard/Margin/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Leave camp"
+
+[connection signal="pressed" from="SafeArea/Layout/Main/RestCard/Margin/VBox/RestButton" to="." method="_on_rest_pressed"]
+[connection signal="pressed" from="SafeArea/Layout/Main/RestCard/Margin/VBox/LeaveButton" to="." method="_on_leave_pressed"]

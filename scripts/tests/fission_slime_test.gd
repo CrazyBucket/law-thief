@@ -7,6 +7,7 @@ const GemRules = preload("res://scripts/rules/gem_rules.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const SlimeSprites = preload("res://scripts/ui/slime_sprites.gd")
 const ColoredSlimeRules = preload("res://scripts/rules/colored_slime_rules.gd")
+const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
 
 
 func _initialize() -> void:
@@ -31,7 +32,7 @@ func _run_test() -> void:
 	_test_split_blue_level_two_splits_to_all_neighbors()
 	_test_split_blue_level_three_temp_clone_once_per_turn()
 	_test_clone_footprint_1x1()
-	_test_clone_death_no_resplit()
+	_test_locked_clone_death_does_not_resplit()
 	_test_clone_uses_melee_ai()
 	_test_red_gravity_overrides_default_ai()
 	_test_attack_range_uses_nearest_footprint_cell()
@@ -246,35 +247,130 @@ func _test_split_clones_partition_slots_and_gems() -> void:
 func _test_player_split_merge_preserves_gems_across_battles() -> void:
 	var run_service: Node = Engine.get_main_loop().root.get_node("RunService")
 	run_service.start_run(817, 818)
+	var run: RunState = run_service.get_run()
+	_embed_run_gem(run_service, run, Constants.GEM_FIRE, 0)
+	_embed_run_gem(run_service, run, Constants.GEM_POISON, 1)
+	_embed_run_gem(run_service, run, Constants.GEM_SPLIT, 2)
+	_embed_run_gem(run_service, run, Constants.GEM_SPLIT, 2, true)
+	var overload_slot_index := run.player_slot_gems.size() - 1
+	assert(
+		str((run.player_slot_gems[overload_slot_index] as Dictionary).get("lock_type", ""))
+			== Constants.LOCK_OVERLOAD_SLOT,
+		"fixture must create a real persistent overload slot"
+	)
 	var controller := BattleController.new()
 	controller.start_encounter("fission_slime_test", 42)
 	var state := controller.state
 	var player := state.get_player()
-	_mount_gem(state, player, Constants.SLOT_RED, Constants.GEM_FIRE)
-	_mount_gem(state, player, Constants.SLOT_BLUE, Constants.GEM_POISON)
-	_mount_gem(state, player, Constants.SLOT_BLACK, Constants.GEM_SPLIT)
+	_assert_player_overload_slot(player, overload_slot_index, "first battle player")
+	OverloadRules.sync_active_mutations_to_overload_slots(state, true)
+	assert(state.overload_active_mutations.size() == 1, "real overload slot should activate one mutation")
 	var expected_gem_ids: Array[String] = []
 	for slot in player.slots:
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		expected_gem_ids.append(gem.gem_id if gem != null else "")
+	var expected_max_hp := player.max_hp
 	var origin_uid := player.uid
 	var killer := _find_slime(state)
 	CombatRules.apply_true_damage(state, player, player.hp, killer.uid, "test_split_merge")
 	controller._check_battle_end()
 	assert(state.get_player().has_tag(Constants.TAG_UNIT_SPLIT_CLONE), "a surviving split clone should take control")
+	var first_generation := state.get_alive_split_clones(origin_uid)
+	assert(first_generation.size() == 2, "two split gems must still create exactly two clones")
+	var locked_split_count := 0
+	var active_split_clone: UnitState = null
+	for clone in first_generation:
+		var split_slots := clone.slots.filter(
+			func(slot: SlotState) -> bool:
+				var gem: GemState = state.gems.get(slot.gem_uid, null)
+				return gem != null and gem.gem_id == Constants.GEM_SPLIT
+		)
+		assert(split_slots.size() == 1, "each first-generation clone should retain one black split slot")
+		if split_slots[0].lock_type == Constants.LOCK_SPLIT_DISABLED:
+			locked_split_count += 1
+		else:
+			active_split_clone = clone
+	assert(locked_split_count == 1, "only the split gem that triggered this death should lock")
+	assert(active_split_clone != null, "the second split gem should remain active on the other clone")
+	CombatRules.apply_true_damage(
+		state,
+		active_split_clone,
+		active_split_clone.hp,
+		killer.uid,
+		"test_recursive_split"
+	)
+	controller._check_battle_end()
+	var descendants := state.get_alive_split_clones(origin_uid)
+	assert(descendants.size() == 3, "the unlocked clone should split into two while its sibling survives")
+	for descendant in descendants:
+		assert(descendant.split_origin_uid == origin_uid, "recursive clones must retain the root merge origin")
+	var disabled_overload_split_found := false
+	for descendant in descendants:
+		for slot: SlotState in descendant.slots:
+			if slot.is_overload_slot() and slot.is_split_disabled():
+				disabled_overload_split_found = true
+	assert(
+		disabled_overload_split_found,
+		"an overload split slot must retain its overload identity while the triggering gem is disabled"
+	)
+	assert(OverloadRules.overload_gem_count(state) == 1, "recursive split must keep the overload gem counted")
+	OverloadRules.sync_active_mutations_to_overload_slots(state, false)
+	assert(state.overload_active_mutations.size() == 1, "recursive split must not discard the overload layer")
 	for enemy: UnitState in state.get_alive_enemies().duplicate():
 		state.kill_unit(enemy)
 	controller._check_battle_end()
 	assert(state.get_player().uid == origin_uid, "victory should merge split clones back into the original player")
+	assert(state.get_player().max_hp == expected_max_hp, "first merge should restore the original max hp")
 	_assert_player_gem_ids(state.get_player(), state, expected_gem_ids, "merged player")
+	_assert_player_overload_slot(state.get_player(), overload_slot_index, "merged player")
 	assert(BattleInvariantChecker.assert_valid(state, "fission_slime.player_split_merge"))
 	run_service.capture_player_battle_state(state)
-	var registry: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var next_state: GameState = registry.create_battle_state("fission_slime_test", 43)
+	var second_controller := BattleController.new()
+	second_controller.start_encounter("fission_slime_test", 43)
+	var next_state := second_controller.state
+	assert(next_state.get_player().max_hp == expected_max_hp, "next battle should restore max hp")
 	_assert_player_gem_ids(next_state.get_player(), next_state, expected_gem_ids, "next battle player")
+	_assert_player_overload_slot(next_state.get_player(), overload_slot_index, "next battle player")
+	var second_origin_uid := next_state.player_uid
+	var second_player := next_state.get_player()
+	var second_killer := _find_slime(next_state)
+	CombatRules.apply_true_damage(
+		next_state,
+		second_player,
+		second_player.hp,
+		second_killer.uid,
+		"test_second_battle_split_merge"
+	)
+	second_controller._check_battle_end()
+	assert(
+		next_state.get_player().has_tag(Constants.TAG_UNIT_SPLIT_CLONE),
+		"the restored player should split again in the second battle"
+	)
+	for enemy: UnitState in next_state.get_alive_enemies().duplicate():
+		next_state.kill_unit(enemy)
+	second_controller._check_battle_end()
+	assert(next_state.get_player().uid == second_origin_uid, "second victory should merge into its battle origin")
+	assert(next_state.get_player().max_hp == expected_max_hp, "second merge should preserve max hp")
+	_assert_player_gem_ids(next_state.get_player(), next_state, expected_gem_ids, "second merged player")
+	_assert_player_overload_slot(next_state.get_player(), overload_slot_index, "second merged player")
 	assert(BattleInvariantChecker.assert_valid(next_state, "fission_slime.player_split_persist"))
+	run_service.capture_player_battle_state(next_state)
+	var third_controller := BattleController.new()
+	third_controller.start_encounter("fission_slime_test", 44)
+	assert(third_controller.state.get_player().max_hp == expected_max_hp, "post-merge battle should retain max hp")
+	_assert_player_gem_ids(
+		third_controller.state.get_player(),
+		third_controller.state,
+		expected_gem_ids,
+		"post-merge player"
+	)
+	_assert_player_overload_slot(
+		third_controller.state.get_player(),
+		overload_slot_index,
+		"post-merge player"
+	)
 	run_service.end_run()
-	print("  [OK] player split merge preserves gems into the next battle")
+	print("  [OK] player split merge preserves max hp and gems across repeated battles")
 
 
 func _assert_player_gem_ids(player: UnitState, state: GameState, expected: Array[String], label: String) -> void:
@@ -282,6 +378,32 @@ func _assert_player_gem_ids(player: UnitState, state: GameState, expected: Array
 	for i in range(expected.size()):
 		var gem: GemState = state.gems.get(player.slots[i].gem_uid, null)
 		assert(gem != null and gem.gem_id == expected[i], "%s slot %d should preserve its gem" % [label, i])
+
+
+func _assert_player_overload_slot(player: UnitState, slot_index: int, label: String) -> void:
+	var slot := player.get_slot_by_index(slot_index)
+	assert(slot != null, "%s should preserve the overload slot" % label)
+	assert(
+		slot.lock_type == Constants.LOCK_OVERLOAD_SLOT,
+		"%s should preserve the overload slot marker" % label
+	)
+
+
+func _embed_run_gem(
+	run_service: Node,
+	run: RunState,
+	gem_id: String,
+	slot_index: int,
+	force_overload: bool = false
+) -> void:
+	var acquired: Dictionary = run_service.acquire_gem(gem_id)
+	assert(acquired.get("ok", false), "fixture should acquire %s" % gem_id)
+	var embedded := RunPlayerGemService.embed_carried_gem(run, slot_index, force_overload)
+	assert(embedded.get("ok", false), "fixture should embed %s" % gem_id)
+	assert(
+		bool(embedded.get("overload_forced", false)) == force_overload,
+		"fixture overload result should match the requested path"
+	)
 
 
 func _test_split_gem_rewards_once_after_both_clones_die() -> void:
@@ -498,7 +620,7 @@ func _test_clone_footprint_1x1() -> void:
 	assert(false, "expected split clone")
 
 
-func _test_clone_death_no_resplit() -> void:
+func _test_locked_clone_death_does_not_resplit() -> void:
 	var controller := BattleController.new()
 	controller.start_encounter("fission_slime_test", 42)
 	var state := controller.state
@@ -508,10 +630,13 @@ func _test_clone_death_no_resplit() -> void:
 	GemEffectsScript.on_unit_death(state, slime, events)
 	var clone: UnitState = null
 	for unit in state.units.values():
-		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
-			clone = unit
-			break
-	assert(clone != null, "expected a split clone")
+		if not unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
+			continue
+		for slot in unit.slots:
+			if slot.lock_type == Constants.LOCK_SPLIT_DISABLED:
+				clone = unit
+				break
+	assert(clone != null, "expected a clone carrying the locked split gem")
 	var before_count := 0
 	for unit in state.units.values():
 		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
@@ -522,8 +647,8 @@ func _test_clone_death_no_resplit() -> void:
 	for unit in state.units.values():
 		if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE) and unit.alive:
 			after_count += 1
-	assert(after_count == before_count - 1, "clone death should not spawn more clones")
-	print("  [OK] clone death does not resplit")
+	assert(after_count == before_count - 1, "a clone whose split gem is locked must not resplit")
+	print("  [OK] locked clone death does not resplit")
 
 
 func _test_clone_uses_melee_ai() -> void:

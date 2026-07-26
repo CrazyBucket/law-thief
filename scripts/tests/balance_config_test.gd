@@ -359,7 +359,7 @@ func _test_relic_numeric_refs_config() -> void:
 				{"on": "battle_start", "action": "add_armor", "target": "player", "amount": 3},
 				{"on": "battle_start", "action": "heal", "target": "player", "amount_ref": "relic_cracked_amulet_shield"},
 				{"on": "battle_start", "action": "add_temp_move", "amount_ref": "missing_ref"},
-				{"modifier": "arc_damage_mult", "value": 1.2},
+				{"modifier": "arc_damage_bonus", "value": 1},
 				{"modifier": "attack_miss_chance", "value_ref": "relic_crowbar_armor_break_bonus"},
 				{"modifier": "first_damage_cap", "value_ref": "relic_cracked_amulet_shield"},
 				{"on": "battle_start", "action": "apply_max_hp_reduction", "ratio_ref": "relic_cracked_amulet_shield"}

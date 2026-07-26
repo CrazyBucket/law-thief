@@ -5,6 +5,7 @@ const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const _OldMageBehavior = preload("res://scripts/rules/behaviors/behavior_old_mage.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -103,7 +104,7 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
-	var was_overload_slot := slot.lock_type == Constants.LOCK_OVERLOAD_SLOT
+	var was_overload_slot := slot.is_overload_slot()
 	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
 	var lawless_active := OverloadRules.is_active(state, Constants.OVERLOAD_LAWLESS_ANY_EXTRACT)
 	var slot_type := slot.slot_type
@@ -140,6 +141,8 @@ static func can_insert(state: GameState, actor: UnitState, target_unit: UnitStat
 	if BoardUtils.distance_between_units(actor, target_unit) > _effective_insert_range(state):
 		return _fail("超出范围")
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
+	if _OldMageBehavior.accepts_decoy_insert(state, target_unit, slot, gem):
+		return _ok({"requires_overload": false, "old_mage_decoy": true})
 	if gem != null:
 		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
 		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
@@ -192,7 +195,12 @@ static func insert(state: GameState, actor: UnitState, target_unit: UnitState, s
 			"actor_uid": actor.uid,
 		})
 	IntentSystem.refresh_all_intents(state)
-	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": "", "overload_forced": overload_forced})
+	return _ok({
+		"gem_uid": gem.uid,
+		"swapped_gem_uid": "",
+		"overload_forced": overload_forced,
+		"old_mage_decoy": bool(check.get("old_mage_decoy", false)),
+	})
 
 
 static func can_trigger(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
@@ -251,7 +259,7 @@ static func extract_tile(state: GameState, actor: UnitState, tile: TileState, sl
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
-	var was_overload_slot := slot.lock_type == Constants.LOCK_OVERLOAD_SLOT
+	var was_overload_slot := slot.is_overload_slot()
 	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
 	if not _GemTransfer.to_hand(state, gem, actor.uid):
 		return _fail("无法持有宝石")
@@ -356,6 +364,7 @@ static func _make_overload_slot(slot: SlotState) -> SlotState:
 	overflow_slot.locked = false
 	overflow_slot.lock_type = Constants.LOCK_OVERLOAD_SLOT
 	overflow_slot.unlock_until_turn = -1
+	overflow_slot.overload_slot = true
 	return overflow_slot
 
 

@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: original top-down battle-route endpoint marker for this game's isometric board
+References: the project's battle-board screenshot, coin icon, and impact-gem icon were used only as style and pixel-density references.
+Primary request: one compact upward arrow with a broad head and an extremely short thick tail, designed as a low, flat board marker.
+Style: crisp 32-bit pixel art with a readable broad-head silhouette and short tail.
+Background: flat #ff00ff chroma key, removed locally before conversion.
+Constraints: no baked route color, perspective, glow, glossy metal, text, badge, circle, extra object, or watermark.
+
+The generated source was normalized into a pure-white alpha mask: RGB is always white and all shading is encoded only in alpha. The four runtime PNGs were derived from this source using the same square-to-isometric transform and 0/90/180/270-degree rotations implemented by scripts/tools/tile.html. Runtime code supplies the final route color.

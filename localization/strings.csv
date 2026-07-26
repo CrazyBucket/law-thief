@@ -57,6 +57,9 @@ shop.services.title,服务,Services
 shop.services.coin_only,只接受金币交易。,Gold only. No returns.
 shop.loadout.title,当前携带,Your Loadout
 shop.loadout.empty,手持位为空。,Empty hand.
+shop.loadout.embed,嵌入宝石,Embed Gem
+shop.loadout.no_slot,没有可用的槽位。,No slot is available.
+shop.feedback.embedded,宝石已嵌入。,Gem embedded.
 event.ui.header,奇遇,Event
 event.ui.chapter,第 {current} / {total} 关,Act {current} / {total}
 event.ui.story,遭遇,Encounter
@@ -69,6 +72,29 @@ event.ui.error.action,选择未能完成，请再试一次。,The choice could n
 event.ui.condition.gold,金币不足,Not Enough Gold
 event.ui.condition.hand_full,手中已有宝石,Hands Full
 event.ui.condition.unavailable,条件未满足,Unavailable
+gem_embed.title,嵌入宝石,Embed Gem
+gem_embed.tip,选择一个空槽位；也可以暂时手持。,Choose an empty slot or hold the gem for later.
+gem_embed.tip_overload,空槽可直接嵌入；已有宝石的槽位可过载嵌入。,Use an empty slot or overload an occupied slot.
+gem_embed.slot,嵌入{slot}槽,Embed in {slot} Slot
+gem_embed.slot_overload,过载嵌入{slot}槽（保留{gem}）,Overload {slot} Slot (keep {gem})
+gem_embed.later,暂时手持,Hold for Now
+gem_embed.unavailable,该槽位当前不可用,That slot is unavailable.
+gem_embed.slot.red,红,Red
+gem_embed.slot.blue,蓝,Blue
+gem_embed.slot.black,黑,Black
+gem_embed.slot.unknown,未知,Unknown
+rest.ui.title,营地,Camp
+rest.ui.subtitle,夜色将深，篝火仍暖。,Night deepens; the fire stays warm.
+rest.ui.safe,暂得安宁,A moment of safety
+rest.ui.eyebrow,篝火旁,BY THE FIRE
+rest.ui.heading,短暂休整,Take a Short Rest
+rest.ui.description,补充体力，准备下一段路程。,Recover your strength before the next stretch of road.
+rest.ui.recovery.title,恢复生命,Recover Health
+rest.ui.recovery.value,回复生命：最大生命的 20% + 12,Heal for 20% of max HP + 12
+rest.ui.action,在篝火旁休整,Rest by the Fire
+rest.ui.leave,离开营地,Leave Camp
+rest.ui.continue,继续前进,Continue
+rest.ui.result,恢复 {amount} 点生命 · 当前 {current} / {max},Recovered {amount} HP · Now {current} / {max}
 gem.explosion.name,爆炸,Explosion
 gem.explosion.symbol,爆,Blast
 gem.poison.name,剧毒,Poison
@@ -106,6 +132,7 @@ unit.ruffled_crow.name,乱羽鸦,Ruffled Crow
 unit.rolling_armadillo.name,滚甲兽,Rolling Armadillo
 unit.overload_enforcer.name,执律者,Overload Enforcer
 unit.law_beast.name,律兽,Law Beast
+unit.old_mage.name,老法师,Old Mage
 unit.training_dummy.name,训练稻草人,Training Dummy
 gem.intent.explosion_attack,爆炸攻击 ({damage}),Explosion Strike ({damage})
 gem.intent.charge_explode,冲刺爆炸 ({damage}),Charge Explosion ({damage})

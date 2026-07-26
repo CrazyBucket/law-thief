@@ -501,7 +501,7 @@ const RELIC_MODIFIER_VALUE_UNITS := {
 	"move_bonus": {"kind": "flat", "unit": "move_points"},
 	"extract_range_bonus": {"kind": "flat", "unit": "range"},
 	"insert_range_bonus": {"kind": "flat", "unit": "range"},
-	"arc_damage_mult": {"kind": "multiplier", "unit": "damage"},
+	"arc_damage_bonus": {"kind": "flat", "unit": "damage"},
 	"attack_miss_chance": {"kind": "ratio", "unit": "chance"},
 	"attack_damage_bonus": {"kind": "flat", "unit": "damage"},
 	"first_damage_cap": {"kind": "flat", "unit": "damage"},

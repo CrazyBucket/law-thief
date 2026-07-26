@@ -59,15 +59,14 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 const SPLIT_ORIGIN_SLOT_PREFIX := "split_origin_slot:"
 static func begin_explosion_reaction_chain() -> void:
 	_GemExplosionRules.begin_reaction_chain()
-
-
 static func end_explosion_reaction_chain() -> void:
 	_GemExplosionRules.end_reaction_chain()
-
-
 static func split_origin_slot_key(gem_uid: String) -> String:
 	return "%s%s" % [SPLIT_ORIGIN_SLOT_PREFIX, gem_uid]
 static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
+	# The old mage's blue slots are telegraphed spell material, not generic reactive gems.
+	if unit != null and unit.behavior_id == "old_mage" and slot_type == Constants.SLOT_BLUE:
+		return
 	var gem_ctx := GemTagResolver.build_context(state, unit, slot_type, timing)
 	var triggered_tags: Dictionary = {}
 	for slot in unit.slots:
@@ -83,9 +82,9 @@ static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String,
 		var hook_ctx := ctx.duplicate()
 		hook_ctx["gem_tag_context"] = gem_ctx
 		_run_slot_hook(state, unit, slot, timing, hook_ctx)
-
-
 static func run_blue_explosion_after_damage(state: GameState, unit: UnitState, ctx: Dictionary = {}) -> void:
+	if unit != null and unit.behavior_id == "old_mage":
+		return
 	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_BLUE, TIMING_OWNER_DAMAGED)
 	for slot in unit.slots_accepting(Constants.SLOT_BLUE):
 		if slot.gem_uid.is_empty():
@@ -869,9 +868,8 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 			if trigger_tile != null and trigger_tile.has_tile_tag(Constants.TAG_TILE_WATER):
 				apply_water_conduction(state, arc_anchor, owner, out_events, gem_ctx)
 			elif arc_target != null and arc_target.alive:
-				var arc_base := CombatRules.attack_damage(state, owner)
-				_arc_to(state, owner.pos, arc_target, owner.uid, _calc_arc_damage(arc_base), out_events, gem_ctx)
-				apply_arc_bounce_from_victim(state, arc_target, owner, arc_base, out_events, gem_ctx)
+				_arc_to(state, owner.pos, arc_target, owner.uid, _calc_arc_damage(owner, state), out_events, gem_ctx)
+				apply_arc_bounce_from_anchor(state, arc_target, owner, out_events, gem_ctx)
 			return true
 		"fire_gem":
 			var fire_pos := resolve_blast_center(owner.pos, ctx.get("target_pos", null))
@@ -1003,13 +1001,16 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 			var level := maxi(1, GemTagResolver.tag_level(gem_ctx, "arc"))
 			var level_def: Dictionary = _effect_level_def("arc", _effect_level_scope(gem_ctx, Constants.SLOT_BLUE), level)
 			var chance := float(level_def["rebound_chance"])
-			if source != null and source.alive and rng != null and bool(rng.chance("gem_arc_rebound_%s" % owner.uid, chance)):
+			var damage_context: Dictionary = ctx.get("damage_context", {})
+			if source != null and source.uid != owner.uid and source.alive and rng != null \
+					and DamageContext.is_active_attack(damage_context) \
+					and bool(rng.chance("gem_arc_rebound_%s" % owner.uid, chance)):
 				_arc_to(
 					state,
 					owner.pos,
 					source,
 					owner.uid,
-					CombatRules.attack_damage(state, owner),
+					_calc_arc_damage(owner, state),
 					_events_from_ctx(ctx),
 					gem_ctx
 				)
@@ -1108,8 +1109,6 @@ static func _run_death_hooks_with_events(
 	out_events: Array[Dictionary],
 	ctx: Dictionary = {}
 ) -> void:
-	if unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
-		return
 	var death_gems: Array[GemState] = []
 	var seen_tags: Dictionary = {}
 	var gem_ctx := GemTagResolver.build_context(state, unit, Constants.SLOT_BLACK, TIMING_ON_DEATH, null, ctx)
@@ -1293,7 +1292,9 @@ static func _run_unit_death_effect_with_events(
 					out_events.append(_EventBuilder.area_effect("frost_pulse", unit.pos))
 			return true
 		"split":
-			_spawn_split_clones(state, owner, out_events, gem_ctx)
+			var split_ctx := gem_ctx.duplicate(true)
+			split_ctx["split_trigger_gem_uid"] = gem.uid
+			_spawn_split_clones(state, owner, out_events, split_ctx)
 			return true
 		"light":
 			_resolve_black_light(
@@ -1443,7 +1444,7 @@ static func _reflect_light_on_damage(
 		)
 		if dealt > 0:
 			StatusRules.apply_light_exposed(state, target, exposed_stacks, owner.uid)
-		apply_light_colored_status(state, target, owner, gem_ctx, out_events, damage)
+		apply_light_colored_hit_effects(state, target, owner, gem_ctx, out_events)
 
 
 static func _resolve_black_light(
@@ -1518,7 +1519,7 @@ static func _apply_blue_echo(
 							owner.pos,
 							source,
 							owner.uid,
-							CombatRules.attack_damage(state, owner),
+							_calc_arc_damage(owner, state),
 							out_events,
 							gem_ctx
 						)
@@ -1601,31 +1602,31 @@ static func light_dye_transitions(state: GameState, cells: Array[Vector2i]) -> A
 	return _events_from_ctx({"events": _GemLightVisuals.dye_transitions(state, cells)})
 
 
-static func apply_light_colored_status(
+static func apply_light_colored_hit_effects(
 	state: GameState,
 	target: UnitState,
 	source: UnitState,
 	gem_ctx: Dictionary,
-	out_events: Array[Dictionary],
-	base_damage: int
+	out_events: Array[Dictionary]
 ) -> void:
-	if state == null or target == null or source == null or not target.alive:
+	if state == null or target == null or source == null:
 		return
-	if GemTagResolver.has_tag(gem_ctx, "poison"):
-		var poison_level_def := red_poison_hit_config(gem_ctx)
-		StatusRules.apply_poison(
-			state,
-			target,
-			int(poison_level_def["hit_poison_stacks"]),
-			int(poison_level_def["hit_poison_duration"]),
-			source.uid
-		)
-	if GemTagResolver.has_tag(gem_ctx, "fire"):
-		StatusRules.apply_burning(state, target, 1, source.uid)
-	if GemTagResolver.has_tag(gem_ctx, "ice"):
-		apply_ice_hit_effect(state, target, source.uid, GemTagResolver.tag_level(gem_ctx, "ice"))
+	if target.alive:
+		if GemTagResolver.has_tag(gem_ctx, "poison"):
+			var poison_level_def := red_poison_hit_config(gem_ctx)
+			StatusRules.apply_poison(
+				state,
+				target,
+				int(poison_level_def["hit_poison_stacks"]),
+				int(poison_level_def["hit_poison_duration"]),
+				source.uid
+			)
+		if GemTagResolver.has_tag(gem_ctx, "fire"):
+			StatusRules.apply_burning(state, target, 1, source.uid)
+		if GemTagResolver.has_tag(gem_ctx, "ice"):
+			apply_ice_hit_effect(state, target, source.uid, GemTagResolver.tag_level(gem_ctx, "ice"))
 	if GemTagResolver.has_tag(gem_ctx, "arc"):
-		apply_arc_bounce_from_victim(state, target, source, base_damage, out_events, gem_ctx)
+		apply_arc_bounce_from_anchor(state, target, source, out_events, gem_ctx)
 
 
 static func build_light_beam_event(
@@ -1915,13 +1916,16 @@ static func _ability_profile(gem_ref: Variant, ability_slot: String) -> String:
 
 ## ─── 电弧（arc）辅助 ──────────────────────────────────────────────────────
 
-static func _calc_arc_damage(base_damage: int, state: GameState = null) -> int:
-	var mult: float = 1.0
+static func _calc_arc_damage(source: UnitState, state: GameState = null) -> int:
+	if source == null:
+		return 0
+	var bonus := 0
 	if state != null:
 		var registry := _relic_effect_registry()
 		if registry != null:
-			mult = float(registry.query_modifier("arc_damage_mult", state))
-	return maxi(1, int(base_damage * CombatConfig.arc_chain_damage_ratio() * mult))
+			bonus = int(registry.query_modifier("arc_damage_bonus", state))
+	# 电弧取释放者的原始攻击；连击和分裂仅改变主攻击的伤害，不能削弱电弧。
+	return maxi(1, int(source.base_attack * CombatConfig.arc_chain_damage_ratio())) + bonus
 static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
 	var raw: Variant = ctx.get("events", null)
 	if raw is Array[Dictionary]:
@@ -1945,7 +1949,7 @@ static func apply_water_conduction(
 	if cluster.is_empty():
 		return
 	var zone := BoardUtils.water_conduction_zone(cluster)
-	var arc_damage := _calc_arc_damage(CombatRules.attack_damage(state, attacker), state)
+	var arc_damage := _calc_arc_damage(attacker, state)
 	var hit_uids: Dictionary = {}
 	var conduction_events: Array[Dictionary] = []
 	for unit in state.units.values():
@@ -1976,32 +1980,35 @@ static func _unit_in_water_conduction_zone(state: GameState, unit: UnitState, zo
 	return StatusRules.is_wet(unit)
 
 
-## 红槽 TAG_ARC：被击者锚点 2 格内敌方各弹一次；遗物 arc_bounce_count_bonus 增加向外扩的跳数。
-static func apply_arc_bounce_from_victim(
+## 红槽 TAG_ARC：命中锚点 2 格内敌方各弹一次；锚点可在本次攻击中已经死亡。
+static func apply_arc_bounce_from_anchor(
 	state: GameState,
-	victim: UnitState,
+	anchor: UnitState,
 	attacker: UnitState,
-	base_damage: int,
 	events: Array[Dictionary],
 	gem_ctx: Dictionary = {}
 ) -> void:
-	if not victim.alive:
+	if anchor == null or attacker == null:
 		return
-	var arc_damage := _calc_arc_damage(base_damage, state)
+	var arc_damage := _calc_arc_damage(attacker, state)
 	var registry := _relic_effect_registry()
 	var arc_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "arc"))
 	var level_def: Dictionary = _data_registry().get_gem_effect_level_def("arc", Constants.SLOT_RED, arc_level)
 	var bounce_hops := int(level_def["bounce_hops"])
+	var tag_counts: Dictionary = gem_ctx.get("tag_counts", {})
+	var arc_count := maxi(arc_level, int(tag_counts.get("arc", arc_level)))
+	# Lv3 已有三跳；超过三级的每颗导电继续额外提供一跳。
+	bounce_hops += maxi(0, arc_count - 3)
 	if registry != null:
 		bounce_hops += int(registry.query_modifier("arc_bounce_count_bonus", state))
 	var arc_range := int(level_def["range"])
-	var hit_uids: Dictionary = {victim.uid: true, attacker.uid: true}
-	var anchors: Array[UnitState] = [victim]
+	var hit_uids: Dictionary = {anchor.uid: true, attacker.uid: true}
+	var anchors: Array[UnitState] = [anchor]
 	var hop := 0
 	while hop < bounce_hops:
 		var next_anchors: Array[UnitState] = []
 		var hop_events: Array[Dictionary] = []
-		for anchor in anchors:
+		for arc_origin in anchors:
 			for unit in state.units.values():
 				if not unit.alive:
 					continue
@@ -2009,9 +2016,9 @@ static func apply_arc_bounce_from_victim(
 					continue
 				if unit.team == attacker.team:
 					continue
-				if BoardUtils.chebyshev(anchor.pos, unit.pos) > arc_range:
+				if BoardUtils.chebyshev(arc_origin.pos, unit.pos) > arc_range:
 					continue
-				_arc_to(state, anchor.pos, unit, attacker.uid, arc_damage, hop_events, gem_ctx)
+				_arc_to(state, arc_origin.pos, unit, attacker.uid, arc_damage, hop_events, gem_ctx)
 				hit_uids[unit.uid] = true
 				next_anchors.append(unit)
 		# 同一跳的电弧并发出现，随后在统一命中点结算这一跳的伤害。
@@ -2025,17 +2032,6 @@ static func apply_arc_bounce_from_victim(
 			break
 		anchors = next_anchors
 		hop += 1
-
-
-## 兼容旧调用名（攻击管线）
-static func apply_arc_chain(
-	state: GameState,
-	victim: UnitState,
-	attacker: UnitState,
-	base_damage: int,
-	events: Array[Dictionary]
-) -> void:
-	apply_arc_bounce_from_victim(state, victim, attacker, base_damage, events)
 
 
 ## 对单个目标施加电弧伤害；命中 6.6% 麻痹
@@ -2303,7 +2299,11 @@ static func _create_split_clone(
 	clone.facing = owner.facing
 	clone.alive = true
 	_ColoredSlimeRules.configure_child_clone(clone, owner, str(options.get("unit_def_id", owner.unit_def_id)), reg)
-	clone.split_origin_uid = owner.uid
+	clone.split_origin_uid = (
+		owner.split_origin_uid
+		if owner.has_tag(Constants.TAG_UNIT_SPLIT_CLONE) and not owner.split_origin_uid.is_empty()
+		else owner.uid
+	)
 	clone.footprint_size = Vector2i(1, 1)
 	clone.add_tag(Constants.TAG_UNIT_SPLIT_CLONE)
 	var ratio := stat_ratio
@@ -2327,6 +2327,7 @@ static func _create_split_clone(
 		var new_slot := SlotState.create(slot_data.slot_type, "", slot_data.locked, slot_data.lock_type)
 		new_slot.dual_type = slot_data.dual_type
 		new_slot.unlock_until_turn = slot_data.unlock_until_turn
+		new_slot.overload_slot = slot_data.is_overload_slot()
 		clone.slots.append(new_slot)
 		var orig_gem_uid: String = slot_data.gem_uid
 		if orig_gem_uid.is_empty():
@@ -2335,12 +2336,16 @@ static func _create_split_clone(
 		if orig_gem == null:
 			continue
 		var origin_slot_index := owner.slots.find(slot_data)
-		if origin_slot_index >= 0:
+		if origin_slot_index >= 0 and not state.battle_temp_flags.has(split_origin_slot_key(orig_gem_uid)):
 			state.battle_temp_flags[split_origin_slot_key(orig_gem_uid)] = origin_slot_index
 		# 黑槽分裂转移原宝石实例，宝石身份和奖励身份都不被复制。
 		if not _GemTransfer.to_unit_slot(state, orig_gem, clone, new_slot):
 			continue
-		if new_slot.accepts_slot_type(Constants.SLOT_BLACK) and str(reg.get_gem_tag(orig_gem)) == "split":
+		if (
+			orig_gem_uid == str(options.get("disabled_split_gem_uid", ""))
+			and new_slot.accepts_slot_type(Constants.SLOT_BLACK)
+			and str(reg.get_gem_tag(orig_gem)) == "split"
+		):
 			new_slot.locked = true
 			new_slot.lock_type = Constants.LOCK_SPLIT_DISABLED
 			new_slot.unlock_until_turn = -1
@@ -2375,7 +2380,21 @@ static func _spawn_split_clones(
 	if spawn_cells.is_empty():
 		state.log("%s 分裂失败：周围没有空地" % owner.uid)
 		return
-	var slot_groups := _partition_slots_for_clones(owner.slots, clone_count)
+	var ordered_slots: Array = []
+	for slot in owner.slots:
+		if slot == null or slot.gem_uid.is_empty():
+			continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if (
+			slot.accepts_slot_type(Constants.SLOT_BLACK)
+			and gem != null
+			and str(_data_registry().get_gem_tag(gem)) == "split"
+		):
+			ordered_slots.append(slot)
+	for slot in owner.slots:
+		if slot != null and slot not in ordered_slots:
+			ordered_slots.append(slot)
+	var slot_groups := _partition_slots_for_clones(ordered_slots, clone_count)
 	var count := mini(clone_count, spawn_cells.size())
 	var ratio := _split_black_ratio_for_context(gem_ctx)
 	var child_ids := _ColoredSlimeRules.child_unit_ids(owner, count, "split_black")
@@ -2385,6 +2404,7 @@ static func _spawn_split_clones(
 			"allow_unit_ratio_override": true,
 			"allow_player_relic_override": true,
 			"grants_death_rewards": true,
+			"disabled_split_gem_uid": str(gem_ctx.get("split_trigger_gem_uid", "")),
 			"unit_def_id": child_ids[i] if i < child_ids.size() else owner.unit_def_id,
 		})
 		if clone == null:

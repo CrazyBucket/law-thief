@@ -61,6 +61,11 @@ func _test_enemy_intent_route() -> void:
 	assert(path[0] == bow.pos, "intent route should start at enemy position")
 	assert(path[path.size() - 1] == bow.intent.path[bow.intent.path.size() - 1], "intent route should end at preview path destination")
 	assert(_has_overlay_cell(highlights, "intent_path", bow.intent.path[0]), "intent path should be drawn by unified overlays")
+	var final_pos: Vector2i = bow.intent.path[bow.intent.path.size() - 1]
+	state.move_unit(bow, final_pos)
+	var completed_highlights := ctrl.get_highlights()
+	assert(_find_route(completed_highlights, "intent").is_empty(), "completed selected intent must not draw a route back to its old path")
+	assert(not _has_overlay_cell(completed_highlights, "intent_path", final_pos), "completed selected intent must not retain its destination as a movement overlay")
 	print("  [OK] selected enemy intent route overlay")
 
 

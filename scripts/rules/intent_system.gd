@@ -33,6 +33,9 @@ const ATTACK_INTENT_TYPES := [
 	"lawless_attack",
 	"bomb_rat_plunder_steal",
 	"broodmother_ranged_attack",
+	"mage_spell",
+	"mage_staff_attack",
+	"mage_impact_charge",
 ]
 ## 敌人回合执行时按照预计算的意图行动
 
@@ -350,7 +353,10 @@ static func _execute_move(state: GameState, unit: UnitState, intent: IntentState
 			break
 		tx.move_unit(unit, step, {"reason": "intent_move"})
 		TileRules.on_unit_moved_through(state, unit, step)
-	TileRules.finish_voluntary_move(state, unit, previous)
+		if not unit.alive:
+			break
+	if unit.alive:
+		TileRules.finish_voluntary_move(state, unit, previous)
 	return tx.finish("IntentSystem._execute_move")
 
 

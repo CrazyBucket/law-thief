@@ -14,6 +14,9 @@ var base_damage: int = 0
 var events: Array[Dictionary] = []
 var payload: Dictionary = {}
 var trace: Array[Dictionary] = []
+## Per-cell identity retained for the duration of one attack. Damage targeting
+## still comes from live occupancy; cell/TAG effects may use a defeated anchor.
+var _effect_anchors: Dictionary = {}
 
 
 func _init(p_state: GameState, p_attacker: UnitState, p_aim_cell: Vector2i, p_target: UnitState = null) -> void:
@@ -21,6 +24,8 @@ func _init(p_state: GameState, p_attacker: UnitState, p_aim_cell: Vector2i, p_ta
 	attacker = p_attacker
 	aim_cell = p_aim_cell
 	target = p_target
+	if target != null:
+		_effect_anchors[target.pos] = target
 
 
 func add_tag(tag: String) -> void:
@@ -63,6 +68,13 @@ func damage_unit(unit: UnitState, amount: int, reason: String, opts: Dictionary 
 		damage_opts["damage_context"] = build_damage_context(reason, damage_opts)
 	var transaction := CombatTransaction.begin(state, events)
 	return transaction.damage_unit(unit, amount, attacker.uid, reason, damage_opts)
+
+
+func effect_anchor_at(cell: Vector2i, live_target: UnitState = null) -> UnitState:
+	if live_target != null:
+		_effect_anchors[cell] = live_target
+		return live_target
+	return _effect_anchors.get(cell, null)
 
 
 func push_trace(step: Dictionary) -> void:

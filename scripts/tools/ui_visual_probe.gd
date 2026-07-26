@@ -68,6 +68,7 @@ func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: Stri
 		violations.append({"code": "scene_load_failed", "scene": scene_path})
 		return _capture_result(capture_key, scenario, resolution, "", "", violations)
 	var node := packed.instantiate()
+	root.set_meta("ui_visual_scene_path", scene_path)
 	root.add_child(node)
 	await process_frame
 	await process_frame
@@ -75,6 +76,7 @@ func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: Stri
 	await create_timer(0.2).timeout
 	var layout_viewport: Vector2 = node.get_viewport_rect().size
 	violations.append_array(Contract.audit_layout(node, scenario, layout_viewport))
+	violations.append_array(_audit_persistent_hud(node, str(scenario.get("id", "")), layout_viewport))
 	var texture := root.get_texture()
 	var image := texture.get_image() if texture != null else null
 	var relative_path := "%s/%s" % [
@@ -99,8 +101,37 @@ func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: Stri
 			sha256 = FileAccess.get_sha256(absolute_path)
 			print("  [OK] %s -> %s" % [capture_key, absolute_path])
 	node.queue_free()
+	root.remove_meta("ui_visual_scene_path")
 	await process_frame
 	return _capture_result(capture_key, scenario, resolution, relative_path, sha256, violations, layout_viewport)
+
+
+func _audit_persistent_hud(scene: Node, scenario_id: String, viewport_size: Vector2) -> Array[Dictionary]:
+	if scenario_id not in ["map_route", "event_room", "shop_room"]:
+		return []
+	var violations: Array[Dictionary] = []
+	var hud := root.get_node_or_null("AdventureStatusHud/AdventureStatusLayer/AdventureStatusRoot/AdventureStatus") as Control
+	if hud == null or not hud.is_visible_in_tree():
+		return [{"code": "persistent_hud_missing"}]
+	var hud_rect := hud.get_global_rect()
+	if not hud_rect.position.is_equal_approx(Vector2.ZERO):
+		violations.append({"code": "persistent_hud_not_screen_fixed", "position": hud_rect.position})
+	if not is_equal_approx(hud_rect.size.x, viewport_size.x) or not is_equal_approx(hud_rect.size.y, 72.0):
+		violations.append({"code": "persistent_hud_not_reserved_top_strip"})
+	if hud_rect.end.x > viewport_size.x or hud_rect.end.y > viewport_size.y:
+		violations.append({"code": "persistent_hud_outside_viewport"})
+	var protected_paths: Array[String] = []
+	if scenario_id == "event_room":
+		protected_paths = ["SafeArea/Layout/TopBar/Row/HeaderTitle", "SafeArea/Layout/TopBar/Row/ChapterLabel"]
+	elif scenario_id == "shop_room":
+		protected_paths = ["SafeArea/Layout/TopBar/Row/TitleGroup", "SafeArea/Layout/TopBar/Row/LeaveButton"]
+	else:
+		protected_paths = ["HudLayer/ActionPanel"]
+	for path in protected_paths:
+		var control := scene.get_node_or_null(path) as Control
+		if control != null and control.is_visible_in_tree() and hud_rect.intersects(control.get_global_rect()):
+			violations.append({"code": "persistent_hud_overlap", "path": path})
+	return violations
 
 
 func _prepare_scenario(scenario_id: String) -> void:
@@ -129,6 +160,15 @@ func _prepare_scenario(scenario_id: String) -> void:
 				var properties: Dictionary = map_node.get("properties")
 				properties["event_id"] = "event_field_medic"
 				map_node.set("properties", properties)
+		"shop_room":
+			var shop_adventure_service := root.get_node("AdventureService")
+			shop_adventure_service.call("start_new_run", 20260720)
+			shop_adventure_service.set("current_pos", Vector2i.ZERO)
+			shop_adventure_service.set("pending_room_type", "SHOP")
+			shop_adventure_service.set("pending_room_label", "黑市")
+			var shop_map_node: Variant = shop_adventure_service.call("get_current_node")
+			if shop_map_node != null:
+				shop_map_node.set("room_type", "SHOP")
 
 
 func _configure_scenario(node: Node, scenario_id: String) -> void:

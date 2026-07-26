@@ -320,6 +320,24 @@
       {"slot_type": "black", "gem_id": "gem_fire"}
     ]
   },
+  "unit_old_mage": {
+    "display_name_key": "unit.old_mage.name",
+    "max_hp": 90,
+    "move_points": 2,
+    "speed": 11,
+    "base_attack": 8,
+    "armor": 0,
+    "ai_profile_id": "melee_chase",
+    "behavior_id": "old_mage",
+    "allow_empty_gems": true,
+    "spawn_gem_slots": [],
+    "tags": ["unit:boss", "unit:old_mage"],
+    "slots": [
+      {"slot_type": "red"},
+      {"slot_type": "blue"},
+      {"slot_type": "black"}
+    ]
+  },
   "unit_training_dummy": {
     "display_name_key": "unit.training_dummy.name",
     "max_hp": 999,

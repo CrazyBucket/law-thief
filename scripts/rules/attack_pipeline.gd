@@ -19,7 +19,6 @@ const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
 static func _relic_effect_registry() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 
-
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
 
@@ -193,6 +192,7 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 		})
 static func _phase_hit(ctx: AttackContext) -> void:
 	var segment_event_start := ctx.events.size()
+	var hit_target := ctx.target if ctx.target != null and ctx.target.alive else null
 	if ctx.target != null and AttackSegmentRules.misses(ctx, _rng_service()):
 		ctx.state.log("%s 的攻击未命中 %s" % [ctx.attacker.uid, ctx.target.uid])
 		ctx.push_event(AttackSegmentRules.miss_event(ctx))
@@ -219,18 +219,19 @@ static func _phase_hit(ctx: AttackContext) -> void:
 		if not ctx.has_tag(TAG_SPLIT_SHOT) and not ignore_projectile_blockers:
 			hit_cell = BoardUtils.resolve_projectile_impact(ctx.state, from_cell, ctx.aim_cell)
 		_push_projectile_event(ctx, from_cell, hit_cell)
-		ctx.target = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
+		hit_target = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
+		if hit_target != null:
+			ctx.target = hit_target
 	ctx.attacker.facing = UnitState.facing_from_unit_to_cell(ctx.attacker, hit_cell)
-	_apply_tags_at_cell(ctx, hit_cell, ctx.target, reason)
+	_apply_tags_at_cell(ctx, hit_cell, hit_target, reason)
 	if ctx.has_tag(TAG_SPLIT_SHOT):
 		_apply_split_wings(ctx)
 	_reorder_split_shot_events(ctx, segment_event_start)
+
 static func _phase_post_attack(ctx: AttackContext) -> void:
 	var killed := ctx.target != null and not ctx.target.alive
-
 	if ctx.has_tag(TAG_GRAVITY_AURA) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_gravity_aura(ctx)
-
 	if ctx.has_tag(TAG_SLOW_SELF) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_ice_self_slow(ctx)
 
@@ -280,7 +281,7 @@ static func _apply_tags_at_cell(
 		if entity != null and entity.alive and entity.max_hp > 0:
 			EntityRules.damage_entity(ctx.state, entity, ctx.base_damage, ctx.attacker.uid, ctx.events)
 
-	var hit_unit := _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
+	var hit_unit := ctx.effect_anchor_at(hit_cell, target)
 	var had_burning_before := hit_unit != null and hit_unit.has_status(Constants.STATUS_BURNING)
 
 	for entry in HIT_TAG_HANDLERS:
@@ -289,7 +290,7 @@ static func _apply_tags_at_cell(
 			continue
 		var handler := str(entry.get("handler", ""))
 		_apply_hit_tag_handler(ctx, handler, hit_cell, hit_unit, gem_ctx, had_burning_before)
-		hit_unit = _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell)
+		hit_unit = ctx.effect_anchor_at(hit_cell, _resolve_unit_at_aim(ctx.state, ctx.attacker, hit_cell))
 
 	if ctx.has_tag(TAG_POISON) and ctx.has_tag(TAG_FIRE_TILE):
 		GemComboResolver.apply_after_attack_hit(ctx.state, hit_cell, gem_ctx, ctx.events)
@@ -334,12 +335,11 @@ static func _apply_arc_at_cell(
 	var hit_tile := ctx.state.get_tile(hit_cell)
 	if hit_tile != null and hit_tile.has_tile_tag(Constants.TAG_TILE_WATER):
 		GemEffects.apply_water_conduction(ctx.state, hit_cell, ctx.attacker, ctx.events, gem_ctx)
-	elif hit_unit != null and hit_unit.alive:
-		GemEffects.apply_arc_bounce_from_victim(
+	elif hit_unit != null:
+		GemEffects.apply_arc_bounce_from_anchor(
 			ctx.state,
 			hit_unit,
 			ctx.attacker,
-			ctx.base_damage,
 			ctx.events,
 			gem_ctx
 		)
@@ -452,7 +452,6 @@ static func _apply_cross_explosion_at(ctx: AttackContext, center: Vector2i) -> v
 	for ev in cross_events:
 		ctx.events.append(ev)
 
-
 static func _apply_gravity_aura(ctx: AttackContext) -> void:
 	var gravity_gem := GemEffects.find_red_active_gem(ctx.state, ctx.attacker, "gravity")
 	if gravity_gem != null:
@@ -522,8 +521,8 @@ static func _apply_single_light_beam(
 		var preview_dye := GemEffects.light_dye_element_at(ctx.state, cell)
 		if not preview_dye.is_empty():
 			preview_ctx = GemEffects.light_context_with_dye(preview_ctx, preview_dye)
-		var preview_target := ctx.state.get_unit_at(cell)
-		if preview_target == null or not preview_target.alive or preview_target.uid == ctx.attacker.uid or preview_hit_uids.has(preview_target.uid):
+		var preview_target := ctx.effect_anchor_at(cell, ctx.state.get_unit_at(cell))
+		if preview_target == null or preview_target.uid == ctx.attacker.uid or preview_hit_uids.has(preview_target.uid):
 			continue
 		preview_hit_uids[preview_target.uid] = true
 		hit_effects.append({
@@ -559,8 +558,8 @@ static func _apply_single_light_beam(
 		if hit_entity != null and hit_entity.alive and hit_entity.max_hp > 0 and not hit_entity_uids.has(hit_entity.uid):
 			hit_entity_uids[hit_entity.uid] = true
 			EntityRules.damage_entity(ctx.state, hit_entity, damage, ctx.attacker.uid, ctx.events)
-		var target := ctx.state.get_unit_at(cell)
-		if target == null or not target.alive or target.uid == ctx.attacker.uid or hit_uids.has(target.uid):
+		var target := ctx.effect_anchor_at(cell, ctx.state.get_unit_at(cell))
+		if target == null or target.uid == ctx.attacker.uid or hit_uids.has(target.uid):
 			continue
 		hit_uids[target.uid] = true
 		var dealt := ctx.damage_unit(target, damage, "light_beam" if reason.is_empty() else reason, {
@@ -571,13 +570,12 @@ static func _apply_single_light_beam(
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			StatusRules.apply_light_exposed(ctx.state, target, exposed_stacks, ctx.attacker.uid)
-		GemEffects.apply_light_colored_status(
+		GemEffects.apply_light_colored_hit_effects(
 			ctx.state,
 			target,
 			ctx.attacker,
 			traveled_ctx,
-			ctx.events,
-			ctx.base_damage
+			ctx.events
 		)
 	for event_index in range(beam_hit_event_start, ctx.events.size()):
 		var hit_event: Dictionary = ctx.events[event_index]
@@ -796,8 +794,8 @@ static func _apply_chaos_launcher_effect(
 				applied = true
 		"arc_proc":
 			if hit_unit != null and hit_unit.alive:
-				GemEffects.apply_arc_bounce_from_victim(
-					ctx.state, hit_unit, ctx.attacker, ctx.base_damage, ctx.events
+				GemEffects.apply_arc_bounce_from_anchor(
+					ctx.state, hit_unit, ctx.attacker, ctx.events
 				)
 				applied = true
 		"fire_on_hit":

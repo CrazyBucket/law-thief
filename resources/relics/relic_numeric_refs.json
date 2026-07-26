@@ -16,7 +16,7 @@
   "relic_adrenaline_move_bonus": {"value": 1, "kind": "flat", "unit": "move_points"},
   "relic_adrenaline_extract_range_bonus": {"value": 1, "kind": "flat", "unit": "range"},
   "relic_adrenaline_insert_range_bonus": {"value": 1, "kind": "flat", "unit": "range"},
-  "relic_silver_cable_arc_damage_mult": {"value": 1.2, "kind": "multiplier", "unit": "damage"},
+  "relic_silver_cable_arc_damage_bonus": {"value": 1, "kind": "flat", "unit": "damage"},
   "relic_cracked_goggles_attack_miss_chance": {"value": 0.1, "kind": "ratio", "unit": "chance"},
   "relic_cracked_goggles_attack_damage_bonus": {"value": 2, "kind": "flat", "unit": "damage"},
   "relic_painkiller_damage_cap": {"value": 1, "kind": "flat", "unit": "damage"},

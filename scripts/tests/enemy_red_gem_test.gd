@@ -12,6 +12,7 @@ func _run_tests() -> void:
 	print("=== Enemy Red Gem Test ===")
 	_test_arc_requires_adjacent_for_ai()
 	_test_arc_execute_rejects_ranged()
+	_test_arc_lethal_hit_still_bounces()
 	_test_fire_gem_ai_and_execute()
 	_test_ice_gem_ai_and_execute()
 	_test_explosion_attack_does_not_suicide()
@@ -59,6 +60,40 @@ func _test_arc_execute_rejects_ranged() -> void:
 	var events := IntentSystem.execute_intent(state, guard)
 	assert(events.is_empty(), "arc execute should fail out of melee range")
 	print("  [OK] arc execute rejects ranged target")
+
+
+func _test_arc_lethal_hit_still_bounces() -> void:
+	var ctrl := BattleController.new()
+	ctrl.start_encounter("template_c", 43)
+	var state := ctrl.state
+	var guard := _find_guard(state)
+	var player := state.get_player()
+	_embed_red_gem(state, guard, Constants.GEM_CONDUCTIVE)
+	state.move_unit(guard, player.pos + Vector2i(1, 0))
+	player.hp = guard.base_attack
+	var ally := UnitState.new()
+	ally.uid = "enemy_arc_ally"
+	ally.unit_def_id = player.unit_def_id
+	ally.team = Constants.TEAM_PLAYER
+	var ally_pos := Vector2i(-1, -1)
+	for candidate in BoardUtils.neighbors4(player.pos):
+		if BoardUtils.in_bounds(state, candidate) and state.get_unit_at(candidate) == null:
+			ally_pos = candidate
+			break
+	assert(ally_pos != Vector2i(-1, -1), "enemy arc test requires an empty cell beside the player")
+	ally.pos = ally_pos
+	ally.hp = 20
+	ally.max_hp = 20
+	ally.alive = true
+	state.register_unit(ally)
+	guard.intent = IntentState.new()
+	guard.intent.type = "arc_attack"
+	guard.intent.target_uid = player.uid
+	var events := IntentSystem.execute_intent(state, guard)
+	assert(not player.alive, "enemy arc primary hit should defeat the fragile player")
+	assert(ally.hp < ally.max_hp, "enemy arc should bounce from the defeated player's attack anchor")
+	assert(events.any(func(event): return str(event.get("type", "")) == "arc" and event.get("from", Vector2i.ZERO) == player.pos), "enemy arc should emit from the defeated anchor")
+	print("  [OK] enemy lethal arc keeps its hit anchor")
 
 
 func _test_fire_gem_ai_and_execute() -> void:

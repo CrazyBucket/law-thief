@@ -59,6 +59,7 @@ func _run_tests() -> void:
 	_test_blue_explosion_events()
 	_test_fire_application_triggers_blue_explosion()
 	_test_blue_poison_turn_end_spread_uses_level_context()
+	_test_blue_arc_requires_an_external_active_attack()
 	_test_blue_light_reflects_ranged_attack()
 	_test_blue_counter_reflects_damage()
 	_test_blue_counter_level_two_carries_tags()
@@ -260,6 +261,39 @@ func _test_blue_poison_turn_end_spread_uses_level_context() -> void:
 		_fail("[blue_poison_turn_end] farther ally should stay clean when nearer target exists")
 		return
 	print("  [OK] blue_poison_turn_end_spread_uses_level_context")
+
+
+func _test_blue_arc_requires_an_external_active_attack() -> void:
+	_case_count += 1
+	var state := _create_state()
+	var attacker := _spawn_unit(state, "arc_blue_attacker", ATTACKER_POS, Constants.TEAM_PLAYER, 40)
+	var victim := _spawn_unit(state, "arc_blue_victim", VICTIM_POS, Constants.TEAM_ENEMY, 40)
+	var chained := _spawn_unit(state, "arc_blue_chain", Vector2i(1, 3), Constants.TEAM_PLAYER, 40)
+	victim.base_attack = 10
+	_ensure_blue_slots(victim, 3)
+	_mount_on_slots(state, victim, Constants.SLOT_BLUE, ["arc", "arc", "arc"])
+	var attacker_hp := attacker.hp
+	var chained_hp := chained.hp
+	CombatRules.apply_damage(
+		state,
+		victim,
+		4,
+		attacker.uid,
+		"ranged_attack",
+		DamageContext.create(attacker.uid, "ranged_attack", [], {}, true)
+	)
+	if attacker.hp != attacker_hp - 2:
+		_fail("[blue_arc] rebound should deal the standard 20%% arc damage, got %d" % (attacker_hp - attacker.hp))
+		return
+	if chained.hp != chained_hp - 2:
+		_fail("[blue_arc] rebound should continue through the normal enemy arc chain")
+		return
+	var victim_hp := victim.hp
+	CombatRules.apply_damage(state, victim, 2, victim.uid, "entity_collision")
+	if victim.hp != victim_hp - 2:
+		_fail("[blue_arc] collision damage must not trigger a self-directed arc")
+		return
+	print("  [OK] blue_arc_requires_an_external_active_attack")
 
 
 func _test_blue_light_reflects_ranged_attack() -> void:

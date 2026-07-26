@@ -12,6 +12,7 @@ const _MAP := {
 	"broodmother": preload("res://scripts/rules/behaviors/behavior_broodmother.gd"),
 	"ruffled_crow": preload("res://scripts/rules/behaviors/behavior_ruffled_crow.gd"),
 	"rolling_armadillo": preload("res://scripts/rules/behaviors/behavior_rolling_armadillo.gd"),
+	"old_mage": preload("res://scripts/rules/behaviors/behavior_old_mage.gd"),
 	"training_dummy": preload("res://scripts/rules/behaviors/behavior_training_dummy.gd"),
 }
 

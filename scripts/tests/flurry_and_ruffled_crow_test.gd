@@ -15,9 +15,10 @@ func _run() -> void:
 	print("=== Flurry And Ruffled Crow Test ===")
 	_test_red_flurry_scales_by_count()
 	_test_flurry_triggers_split_wings_per_segment()
+	_test_split_wing_keeps_effect_anchor_after_death()
 	_test_split_elemental_tags_stay_single_volley()
 	_test_blue_stored_flurry_triggers_once_and_is_consumed()
-	_test_remaining_segments_stop_on_death()
+	_test_remaining_segments_continue_after_death()
 	_test_ruffled_crow_normal_and_disorder_attacks()
 	if _failed:
 		push_error("FLURRY_AND_RUFFLED_CROW_TEST_FAIL")
@@ -85,6 +86,28 @@ func _test_flurry_triggers_split_wings_per_segment() -> void:
 	print("  [OK] flurry segments each trigger split wings")
 
 
+func _test_split_wing_keeps_effect_anchor_after_death() -> void:
+	var builder = Builder.new("fission_slime_test", 9108, true)
+	var attacker := builder.player()
+	builder.move(attacker, Vector2i(2, 2))
+	builder.clear_slots(attacker)
+	builder.mount_gems(attacker, Constants.SLOT_RED, [Constants.GEM_FLURRY, Constants.GEM_SPLIT, Constants.GEM_CONDUCTIVE])
+	var main_target := builder.add_unit("anchor_split_main", "unit_patrol_guard", Constants.TEAM_ENEMY, attacker.pos + Vector2i(1, 0), {"hp": 100, "max_hp": 100})
+	var wing_target := builder.add_unit("anchor_split_wing", "unit_patrol_guard", Constants.TEAM_ENEMY, attacker.pos + Vector2i(0, 1), {"hp": 3, "max_hp": 3})
+	builder.add_unit("anchor_split_other_wing", "unit_patrol_guard", Constants.TEAM_ENEMY, attacker.pos + Vector2i(0, -1), {"hp": 100, "max_hp": 100})
+	var arc_target := builder.add_unit("anchor_split_arc_target", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(0, 4), {"hp": 100, "max_hp": 100})
+	var state := builder.finish()
+	var result := AttackPipeline.execute(state, attacker, main_target, [AttackPipeline.TAG_RANGED])
+	var wing_arcs := _events_of_type(result.get("events", []), "arc").filter(
+		func(event): return event.get("from", Vector2i.ZERO) == wing_target.pos and str(event.get("target_uid", "")) == arc_target.uid
+	)
+	_expect(not wing_target.alive, "the first split volley should defeat its wing target")
+	_expect(wing_arcs.size() == 2, "both split volleys should resolve arc from the same per-cell effect anchor")
+	_expect(arc_target.hp == 98, "the retained wing anchor should preserve both segment-scaled arc hits")
+	_expect(_valid(state, result.get("events", [])), "split-wing effect anchors should preserve invariants")
+	print("  [OK] split wing retains its per-cell effect anchor after death")
+
+
 func _test_split_elemental_tags_stay_single_volley() -> void:
 	for spec in [
 		{"gem_id": Constants.GEM_EXPLOSION, "effect_event": "explode", "label": "explosion"},
@@ -130,18 +153,22 @@ func _test_blue_stored_flurry_triggers_once_and_is_consumed() -> void:
 	print("  [OK] blue stored flurry is attack-scoped and consumed")
 
 
-func _test_remaining_segments_stop_on_death() -> void:
+func _test_remaining_segments_continue_after_death() -> void:
 	var builder = Builder.new("fission_slime_test", 9103, true)
 	var attacker := builder.player()
 	builder.clear_slots(attacker)
-	builder.mount_gems(attacker, Constants.SLOT_RED, [Constants.GEM_FLURRY, Constants.GEM_FLURRY, Constants.GEM_FLURRY, Constants.GEM_FLURRY])
+	builder.mount_gems(attacker, Constants.SLOT_RED, [Constants.GEM_CONDUCTIVE, Constants.GEM_FLURRY, Constants.GEM_FLURRY, Constants.GEM_FLURRY, Constants.GEM_FLURRY])
 	var target := builder.add_unit("fragile_target", "unit_patrol_guard", Constants.TEAM_ENEMY, attacker.pos + Vector2i(1, 0), {"hp": 3, "max_hp": 3})
+	var arc_target := builder.add_unit("post_death_arc_target", "unit_patrol_guard", Constants.TEAM_ENEMY, target.pos + Vector2i(1, 0), {"hp": 100, "max_hp": 100})
 	var state := builder.finish()
-	var result := AttackPipeline.execute(state, attacker, target, [AttackPipeline.TAG_MELEE])
-	_expect(_events_of_type(result.get("events", []), "damage").size() == 2, "remaining flurry segments should stop when the target dies")
+	var result := AttackPipeline.execute(state, attacker, target, [AttackPipeline.TAG_RANGED])
+	_expect(_events_of_type(result.get("events", []), "damage").filter(func(event): return str(event.get("uid", "")) == target.uid).size() == 2, "defeated target should not take damage from remaining flurry segments")
+	_expect(_events_of_type(result.get("events", []), "projectile").size() == 5, "remaining flurry segments should still resolve after the target dies")
+	_expect(_events_of_type(result.get("events", []), "arc").size() == 5, "every segment should launch arc even after the primary target dies")
+	_expect(arc_target.hp == 95, "remaining flurry segments should preserve their existing segment-scaled arc damage")
 	_expect(not target.alive, "the second segment should kill the target")
 	_expect(_valid(state, result.get("events", [])), "death during flurry should preserve invariants")
-	print("  [OK] target death terminates remaining segments")
+	print("  [OK] target death preserves remaining segment effects")
 
 
 func _test_ruffled_crow_normal_and_disorder_attacks() -> void:

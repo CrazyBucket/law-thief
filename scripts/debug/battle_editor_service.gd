@@ -7,6 +7,7 @@ const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const EncounterCodec = preload("res://scripts/debug/battle_editor_encounter_codec.gd")
 const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
 const EncounterExportService = preload("res://scripts/debug/encounter_export_service.gd")
+const OldMageEncounterSetup = preload("res://scripts/services/old_mage_encounter_setup.gd")
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
 	get:
@@ -76,6 +77,7 @@ func _spawn_unit(payload: Dictionary) -> Dictionary:
 	var unit_uid: String = _data_registry().next_runtime_uid("runtime_unit")
 	var unit: UnitState = UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry().get_unit_def(unit_def_id))
 	ctrl.state.register_unit(unit)
+	OldMageEncounterSetup.configure_loadout(_data_registry(), ctrl.state, unit)
 	TileRules.sync_standing_ground_effects(ctrl.state, unit)
 	return _finalize_mutation("spawned %s at %s for team %s" % [unit_def_id, pos, team], false, {"unit_uid": unit_uid})
 
@@ -106,6 +108,7 @@ func _spawn_many_units(payload: Dictionary) -> Dictionary:
 		var unit_uid: String = _data_registry().next_runtime_uid("runtime_unit")
 		var unit: UnitState = UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry().get_unit_def(unit_def_id))
 		ctrl.state.register_unit(unit)
+		OldMageEncounterSetup.configure_loadout(_data_registry(), ctrl.state, unit)
 		created_uids.append(unit_uid)
 	return _finalize_mutation("spawned %d instances of %s for team %s" % [created_uids.size(), unit_def_id, team], false, {"unit_uids": created_uids})
 

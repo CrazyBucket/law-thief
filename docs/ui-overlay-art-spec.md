@@ -169,5 +169,6 @@ These choices are already established for the battle board and should be preserv
 - fire uses a four-frame low-flame atlas plus restrained procedural drift, because changing flame silhouettes read better than noise-only deformation;
 - fire intensity decreases through scale and opacity as its remaining duration falls;
 - poison puddles do not draw a second filled puddle body; they add disconnected contaminated glints, ripples, and seep marks over existing water;
+- battle movement and intent routes end in an original colorless raster alpha mask converted from a top-down source into four isometric directions; runtime code supplies the route color, and map travel history does not use arrowheads;
 - asset density and transparent-edge constraints are guarded by `scripts/tests/overlay_asset_contract_test.gd`;
 - shader presence and the back/unit/front ordering contract are guarded by `scripts/tests/overlay_render_contract_test.gd`.

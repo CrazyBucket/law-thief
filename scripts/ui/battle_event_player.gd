@@ -6,9 +6,7 @@ const PresentationStateApplierScript = preload("res://scripts/ui/presentation_st
 const ImpactPresenter = preload("res://scripts/ui/impact_animation_presenter.gd")
 
 const BLAST_IMPACT_DELAY := 0.12
-const BLAST_RECOVERY_DELAY := 0.63
 const ELECTRICAL_IMPACT_DELAY := 0.14
-const ELECTRICAL_RECOVERY_DELAY := 0.20
 
 var _host: Node = null
 var _board = null
@@ -125,6 +123,7 @@ func play_events(events: Array) -> void:
 
 func _play_beat(beat: Dictionary) -> void:
 	var kind := str(beat.get("kind", "single"))
+	var barrier := str(beat.get("barrier", PresentationPlanner.BARRIER_COMPLETE))
 	var visuals: Array = beat.get("visuals", [])
 	var impacts: Array = beat.get("impacts", [])
 	match kind:
@@ -134,16 +133,14 @@ func _play_beat(beat: Dictionary) -> void:
 			await _play_projectile_volley(visuals)
 			if not impacts.is_empty():
 				_play_damage_batch(impacts)
-				await _await_anim_delay(0.12)
 		"blast":
 			await _play_blast_cluster(beat)
 		"light_beam":
-			await _play_light_beam_cluster({"beams": visuals, "damage": impacts})
+			await _play_light_beam_cluster({"beams": visuals, "damage": impacts}, barrier)
 		"electrical":
-			await _play_electrical_beat(visuals, impacts)
+			await _play_electrical_beat(visuals, impacts, barrier)
 		"damage":
 			_play_damage_batch(impacts)
-			await _await_anim_delay(0.34)
 		"move":
 			if _contains_displacement_impact(visuals) \
 					or str(beat.get("mode", PresentationPlanner.MODE_SERIAL)) == PresentationPlanner.MODE_PARALLEL:
@@ -152,12 +149,13 @@ func _play_beat(beat: Dictionary) -> void:
 				await _play_move_path_batch(visuals)
 		"area_fx":
 			_play_area_fx_batch(visuals)
-			await _await_anim_delay(0.42)
 		"split_spawn":
 			_play_split_spawn_batch(visuals)
 		_:
 			for event in visuals:
 				_prime_event_state(event)
+				if barrier == PresentationPlanner.BARRIER_IMPACT:
+					push_error("Single presentation events cannot use an impact barrier: %s" % str(event))
 				await _play_anim_event(event)
 				_apply_event_state(event)
 
@@ -193,7 +191,7 @@ func _play_impact_beat(beat: Dictionary) -> void:
 	_apply_event_state(charge)
 
 
-func _play_light_beam_cluster(cluster: Dictionary) -> void:
+func _play_light_beam_cluster(cluster: Dictionary, barrier: String) -> void:
 	var beams: Array = cluster.get("beams", [])
 	var damages: Array = cluster.get("damage", [])
 	if beams.is_empty():
@@ -227,10 +225,10 @@ func _play_light_beam_cluster(cluster: Dictionary) -> void:
 	if not damages.is_empty():
 		_play_damage_batch(damages)
 		_board.queue_redraw()
-	if duration > 0.0:
-		await _await_real_delay(duration * 0.72)
 	for beam_event in beams:
 		_apply_event_state(beam_event)
+	if barrier == PresentationPlanner.BARRIER_COMPLETE and duration > 0.0:
+		await _await_real_delay(duration * 0.72)
 
 
 func _play_blast_cluster(cluster: Dictionary) -> void:
@@ -265,15 +263,18 @@ func _play_blast_cluster(cluster: Dictionary) -> void:
 	var move_duration := _start_parallel_motion_batch(move_batch)
 	_apply_area_events_for_blast(fx_batch)
 	_play_split_spawn_batch(split_spawn_batch)
-	var recovery := 0.0
-	if timing.is_empty():
-		recovery = _scaled_anim_time(BLAST_RECOVERY_DELAY)
-	else:
-		recovery = maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
-	await _await_real_delay(maxf(recovery, move_duration))
+	# Explosion smoke and shader decay are visual tails. Only spatial motion remains a
+	# causal barrier because the next beat may depend on the displaced positions.
+	var barrier := str(cluster.get("barrier", PresentationPlanner.BARRIER_IMPACT))
+	if not move_batch.is_empty() and barrier != PresentationPlanner.BARRIER_COMPLETE:
+		push_error("Blast motion requires a complete presentation barrier")
+	if barrier == PresentationPlanner.BARRIER_COMPLETE or not move_batch.is_empty():
+		await _await_real_delay(move_duration)
+	for motion in move_batch:
+		_apply_event_state(motion)
 
 
-func _play_electrical_beat(visuals: Array, impacts: Array) -> void:
+func _play_electrical_beat(visuals: Array, impacts: Array, barrier: String) -> void:
 	var timing: Dictionary = {}
 	if _board.has_method("play_electrical_batch"):
 		timing = _board.play_electrical_batch(visuals)
@@ -292,11 +293,15 @@ func _play_electrical_beat(visuals: Array, impacts: Array) -> void:
 	if not impacts.is_empty():
 		_play_damage_batch(impacts)
 		_board.queue_redraw()
-	if timing.is_empty():
-		await _await_anim_delay(ELECTRICAL_RECOVERY_DELAY)
-	else:
-		var recovery := maxf(0.0, float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0)))
-		await _await_real_delay(recovery)
+	if barrier == PresentationPlanner.BARRIER_COMPLETE:
+		if timing.is_empty():
+			await _await_anim_delay(0.20)
+		else:
+			var recovery := maxf(
+				0.0,
+				float(timing.get("duration", 0.0)) - float(timing.get("impact_time", 0.0))
+			)
+			await _await_real_delay(recovery)
 
 
 func _play_damage_batch(batch: Array) -> void:
@@ -419,85 +424,32 @@ func _play_projectile_volley(batch: Array) -> void:
 				"source_uid": str(projectile_event.get("source_uid", "")),
 			})
 		await _board.play_projectiles_task(shots)
-	await _await_anim_delay(0.08)
 
 
 func _play_anim_event(ev: Dictionary) -> void:
 	match str(ev.get("type", "")):
-		"move_step":
-			await _board.animate_move_task(ev.get("uid", ""), ev.get("from", Vector2i.ZERO), ev.get("to", Vector2i.ZERO))
-		"damage":
-			var attacker_uid: String = str(ev.get("attacker_uid", ""))
-			var damage_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
-			if not attacker_uid.is_empty() and not bool(ev.get("keep_facing", false)):
-				_board.start_strike_effect(attacker_uid, damage_pos)
-				await _await_anim_delay(0.12)
-			_play_damage_feedback(ev)
-			await _await_anim_delay(0.38)
-		"explode":
-			_board.play_explosion(ev.get("pos", Vector2i.ZERO))
-			_board.queue_redraw()
-			await _await_anim_delay(0.75)
-		"poison_burst":
-			_board.play_poison_burst(
-				ev.get("pos", Vector2i.ZERO),
-				int(ev.get("radius", 0)),
-				str(ev.get("pattern", ""))
+		"knockback":
+			await _board.animate_move_task(
+				ev.get("uid", ""),
+				ev.get("from", Vector2i.ZERO),
+				ev.get("to", Vector2i.ZERO)
 			)
-			await _await_anim_delay(0.6)
-			_board.queue_redraw()
 		"gem_flash":
 			var flash_color: Color = ev.get("color", Color.WHITE)
 			if bool(ev.get("echo_followup", false)) and flash_color == Color.WHITE:
 				flash_color = Color(0.62, 0.42, 1.0)
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), flash_color)
-			await _await_anim_delay(0.32)
 		"spawn":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.72, 0.82, 0.32))
-			await _await_anim_delay(0.28)
 		"transform":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.58, 0.34, 0.66))
-			await _await_anim_delay(0.36)
-		"projectile", "projectile_deflect":
-			var projectile_color: Color = ev.get("color", Color(0.95, 0.92, 0.45))
-			await _board.play_projectile_task(
-				ev.get("from", Vector2i.ZERO),
-				ev.get("to", Vector2i.ZERO),
-				projectile_color,
-				str(ev.get("source_uid", ""))
-			)
-			await _await_anim_delay(0.08)
-		"light_beam":
-			await _board.play_light_beam_task(
-				ev.get("from", Vector2i.ZERO),
-				ev.get("to", Vector2i.ZERO),
-				ev.get("color", Color(1.0, 0.96, 0.58)),
-				float(ev.get("width", 1.0)),
-				ev
-			)
-		"lightning", "arc":
-			var from_cell: Vector2i = ev.get("pos", Vector2i.ZERO)
-			var target_cell: Vector2i = ev.get("target_pos", from_cell)
-			if target_cell != from_cell:
-				await _board.play_lightning_bolt_task(from_cell, target_cell)
-			else:
-				await _board.play_lightning_strike_task(from_cell)
-		"frost_pulse":
-			_board.play_frost_pulse(ev.get("pos", Vector2i.ZERO))
-			await _await_anim_delay(0.28)
-		"fire_burst":
-			_board.play_fire_burst(ev.get("pos", Vector2i.ZERO))
-			await _await_anim_delay(0.4)
 		"miss":
 			_board.play_gem_flash(ev.get("pos", Vector2i.ZERO), Color(0.7, 0.7, 0.7, 0.6))
-			await _await_anim_delay(0.22)
 		"die":
 			if _board.has_method("play_unit_death"):
 				await _board.play_unit_death(str(ev.get("uid", "")))
 			else:
 				await _await_anim_delay(0.38)
-		"entity_destroyed":
-			await _await_anim_delay(0.08)
 
 
 func _prime_event_state(ev: Dictionary) -> void:

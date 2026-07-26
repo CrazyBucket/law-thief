@@ -107,7 +107,7 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 		var selected_unit: UnitState = state.units.get(selected_uid, null)
 		if selected_unit != null and selected_unit.alive and selected_unit.intent != null:
 			overlay_context["selected_unit"] = selected_unit
-			var intent_path: Array = _preview_cells(selected_unit.intent, "movement", selected_unit.intent.path)
+			var intent_path := _remaining_intent_path(selected_unit, _preview_cells(selected_unit.intent, "movement", selected_unit.intent.path))
 			result["paths"] = intent_path
 			var danger_cells: Array = _preview_cells(selected_unit.intent, "damage", selected_unit.intent.affected_cells)
 			if not danger_cells.is_empty():
@@ -124,6 +124,16 @@ func _preview_cells(intent: IntentState, kind: String, fallback: Array) -> Array
 			if cell not in cells:
 				cells.append(cell)
 	return fallback.duplicate() if cells.is_empty() else cells
+
+
+func _remaining_intent_path(unit: UnitState, path: Array) -> Array:
+	## Intent paths are planned from the unit's position at turn start. Presentation
+	## state advances that position during animation, so only retain the untraversed
+	## suffix; otherwise completed paths fold back to their already-reached endpoint.
+	var current_index := path.find(unit.pos)
+	if current_index < 0:
+		return path.duplicate()
+	return path.slice(current_index + 1)
 
 
 func get_cell_preview(cell: Vector2i) -> Dictionary:
@@ -219,6 +229,9 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				var insert_valid := _valid_slot_indices(ctrl, unit)
 				if not insert_valid.is_empty():
 					lines.append("可嵌入：%s（免费）" % ", ".join(insert_valid))
+				var held: GemState = state.gems.get(state.held_gem_uid, null)
+				if unit.behavior_id == "old_mage" and held != null and not held.gem_id in ["gem_explosion", "gem_conductive", "gem_fire", "gem_ice", "gem_poison", "gem_light", "gem_impact"]:
+					lines.append("无法解读：宝石将永久销毁，Boss 下回合停止行动")
 	return {"title": lines[0] if not lines.is_empty() else "", "body": "\n".join(lines)}
 
 

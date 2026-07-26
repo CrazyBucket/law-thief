@@ -21,6 +21,12 @@ var action_plan = null
 
 static func intent_icon(intent_type: String) -> String:
 	match intent_type:
+		"mage_spell": return "✦"
+		"mage_staff_attack": return "◆"
+		"mage_impact_charge": return "➤"
+		"mage_refill": return "◇"
+		"mage_destroy_decoy": return "⊘"
+	match intent_type:
 		"melee_attack":  return "⚔"
 		"split_attack":  return "⚔"
 		"trample":       return "🦶"

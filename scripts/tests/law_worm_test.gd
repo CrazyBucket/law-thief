@@ -11,7 +11,8 @@ func _run_test() -> void:
 	print("=== Law Worm Test ===")
 	_test_worm_consumes_incubates_and_transforms()
 	_test_broodmother_alternates_split_and_action()
-	_test_empty_broodmother_stays_in_crisis_split()
+	_test_empty_broodmother_keeps_two_turn_cycle()
+	_test_spawned_worms_wait_until_next_enemy_phase()
 	_test_stale_gem_plan_retargets_before_execution()
 	print("LAW_WORM_TEST_PASS")
 	quit()
@@ -51,6 +52,7 @@ func _test_broodmother_alternates_split_and_action() -> void:
 	var builder := ScenarioBuilder.new("fission_slime_test", 1002)
 	var mother := builder.add_unit("broodmother", "unit_broodmother", Constants.TEAM_ENEMY, Vector2i(5, 4))
 	builder.mount_gems(mother, Constants.SLOT_RED, [Constants.GEM_FIRE])
+	builder.move(builder.player(), Vector2i(3, 4))
 	var state := builder.finish()
 	IntentSystem.refresh_unit_intent(state, mother)
 	assert(mother.intent.type == "broodmother_split", "mother's first action should split")
@@ -65,7 +67,7 @@ func _test_broodmother_alternates_split_and_action() -> void:
 			actual_spawn_cells.append(event.get("pos", Vector2i(-1, -1)))
 	assert(actual_spawn_cells == planned_spawn_cells, "brood execution must consume the exact cells shown by preview")
 	IntentSystem.refresh_unit_intent(state, mother)
-	assert(mother.intent.type in ["broodmother_ranged_attack", "broodmother_wait"], "normal mother should alternate to an attack or wait action")
+	assert(mother.intent.type == "broodmother_ranged_attack", "mother should attack on the turn between splits when the player is in range")
 	events.append_array(IntentSystem.execute_intent(state, mother))
 	IntentSystem.refresh_unit_intent(state, mother)
 	assert(mother.intent.type == "broodmother_split", "attack or wait should alternate back to split")
@@ -74,20 +76,45 @@ func _test_broodmother_alternates_split_and_action() -> void:
 	print("  [OK] gem-bearing mother alternates split and combat action")
 
 
-func _test_empty_broodmother_stays_in_crisis_split() -> void:
+func _test_empty_broodmother_keeps_two_turn_cycle() -> void:
 	var builder := ScenarioBuilder.new("fission_slime_test", 1003)
 	var mother := builder.add_unit("crisis_mother", "unit_broodmother", Constants.TEAM_ENEMY, Vector2i(5, 4))
+	builder.move(builder.player(), Vector2i(3, 4))
 	var state := builder.finish()
 	IntentSystem.refresh_unit_intent(state, mother)
 	assert(mother.intent.type == "broodmother_split", "empty mother should enter crisis split")
 	var events := IntentSystem.execute_intent(state, mother)
 	assert(mother.get_status(Constants.STATUS_BROODMOTHER_CRISIS) != null, "empty mother should show crisis status")
 	IntentSystem.refresh_unit_intent(state, mother)
-	assert(mother.intent.type == "broodmother_split", "crisis mother should split every action without alternating")
-	assert(_living_worm_count(state) == 2, "crisis split should hatch two worms per action")
+	assert(mother.intent.type == "broodmother_ranged_attack", "crisis mother should attack between two breeding turns")
+	var player_hp_before := state.get_player().hp
+	events.append_array(IntentSystem.execute_intent(state, mother))
+	assert(state.get_player().hp < player_hp_before, "crisis mother's alternating attack should deal damage")
+	IntentSystem.refresh_unit_intent(state, mother)
+	assert(mother.intent.type == "broodmother_split", "crisis mother should breed again after one combat turn")
+	assert(_living_worm_count(state) == 2, "only one brood should hatch during each two-turn cycle")
 	assert(EventValidator.assert_valid(events, "broodmother.crisis"))
 	assert(BattleInvariantChecker.assert_valid(state, "broodmother.crisis"))
-	print("  [OK] empty mother remains in crisis reproduction")
+	print("  [OK] empty mother breeds once every two turns and attacks between broods")
+
+
+func _test_spawned_worms_wait_until_next_enemy_phase() -> void:
+	var builder := ScenarioBuilder.new("fission_slime_test", 1005)
+	var mother := builder.add_unit("queue_mother", "unit_broodmother", Constants.TEAM_ENEMY, Vector2i(5, 4))
+	var controller := BattleController.new()
+	controller.state = builder.finish()
+	controller.begin_enemy_phase()
+	var current_queue := controller.get_sorted_enemies()
+	assert(current_queue.size() == 1 and current_queue[0] == mother, "enemy phase should freeze its queue before brood hatches")
+	controller.execute_single_enemy(mother)
+	assert(_living_worm_count(controller.state) == 2, "mother should hatch two worms")
+	assert(current_queue.all(func(unit): return unit.unit_def_id != "unit_law_worm"), "newborn worms must not join the current enemy phase")
+	controller.finish_enemy_phase()
+	controller.begin_enemy_phase()
+	var next_queue := controller.get_sorted_enemies()
+	assert(next_queue.filter(func(unit): return unit.unit_def_id == "unit_law_worm").size() == 2, "newborn worms may act from the next enemy phase")
+	assert(BattleInvariantChecker.assert_valid(controller.state, "broodmother.hatch_delay"))
+	print("  [OK] newborn worms incubate through the spawning enemy phase")
 
 
 func _test_stale_gem_plan_retargets_before_execution() -> void:

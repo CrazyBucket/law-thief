@@ -1,5 +1,7 @@
 extends SceneTree
 
+const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -9,6 +11,8 @@ func _run_tests() -> void:
 	var adventure_service: Node = root.get_node("AdventureService")
 	var run_service: Node = root.get_node("RunService")
 	adventure_service.start_new_run(20260719)
+	assert(run_service.acquire_gem("gem_explosion").get("ok", false), "event popup regression fixture should carry a pre-existing gem")
+	run_service.get_run().resources["gold"] = 0
 	adventure_service.current_pos = Vector2i.ZERO
 	adventure_service.pending_room_type = "EVENT"
 	adventure_service.pending_room_label = "奇遇"
@@ -23,6 +27,7 @@ func _run_tests() -> void:
 	var room_scene := packed.instantiate()
 	root.add_child(room_scene)
 	await process_frame
+	assert(room_scene.get("_gem_embed_overlay") == null, "entering an event with a pre-existing carried gem must not open the embed dialog")
 
 	var event_title := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventTitle") as Label
 	var body := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventBody") as RichTextLabel
@@ -48,6 +53,7 @@ func _run_tests() -> void:
 	assert(not option_buttons[1].disabled, "decline option should remain available")
 	option_buttons[1].emit_signal("pressed")
 	await process_frame
+	assert(room_scene.get("_gem_embed_overlay") == null, "a non-gem event choice must not offer embedding for a pre-existing carried gem")
 
 	assert(event_title.text.contains("各走各路"), "choice should replace entry copy with the configured result node")
 	option_buttons = _event_option_buttons(room_scene)
@@ -59,6 +65,7 @@ func _run_tests() -> void:
 	assert(not run_service.get_resolved_room(room_id).is_empty(), "finishing an event should resolve its room immediately")
 	assert(run_service.get_run_phase() == "MAP", "finishing an event should return to the map without a second continue step")
 	await create_timer(0.5).timeout
+	await _test_gem_embed_choice(adventure_service, run_service)
 
 	run_service.end_run()
 	print("EVENT_SCENE_UI_TEST_PASS")
@@ -72,3 +79,49 @@ func _event_option_buttons(room_scene: Node) -> Array[Button]:
 		if child is Button:
 			result.append(child as Button)
 	return result
+
+
+func _test_gem_embed_choice(adventure_service: Node, run_service: Node) -> void:
+	adventure_service.start_new_run(20260721)
+	var filled_slots := RunPlayerGemService.slot_snapshots(run_service.get_run())
+	for index in range(filled_slots.size()):
+		var snapshot := (filled_slots[index] as Dictionary).duplicate(true)
+		snapshot["gem_id"] = "gem_poison"
+		filled_slots[index] = snapshot
+	run_service.get_run().player_slot_gems = filled_slots
+	var slot_count_before := filled_slots.size()
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	var map_node = adventure_service.get_current_node()
+	assert(map_node != null, "gem event UI test needs a current map node")
+	map_node.room_type = "EVENT"
+	map_node.properties["event_id"] = "event_cracked_forge"
+	var packed := load("res://scenes/adventure/event_scene.tscn") as PackedScene
+	var room_scene := packed.instantiate()
+	root.add_child(room_scene)
+	await process_frame
+	var option_buttons := _event_option_buttons(room_scene)
+	assert(not option_buttons.is_empty(), "gem event should provide a reward option")
+	option_buttons[0].emit_signal("pressed")
+	await process_frame
+	var embed_overlay: CanvasLayer = room_scene.get("_gem_embed_overlay") as CanvasLayer
+	assert(embed_overlay != null and is_instance_valid(embed_overlay), "event gem reward should immediately offer an out-of-battle embed")
+	var pending_response: Dictionary = room_scene.get("_pending_embed_response")
+	room_scene.call("_show_gem_embed_choice", pending_response)
+	assert(room_scene.get("_gem_embed_overlay") == embed_overlay, "repeated event refresh should reuse the active embed dialog")
+	var embed_buttons := embed_overlay.find_children("*", "Button", true, false)
+	assert(not embed_buttons.is_empty(), "event embed overlay should expose a slot button")
+	var overload_button: Button = null
+	for raw_button in embed_buttons:
+		var button := raw_button as Button
+		if bool(button.get_meta("force_overload", false)):
+			overload_button = button
+			break
+	assert(overload_button != null, "full event loadout should expose an overload embed choice")
+	overload_button.emit_signal("pressed")
+	await process_frame
+	assert(run_service.get_run().carried_gem.is_empty(), "event embed should clear the carried gem")
+	assert(run_service.get_run().player_slot_gems.size() == slot_count_before + 1, "event overload embed should append a persistent slot")
+	var overload_slot: Dictionary = run_service.get_run().player_slot_gems[-1]
+	assert(str(overload_slot.get("lock_type", "")) == Constants.LOCK_OVERLOAD_SLOT, "event overload slot should carry its lock marker")
+	room_scene.queue_free()

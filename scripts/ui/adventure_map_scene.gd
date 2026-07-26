@@ -93,17 +93,11 @@ func _rebuild_board() -> void:
 	if not future_cells.is_empty():
 		overlays.append({"kind": "map_future", "cells": future_cells})
 	var routes: Array = []
-	for cell in reachable:
+	if AdventureService.travel_path.size() > 1:
 		routes.append({
-			"kind": "map_focus" if cell == focus_choice else "map_choice",
-			"path": [AdventureService.current_pos, cell],
-			"arrow_reverse": false,
-		})
-	for future_cell in future_cells:
-		routes.append({
-			"kind": "map_future",
-			"path": [focus_choice, future_cell],
-			"arrow_reverse": false,
+			"kind": "map_travel",
+			"path": AdventureService.travel_path,
+			"show_arrow": false,
 		})
 	_board.set_overlays(overlays, routes)
 	_board.set_hover(_hover_cell if _has_valid_cell(_hover_cell) else INVALID_CELL)
@@ -121,7 +115,7 @@ func _refresh_hud() -> void:
 		"room": _AdventureRoomDisplay.display_name(display),
 		"count": AdventureService.get_reachable_cells().size(),
 	})
-	_route_state.text = _build_route_state_text()
+	_route_state.text = "已行进 %d 格" % maxi(0, AdventureService.travel_path.size() - 1)
 	if _seed_label.visible:
 		_seed_label.text = "调试种子 %d" % AdventureService.map_seed
 	_refresh_resource_chips()

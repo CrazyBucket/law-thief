@@ -7,7 +7,7 @@ var _has_last_hover_cell: bool = false
 
 
 func setup(board) -> void:
-	teardown()
+	teardown()	
 	_board = board
 	if _board == null:
 		return

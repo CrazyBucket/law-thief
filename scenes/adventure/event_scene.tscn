@@ -43,7 +43,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 18
+theme_override_constants/margin_top = 84
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 18
 
@@ -91,7 +91,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="ArtStack" type="Control" parent="SafeArea/Layout/Main/ArtFrame"]
-custom_minimum_size = Vector2(0, 560)
+custom_minimum_size = Vector2(0, 540)
 layout_mode = 2
 mouse_filter = 2
 

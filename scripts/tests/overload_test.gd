@@ -33,9 +33,35 @@ func _run_tests() -> void:
 	_test_echo_extract_does_not_chain(state, player, guard)
 	_test_ai_control_emits_action_events(state, player, guard)
 	_test_ai_control_blocks_manual_actions(controller, state, player, guard)
+	_test_boss_encounter_blocks_overload_enforcer()
 
 	print("OVERLOAD_TEST_PASS")
 	quit(0)
+
+
+func _test_boss_encounter_blocks_overload_enforcer() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("boss_chapter_1", 24680)
+	var state := controller.state
+	if not state.get_alive_enemies().filter(
+		func(unit: UnitState) -> bool: return unit.unit_def_id == "unit_overload_enforcer"
+	).is_empty():
+		_fail("old mage encounter must not start with an overload enforcer")
+		return
+	var spawned := OverloadRules.spawn_special_enemy(state, "unit_overload_enforcer", "执律者")
+	if spawned != null:
+		_fail("boss encounters must reject dynamically spawned overload enforcers")
+		return
+	state.overload_active_mutations = [
+		Constants.OVERLOAD_LAWLESS_ANY_EXTRACT,
+		Constants.OVERLOAD_GEM_OP_DAMAGE,
+		Constants.OVERLOAD_ECHO_EXTRACT,
+		Constants.OVERLOAD_RANDOM_ENEMY_GEMS,
+	]
+	if OverloadRules._pick_next_mutation(state) != Constants.OVERLOAD_AI_CONTROL:
+		_fail("boss overload order should skip the enforcer mutation")
+		return
+	print("  [OK] boss encounter blocks overload enforcer")
 
 
 func _test_pending_cancel(controller: BattleController, state: GameState, player: UnitState, guard: UnitState) -> void:

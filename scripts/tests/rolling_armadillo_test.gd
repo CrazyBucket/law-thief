@@ -15,6 +15,7 @@ func _initialize() -> void:
 func _run_test() -> void:
 	_test_definition_and_normal_long_impact()
 	_test_close_range_repositions_then_impacts()
+	_test_normal_routes_around_blocking_prop()
 	_test_lawless_roll_drops_a_collided_gem()
 	_test_lawless_reposition_and_roll_are_separate_beats()
 	if _failed:
@@ -63,6 +64,32 @@ func _test_close_range_repositions_then_impacts() -> void:
 	_expect(player.hp == player.max_hp - 6, "repositioned impact should use the new two-cell roll distance")
 	_expect(_valid(state, events), "retreat-and-impact should preserve battle and event invariants")
 	print("  [OK] rolling armadillo controls close range before impacting")
+
+
+func _test_normal_routes_around_blocking_prop() -> void:
+	var builder := Builder.new("fission_slime_test", 12005, true)
+	var player := builder.player()
+	builder.move(player, Vector2i(5, 3))
+	var beast := builder.add_unit("rolling_route", "unit_rolling_armadillo", Constants.TEAM_ENEMY, Vector2i(1, 3))
+	builder.mount_gems(beast, Constants.SLOT_RED, [Constants.GEM_IMPACT])
+	var pillar_pos := Vector2i(3, 3)
+	builder.state.add_entity(EntityState.create("rolling_route_pillar", Constants.ENTITY_PROP, pillar_pos))
+	var state := builder.finish()
+	IntentSystem.refresh_unit_intent(state, beast)
+	_expect(beast.intent.type == "move" and not beast.intent.path.is_empty(), "a blocked impact line should choose a route instead of waiting")
+	_expect(pillar_pos not in beast.intent.path, "the route must go around the blocking prop")
+	var attacked := false
+	for _turn in range(6):
+		IntentSystem.refresh_unit_intent(state, beast)
+		_expect(beast.intent.type != "wait", "the beast should keep progressing around the obstacle")
+		var hp_before := player.hp
+		var events := IntentSystem.execute_intent(state, beast)
+		_expect(_valid(state, events), "obstacle-routing actions should preserve invariants")
+		if player.hp < hp_before:
+			attacked = true
+			break
+	_expect(attacked, "the beast should establish a clear line and impact within bounded turns")
+	print("  [OK] rolling armadillo routes around a blocking prop and resumes impact attacks")
 
 
 func _test_lawless_roll_drops_a_collided_gem() -> void:

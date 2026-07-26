@@ -202,7 +202,21 @@ func _resolve_room(room_id: String, room_type: String) -> Dictionary:
 			for raw_effect_result in results:
 				if raw_effect_result is Dictionary and (raw_effect_result as Dictionary).has("heal"):
 					result["heal"] = (raw_effect_result as Dictionary).get("heal", {})
-			var heal_result: Dictionary = result.get("heal", {})
+			var total_heal := 0
+			var heal_result: Dictionary = {}
+			for raw_effect_result in results:
+				if not raw_effect_result is Dictionary:
+					continue
+				var effect_heal: Variant = (raw_effect_result as Dictionary).get("heal", {})
+				if not effect_heal is Dictionary:
+					continue
+				var heal: Dictionary = effect_heal as Dictionary
+				total_heal += int(heal.get("amount", 0))
+				heal_result = heal
+			if not heal_result.is_empty():
+				heal_result = heal_result.duplicate(true)
+				heal_result["amount"] = total_heal
+				result["heal"] = heal_result
 			result["summary"] = "营地休整，恢复 %d 点生命，当前 %d/%d。" % [
 				int(heal_result.get("amount", 0)),
 				int(heal_result.get("after_hp", 0)),

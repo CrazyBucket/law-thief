@@ -19,7 +19,7 @@ extends Node
 ##
 ## Modifier 词表（query_modifier 的 modifier_id）：
 ##   attack_damage_mult         攻击伤害乘数（叠乘）
-##   arc_damage_mult            电弧伤害乘数（叠乘）
+##   arc_damage_bonus           电弧伤害固定加成（叠加，整数）
 ##   collision_damage_mult      碰撞伤害乘数（叠乘）
 ##   extract_range_bonus        拔出射程加成（叠加）
 ##   insert_range_bonus         嵌入射程加成（叠加）

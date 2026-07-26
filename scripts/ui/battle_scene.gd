@@ -75,6 +75,7 @@ var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _timeline_hover_uid: String = ""
 var _panel_visible: bool = true
 var _enemy_phase_running: bool = false
+var _enemy_action_resolving: bool = false
 var _player_animating: bool = false
 var _battle_end_applied: bool = false
 var _animation_speed_scale: float = 1.0
@@ -247,7 +248,6 @@ func _ready() -> void:
 	_start_battle(GameService.pending_encounter_id)
 	call_deferred("_restore_battle_reward_if_needed")
 
-
 func _apply_ui_theme() -> void:
 	for hud_child in $HudLayer.get_children():
 		if hud_child is Control:
@@ -270,13 +270,11 @@ func _apply_ui_theme() -> void:
 	_shield_icon.texture = StatusIcons.get_icon(Constants.STATUS_ARMOR)
 	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
 
-
 func _apply_command_group_theme() -> void:
 	_style_command_group(_move_group, "move")
 	_style_command_group(_combat_group, "combat")
 	_style_command_group(_gem_group, "gem")
 	_style_command_group(_turn_group, "end")
-
 
 func _style_command_group(group: PanelContainer, kind: String) -> void:
 	if group == null:
@@ -287,7 +285,6 @@ func _style_command_group(group: PanelContainer, kind: String) -> void:
 		title.add_theme_font_override("font", BattleUiTheme.pixel_font())
 		title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_SMALL)
 		title.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-
 
 func _create_slot_popup() -> void:
 	_slot_popup = SlotPopup.new()
@@ -300,11 +297,9 @@ func _create_slot_popup() -> void:
 	_slot_popup.editor_tile_slot_added.connect(_on_editor_tile_slot_added)
 	_slot_popup.cancelled.connect(_on_popup_cancelled)
 
-
 func _create_damage_text_manager() -> void:
 	_dmg_text = DamageTextManagerScript.new()
 	get_tree().root.add_child.call_deferred(_dmg_text)
-
 
 func _create_rich_tooltip() -> void:
 	if _rich_tooltip != null:
@@ -312,7 +307,6 @@ func _create_rich_tooltip() -> void:
 	_rich_tooltip = RichTooltip.new()
 	_rich_tooltip.name = "RichTooltip"
 	$HudLayer.add_child(_rich_tooltip)
-
 
 func _create_level_console() -> void:
 	_console_layer = CanvasLayer.new()
@@ -322,13 +316,11 @@ func _create_level_console() -> void:
 	_console.command_submitted.connect(_on_console_submitted)
 	_console_layer.add_child(_console)
 
-
 func _create_generated_export_button() -> void:
 	_generated_export_btn = GeneratedEncounterExportButtonScript.new()
 	_generated_export_btn.setup(_controller)
 	$HudLayer/TopBar/HBox.add_child(_generated_export_btn)
 	BattleUiTheme.apply_button(_generated_export_btn, "ghost")
-
 
 func _create_editor_ui() -> void:
 	_editor_panel = BattleEditorPanelScript.new()
@@ -341,7 +333,6 @@ func _create_editor_ui() -> void:
 	_editor_panel.panel_moved.connect(_on_editor_panel_moved)
 	$HudLayer.add_child(_editor_panel)
 	_editor_panel.setup(Engine.get_main_loop().root.get_node("DataRegistry"))
-
 	_editor_panel_toggle_btn = Button.new()
 	_editor_panel_toggle_btn.position = Vector2(8, 220)
 	_editor_panel_toggle_btn.size = Vector2(116, 32)
@@ -350,30 +341,24 @@ func _create_editor_ui() -> void:
 	_editor_panel_toggle_btn.pressed.connect(_on_editor_panel_toggle_pressed)
 	BattleUiTheme.apply_button(_editor_panel_toggle_btn, "ghost")
 	$HudLayer.add_child(_editor_panel_toggle_btn)
-
 	_editor_inspector = PanelContainer.new()
 	_editor_inspector.mouse_filter = Control.MOUSE_FILTER_STOP
 	_editor_inspector.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.PHASE_PLAYER))
 	$HudLayer.add_child(_editor_inspector)
-
 	var inspector_vbox := VBoxContainer.new()
 	inspector_vbox.add_theme_constant_override("separation", 6)
 	_editor_inspector.add_child(inspector_vbox)
-
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 6)
 	inspector_vbox.add_child(header)
-
 	var title := Label.new()
 	title.text = "编辑状态"
 	title.add_theme_font_size_override("font_size", 14)
 	title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	header.add_child(title)
-
 	var header_spacer := Control.new()
 	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(header_spacer)
-
 	var close_btn := Button.new()
 	close_btn.custom_minimum_size = Vector2(34, 34)
 	close_btn.text = "×"
@@ -518,6 +503,9 @@ func _start_battle(encounter_id: String) -> void:
 	_controller.select_action("")
 	_refresh()
 	_board.init_unit_orientations()
+	var carried_gem := _controller.get_held_gem()
+	if carried_gem != null:
+		_board.show_held_gem_orbit(carried_gem)
 	if _editor_available() and _editor_panel != null and _editor_auto_boot_enabled:
 		_editor_auto_boot_enabled = false
 		_enter_editor_mode()
@@ -767,6 +755,8 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 					_begin_held_gem_insert(insert_target.pos, result)
 				if bool(result.get("overload_forced", false)):
 					_message_label.text = "过载嵌入：已压入槽位，结束回合后异变生效"
+				elif bool(result.get("old_mage_decoy", false)):
+					_message_label.text = "无法解读：宝石将销毁，老法师下回合停止行动"
 				else:
 					_message_label.text = "已嵌入" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
 	_refresh()
@@ -877,9 +867,13 @@ func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 		await _await_scene_timer(0.22)
 		if not is_inside_tree():
 			break
+		_board.clear_overlays()
+		_enemy_action_resolving = true
 		var execution: Dictionary = _controller.execute_single_enemy(enemy)
 		var events: Array[Dictionary] = execution.get("events", [])
 		await _play_presentation_sequence(execution.get("presentation_state", _controller.state.clone()), events)
+		_enemy_action_resolving = false
+		_refresh()
 		if not is_inside_tree():
 			break
 		await _await_scene_timer(0.35)
@@ -887,8 +881,10 @@ func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 			break
 		_consume_enemy_turn(enemy.uid)
 		_refresh()
+	var auto_enemy_execution: Dictionary = {}
 	if is_inside_tree() and _controller.state != null and _controller.state.phase != Constants.PHASE_ENDED:
 		var turn_start_execution: Dictionary = _controller.finish_enemy_phase()
+		auto_enemy_execution = turn_start_execution.get("auto_enemy_execution", {})
 		var turn_start_events: Array = turn_start_execution.get("events", [])
 		if not turn_start_events.is_empty():
 			await _play_presentation_sequence(
@@ -900,6 +896,9 @@ func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 	if not is_inside_tree():
 		return
 	if _consume_pending_battle_end_if_any():
+		return
+	if not auto_enemy_execution.is_empty():
+		_run_enemy_phase_async(auto_enemy_execution)
 		return
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
@@ -1016,7 +1015,7 @@ func _view_state() -> GameState:
 
 
 func _on_controller_state_changed() -> void:
-	if _event_player.is_playing():
+	if _event_player.is_playing() or _enemy_action_resolving:
 		return
 	_refresh()
 
@@ -1038,6 +1037,19 @@ func _play_presentation_sequence(state_before: GameState, events: Array, economy
 	_refresh()
 	if not pending_battle_end.is_empty():
 		_apply_battle_end(pending_battle_end)
+		return
+	_try_auto_skip_paralyzed_player_turn()
+
+func _try_auto_skip_paralyzed_player_turn() -> void:
+	if _enemy_phase_running or _controller == null or _controller.state == null:
+		return
+	if _controller.state.phase != Constants.PHASE_PLAYER:
+		return
+	var player: UnitState = _controller.state.get_player()
+	if player == null or not player.has_status(Constants.STATUS_PARALYZED):
+		return
+	_message_label.text = "麻痹生效，跳过本回合"
+	_on_end_turn_pressed()
 
 
 func _refresh_economy_chips() -> void:
@@ -2065,7 +2077,10 @@ func _refresh() -> void:
 		else:
 			_board.clear_editor_preview()
 	else:
-		BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
+		if _enemy_phase_running:
+			_board.clear_overlays()
+		else:
+			BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
 		_board.clear_editor_preview()
 	_sync_unit_slot_panels()
 	_update_held_banner()

@@ -10,7 +10,9 @@ func _initialize() -> void:
 	_test_impact_is_one_timed_charge()
 	_test_flurry_impact_is_two_serial_charges()
 	_test_blast_damage_is_an_impact()
+	_test_voluntary_move_precedes_forced_reaction()
 	_test_arc_hop_is_parallel_and_impacts_after_visuals()
+	_test_every_event_declares_a_wait_barrier()
 	_test_unknown_event_requires_a_policy()
 	print("BATTLE_PRESENTATION_PLANNER_TEST_PASS")
 	quit()
@@ -91,6 +93,38 @@ func _test_blast_damage_is_an_impact() -> void:
 	assert(result.beats[0].impacts.size() == 1)
 	assert(result.beats[0].impact_motions.size() == 2, "blast movement and collision must share the impact frame")
 	assert(result.beats[0].aftermath.is_empty(), "blast knockback is impact motion, not post-explosion aftermath")
+	assert(result.beats[0].barrier == Planner.BARRIER_COMPLETE, "embedded spatial motion upgrades the blast barrier")
+
+
+func _test_voluntary_move_precedes_forced_reaction() -> void:
+	var result := Planner.build([
+		{"type": "move_step", "uid": "bomb_rat", "from": Vector2i(1, 4), "to": Vector2i(2, 4), "reason": "intent_move"},
+		{"type": "move_step", "uid": "bomb_rat", "from": Vector2i(2, 4), "to": Vector2i(2, 3), "reason": "intent_move"},
+		{
+			"type": "move_step",
+			"uid": "player",
+			"from": Vector2i(3, 3),
+			"to": Vector2i(4, 3),
+			"forced": true,
+			"source_uid": "bomb_rat",
+			"reason": "forced_displacement",
+		},
+		{
+			"type": "move_step",
+			"uid": "nearby_enemy",
+			"from": Vector2i(2, 2),
+			"to": Vector2i(2, 1),
+			"forced": true,
+			"source_uid": "bomb_rat",
+			"reason": "forced_displacement",
+		},
+	])
+	assert(result.violations.is_empty())
+	assert(result.beats.size() == 2, "an action path and its forced reaction must use separate beats")
+	assert(result.beats[0].mode == Planner.MODE_SERIAL)
+	assert(result.beats[0].visuals.all(func(event): return event.uid == "bomb_rat"))
+	assert(result.beats[1].mode == Planner.MODE_PARALLEL)
+	assert(result.beats[1].visuals.all(func(event): return bool(event.get("forced", false))))
 
 
 func _test_arc_hop_is_parallel_and_impacts_after_visuals() -> void:
@@ -106,6 +140,31 @@ func _test_arc_hop_is_parallel_and_impacts_after_visuals() -> void:
 	assert(result.beats[0].mode == Planner.MODE_PARALLEL)
 	assert(result.beats[0].visuals.size() == 2)
 	assert(result.beats[0].impacts.size() == 2)
+	assert(result.beats[0].barrier == Planner.BARRIER_IMPACT)
+
+
+func _test_every_event_declares_a_wait_barrier() -> void:
+	var expected := {
+		Planner.BARRIER_COMPLETE: [
+			"die", "displacement_impact", "impact_charge", "knockback", "move_step",
+		],
+		Planner.BARRIER_IMPACT: [
+			"arc", "explode", "light_beam", "lightning", "projectile", "projectile_deflect",
+		],
+		Planner.BARRIER_NONE: [
+			"damage", "entity_destroyed", "fire_burst", "frost_pulse", "gem_flash",
+			"gem_transfer", "heal", "miss", "poison_burst", "spawn", "split_spawn",
+			"status", "toxic_smoke", "trample_start", "transform",
+		],
+	}
+	var covered: Array[String] = []
+	for barrier in expected:
+		for event_type in expected[barrier]:
+			var policy := Planner.policy_for(event_type)
+			assert(policy.get("barrier", "") == barrier, "%s must use the %s barrier" % [event_type, barrier])
+			covered.append(event_type)
+	covered.sort()
+	assert(covered == Planner.registered_event_types(), "the barrier matrix must cover every registered event")
 
 
 func _test_unknown_event_requires_a_policy() -> void:

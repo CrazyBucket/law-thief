@@ -12,6 +12,7 @@ const EncounterCatalogLoader = preload("res://scripts/services/encounter_catalog
 const ProceduralEncounterGenerator = preload("res://scripts/services/procedural_encounter_generator.gd")
 const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
 const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
+const OldMageEncounterSetup = preload("res://scripts/services/old_mage_encounter_setup.gd")
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -129,7 +130,9 @@ func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: Str
 			Callable(self, "create_gem_instance")
 		)
 		_apply_unit_spawn_variants(enemy, def)
+		OldMageEncounterSetup.configure_loadout(self, state, enemy)
 	BoardMapGenerator.build(state, encounter)
+	OldMageEncounterSetup.spawn_gem_field(self, state, encounter)
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
 	# 所有单位就位后建立 O(1) 占格索引（多格单位 footprint 一并注册）
@@ -162,7 +165,7 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 		var enemy_def: Dictionary = get_unit_def(def_id)
 		var slot_defs: Array = enemy_data.get("slots", enemy_def.get("slots", [])).duplicate(true)
 		enemy_def["slots"] = slot_defs
-		BattleStateFactory.add_enemy(
+		var enemy := BattleStateFactory.add_enemy(
 			state,
 			enemy_data,
 			enemy_def,
@@ -170,15 +173,15 @@ func create_battle_state_from_editor_payload(encounter_id: String, encounter: Di
 			Callable(self, "_next_uid"),
 			Callable(self, "create_gem_instance")
 		)
+		OldMageEncounterSetup.configure_loadout(self, state, enemy)
 	BoardMapGenerator.build(state, encounter)
+	OldMageEncounterSetup.spawn_gem_field(self, state, encounter)
 	TileRules.sync_all_units_standing_ground(state)
 	IntentSystem.refresh_all_intents(state)
 	state.rebuild_occupancy()
 	EncounterContentDiagnostics.report(state)
 	state.log("遭遇战开始: %s" % encounter_id)
 	return state
-
-
 func get_encounter_ids(include_hidden: bool = false) -> Array:
 	var ids: Array[String] = []
 	for encounter_id in _encounters.keys():
@@ -187,12 +190,9 @@ func get_encounter_ids(include_hidden: bool = false) -> Array:
 			ids.append(str(encounter_id))
 	ids.sort()
 	return ids
-
-
 ## Resolve fixed, grouped, and random-slot enemies inside the combat RNG context.
 func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> Array[Dictionary]:
 	return EncounterEnemyResolver.resolve(encounter, encounter_id, Callable(RngService, "weighted_pick"))
-
 func next_runtime_uid(prefix: String) -> String:
 	return _next_uid(prefix)
 
@@ -1705,6 +1705,7 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 		var lock_type := str(slot_snapshot.get("lock_type", ""))
 		if not lock_type.is_empty():
 			slot.lock_type = lock_type
+		slot.overload_slot = bool(slot_snapshot.get("overload_slot", lock_type == Constants.LOCK_OVERLOAD_SLOT))
 		if slot.dual_type.is_empty():
 			var dual_type := str(slot_snapshot.get("dual_type", ""))
 			if not dual_type.is_empty():
@@ -1732,6 +1733,7 @@ func _ensure_player_slots_for_restore(player: UnitState, slot_gems: Array) -> vo
 		var slot_type := Constants.SLOT_RED
 		var dual_type := ""
 		var lock_type := ""
+		var overload_slot := false
 		if raw_slot is Dictionary:
 			var snapshot := raw_slot as Dictionary
 			slot_type = str(snapshot.get("slot_type", Constants.SLOT_RED))
@@ -1739,14 +1741,14 @@ func _ensure_player_slots_for_restore(player: UnitState, slot_gems: Array) -> vo
 				slot_type = Constants.SLOT_RED
 			dual_type = str(snapshot.get("dual_type", ""))
 			lock_type = str(snapshot.get("lock_type", ""))
+			overload_slot = bool(snapshot.get("overload_slot", lock_type == Constants.LOCK_OVERLOAD_SLOT))
 		var slot := SlotState.create(slot_type)
 		if not dual_type.is_empty():
 			slot.dual_type = dual_type
 		if not lock_type.is_empty():
 			slot.lock_type = lock_type
+		slot.overload_slot = overload_slot
 		player.slots.append(slot)
-
-
 ## 根据章节和房间类型映射到对应的敌人宝石 pool key
 func _resolve_enemy_pool_source(chapter: int, room_type: String) -> String:
 	var normalized := room_type.to_upper()

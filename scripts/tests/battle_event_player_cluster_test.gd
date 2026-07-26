@@ -13,6 +13,7 @@ class DummyBoard:
 	var hit_units: Array[String] = []
 	var operations: Array[String] = []
 	var redraw_count: int = 0
+	var electrical_timing := {"duration": 0.0, "impact_time": 0.0}
 
 	func play_explosion(pos: Vector2i) -> void:
 		explosions.append(pos)
@@ -51,7 +52,7 @@ class DummyBoard:
 				play_lightning_strike(to_pos)
 			else:
 				play_lightning_bolt(from_pos, to_pos)
-		return {"duration": 0.0, "impact_time": 0.0}
+		return electrical_timing.duplicate()
 
 	func play_damage_effect(pos: Vector2i, damage: int, _is_crit: bool) -> void:
 		damage_effects.append({"pos": pos, "damage": damage})
@@ -84,7 +85,11 @@ func _run_test() -> void:
 	root.add_child(host)
 	var board := DummyBoard.new()
 	var player := BattleEventPlayer.new()
-	player.setup(host, board, null, Callable(), func(_seconds: float) -> float: return 0.0)
+	var requested_anim_delays: Array[float] = []
+	player.setup(host, board, null, Callable(), func(seconds: float) -> float:
+		requested_anim_delays.append(seconds)
+		return 0.0
+	)
 	await player.play_events([
 		{"type": "explode", "pos": Vector2i(4, 4)},
 		{"type": "damage", "pos": Vector2i(4, 5), "damage": 3, "uid": "missing_target", "victim_uid": "missing_target", "is_crit": false},
@@ -137,6 +142,16 @@ func _run_test() -> void:
 	])
 	assert(board.lightning_bolts.size() == 2, "same-hop arcs should start as one parallel beat")
 	assert(board.operations == ["arc", "arc", "damage", "damage"], "arc visuals must precede their impact damage")
+	board.electrical_timing = {"duration": 1.0, "impact_time": 0.01}
+	var electrical_started := Time.get_ticks_msec()
+	await player.play_events([
+		{"type": "arc", "from": Vector2i(3, 3), "pos": Vector2i(3, 3), "target_pos": Vector2i(5, 1)},
+		{"type": "damage", "pos": Vector2i(5, 1), "damage": 2, "uid": "missing_arc_tail", "victim_uid": "missing_arc_tail", "is_crit": false},
+		{"type": "gem_flash", "pos": Vector2i(2, 2)},
+	])
+	var electrical_elapsed := float(Time.get_ticks_msec() - electrical_started) / 1000.0
+	assert(electrical_elapsed < 0.5, "electrical recovery is a visual tail and must not block the next beat")
+	board.electrical_timing = {"duration": 0.0, "impact_time": 0.0}
 	board.operations.clear()
 	board.damage_effects.clear()
 	await player.play_events([
@@ -148,6 +163,7 @@ func _run_test() -> void:
 	assert(board.light_beam_batches.size() == 1, "split light beams should be presented as one volley")
 	assert(board.light_beam_batches[0].size() == 2, "light volley should contain every beam")
 	assert(board.damage_effects.size() == 2, "light volley damage should present at impact")
+	assert(requested_anim_delays.is_empty(), "damage, flashes, and visual tails must not add cosmetic settlement delays")
 	host.queue_free()
 	print("BATTLE_EVENT_PLAYER_CLUSTER_TEST_PASS")
 	quit()

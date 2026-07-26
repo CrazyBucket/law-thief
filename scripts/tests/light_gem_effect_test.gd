@@ -19,6 +19,7 @@ func _run_tests() -> void:
 	_test_light_poison_is_colored_status_not_fog()
 	_test_light_fire_is_colored_status_not_fire_tile()
 	_test_light_arc_keeps_beam_and_bounces()
+	_test_light_flurry_arc_keeps_defeated_anchor()
 	_test_light_ice_slows_target_not_attacker()
 	_test_light_split_emits_multiple_beams()
 	_test_light_split_explosion_event_order()
@@ -163,6 +164,24 @@ func _test_light_arc_keeps_beam_and_bounces() -> void:
 	_check(arc_target.hp < 100, "light+arc should bounce from the lit target")
 	_check(_count_events(events, "arc") >= 1, "light+arc should emit arc bounce")
 	_check(_count_events(events, "light_beam") == 1, "light+arc should emit one beam")
+
+
+func _test_light_flurry_arc_keeps_defeated_anchor() -> void:
+	var builder = Builder.new("fission_slime_test", 7118, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(1, 1))
+	builder.set_stats(player, {"base_attack": 10})
+	builder.mount_gems(player, Constants.SLOT_RED, [Constants.GEM_LIGHT, Constants.GEM_CONDUCTIVE, Constants.GEM_FLURRY])
+	var target := builder.add_unit("light_flurry_lethal", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 1), {"hp": 2, "max_hp": 2})
+	var arc_target := builder.add_unit("light_flurry_arc_chain", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(3, 2), {"hp": 100, "max_hp": 100})
+	var state := builder.finish()
+	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
+	var events: Array = result.get("events", [])
+	_check(not target.alive, "the first light segment should defeat its target")
+	_check(_count_events(events, "light_beam") == 2, "light flurry should preserve both beam segments")
+	_check(_count_events(events, "arc") == 2, "both light segments should arc from the retained hit anchor")
+	_check(arc_target.hp == 98, "light flurry should preserve both segment-scaled arc hits")
 
 
 func _test_light_ice_slows_target_not_attacker() -> void:

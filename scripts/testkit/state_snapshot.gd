@@ -89,6 +89,7 @@ static func _unit(unit: UnitState) -> Dictionary:
 			"gem_uid": slot.gem_uid,
 			"locked": slot.locked,
 			"lock_type": slot.lock_type,
+			"overload_slot": slot.is_overload_slot(),
 			"unlock_until_turn": slot.unlock_until_turn,
 		})
 	var statuses: Array = []
@@ -147,6 +148,7 @@ static func _tile(tile: TileState) -> Dictionary:
 			"gem_uid": slot.gem_uid,
 			"locked": slot.locked,
 			"lock_type": slot.lock_type,
+			"overload_slot": slot.is_overload_slot(),
 		})
 	return {
 		"pos": _vec(tile.pos),

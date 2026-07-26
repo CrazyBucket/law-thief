@@ -7,6 +7,7 @@ const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
+const OldMageHudPanel = preload("res://scripts/ui/old_mage_hud_panel.gd")
 
 const _STATUS_PANEL_WIDTH := 320.0
 const _RELIC_BAR_FALLBACK_H := 320.0
@@ -490,12 +491,17 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
 	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR], _tooltip)
 	var attack_value := CombatRules.attack_damage(state, unit)
+	_inspect_stats.tooltip_text = OldMageHudPanel.phase_summary(state, unit) if unit.behavior_id == "old_mage" else ""
 	var stat_parts: Array[String] = ["攻击 %d · 速度 %d" % [attack_value, unit.speed]]
 	var stack_lines := _status_stack_lines(unit)
 	if not stack_lines.is_empty():
 		stat_parts.append("层数：%s" % " · ".join(stack_lines))
 	_inspect_stats.text = "\n".join(stat_parts)
+	if unit.behavior_id == "old_mage":
+		_inspect_stats.text += "\n" + OldMageHudPanel.phase_summary(state, unit)
 	_refresh_intent_row(unit)
+	if unit.behavior_id == "old_mage":
+		_slot_box.add_child(OldMageHudPanel.create_pool_chip(_unit_looks()))
 	for slot_index in range(unit.slots.size()):
 		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index))
 
@@ -620,7 +626,7 @@ func _tile_slot_summary(state: GameState, tile: TileState) -> String:
 		if slot == null:
 			continue
 		var label := "%s槽" % _slot_display_name(slot.slot_type)
-		if slot.lock_type == Constants.LOCK_OVERLOAD_SLOT:
+		if slot.is_overload_slot():
 			label = "过载" + label
 		if slot.gem_uid.is_empty():
 			label += " 空"
@@ -761,6 +767,12 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_
 				row.add_child(gem_icon)
 			label.text = "%s %s" % [slot_prefix, _gem_display_name(gem)]
 			_set_tooltip(chip, _slot_chip_tooltip(gem, slot, unit, state), _slot_chip_tooltip_spec(gem, slot, unit, state))
+	if unit.behavior_id == "old_mage" \
+		and slot.gem_uid.is_empty() \
+		and slot.slot_type != Constants.SLOT_BLACK \
+		and str(state.battle_temp_flags.get("old_mage:%s:phase" % unit.uid, "")) == "refill":
+		label.text = "%s · 补充中" % slot_prefix
+		chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(_slot_color(slot.slot_type).lightened(0.18)))
 	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	row.add_child(label)

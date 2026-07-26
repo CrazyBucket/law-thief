@@ -105,8 +105,10 @@ static func prepare_segment(ctx: Variant) -> bool:
 
 
 static func _charge_segment(ctx: Variant, grants_damage_bonus: bool) -> bool:
-	if ctx.target == null or not ctx.target.alive:
+	if ctx.target == null:
 		return false
+	if not ctx.target.alive:
+		return ctx.effect_anchor_at(ctx.aim_cell) != null
 	var start_pos: Vector2i = ctx.attacker.pos
 	var event_start: int = ctx.events.size()
 	var target_cell := FootprintRules.nearest_cell_to(ctx.target, ctx.attacker.pos, ctx.target.pos)

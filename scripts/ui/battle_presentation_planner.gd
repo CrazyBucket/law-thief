@@ -7,33 +7,39 @@ extends RefCounted
 const MODE_SERIAL := "serial"
 const MODE_PARALLEL := "parallel"
 
+## A beat's concurrency mode answers which visuals start together. Its barrier answers when
+## the next causal beat may start; these are separate decisions.
+const BARRIER_NONE := "none"
+const BARRIER_IMPACT := "impact"
+const BARRIER_COMPLETE := "complete"
+
 const _POLICIES: Dictionary = {
-	"projectile": {"kind": "projectile", "mode": MODE_PARALLEL},
-	"projectile_deflect": {"kind": "projectile", "mode": MODE_PARALLEL},
-	"explode": {"kind": "blast", "mode": MODE_PARALLEL},
-	"light_beam": {"kind": "light_beam", "mode": MODE_PARALLEL},
-	"arc": {"kind": "electrical", "mode": MODE_PARALLEL},
-	"lightning": {"kind": "electrical", "mode": MODE_PARALLEL},
-	"damage": {"kind": "damage", "mode": MODE_PARALLEL},
-	"impact_charge": {"kind": "impact", "mode": MODE_PARALLEL},
-	"move_step": {"kind": "move", "mode": "auto"},
-	"displacement_impact": {"kind": "move", "mode": "auto"},
-	"poison_burst": {"kind": "area_fx", "mode": MODE_PARALLEL},
-	"fire_burst": {"kind": "area_fx", "mode": MODE_PARALLEL},
-	"frost_pulse": {"kind": "area_fx", "mode": MODE_PARALLEL},
-	"split_spawn": {"kind": "split_spawn", "mode": MODE_PARALLEL},
-	"gem_flash": {"kind": "single", "mode": MODE_SERIAL},
-	"gem_transfer": {"kind": "single", "mode": MODE_SERIAL},
-	"miss": {"kind": "single", "mode": MODE_SERIAL},
-	"toxic_smoke": {"kind": "single", "mode": MODE_SERIAL},
-	"entity_destroyed": {"kind": "single", "mode": MODE_SERIAL},
-	"trample_start": {"kind": "single", "mode": MODE_SERIAL},
-	"die": {"kind": "single", "mode": MODE_SERIAL},
-	"spawn": {"kind": "single", "mode": MODE_SERIAL},
-	"transform": {"kind": "single", "mode": MODE_SERIAL},
-	"status": {"kind": "single", "mode": MODE_SERIAL},
-	"heal": {"kind": "single", "mode": MODE_SERIAL},
-	"knockback": {"kind": "single", "mode": MODE_SERIAL},
+	"projectile": {"kind": "projectile", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"projectile_deflect": {"kind": "projectile", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"explode": {"kind": "blast", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"light_beam": {"kind": "light_beam", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"arc": {"kind": "electrical", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"lightning": {"kind": "electrical", "mode": MODE_PARALLEL, "barrier": BARRIER_IMPACT},
+	"damage": {"kind": "damage", "mode": MODE_PARALLEL, "barrier": BARRIER_NONE},
+	"impact_charge": {"kind": "impact", "mode": MODE_PARALLEL, "barrier": BARRIER_COMPLETE},
+	"move_step": {"kind": "move", "mode": "auto", "barrier": BARRIER_COMPLETE},
+	"displacement_impact": {"kind": "move", "mode": "auto", "barrier": BARRIER_COMPLETE},
+	"poison_burst": {"kind": "area_fx", "mode": MODE_PARALLEL, "barrier": BARRIER_NONE},
+	"fire_burst": {"kind": "area_fx", "mode": MODE_PARALLEL, "barrier": BARRIER_NONE},
+	"frost_pulse": {"kind": "area_fx", "mode": MODE_PARALLEL, "barrier": BARRIER_NONE},
+	"split_spawn": {"kind": "split_spawn", "mode": MODE_PARALLEL, "barrier": BARRIER_NONE},
+	"gem_flash": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"gem_transfer": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"miss": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"toxic_smoke": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"entity_destroyed": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"trample_start": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"die": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_COMPLETE},
+	"spawn": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"transform": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"status": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"heal": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_NONE},
+	"knockback": {"kind": "single", "mode": MODE_SERIAL, "barrier": BARRIER_COMPLETE},
 }
 
 
@@ -82,7 +88,7 @@ static func build(events: Array) -> Dictionary:
 				beats.append(_beat("damage", MODE_PARALLEL, [], damages.items, [], i, damages.next_index))
 				i = damages.next_index
 			"move":
-				var moves := _collect_types(events, i, ["move_step", "displacement_impact"])
+				var moves := _collect_motion_beat(events, i)
 				var move_mode := MODE_PARALLEL if _moves_are_parallel(moves.items) else MODE_SERIAL
 				beats.append(_beat("move", move_mode, moves.items, [], [], i, moves.next_index))
 				i = moves.next_index
@@ -110,6 +116,10 @@ static func registered_event_types() -> Array[String]:
 
 static func has_policy(event_type: String) -> bool:
 	return _POLICIES.has(event_type)
+
+
+static func policy_for(event_type: String) -> Dictionary:
+	return (_POLICIES.get(event_type, {}) as Dictionary).duplicate(true)
 
 
 static func _build_projectile_beat(events: Array, start: int) -> Dictionary:
@@ -194,6 +204,32 @@ static func _collect_types(events: Array, start: int, types: Array) -> Dictionar
 	return {"items": items, "next_index": i}
 
 
+static func _collect_motion_beat(events: Array, start: int) -> Dictionary:
+	var items: Array = []
+	var first: Dictionary = events[start]
+	var first_forced := bool(first.get("forced", false)) \
+		or str(first.get("type", "")) == "displacement_impact"
+	var first_uid := str(first.get("uid", ""))
+	var first_source_uid := str(first.get("source_uid", ""))
+	var i := start
+	while i < events.size():
+		var event: Dictionary = events[i]
+		var event_type := str(event.get("type", ""))
+		if event_type not in ["move_step", "displacement_impact"]:
+			break
+		var event_forced := bool(event.get("forced", false)) or event_type == "displacement_impact"
+		if event_forced != first_forced:
+			break
+		if first_forced:
+			if str(event.get("source_uid", "")) != first_source_uid:
+				break
+		elif str(event.get("uid", "")) != first_uid:
+			break
+		items.append(event)
+		i += 1
+	return {"items": items, "next_index": i}
+
+
 static func _moves_are_parallel(events: Array) -> bool:
 	if events.size() <= 1:
 		return false
@@ -218,9 +254,19 @@ static func _beat(
 	next_index: int,
 	impact_motions: Array = []
 ) -> Dictionary:
+	var representative: Dictionary = {}
+	if not visuals.is_empty():
+		representative = visuals[0]
+	elif not impacts.is_empty():
+		representative = impacts[0]
+	var event_type := str(representative.get("type", ""))
+	var barrier := str(_POLICIES.get(event_type, {}).get("barrier", BARRIER_COMPLETE))
+	if not impact_motions.is_empty():
+		barrier = BARRIER_COMPLETE
 	return {
 		"kind": kind,
 		"mode": mode,
+		"barrier": barrier,
 		"visuals": visuals,
 		"impacts": impacts,
 		"impact_motions": impact_motions,

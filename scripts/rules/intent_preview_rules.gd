@@ -120,6 +120,48 @@ static func populate_effects(intent: IntentState) -> void:
 			},
 		}))
 	match intent.type:
+		"mage_refill":
+			intent.preview_effects.append(PreviewEffect.create("mage_pool_candidate", intent.plan_metadata.get("mage_candidate_cells", []), {
+				"source_uid": intent.source_uid,
+				"certainty": PreviewEffect.CONDITIONAL,
+			}))
+			intent.preview_effects.append(PreviewEffect.create("mage_pool_lock", [intent.target_pos], {
+				"source_uid": intent.source_uid,
+				"target_uid": intent.plan_metadata.get("mage_gem_uid", ""),
+			}))
+			intent.preview_effects.append(PreviewEffect.create("gem_consume", [intent.target_pos], {
+				"source_uid": intent.source_uid,
+				"target_uid": intent.target_uid,
+			}))
+		"mage_impact_charge":
+			intent.preview_effects.append(PreviewEffect.create("mage_charge_route", intent.plan_metadata.get("mage_charge_path", []), {
+				"source_uid": intent.source_uid,
+			}))
+			intent.preview_effects.append(PreviewEffect.create("displacement", intent.affected_cells, {
+				"source_uid": intent.source_uid,
+				"target_uid": intent.target_uid,
+				"certainty": PreviewEffect.CONDITIONAL,
+			}))
+		"mage_spell":
+			var retreat_path: Array = intent.plan_metadata.get("mage_retreat_path", [])
+			if not retreat_path.is_empty():
+				intent.preview_effects.append(PreviewEffect.create("displacement", retreat_path, {
+					"source_uid": intent.source_uid,
+					"target_uid": intent.source_uid,
+					"certainty": PreviewEffect.CONDITIONAL,
+				}))
+			var grounded_cells: Array = intent.plan_metadata.get("mage_grounded_cells", [])
+			if not grounded_cells.is_empty():
+				intent.preview_effects.append(PreviewEffect.create("mage_grounded", grounded_cells, {
+					"source_uid": intent.source_uid,
+					"metadata": {"damage": 2},
+				}))
+			var wet_cells: Array = intent.plan_metadata.get("mage_wet_cells", [])
+			if not wet_cells.is_empty():
+				intent.preview_effects.append(PreviewEffect.create("mage_wet_danger", wet_cells, {
+					"source_uid": intent.source_uid,
+					"metadata": {"damage": 12},
+				}))
 		"broodmother_split":
 			intent.preview_effects.append(PreviewEffect.create("spawn", intent.affected_cells, {
 				"source_uid": intent.source_uid,

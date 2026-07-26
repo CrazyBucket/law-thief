@@ -10,7 +10,7 @@ func _initialize() -> void:
 func _run() -> void:
 	await process_frame
 	assert(Contract.RESOLUTIONS == [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(2048, 1152)], "visual regression must cover the three required 16:9 resolutions")
-	assert(Contract.expected_capture_ids().size() == 9, "three fixed scenarios at three resolutions should produce nine captures")
+	assert(Contract.expected_capture_ids().size() == Contract.RESOLUTIONS.size() * Contract.SCENARIOS.size(), "every fixed scene must be captured at every required resolution")
 	assert(Contract.sanitize_label(" before/../candidate ") == "beforecandidate", "artifact labels must be path-safe")
 	assert(Contract.capture_file_name("map_route", Vector2i(1280, 720)) == "map_route-1280x720.png")
 	_test_image_metrics()

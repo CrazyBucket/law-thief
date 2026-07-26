@@ -1,6 +1,8 @@
 extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
+const RunGemEmbedDialog = preload("res://scripts/ui/run_gem_embed_dialog.gd")
 
 const EVENT_BG := Color("#11121d")
 const EVENT_PANEL := Color("#181925")
@@ -28,6 +30,8 @@ const EVENT_EDGE := Color("#655681")
 var _room_id := ""
 var _choice_locked := false
 var _node_tween: Tween = null
+var _gem_embed_overlay: RunGemEmbedDialog = null
+var _pending_embed_response: Dictionary = {}
 
 
 func _ready() -> void:
@@ -125,6 +129,7 @@ func _on_option_pressed(option_id: String) -> void:
 		return
 	_choice_locked = true
 	_set_options_disabled(true)
+	var carried_gem_before := _carried_gem_id()
 	var response := RoomFlowService.submit_room_command(_room_id, {
 		"action": "choose_option",
 		"option_id": option_id,
@@ -134,12 +139,71 @@ func _on_option_pressed(option_id: String) -> void:
 		_feedback_label.text = _t("event.ui.error.action")
 		_set_options_disabled(false)
 		return
+	var acquired_gem_now := carried_gem_before.is_empty() and not _carried_gem_id().is_empty()
+	if acquired_gem_now and _show_gem_embed_choice(response):
+		return
+	_finish_option_response(response)
+
+
+func _finish_option_response(response: Dictionary) -> void:
 	if str(response.get("state", "")) == "RESOLVED":
 		# A finishing choice already represents leaving the event; do not require
 		# a second "continue" action from the resolved screen.
 		AdventureService.finish_room_and_return()
 		return
 	_refresh_room_view(response)
+
+
+func _carried_gem_id() -> String:
+	var run := RunService.get_run()
+	if run == null:
+		return ""
+	return str(run.carried_gem.get("gem_id", ""))
+
+
+func _show_gem_embed_choice(response: Dictionary) -> bool:
+	var run := RunService.get_run()
+	if run == null or run.carried_gem.is_empty():
+		return false
+	var options := RunPlayerGemService.embed_options(run)
+	if options.is_empty():
+		return false
+	_pending_embed_response = response.duplicate(true)
+	if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+		_gem_embed_overlay.configure(options)
+		return true
+	_gem_embed_overlay = RunGemEmbedDialog.new()
+	_gem_embed_overlay.embed_requested.connect(_on_gem_embed_slot_pressed)
+	_gem_embed_overlay.postponed.connect(_on_gem_embed_later_pressed)
+	add_child(_gem_embed_overlay)
+	_gem_embed_overlay.configure(options)
+	return true
+
+
+func _on_gem_embed_slot_pressed(slot_index: int, force_overload: bool = false) -> void:
+	var result := RunPlayerGemService.embed_carried_gem(RunService.get_run(), slot_index, force_overload)
+	if not bool(result.get("ok", false)):
+		_feedback_label.text = _t("gem_embed.unavailable")
+		if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+			_gem_embed_overlay.unlock_after_failure()
+		return
+	RunService.save_run(false)
+	var response := _pending_embed_response
+	_close_gem_embed_overlay()
+	_finish_option_response(response)
+
+
+func _on_gem_embed_later_pressed() -> void:
+	var response := _pending_embed_response
+	_close_gem_embed_overlay()
+	_finish_option_response(response)
+
+
+func _close_gem_embed_overlay() -> void:
+	if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+		_gem_embed_overlay.dismiss()
+	_gem_embed_overlay = null
+	_pending_embed_response = {}
 
 
 func _on_continue_pressed() -> void:

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const BombRatRules = preload("res://scripts/rules/bomb_rat_rules.gd")
+const PresentationPlanner = preload("res://scripts/ui/battle_presentation_planner.gd")
 
 
 func _initialize() -> void:
@@ -12,6 +13,7 @@ func _run_test() -> void:
 	_test_spawn_black_gem_and_hp()
 	_test_chase_when_far()
 	_test_suicide_when_adjacent()
+	_test_chase_suicide_presentation_order()
 	_test_plunder_after_black_lost()
 	_test_lawless_waits_then_steals_nearest_unit_gem()
 	print("BOMB_RAT_TEST_PASS")
@@ -59,6 +61,28 @@ func _test_suicide_when_adjacent() -> void:
 	assert(not rat.alive, "rat should die after suicide")
 	assert(player.hp < hp_before, "player should suffer black death explosion")
 	print("  [OK] black suicide kills rat and hits player")
+
+
+func _test_chase_suicide_presentation_order() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("bomb_rat_test", 42)
+	var state := controller.state
+	var rat := _find_rat(state)
+	var player := state.get_player()
+	_force_gem(state, rat, Constants.SLOT_BLACK, Constants.GEM_IMPACT)
+	IntentSystem.refresh_unit_intent(state, rat)
+	assert(rat.intent.type == "black_suicide" and not rat.intent.path.is_empty())
+	var events := IntentSystem.execute_intent(state, rat)
+	var plan := PresentationPlanner.build(events)
+	assert(plan.violations.is_empty())
+	assert(plan.beats.size() >= 2)
+	var approach: Dictionary = plan.beats[0]
+	var death_reaction: Dictionary = plan.beats[1]
+	assert(approach.kind == "move" and approach.mode == PresentationPlanner.MODE_SERIAL)
+	assert(approach.visuals.all(func(event): return event.uid == rat.uid and not bool(event.get("forced", false))))
+	assert(death_reaction.kind == "move")
+	assert(death_reaction.visuals.all(func(event): return event.uid == player.uid and bool(event.get("forced", false))))
+	print("  [OK] chase movement finishes before black-impact displacement")
 
 
 func _test_plunder_after_black_lost() -> void:

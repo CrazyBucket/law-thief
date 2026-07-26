@@ -18,7 +18,8 @@
     "room_type": "REST_SITE",
     "ui_kind": "rest",
     "effects": [
-      {"action": "heal_player_percent", "amount_ref": "rest_site_heal_ratio"}
+      {"action": "heal_player_percent", "amount_ref": "rest_site_heal_ratio"},
+      {"action": "heal_player", "amount_ref": "rest_site_heal_flat"}
     ]
   },
   "SHOP": {

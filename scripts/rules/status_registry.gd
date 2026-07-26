@@ -198,9 +198,9 @@ static func tooltip(status: StatusInstance) -> String:
 		Constants.STATUS_LAW_WORM_INCUBATING:
 			return "孵化：下次行动时进化为畸变蛆母"
 		Constants.STATUS_BROODMOTHER_CYCLE:
-			return "繁殖节律：在攻击与分裂之间交替"
+			return "繁殖节律：攻击或等待一回合后再孵化"
 		Constants.STATUS_BROODMOTHER_CRISIS:
-			return "危机繁殖：全身空槽，每次行动分裂两只噬律蛆"
+			return "危机繁殖：全身空槽，每两回合孵化两只噬律蛆"
 		Constants.STATUS_STORED_FLURRY:
 			return "蓄连：下次主动攻击的连击值 +%d，攻击完成后清零" % status.stacks
 		Constants.STATUS_STARTLED_FEATHER:

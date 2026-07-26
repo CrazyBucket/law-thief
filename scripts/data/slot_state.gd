@@ -8,6 +8,8 @@ var gem_uid: String = ""
 var locked: bool = false
 var lock_type: String = ""
 var unlock_until_turn: int = -1
+## 过载是槽位来源身份，不是临时锁状态；分裂禁用不得覆盖它。
+var overload_slot: bool = false
 
 
 static func create(slot_type: String, gem_uid: String = "", locked: bool = false, lock_type: String = "") -> SlotState:
@@ -16,6 +18,7 @@ static func create(slot_type: String, gem_uid: String = "", locked: bool = false
 	slot.gem_uid = gem_uid
 	slot.locked = locked
 	slot.lock_type = lock_type
+	slot.overload_slot = lock_type == Constants.LOCK_OVERLOAD_SLOT
 	return slot
 
 
@@ -27,6 +30,7 @@ func clone() -> SlotState:
 	slot.locked = locked
 	slot.lock_type = lock_type
 	slot.unlock_until_turn = unlock_until_turn
+	slot.overload_slot = overload_slot
 	return slot
 
 
@@ -45,6 +49,11 @@ func is_empty() -> bool:
 
 func is_split_disabled() -> bool:
 	return lock_type == Constants.LOCK_SPLIT_DISABLED
+
+
+func is_overload_slot() -> bool:
+	# lock_type fallback keeps old saves and fixtures compatible.
+	return overload_slot or lock_type == Constants.LOCK_OVERLOAD_SLOT
 
 
 func is_operable(turn_index: int) -> bool:

@@ -73,6 +73,10 @@ func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: Strin
 		state.unbind_combat_events()
 	if dealt <= 0:
 		return 0
+	if bool(opts.get("active_attack", false)) and not source_uid.is_empty():
+		state.battle_temp_flags["last_active_attacker:%s" % unit.uid] = source_uid
+		state.battle_temp_flags["last_active_attack_turn:%s" % unit.uid] = state.turn_index
+		state.battle_temp_flags["last_active_attack_ranged:%s" % unit.uid] = reason == "ranged_attack" or reason == "light_beam"
 	state.bump_revision()
 	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
 	events.insert(event_start, _EventBuilder.damage(unit, dealt, event_opts))

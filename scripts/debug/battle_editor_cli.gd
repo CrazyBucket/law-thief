@@ -2,6 +2,7 @@ class_name BattleEditorCli
 extends RefCounted
 
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const OldMageEncounterSetup = preload("res://scripts/services/old_mage_encounter_setup.gd")
 
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
@@ -387,6 +388,7 @@ func _run_editor_spawn_unit(ctrl, tokens: Array, start_index: int) -> Dictionary
 	var unit_uid: String = _data_registry(ctrl).next_runtime_uid("runtime_unit")
 	var unit := UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry(ctrl).get_unit_def(unit_def_id))
 	ctrl.state.register_unit(unit)
+	OldMageEncounterSetup.configure_loadout(_data_registry(ctrl), ctrl.state, unit)
 	TileRules.sync_standing_ground_effects(ctrl.state, unit)
 	return _finalize_mutation(ctrl, "spawned %s at %s for team %s" % [unit_def_id, pos, team], false, {"unit_uid": unit_uid})
 
@@ -468,6 +470,7 @@ func _run_editor_batch_spawn_unit(ctrl, tokens: Array, start_index: int) -> Dict
 		var unit_uid: String = _data_registry(ctrl).next_runtime_uid("runtime_unit")
 		var unit := UnitState.from_def(unit_uid, unit_def_id, team, pos, _data_registry(ctrl).get_unit_def(unit_def_id))
 		ctrl.state.register_unit(unit)
+		OldMageEncounterSetup.configure_loadout(_data_registry(ctrl), ctrl.state, unit)
 		created_uids.append(unit_uid)
 	return _finalize_mutation(ctrl, "spawned %d instances of %s for team %s" % [created_uids.size(), unit_def_id, team], false, {"unit_uids": created_uids})
 

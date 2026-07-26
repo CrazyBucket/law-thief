@@ -253,7 +253,7 @@
   },
   "relic_silver_cable": {
     "name": "镀银电缆",
-    "desc": "电弧伤害 ×{relic_numeric_ref:relic_silver_cable_arc_damage_mult}。",
+    "desc": "电弧伤害 {relic_numeric_signed:relic_silver_cable_arc_damage_bonus}。",
     "rarity": "common",
     "pool_types": ["global"],
     "base_weight": 1.0,
@@ -263,7 +263,7 @@
       {"type": "has_relic", "value": "relic_copper_wire", "multiplier_ref": "relic_silver_cable_copper_wire_weight_mult"}
     ],
     "effects": [
-      {"modifier": "arc_damage_mult", "value_ref": "relic_silver_cable_arc_damage_mult"}
+      {"modifier": "arc_damage_bonus", "value_ref": "relic_silver_cable_arc_damage_bonus"}
     ]
   },
   "relic_cracked_goggles": {

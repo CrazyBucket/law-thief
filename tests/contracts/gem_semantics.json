@@ -204,6 +204,22 @@
       }
     },
     {
+      "id": "conductive_flurry/red/lethal_hit_keeps_remaining_effects",
+      "covers": ["gem_conductive:red:1", "gem_flurry:red:1"],
+      "gems": ["gem_conductive", "gem_flurry"],
+      "player_pos": [0, 1],
+      "target_pos": [3, 1],
+      "target_stats": {"hp": 4, "max_hp": 4},
+      "extra_units": [
+        {"uid": "arc_after_lethal", "pos": [5, 1]}
+      ],
+      "expect": {
+        "damage": 4,
+        "unit_damages": {"contract_target": 4, "arc_after_lethal": 4},
+        "event_counts": {"projectile": 2, "arc": 2}
+      }
+    },
+    {
       "id": "conductive/red/2_extra_hop",
       "covers": ["gem_conductive:red:2"],
       "gems": ["gem_conductive", "gem_conductive"],
@@ -220,18 +236,53 @@
       }
     },
     {
+	  "id": "conductive_split/red/arc_uses_base_attack",
+	  "covers": ["gem_conductive:red:1", "gem_split:red:1"],
+	  "gems": ["gem_conductive", "gem_split"],
+	  "player_pos": [0, 1],
+	  "target_pos": [3, 1],
+	  "extra_units": [
+		{"uid": "arc_near", "pos": [5, 1]}
+	  ],
+	  "expect": {
+		"damage": 7,
+		"unit_damages": {"contract_target": 7, "arc_near": 2},
+		"event_counts": {"arc": 1}
+	  }
+	},
+	{
       "id": "conductive/red/3_extra_range",
       "covers": ["gem_conductive:red:3"],
       "gems": ["gem_conductive", "gem_conductive", "gem_conductive"],
       "player_pos": [0, 1],
-      "target_pos": [3, 1],
+      "target_pos": [1, 1],
       "extra_units": [
-        {"uid": "arc_far", "pos": [6, 1]}
+        {"uid": "arc_first_hop", "pos": [4, 1]},
+        {"uid": "arc_second_hop", "pos": [7, 4]},
+        {"uid": "arc_third_hop", "pos": [4, 7]}
       ],
       "expect": {
         "damage": 10,
-        "unit_damages": {"contract_target": 10, "arc_far": 2},
-        "event_counts": {"arc": 1}
+		"unit_damages": {"contract_target": 10, "arc_first_hop": 2, "arc_second_hop": 2, "arc_third_hop": 2},
+		"event_counts": {"arc": 3}
+	  }
+	},
+	{
+	  "id": "conductive/red/4_each_extra_gem_adds_hop",
+	  "covers": ["gem_conductive:red:3", "implementation:conductive:red:extra_gem_hop"],
+	  "gems": ["gem_conductive", "gem_conductive", "gem_conductive", "gem_conductive"],
+      "player_pos": [0, 1],
+      "target_pos": [1, 1],
+      "extra_units": [
+        {"uid": "arc_first_hop", "pos": [4, 1]},
+        {"uid": "arc_second_hop", "pos": [7, 4]},
+        {"uid": "arc_third_hop", "pos": [4, 7]},
+        {"uid": "arc_fourth_hop", "pos": [1, 7]}
+	  ],
+	  "expect": {
+		"damage": 10,
+		"unit_damages": {"contract_target": 10, "arc_first_hop": 2, "arc_second_hop": 2, "arc_third_hop": 2, "arc_fourth_hop": 2},
+		"event_counts": {"arc": 4}
       }
     },
     {
@@ -1111,7 +1162,7 @@
       ],
       "expect": {
         "damage": 10,
-        "unit_damages": {"contract_target": 10, "player": 6},
+        "unit_damages": {"contract_target": 10, "player": 1},
         "event_counts": {"arc": 1}
       }
     },
@@ -1123,7 +1174,7 @@
       ],
       "expect": {
         "damage": 10,
-        "unit_damages": {"contract_target": 10, "player": 6},
+        "unit_damages": {"contract_target": 10, "player": 1},
         "event_counts": {"arc": 1}
       }
     },

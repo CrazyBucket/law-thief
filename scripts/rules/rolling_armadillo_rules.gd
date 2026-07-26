@@ -237,23 +237,58 @@ static func _position_score(
 ) -> float:
 	var distance := BoardUtils.manhattan(anchor, target.pos)
 	var aligned := _aligned(anchor, target.pos)
+	var in_impact_range := aligned and distance <= IMPACT_RANGE
+	var blocked_impact_line := in_impact_range and not lawless \
+		and not _clear_line(state, unit, anchor, target.pos, cell_blockers)
 	var score := _landing_safety(state, anchor, lawless) - float(distance) * 0.1
-	if aligned:
+	if aligned and not blocked_impact_line:
 		score += 5.0
-	match distance:
-		4: score += 4.0
-		3: score += 3.0
-		2: score += 1.0
-		1: score -= 2.0
-	if aligned and distance <= IMPACT_RANGE:
-		if lawless or _clear_line(state, unit, anchor, target.pos, cell_blockers):
+	if not blocked_impact_line:
+		match distance:
+			4: score += 4.0
+			3: score += 3.0
+			2: score += 1.0
+			1: score -= 2.0
+	if in_impact_range:
+		if not blocked_impact_line:
 			score += 4.0
 		else:
 			score -= 3.0
+	if not lawless:
+		var setup_distance := _nearest_clear_impact_anchor_distance(
+			state, unit, anchor, target, cell_blockers
+		)
+		score -= 20.0 if setup_distance < 0 else float(setup_distance) * 5.0
 	for other in _hostile_targets(state, unit):
 		if BoardUtils.manhattan(anchor, other.pos) == 1:
 			score -= 1.0 if lawless else 2.0
 	return score
+
+
+static func _nearest_clear_impact_anchor_distance(
+	state: GameState,
+	unit: UnitState,
+	from_pos: Vector2i,
+	target: UnitState,
+	cell_blockers: Dictionary
+) -> int:
+	var best := -1
+	for x in range(state.board_size.x):
+		for y in range(state.board_size.y):
+			var anchor := Vector2i(x, y)
+			var distance := BoardUtils.manhattan(anchor, target.pos)
+			if distance < 1 or distance > IMPACT_RANGE or not _aligned(anchor, target.pos):
+				continue
+			if not BoardUtils.unit_footprint_passable(state, unit, anchor, unit.uid, cell_blockers):
+				continue
+			if not _clear_line(state, unit, anchor, target.pos, cell_blockers):
+				continue
+			var path_distance := BoardUtils.path_distance_to_cell(
+				state, from_pos, anchor, unit.uid, cell_blockers, unit
+			)
+			if path_distance >= 0 and (best < 0 or path_distance < best):
+				best = path_distance
+	return best
 
 
 static func _landing_safety(state: GameState, anchor: Vector2i, lawless: bool) -> float:

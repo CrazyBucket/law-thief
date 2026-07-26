@@ -68,11 +68,26 @@ func present(legacy_highlights: Dictionary, context: Dictionary = {}) -> Diction
 	for effect in selected_unit.intent.preview_effects:
 		if effect.kind in ["movement", "damage"]:
 			continue
-		_append_overlay(result, "effect", effect.cells, {
+		var overlay_kind := "effect"
+		if effect.kind == "mage_pool_candidate":
+			overlay_kind = "intent_path"
+		elif effect.kind == "mage_pool_lock":
+			overlay_kind = "target"
+		elif effect.kind == "mage_charge_route":
+			overlay_kind = "danger"
+		elif effect.kind == "mage_grounded":
+			overlay_kind = "safe"
+		elif effect.kind == "mage_wet_danger":
+			overlay_kind = "critical"
+		_append_overlay(result, overlay_kind, effect.cells, {
 			"unit_uid": selected_unit.uid,
 			"preview_kind": effect.kind,
 			"certainty": effect.certainty,
 		})
+		if effect.kind == "mage_pool_lock" and not effect.cells.is_empty():
+			_append_route(result, "mage_lock", [selected_unit.pos, effect.cells[0]], {"unit_uid": selected_unit.uid})
+		elif effect.kind == "mage_charge_route" and effect.cells.size() > 1:
+			_append_route(result, "impact", effect.cells, {"unit_uid": selected_unit.uid})
 	return result
 
 

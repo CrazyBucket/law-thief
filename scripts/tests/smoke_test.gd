@@ -18,7 +18,8 @@ func _run_test() -> void:
 		push_error("missing units")
 		quit(1)
 		return
-	rat.hp = 10
+	# Black-slot explosion uses the dying guard's base attack.
+	rat.hp = guard.base_attack
 
 	_force_gem(state, rat, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
 

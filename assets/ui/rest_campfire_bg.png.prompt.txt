@@ -1,0 +1,5 @@
+Use case: stylized-concept
+Asset type: full-screen 16:9 background for a pixel-art roguelike rest-site UI
+Primary request: a polished pixel-art nighttime forest campsite with a warm campfire.
+Composition: place the campfire slightly left of center and preserve the upper-left for the player HUD and the lower-right for the rest decision panel.
+Constraints: no characters, UI, text, logos, watermarks, or border.

@@ -238,8 +238,13 @@ func _test_paralyzed_consumes_at_action_window() -> void:
 	var extract := controller.try_extract(enemy.uid, 0)
 	assert(not extract.get("ok", false) and extract.get("reason", "") == "被麻痹，无法行动", "paralyzed player extraction should be rejected")
 	controller.begin_enemy_phase()
-	assert(not player.has_status(Constants.STATUS_PARALYZED), "paralysis should clear after the skipped player action window")
-	print("  [OK] paralysis blocks and consumes one player action window")
+	StatusRules.apply_paralyzed(state, player, 1, enemy.uid)
+	var turn_start: Dictionary = controller.finish_enemy_phase()
+	var automatic_skip: Dictionary = turn_start.get("auto_enemy_execution", {})
+	assert(not automatic_skip.is_empty(), "paralyzed player should automatically advance to the enemy phase")
+	assert(controller.state.phase == Constants.PHASE_ENEMY, "automatic paralysis skip should leave the battle in enemy phase")
+	assert(not player.has_status(Constants.STATUS_PARALYZED), "paralysis should clear while automatically skipping the player action window")
+	print("  [OK] paralysis automatically consumes the player action window")
 
 
 func _test_relic_numeric_refs_runtime() -> void:
@@ -252,11 +257,11 @@ func _test_relic_numeric_refs_runtime() -> void:
 	player.slots.append(SlotState.create(Constants.SLOT_BLUE))
 	state.player_uid = player.uid
 	var registry: Node = Engine.get_main_loop().root.get_node("RelicEffectRegistry")
-	var arc_mult: float = float(registry.call("_eval_modifier_entry", "relic_silver_cable", {
-		"modifier": "arc_damage_mult",
-		"value_ref": "relic_silver_cable_arc_damage_mult",
+	var arc_bonus: int = int(registry.call("_eval_modifier_entry", "relic_silver_cable", {
+		"modifier": "arc_damage_bonus",
+		"value_ref": "relic_silver_cable_arc_damage_bonus",
 	}, state, {}))
-	assert(absf(arc_mult - 1.2) < 0.001, "relic modifier value refs should resolve at runtime")
+	assert(arc_bonus == 1, "silver cable should resolve to one flat arc damage")
 	var adventure_service: Node = root.get_node("AdventureService")
 	var run_service: Node = root.get_node("RunService")
 	adventure_service.start_new_run(20260708)

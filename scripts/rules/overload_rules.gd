@@ -220,6 +220,8 @@ static func spawn_law_beast(state: GameState) -> void:
 
 
 static func spawn_special_enemy(state: GameState, unit_def_id: String, label: String) -> UnitState:
+	if not _special_enemy_allowed_in_encounter(state, unit_def_id):
+		return null
 	if _alive_enemy_def_exists(state, unit_def_id):
 		return null
 	var registry: Node = _data_registry()
@@ -317,9 +319,20 @@ static func _pick_next_mutation(state: GameState) -> String:
 	if state == null:
 		return ""
 	for mutation in MUTATIONS:
+		if mutation == Constants.OVERLOAD_SPAWN_ENFORCER \
+				and not _special_enemy_allowed_in_encounter(state, "unit_overload_enforcer"):
+			continue
 		if mutation not in state.overload_active_mutations:
 			return mutation
 	return ""
+
+
+static func _special_enemy_allowed_in_encounter(state: GameState, unit_def_id: String) -> bool:
+	if state == null:
+		return false
+	if unit_def_id == "unit_overload_enforcer" and state.encounter_id.begins_with("boss_"):
+		return false
+	return true
 
 
 static func _count_overload_slot_gems(slots: Array) -> int:
@@ -327,7 +340,7 @@ static func _count_overload_slot_gems(slots: Array) -> int:
 	for slot in slots:
 		if slot == null:
 			continue
-		if slot.lock_type == Constants.LOCK_OVERLOAD_SLOT and not slot.gem_uid.is_empty():
+		if slot.is_overload_slot() and not slot.gem_uid.is_empty():
 			count += 1
 	return count
 

@@ -82,7 +82,7 @@ func _run_tests() -> void:
 	var rest_room_id := _room_id_for(adventure_service, path_cells[4], "REST_SITE")
 	root.get_node("AdventureRuleRegistry").add_rule("map_rule_rest_heal_50", "run", "contract", {"room_id": rest_room_id})
 	run_service.get_run().player_hp = 5
-	run_service.get_run().player_max_hp = 10
+	run_service.get_run().player_max_hp = 100
 	var hp_before_rest: int = int(run_service.get_run().player_hp)
 	var rest_view: Dictionary = room_flow_service.enter_room(rest_room_id)
 	assert(rest_view.get("ok", false), "rest enter should succeed")
@@ -92,7 +92,7 @@ func _run_tests() -> void:
 	var heal_trace: Dictionary = rest_result.get("result", {}).get("heal_trace", {})
 	assert(absf(float(heal_trace.get("base_value", 0.0)) - 0.2) < 0.001, "rest heal trace should start from configured base ratio")
 	assert(absf(float(heal_trace.get("final_value", 0.0)) - 0.3) < 0.001, "rest heal trace should become 0.3")
-	assert(run_service.get_run().player_hp - hp_before_rest == 3, "rest heal should increase hp by 3, heal=%s after_hp=%d" % [JSON.stringify(heal), run_service.get_run().player_hp])
+	assert(run_service.get_run().player_hp - hp_before_rest == 42, "rest heal should apply the modified percent plus the fixed 12 hp, heal=%s after_hp=%d" % [JSON.stringify(heal), run_service.get_run().player_hp])
 
 	run_service.set_progress_payload(adventure_service.export_progress())
 	run_service.save_run()

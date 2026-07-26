@@ -2,6 +2,8 @@ extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const CoinTexture = preload("res://assets/ui/coin_gold.png")
+const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
+const RunGemEmbedDialog = preload("res://scripts/ui/run_gem_embed_dialog.gd")
 
 const CARD_SIZE := Vector2(0, 150)
 const SHOP_BG := Color("#19130f")
@@ -36,6 +38,7 @@ const BRASS := Color("#b78338")
 @onready var _services_title: Label = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel/ServicesVBox/ServicesTitle
 @onready var _services_text: Label = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/ServicesPanel/ServicesVBox/ServicesText
 @onready var _loadout_panel: PanelContainer = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel
+@onready var _loadout_vbox: VBoxContainer = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox
 @onready var _loadout_title: Label = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox/LoadoutTitle
 @onready var _loadout_icon: TextureRect = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox/LoadoutRow/LoadoutIcon
 @onready var _loadout_label: Label = $SafeArea/Layout/Main/CatalogFrame/CatalogVBox/UtilityDock/UtilityRow/LoadoutPanel/LoadoutVBox/LoadoutRow/LoadoutLabel
@@ -58,12 +61,17 @@ var _current_gold: int = 0
 var _purchase_in_progress: bool = false
 var _selected_offer: Dictionary = {}
 var _selected_card: PanelContainer = null
+var _embed_button: Button = null
+var _gem_embed_overlay: RunGemEmbedDialog = null
 
 
 func _ready() -> void:
 	theme = BattleUiTheme.build_theme()
 	_apply_theme()
+	# The persistent adventure HUD owns the single gold/health display in this scene.
+	_balance_panel.visible = false
 	_apply_copy()
+	_create_loadout_embed_button()
 	_detail_buy_button.pressed.connect(_on_detail_purchase_pressed)
 	_room_id = AdventureService.current_room_id()
 	var room_view := RoomFlowService.enter_room(_room_id)
@@ -165,9 +173,77 @@ func _render_loadout() -> void:
 	if carried_id.is_empty():
 		_loadout_icon.texture = null
 		_loadout_label.text = _t("shop.loadout.empty")
+		_update_embed_button(false)
 		return
 	_loadout_icon.texture = UnitLooks.get_gem_texture(carried_id)
 	_loadout_label.text = str(snapshot.get("carried_gem_name", carried_id))
+	_update_embed_button(true)
+
+
+func _create_loadout_embed_button() -> void:
+	_embed_button = Button.new()
+	_embed_button.name = "EmbedButton"
+	_embed_button.custom_minimum_size = Vector2(0, 32)
+	_embed_button.text = _t("shop.loadout.embed")
+	_embed_button.pressed.connect(_on_embed_pressed)
+	BattleUiTheme.apply_button(_embed_button, "end")
+	_loadout_vbox.add_child(_embed_button)
+
+
+func _update_embed_button(has_carried_gem: bool) -> void:
+	if _embed_button == null:
+		return
+	_embed_button.visible = has_carried_gem
+	_embed_button.disabled = not has_carried_gem or RunPlayerGemService.embed_options(RunService.get_run()).is_empty()
+	_embed_button.tooltip_text = _t("shop.loadout.no_slot") if has_carried_gem and _embed_button.disabled else ""
+	BattleUiTheme.apply_button(_embed_button, "end")
+
+
+func _on_embed_pressed() -> void:
+	_show_gem_embed_choice()
+
+
+func _embed_options() -> Array[Dictionary]:
+	return RunPlayerGemService.embed_options(RunService.get_run())
+
+
+func _show_gem_embed_choice() -> bool:
+	var options := _embed_options()
+	if options.is_empty():
+		return false
+	if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+		_gem_embed_overlay.configure(options)
+		return true
+	_gem_embed_overlay = RunGemEmbedDialog.new()
+	_gem_embed_overlay.embed_requested.connect(_on_gem_embed_slot_pressed)
+	_gem_embed_overlay.postponed.connect(_close_gem_embed_overlay)
+	add_child(_gem_embed_overlay)
+	_gem_embed_overlay.configure(options)
+	return true
+
+
+func _on_gem_embed_slot_pressed(slot_index: int, force_overload: bool = false) -> void:
+	var result := RunPlayerGemService.embed_carried_gem(RunService.get_run(), slot_index, force_overload)
+	if not bool(result.get("ok", false)):
+		_feedback_label.text = _t("gem_embed.unavailable")
+		if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+			_gem_embed_overlay.unlock_after_failure()
+		return
+	RunService.save_run(false)
+	_close_gem_embed_overlay()
+	_feedback_label.text = _t("shop.feedback.embedded")
+	_feedback_label.add_theme_color_override("font_color", UiPalette.HP_HIGH)
+	_refresh_shop_view()
+
+
+func _close_gem_embed_overlay() -> void:
+	if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
+		_gem_embed_overlay.dismiss()
+	_gem_embed_overlay = null
+
+
+func _refresh_shop_view() -> void:
+	_render_shop_view(ShopService.get_shop_view(_room_id))
 
 
 func _create_offer_card(offer: Dictionary) -> PanelContainer:
@@ -360,6 +436,8 @@ func _on_purchase_pressed(offer: Dictionary, card: PanelContainer) -> void:
 	await _play_purchase_animation(card, price, before_gold, after_gold)
 	_purchase_in_progress = false
 	_render_shop_view(shop_view)
+	if str(offer.get("item_type", "gem")) == "gem":
+		_show_gem_embed_choice()
 
 
 func _play_purchase_animation(card: Control, price: int, before_gold: int, after_gold: int) -> void:
@@ -544,6 +622,9 @@ func _set_offer_buttons_disabled(disabled: bool) -> void:
 				BattleUiTheme.apply_button(button as Button, "end")
 	_detail_buy_button.disabled = disabled
 	BattleUiTheme.apply_button(_detail_buy_button, "end")
+	if _embed_button != null:
+		_embed_button.disabled = disabled or RunPlayerGemService.embed_options(RunService.get_run()).is_empty()
+		BattleUiTheme.apply_button(_embed_button, "end")
 
 
 func _set_balance_value(value: int) -> void:

@@ -199,8 +199,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 				return [] as Array[Dictionary]
 			var arc_base := CombatRules.attack_damage(state, unit)
 			var arc_events := _enemy_red_damage_events(state, unit, intent.target_uid, arc_base, "arc_attack")
-			if arc_target.alive:
-				GemEffects.apply_arc_bounce_from_victim(state, arc_target, unit, arc_base, arc_events)
+			GemEffects.apply_arc_bounce_from_anchor(state, arc_target, unit, arc_events)
 			return arc_events
 		"split_attack":
 			var split_target: UnitState = state.units.get(intent.target_uid, null)

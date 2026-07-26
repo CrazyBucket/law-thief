@@ -46,7 +46,7 @@ func _run_tests() -> void:
 		assert(icon != null and icon.texture != null, "every item card should show an icon")
 		assert(button != null and button.icon != null, "every item card should show a coin icon beside its price")
 		assert(button.text.is_valid_int(), "available item cards should keep the numeric price visible")
-		if purchasable_button == null and not button.disabled:
+		if purchasable_button == null and str(child.get_meta("item_type", "")) == "gem" and not button.disabled:
 			purchasable_card = child as PanelContainer
 			purchasable_button = button
 	assert(relic_seen, "unified shelf should include relic offers")
@@ -64,8 +64,50 @@ func _run_tests() -> void:
 		if offer is Dictionary and str(offer.get("offer_id", "")) == offer_id:
 			sold_out = bool(offer.get("sold_out", false))
 	assert(sold_out, "animated purchase should leave the purchased offer sold out")
+	var embed_overlay: CanvasLayer = shop.get("_gem_embed_overlay") as CanvasLayer
+	assert(embed_overlay != null and is_instance_valid(embed_overlay), "buying a gem should immediately offer an out-of-battle embed")
+	shop.call("_show_gem_embed_choice")
+	assert(shop.get("_gem_embed_overlay") == embed_overlay, "repeated shop refresh should reuse the active embed dialog")
+	shop.call("_on_gem_embed_slot_pressed", 0)
+	await process_frame
+	assert(run_service.get_run().carried_gem.is_empty(), "shop embed should clear the carried gem")
+	var first_slot: Dictionary = run_service.get_run().player_slot_gems[0]
+	assert(not str(first_slot.get("gem_id", "")).is_empty(), "shop embed should persist the gem in the selected player slot")
 
 	shop.queue_free()
+	await process_frame
+	await _test_carried_gem_does_not_auto_open(adventure_service, run_service)
 	run_service.end_run()
 	print("SHOP_SCENE_UI_TEST_PASS")
 	quit()
+
+
+func _test_carried_gem_does_not_auto_open(adventure_service: Node, run_service: Node) -> void:
+	adventure_service.start_new_run(20260726)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "SHOP"
+	var map_node = adventure_service.get_current_node()
+	assert(map_node != null, "shop popup regression test needs a current map node")
+	map_node.room_type = "SHOP"
+	assert(run_service.acquire_gem("gem_explosion").get("ok", false), "shop popup fixture should carry a gem")
+	var packed := load("res://scenes/adventure/shop_scene.tscn") as PackedScene
+	var shop := packed.instantiate()
+	root.add_child(shop)
+	await process_frame
+	assert(shop.get("_gem_embed_overlay") == null, "entering a shop with a carried gem should not auto-open the dialog again")
+	var embed_button := shop.get("_embed_button") as Button
+	assert(embed_button != null and embed_button.visible and not embed_button.disabled, "carried gem should keep one manual embed entry point")
+	embed_button.emit_signal("pressed")
+	await process_frame
+	var first_overlay: CanvasLayer = shop.get("_gem_embed_overlay") as CanvasLayer
+	assert(first_overlay != null, "manual embed entry point should open the shared dialog")
+	shop.call("_show_gem_embed_choice")
+	assert(shop.get("_gem_embed_overlay") == first_overlay, "manual repeated open should keep a single dialog instance")
+	var postpone := first_overlay.find_child("PostponeButton", true, false) as Button
+	assert(postpone != null, "shared embed dialog should provide the postpone action")
+	postpone.emit_signal("pressed")
+	await process_frame
+	shop.call("_refresh_shop_view")
+	assert(shop.get("_gem_embed_overlay") == null, "postponing should survive shop refresh without reopening the dialog")
+	shop.queue_free()
+	await process_frame

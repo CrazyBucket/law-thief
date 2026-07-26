@@ -62,6 +62,7 @@ const ENCOUNTER_FIELDS := {
 	"random_enemies": true,
 	"tiles": true,
 	"entities": true,
+	"boss_gem_field": true,
 }
 
 const ENCOUNTER_SLOT_TYPES := ["red", "blue", "black"]
