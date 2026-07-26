@@ -401,7 +401,7 @@ func _cached_attack_target_cells(state: GameState, player: UnitState, unlimited:
 func _gem_target_cells(ctrl, state: GameState, player: UnitState) -> Array:
 	var cells: Array = []
 	for unit in state.units.values():
-		var is_extractable_corpse: bool = not unit.alive and ctrl.selected_action == Constants.ACTION_EXTRACT and state.unit_has_slotted_gems(unit)
+		var is_extractable_corpse: bool = ctrl.selected_action == Constants.ACTION_EXTRACT and state.is_player_split_corpse(unit)
 		if not unit.alive and not is_extractable_corpse:
 			continue
 		if not _unit_has_gem_slot_target(ctrl, state, player, unit):

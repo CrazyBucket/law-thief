@@ -64,14 +64,15 @@ static func execute_black_suicide(state: GameState, unit: UnitState) -> Array[Di
 	var events: Array[Dictionary] = []
 	if not unit.alive:
 		return events
+	# The rat's ability triggers while it still occupies the adjacent cell. Its
+	# following death must still run normal cleanup and gem-drop settlement.
 	GemEffects.trigger_black_death_effects(state, unit, events)
-	var black := unit.get_slot(Constants.SLOT_BLACK)
-	if black != null and not black.gem_uid.is_empty():
-		_GemTransfer.remove(state, black.gem_uid)
 	StatusRules.clear_bomb_rat_plunder(unit)
 	if unit.hp > 0:
 		var tx := _CombatTransaction.begin(state, events)
-		tx.damage_unit(unit, unit.hp, unit.uid, "black_suicide")
+		tx.damage_unit(unit, unit.hp, unit.uid, "black_suicide", {
+			"damage_context": {"black_death_already_triggered": true},
+		})
 		tx.finish("BombRatRules.execute_black_suicide")
 	return events
 

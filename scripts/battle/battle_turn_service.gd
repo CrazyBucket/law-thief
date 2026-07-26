@@ -211,7 +211,10 @@ func check_battle_end() -> void:
 		ctrl.battle_ended.emit("lose")
 		return
 	if ctrl.state.get_alive_enemies().is_empty():
-		_merge_split_clones_on_win(ctrl)
+		if not _merge_split_clones_on_win(ctrl):
+			ctrl.state.log("战斗结算：分裂回归未完成，暂不结束战斗以避免丢失宝石")
+			ctrl._emit_changed()
+			return
 		ctrl.state.phase = Constants.PHASE_ENDED
 		ctrl.state.result = "win"
 		ctrl.state.log("战斗胜利")
@@ -262,17 +265,19 @@ func _try_inherit_split_clone(ctrl) -> bool:
 	return true
 
 
-func _merge_split_clones_on_win(ctrl) -> void:
+func _merge_split_clones_on_win(ctrl) -> bool:
 	var player: UnitState = ctrl.state.get_player()
 	if player == null or not player.has_tag(Constants.TAG_UNIT_SPLIT_CLONE):
-		return
+		return true
 	var origin_uid: String = player.split_origin_uid
 	var origin: UnitState = ctrl.state.units.get(origin_uid, null)
 	if origin == null:
-		return
+		push_error("BattleTurnService: missing split origin %s" % origin_uid)
+		return false
 	var living_clones: Array[UnitState] = ctrl.state.get_alive_split_clones(origin_uid)
 	if living_clones.is_empty():
-		return
+		push_error("BattleTurnService: split origin %s has no living clones to merge" % origin_uid)
+		return false
 	var all_clones: Array[UnitState] = ctrl.state.get_split_clones(origin_uid)
 	var total_hp := 0
 	for clone in living_clones:
@@ -281,7 +286,7 @@ func _merge_split_clones_on_win(ctrl) -> void:
 	# 死亡分身作为尸体保留槽内宝石；胜利合并时与存活分身一起回收到原体。
 	if not _return_split_clone_gems(ctrl.state, origin, all_clones):
 		ctrl.state.log("战斗结算：分身宝石回归失败，保留分身以避免丢失")
-		return
+		return false
 	for clone in all_clones:
 		ctrl.state.unregister_unit(clone)
 	origin.alive = true
@@ -292,12 +297,15 @@ func _merge_split_clones_on_win(ctrl) -> void:
 	ctrl.state.controllable_queue.clear()
 	ctrl.selected_unit_uid = origin.uid
 	ctrl.state.rebuild_occupancy()
+	OverloadRules.sync_active_mutations_to_overload_slots(ctrl.state, true)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("战斗结算：分身合并回归原体 HP=%d" % origin.hp)
+	return true
 
 
 func _return_split_clone_gems(state: GameState, origin: UnitState, clones: Array[UnitState]) -> bool:
 	var reserved_slots: Dictionary = {}
+	var candidates: Array[Dictionary] = []
 	var transfers: Array[Dictionary] = []
 	for clone in clones:
 		for source_slot: SlotState in clone.slots:
@@ -307,19 +315,51 @@ func _return_split_clone_gems(state: GameState, origin: UnitState, clones: Array
 			if gem == null:
 				push_error("BattleTurnService: split clone references missing gem %s" % source_slot.gem_uid)
 				return false
-			var target_slot := _find_split_origin_slot(state, origin, source_slot, gem.uid, reserved_slots)
-			if target_slot == null:
-				push_error("BattleTurnService: no origin slot for split gem %s" % gem.uid)
-				return false
-			var target_index := origin.slots.find(target_slot)
-			reserved_slots[target_index] = true
-			transfers.append({"gem": gem, "slot": target_slot})
+			candidates.append({
+				"gem": gem,
+				"source_slot": source_slot,
+				"recorded_index": int(state.battle_temp_flags.get(
+					GemEffects.split_origin_slot_key(gem.uid),
+					-1
+				)),
+			})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_index := int(a.get("recorded_index", -1))
+		var b_index := int(b.get("recorded_index", -1))
+		if (a_index >= 0) != (b_index >= 0):
+			return a_index >= 0
+		if a_index != b_index:
+			return a_index < b_index
+		return (a["gem"] as GemState).uid < (b["gem"] as GemState).uid
+	)
+	for candidate: Dictionary in candidates:
+		var gem: GemState = candidate["gem"]
+		var source_slot: SlotState = candidate["source_slot"]
+		var target_slot := _find_split_origin_slot(state, origin, source_slot, gem.uid, reserved_slots)
+		if target_slot == null:
+			target_slot = _append_split_merge_overload_slot(origin, source_slot)
+		var target_index := origin.slots.find(target_slot)
+		reserved_slots[target_index] = true
+		transfers.append({"gem": gem, "slot": target_slot})
 	for transfer in transfers:
 		if not GemTransfer.to_unit_slot(state, transfer["gem"], origin, transfer["slot"]):
 			push_error("BattleTurnService: failed to return split gem %s" % transfer["gem"].uid)
 			return false
 		state.battle_temp_flags.erase(GemEffects.split_origin_slot_key(transfer["gem"].uid))
 	return true
+
+
+func _append_split_merge_overload_slot(origin: UnitState, source_slot: SlotState) -> SlotState:
+	var target := SlotState.create(
+		source_slot.slot_type,
+		"",
+		false,
+		Constants.LOCK_OVERLOAD_SLOT
+	)
+	target.dual_type = source_slot.dual_type
+	target.overload_slot = true
+	origin.slots.append(target)
+	return target
 
 
 func _find_split_origin_slot(

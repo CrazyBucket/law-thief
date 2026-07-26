@@ -284,11 +284,11 @@ func get_unit_at(pos: Vector2i) -> UnitState:
 	return null
 
 
-## 尸体不占格，但保留槽位和宝石供拔取/战后回收。活单位始终由 get_unit_at 优先。
+## 只有玩家分裂体死亡后保留宝石尸体；普通敌人仍走落地掉落。
 func get_corpse_at(pos: Vector2i) -> UnitState:
 	var corpses: Array[UnitState] = []
 	for unit: UnitState in units.values():
-		if unit.alive or not unit_has_slotted_gems(unit):
+		if not is_player_split_corpse(unit):
 			continue
 		for cell in unit.occupied_cells():
 			if cell == pos:
@@ -296,6 +296,14 @@ func get_corpse_at(pos: Vector2i) -> UnitState:
 				break
 	corpses.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
 	return corpses[0] if not corpses.is_empty() else null
+
+
+func is_player_split_corpse(unit: UnitState) -> bool:
+	return unit != null \
+		and not unit.alive \
+		and unit.team == Constants.TEAM_PLAYER \
+		and unit.has_tag(Constants.TAG_UNIT_SPLIT_CLONE) \
+		and unit_has_slotted_gems(unit)
 
 
 func unit_has_slotted_gems(unit: UnitState) -> bool:

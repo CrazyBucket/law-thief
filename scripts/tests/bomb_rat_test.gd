@@ -52,15 +52,26 @@ func _test_suicide_when_adjacent() -> void:
 	var state := controller.state
 	var rat := _find_rat(state)
 	var player := state.get_player()
-	_force_gem(state, rat, Constants.SLOT_BLACK, Constants.GEM_EXPLOSION)
+	var suicide_gem_uid := _force_gem(state, rat, Constants.SLOT_BLACK, Constants.GEM_EXPLOSION)
 	state.move_unit(rat, player.pos + Vector2i(1, 0))
 	IntentSystem.refresh_unit_intent(state, rat)
 	assert(rat.intent.type == "black_suicide", "adjacent rat should suicide, got %s" % rat.intent.type)
 	var hp_before := player.hp
-	IntentSystem.execute_intent(state, rat)
+	var events := IntentSystem.execute_intent(state, rat)
 	assert(not rat.alive, "rat should die after suicide")
 	assert(player.hp < hp_before, "player should suffer black death explosion")
-	print("  [OK] black suicide kills rat and hits player")
+	assert(state.gems.has(suicide_gem_uid), "self-destruct must not delete the black-slot gem")
+	assert(state.dropped_gems.has(suicide_gem_uid), "self-destruct gem should drop at the death cell")
+	assert(
+		state.dropped_gems[suicide_gem_uid].get("pos", Vector2i.ZERO) == rat.pos,
+		"self-destruct gem should keep the bomb rat death position"
+	)
+	assert(rat.get_slot(Constants.SLOT_BLACK).gem_uid.is_empty(), "dropped gem should leave the dead rat slot")
+	assert(
+		events.filter(func(event: Dictionary) -> bool: return event.get("type", "") == "explode").size() == 1,
+		"self-destruct black effect should trigger exactly once"
+	)
+	print("  [OK] black suicide kills rat, hits player, and drops its gem")
 
 
 func _test_chase_suicide_presentation_order() -> void:

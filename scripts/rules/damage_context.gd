@@ -81,7 +81,12 @@ static func normalize(source_uid: String, reason: String, context: Dictionary = 
 		context.get("gem_tag_context", {}),
 		bool(context.get("active_attack", false))
 	)
-	for field_id in ["attack_event_id", "attack_segment_index", "attack_segment_count"]:
+	for field_id in [
+		"attack_event_id",
+		"attack_segment_index",
+		"attack_segment_count",
+		"black_death_already_triggered",
+	]:
 		if context.has(field_id):
 			result[field_id] = context[field_id]
 	return result

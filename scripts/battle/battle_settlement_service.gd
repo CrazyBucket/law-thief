@@ -4,8 +4,6 @@ extends RefCounted
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const _GemRules = preload("res://scripts/rules/gem_rules.gd")
 const _OverloadRules = preload("res://scripts/rules/overload_rules.gd")
-const _GemLocation = preload("res://scripts/data/gem_location.gd")
-const _UnitRewardRules = preload("res://scripts/rules/unit_reward_rules.gd")
 
 const DROPPED_GEM_REWARD_HANDLED := "dropped_gem_reward_handled"
 
@@ -30,30 +28,7 @@ static func dropped_gem_offer(state: GameState) -> Array[Dictionary]:
 			"pos": drop.get("pos", Vector2i.ZERO),
 			"source_unit_uid": str(drop.get("source_unit_uid", "")),
 			"source_slot_type": str(drop.get("source_slot_type", "")),
-			"source_kind": _GemLocation.GROUND,
 		})
-	var units: Array = state.units.values()
-	units.sort_custom(func(a: UnitState, b: UnitState) -> bool: return a.uid < b.uid)
-	for unit: UnitState in units:
-		if unit.alive or not _UnitRewardRules.can_drop_gems(unit):
-			continue
-		for slot_index in range(unit.slots.size()):
-			var slot: SlotState = unit.slots[slot_index]
-			if slot == null or slot.gem_uid.is_empty() or state.dropped_gems.has(slot.gem_uid):
-				continue
-			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			if gem == null:
-				continue
-			offer.append({
-				"gem_uid": gem.uid,
-				"gem_id": gem.gem_id,
-				"def_overrides": gem.def_overrides.duplicate(true),
-				"pos": unit.pos,
-				"source_unit_uid": unit.uid,
-				"source_slot_type": slot.slot_type,
-				"source_slot_index": slot_index,
-				"source_kind": _GemLocation.UNIT_SLOT,
-			})
 	return offer
 
 
@@ -73,17 +48,10 @@ static func embed_dropped_gem(state: GameState, gem_uid: String, slot_index: int
 	if slot == null:
 		return _failure("槽位不存在。")
 	var gem: GemState = state.gems.get(gem_uid, null)
-	var reward_entry := _find_reward_entry(state, gem_uid)
-	if gem == null or reward_entry.is_empty():
+	if gem == null or not state.dropped_gems.has(gem_uid):
 		return _failure("掉落宝石不存在。")
 
-	var source_snapshot := {
-		"kind": gem.location.kind,
-		"owner_uid": gem.location.owner_uid,
-		"slot_index": gem.location.slot_index,
-		"pos": reward_entry.get("pos", player.pos),
-		"drop": state.dropped_gems.get(gem_uid, {}).duplicate(true),
-	}
+	var drop: Dictionary = state.dropped_gems.get(gem_uid, {}).duplicate(true)
 	var previous_held: GemState = state.gems.get(state.held_gem_uid, null)
 	if previous_held != null:
 		_GemTransfer.detach(state, previous_held)
@@ -91,16 +59,14 @@ static func embed_dropped_gem(state: GameState, gem_uid: String, slot_index: int
 		_restore_hand(state, previous_held, player.uid)
 		return _failure("无法持有掉落宝石。")
 
-	var insert_result := _GemRules.insert(state, player, player, slot)
+	var insert_check := _GemRules.can_insert(state, player, player, slot)
+	var force_overload := bool(insert_check.get("ok", false)) \
+		and bool(insert_check.get("requires_overload", false))
+	var insert_result := _GemRules.insert(state, player, player, slot, force_overload)
 	if not bool(insert_result.get("ok", false)):
-		_restore_reward_source(state, gem, source_snapshot, player.pos)
+		_GemTransfer.to_ground(state, gem, drop.get("pos", player.pos), drop)
 		_restore_hand(state, previous_held, player.uid)
 		return _failure(str(insert_result.get("reason", "未知错误")))
-	if bool(insert_result.get("overload_armed", false)):
-		_restore_reward_source(state, gem, source_snapshot, player.pos)
-		_restore_hand(state, previous_held, player.uid)
-		_OverloadRules.record_insert(state, false)
-		return _failure("再次选择该槽位可触发过载")
 	_restore_hand(state, previous_held, player.uid, gem_uid)
 	if bool(insert_result.get("overload_forced", false)):
 		_OverloadRules.sync_active_mutations_to_overload_slots(state, true)
@@ -115,29 +81,6 @@ static func embed_dropped_gem(state: GameState, gem_uid: String, slot_index: int
 		"slot_index": slot_index,
 		"overload_forced": bool(insert_result.get("overload_forced", false)),
 	}
-
-
-static func _find_reward_entry(state: GameState, gem_uid: String) -> Dictionary:
-	for entry: Dictionary in dropped_gem_offer(state):
-		if str(entry.get("gem_uid", "")) == gem_uid:
-			return entry
-	return {}
-
-
-static func _restore_reward_source(
-	state: GameState,
-	gem: GemState,
-	source: Dictionary,
-	fallback_pos: Vector2i
-) -> void:
-	if str(source.get("kind", "")) == _GemLocation.UNIT_SLOT:
-		var unit: UnitState = state.units.get(str(source.get("owner_uid", "")), null)
-		var slot := unit.get_slot_by_index(int(source.get("slot_index", -1))) if unit != null else null
-		if slot != null and slot.gem_uid.is_empty() and _GemTransfer.to_unit_slot(state, gem, unit, slot):
-			return
-	var drop: Dictionary = source.get("drop", {})
-	_GemTransfer.to_ground(state, gem, source.get("pos", fallback_pos), drop)
-
 
 static func skip_dropped_gem_reward(state: GameState) -> void:
 	if state != null:

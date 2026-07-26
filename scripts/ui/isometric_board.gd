@@ -1031,7 +1031,7 @@ func pick_unit_slot(screen_pos: Vector2) -> Dictionary:
 	for unit: UnitState in state.units.values():
 		if unit == null or unit.slots.is_empty():
 			continue
-		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.unit_has_slotted_gems(unit)):
+		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.is_player_split_corpse(unit)):
 			continue
 		if not _unit_slot_panel_in_range(unit):
 			continue
@@ -1948,7 +1948,7 @@ func _draw_unit_slot_panels() -> void:
 	for unit: UnitState in state.units.values():
 		if unit == null or unit.slots.is_empty():
 			continue
-		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.unit_has_slotted_gems(unit)):
+		if not unit.alive and (slot_panel_action != Constants.ACTION_EXTRACT or not state.is_player_split_corpse(unit)):
 			continue
 		if not _unit_slot_panel_in_range(unit):
 			continue

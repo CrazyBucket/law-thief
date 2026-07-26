@@ -8,7 +8,6 @@ const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const SlimeSprites = preload("res://scripts/ui/slime_sprites.gd")
 const ColoredSlimeRules = preload("res://scripts/rules/colored_slime_rules.gd")
 const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
-const BattleSettlementService = preload("res://scripts/battle/battle_settlement_service.gd")
 
 
 func _initialize() -> void:
@@ -25,6 +24,7 @@ func _run_test() -> void:
 	_test_colored_children_are_distinct_units()
 	_test_split_clones_retain_slots_and_partition_gems()
 	_test_player_split_merge_preserves_gems_across_battles()
+	_test_split_merge_preserves_new_conflicting_gem()
 	_test_split_gem_rewards_once_after_both_clones_die()
 	_test_black_split_level_ratios()
 	_test_slam_pushes_adjacent_target()
@@ -400,6 +400,63 @@ func _test_player_split_merge_preserves_gems_across_battles() -> void:
 	print("  [OK] player split merge preserves max hp and gems across repeated battles")
 
 
+func _test_split_merge_preserves_new_conflicting_gem() -> void:
+	var run_service: Node = Engine.get_main_loop().root.get_node("RunService")
+	run_service.start_run(819, 820)
+	var controller := BattleController.new()
+	controller.start_encounter("fission_slime_test", 819)
+	var state := controller.state
+	var origin := state.get_player()
+	var origin_uid := origin.uid
+	var original_slot_count := origin.slots.size()
+	_mount_gem(state, origin, Constants.SLOT_RED, Constants.GEM_FIRE)
+	_mount_gem(state, origin, Constants.SLOT_BLACK, Constants.GEM_SPLIT)
+	var killer := _find_slime(state)
+	CombatRules.apply_true_damage(state, origin, origin.hp, killer.uid, "test_split_merge_conflict")
+	controller._check_battle_end()
+	var clones := state.get_alive_split_clones(origin_uid)
+	assert(clones.size() == 2, "conflict fixture should create two player split clones")
+	var empty_red_clone: UnitState = null
+	for clone: UnitState in clones:
+		var red := clone.get_slot(Constants.SLOT_RED)
+		if red != null and red.gem_uid.is_empty():
+			empty_red_clone = clone
+			break
+	assert(empty_red_clone != null, "one clone should expose the mirrored empty red slot")
+	_mount_gem(state, empty_red_clone, Constants.SLOT_RED, Constants.GEM_EXPLOSION)
+	for enemy: UnitState in state.get_alive_enemies().duplicate():
+		state.kill_unit(enemy)
+	controller._check_battle_end()
+	var merged := state.get_player()
+	assert(merged.uid == origin_uid, "slot conflict must not abort split return")
+	assert(merged.slots.size() == original_slot_count + 1, "conflicting new gem should append one overload slot")
+	var merged_gem_ids: Array[String] = []
+	for slot: SlotState in merged.slots:
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			merged_gem_ids.append(gem.gem_id)
+	assert(Constants.GEM_FIRE in merged_gem_ids, "original red gem must survive conflict merge")
+	assert(Constants.GEM_SPLIT in merged_gem_ids, "split gem must survive conflict merge")
+	assert(Constants.GEM_EXPLOSION in merged_gem_ids, "new clone gem must survive conflict merge")
+	assert(merged.slots[-1].is_overload_slot(), "conflicting new gem should return through an overload slot")
+	assert(BattleInvariantChecker.assert_valid(state, "fission_slime.merge_conflicting_gem"))
+	run_service.capture_player_battle_state(state)
+	var restored_controller := BattleController.new()
+	restored_controller.start_encounter("fission_slime_test", 821)
+	var restored := restored_controller.state.get_player()
+	var restored_gem_ids: Array[String] = []
+	for slot: SlotState in restored.slots:
+		var gem: GemState = restored_controller.state.gems.get(slot.gem_uid, null)
+		if gem != null:
+			restored_gem_ids.append(gem.gem_id)
+	assert(Constants.GEM_FIRE in restored_gem_ids)
+	assert(Constants.GEM_SPLIT in restored_gem_ids)
+	assert(Constants.GEM_EXPLOSION in restored_gem_ids)
+	assert(restored.slots.size() == original_slot_count + 1 and restored.slots[-1].is_overload_slot())
+	run_service.end_run()
+	print("  [OK] split return and next battle preserve conflicting new gems without loss")
+
+
 func _assert_player_gem_ids(player: UnitState, state: GameState, expected: Array[String], label: String) -> void:
 	assert(player.slots.size() == expected.size(), "%s should preserve slot count" % label)
 	for i in range(expected.size()):
@@ -449,16 +506,16 @@ func _test_split_gem_rewards_once_after_both_clones_die() -> void:
 	for clone in clones:
 		CombatRules.apply_true_damage(state, clone, clone.hp, state.player_uid, "test")
 	state.unbind_combat_events()
-	var split_offer_count := 0
-	for offer: Dictionary in BattleSettlementService.dropped_gem_offer(state):
-		var gem: GemState = state.gems.get(str(offer.get("gem_uid", "")), null)
+	var split_drop_count := 0
+	for raw_drop in state.dropped_gems.values():
+		var drop: Dictionary = raw_drop
+		var gem: GemState = state.gems.get(str(drop.get("gem_uid", "")), null)
 		if gem != null and gem.gem_id == Constants.GEM_SPLIT:
-			split_offer_count += 1
-	assert(split_offer_count == 1, "both split clone corpses should settle only one original split gem reward")
-	assert(state.dropped_gems.is_empty(), "split gem should remain on its corpse instead of becoming a ground drop")
+			split_drop_count += 1
+	assert(split_drop_count == 1, "both enemy split clone deaths should yield one original split gem reward")
 	assert(EventValidator.assert_valid(events, "fission_slime.split_reward_once"))
 	assert(BattleInvariantChecker.assert_valid(state, "fission_slime.split_reward_once"))
-	print("  [OK] both clone deaths retain one split gem reward on a corpse")
+	print("  [OK] both enemy clone deaths yield one split gem reward")
 
 
 func _test_black_split_level_ratios() -> void:

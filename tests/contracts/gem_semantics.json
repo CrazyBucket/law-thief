@@ -220,8 +220,24 @@
       }
     },
     {
+      "id": "conductive/red/1_single_target_guaranteed_arc",
+      "covers": ["gem_conductive:red:1", "implementation:conductive:red:single_target_guarantee"],
+      "gems": ["gem_conductive"],
+      "player_pos": [0, 1],
+      "target_pos": [3, 1],
+      "target_stats": {"hp": 20, "max_hp": 20},
+	  "extra_units": [
+		{"uid": "arc_outside_range", "pos": [6, 1]}
+	  ],
+      "expect": {
+        "damage": 12,
+        "unit_damages": {"contract_target": 12, "arc_outside_range": 0},
+        "event_counts": {"arc": 1}
+      }
+    },
+    {
       "id": "conductive/red/2_extra_hop",
-      "covers": ["gem_conductive:red:2"],
+      "covers": ["gem_conductive:red:2", "implementation:conductive:red:per_hop_rehit"],
       "gems": ["gem_conductive", "gem_conductive"],
       "player_pos": [0, 1],
       "target_pos": [3, 1],
@@ -230,9 +246,9 @@
         {"uid": "arc_chain", "pos": [7, 1]}
       ],
       "expect": {
-        "damage": 10,
-        "unit_damages": {"contract_target": 10, "arc_near": 2, "arc_chain": 2},
-        "event_counts": {"arc": 2}
+        "damage": 12,
+        "unit_damages": {"contract_target": 12, "arc_near": 2, "arc_chain": 2},
+        "event_counts": {"arc": 3}
       }
     },
     {
@@ -262,9 +278,9 @@
         {"uid": "arc_third_hop", "pos": [4, 7]}
       ],
       "expect": {
-        "damage": 10,
-		"unit_damages": {"contract_target": 10, "arc_first_hop": 2, "arc_second_hop": 2, "arc_third_hop": 2},
-		"event_counts": {"arc": 3}
+		"damage": 12,
+		"unit_damages": {"contract_target": 12, "arc_first_hop": 4, "arc_second_hop": 2, "arc_third_hop": 2},
+		"event_counts": {"arc": 5}
 	  }
 	},
 	{
@@ -280,9 +296,9 @@
         {"uid": "arc_fourth_hop", "pos": [1, 7]}
 	  ],
 	  "expect": {
-		"damage": 10,
-		"unit_damages": {"contract_target": 10, "arc_first_hop": 2, "arc_second_hop": 2, "arc_third_hop": 2, "arc_fourth_hop": 2},
-		"event_counts": {"arc": 4}
+		"damage": 14,
+		"unit_damages": {"contract_target": 14, "arc_first_hop": 4, "arc_second_hop": 4, "arc_third_hop": 2, "arc_fourth_hop": 2},
+		"event_counts": {"arc": 8}
       }
     },
     {

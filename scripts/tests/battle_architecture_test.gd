@@ -39,8 +39,16 @@ func _test_settlement_service_owns_gem_mutation() -> void:
 	assert(state.held_gem_uid == held.uid, "pre-settlement hand gem should be restored")
 	assert(not state.dropped_gems.has(dropped.uid))
 	assert(not _Settlement.has_pending_dropped_gem_reward(state))
+	var overload_drop := _new_gem(state, Constants.GEM_EXPLOSION, "settlement_overload_drop")
+	assert(_GemTransfer.to_ground(state, overload_drop, Vector2i(4, 4)))
+	var original_slot_count := player.slots.size()
+	var overload_result := _Settlement.embed_dropped_gem(state, overload_drop.uid, slot_index)
+	assert(bool(overload_result.get("ok", false)), str(overload_result))
+	assert(bool(overload_result.get("overload_forced", false)), "occupied reward slot should overload in one selection")
+	assert(player.slots.size() == original_slot_count + 1, "reward overload should append one slot")
+	assert(player.slots[-1].gem_uid == overload_drop.uid and player.slots[-1].is_overload_slot())
 	_assert_valid(state, [], "settlement_service")
-	print("  [OK] settlement service owns dropped gem mutation")
+	print("  [OK] settlement service embeds empty and occupied reward slots in one selection")
 
 
 func _test_spawn_provenance_and_reward_eligibility() -> void:
@@ -75,12 +83,7 @@ func _test_spawn_provenance_and_reward_eligibility() -> void:
 	var reward_tx := _CombatTransaction.begin(state, reward_events)
 	assert(reward_tx.kill_unit(reward_unit, state.player_uid, "architecture_test"))
 	reward_tx.finish("battle_architecture.reward")
-	assert(reward_unit.get_slot(Constants.SLOT_RED).gem_uid == reward_gem.uid)
-	assert(
-		_Settlement.dropped_gem_offer(state).any(
-			func(entry: Dictionary) -> bool: return str(entry.get("gem_uid", "")) == reward_gem.uid
-		)
-	)
+	assert(state.dropped_gems.has(reward_gem.uid))
 	_assert_valid(state, no_reward_events, "spawn_no_reward")
 	_assert_valid(state, reward_events, "spawn_reward")
 	print("  [OK] spawn provenance is independent from reward eligibility")

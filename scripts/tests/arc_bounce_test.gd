@@ -14,8 +14,10 @@ func _run() -> void:
 	_test_arc_hits_all_enemies_in_range()
 	_test_arc_uses_defeated_victim_as_anchor()
 	_test_arc_skips_same_team()
+	_test_arc_single_target_guarantees_one_hit()
 	_test_arc_uses_base_attack_and_flat_relic_bonus()
 	_test_arc_level_two_adds_one_hop()
+	_test_arc_can_rehit_a_prior_hop_target()
 	_test_arc_level_three_adds_range_and_hop()
 	_test_arc_extra_gems_add_hops_after_level_three()
 	if _failed:
@@ -91,18 +93,35 @@ func _test_arc_skips_same_team() -> void:
 	var state := _battle_state()
 	var attacker := state.get_player()
 	var victim := _spawn_enemy(state, Vector2i(5, 3), "victim")
+	_spawn_enemy(state, Vector2i(7, 3), "near_enemy")
 	var ally := state.get_player()
 	ally.pos = Vector2i(6, 3)
 	var events: Array[Dictionary] = []
 	GemEffects.apply_arc_bounce_from_anchor(state, victim, attacker, events)
-	var arc_hits := 0
 	for ev in events:
-		if str(ev.get("type", "")) == "arc":
-			arc_hits += 1
-	if arc_hits != 0:
-		_fail("arc should not hit same team, got %d" % arc_hits)
-		return
+		if str(ev.get("type", "")) == "arc" and ev.get("target_uid", "") == ally.uid:
+			_fail("arc should not hit same team")
+			return
 	print("  [OK] arc skips allies")
+
+
+func _test_arc_single_target_guarantees_one_hit() -> void:
+	var state := _battle_state()
+	var attacker := state.get_player()
+	var target := _spawn_enemy(state, Vector2i(5, 3), "single_target")
+	var outside_range := _spawn_enemy(state, Vector2i(8, 3), "outside_range")
+	var events: Array[Dictionary] = []
+	GemEffects.apply_arc_bounce_from_anchor(state, target, attacker, events)
+	if target.hp != target.max_hp - 2:
+		_fail("a lone enemy should receive one guaranteed arc hit")
+		return
+	if not events.any(func(event): return str(event.get("type", "")) == "arc" and event.get("from", Vector2i.ZERO) == attacker.pos and event.get("target_pos", Vector2i.ZERO) == target.pos):
+		_fail("the guaranteed arc should travel from the attacker to the lone enemy")
+		return
+	if outside_range.hp != outside_range.max_hp:
+		_fail("an enemy outside the initial bounce range must not cancel or receive the guaranteed arc")
+		return
+	print("  [OK] an isolated target receives one guaranteed arc hit")
 
 
 func _test_arc_uses_base_attack_and_flat_relic_bonus() -> void:
@@ -152,6 +171,31 @@ func _test_arc_level_two_adds_one_hop() -> void:
 		_fail("level 2 arc should add one chained hop")
 		return
 	print("  [OK] arc level 2 adds one hop")
+
+
+func _test_arc_can_rehit_a_prior_hop_target() -> void:
+	var state := _battle_state()
+	var attacker := state.get_player()
+	var anchor := _spawn_enemy(state, Vector2i(5, 3), "rehit_anchor")
+	var relay := _spawn_enemy(state, Vector2i(7, 3), "rehit_relay")
+	var events: Array[Dictionary] = []
+	GemEffects.apply_arc_bounce_from_anchor(
+		state,
+		anchor,
+		attacker,
+		events,
+		{"tag_levels": {"arc": 2}}
+	)
+	if relay.hp != relay.max_hp - 2:
+		_fail("the first hop should hit the relay")
+		return
+	if anchor.hp != anchor.max_hp - 2:
+		_fail("the second hop should be able to rehit the original anchor")
+		return
+	if not events.any(func(event): return str(event.get("type", "")) == "arc" and event.get("from", Vector2i.ZERO) == relay.pos and event.get("target_pos", Vector2i.ZERO) == anchor.pos):
+		_fail("the second hop should emit a relay-to-anchor arc")
+		return
+	print("  [OK] each hop may rehit targets from earlier hops")
 
 
 func _test_arc_level_three_adds_range_and_hop() -> void:

@@ -248,9 +248,9 @@ static func on_unit_death(
 	ctx: Dictionary = {}
 ) -> void:
 	_behavior_for(unit).on_unit_death(state, unit)
+	if bool(ctx.get("black_death_already_triggered", false)):
+		return
 	_run_death_hooks_with_events(state, unit, out_events, ctx)
-
-
 static func trigger_black_death_effects(
 	state: GameState,
 	unit: UnitState,
@@ -869,7 +869,7 @@ static func _run_unit_active_effect(state: GameState, owner: UnitState, _slot: S
 				apply_water_conduction(state, arc_anchor, owner, out_events, gem_ctx)
 			elif arc_target != null and arc_target.alive:
 				_arc_to(state, owner.pos, arc_target, owner.uid, _calc_arc_damage(owner, state), out_events, gem_ctx)
-				apply_arc_bounce_from_anchor(state, arc_target, owner, out_events, gem_ctx)
+				apply_arc_bounce_from_anchor(state, arc_target, owner, out_events, gem_ctx, false)
 			return true
 		"fire_gem":
 			var fire_pos := resolve_blast_center(owner.pos, ctx.get("target_pos", null))
@@ -1982,16 +1982,16 @@ static func _unit_in_water_conduction_zone(state: GameState, unit: UnitState, zo
 	return StatusRules.is_wet(unit)
 
 
-## 红槽 TAG_ARC：命中锚点 2 格内敌方各弹一次；锚点可在本次攻击中已经死亡。
+## 红槽 TAG_ARC：命中锚点范围内敌方各弹一次；范围内仅有锚点时保底命中一次。
 static func apply_arc_bounce_from_anchor(
 	state: GameState,
 	anchor: UnitState,
 	attacker: UnitState,
 	events: Array[Dictionary],
-	gem_ctx: Dictionary = {}
+	gem_ctx: Dictionary = {},
+	single_target_guarantee: bool = true
 ) -> void:
-	if anchor == null or attacker == null:
-		return
+	if anchor == null or attacker == null: return
 	var arc_damage := _calc_arc_damage(attacker, state)
 	var registry := _relic_effect_registry()
 	var arc_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "arc"))
@@ -2001,27 +2001,28 @@ static func apply_arc_bounce_from_anchor(
 	var arc_count := maxi(arc_level, int(tag_counts.get("arc", arc_level)))
 	# Lv3 已有三跳；超过三级的每颗导电继续额外提供一跳。
 	bounce_hops += maxi(0, arc_count - 3)
-	if registry != null:
-		bounce_hops += int(registry.query_modifier("arc_bounce_count_bonus", state))
+	if registry != null: bounce_hops += int(registry.query_modifier("arc_bounce_count_bonus", state))
 	var arc_range := int(level_def["range"])
-	var hit_uids: Dictionary = {anchor.uid: true, attacker.uid: true}
+	var opposing_in_range := state.units.values().filter(func(unit: UnitState): return unit.alive and unit.team != attacker.team and BoardUtils.chebyshev(anchor.pos, unit.pos) <= arc_range)
+	if single_target_guarantee and opposing_in_range.size() == 1 and opposing_in_range[0] == anchor:
+		_arc_to(state, attacker.pos, anchor, attacker.uid, arc_damage, events, gem_ctx)
+		return
 	var anchors: Array[UnitState] = [anchor]
 	var hop := 0
 	while hop < bounce_hops:
 		var next_anchors: Array[UnitState] = []
 		var hop_events: Array[Dictionary] = []
+		# 只在当前跳内去重，避免零距离自命中；前跳受击者可在后续跳中再次成为目标。
+		var hop_hit_uids: Dictionary = {}
 		for arc_origin in anchors:
 			for unit in state.units.values():
-				if not unit.alive:
-					continue
-				if hit_uids.has(unit.uid):
-					continue
-				if unit.team == attacker.team:
-					continue
-				if BoardUtils.chebyshev(arc_origin.pos, unit.pos) > arc_range:
-					continue
+				if not unit.alive: continue
+				if unit.uid == arc_origin.uid: continue
+				if hop_hit_uids.has(unit.uid): continue
+				if unit.team == attacker.team: continue
+				if BoardUtils.chebyshev(arc_origin.pos, unit.pos) > arc_range: continue
 				_arc_to(state, arc_origin.pos, unit, attacker.uid, arc_damage, hop_events, gem_ctx)
-				hit_uids[unit.uid] = true
+				hop_hit_uids[unit.uid] = true
 				next_anchors.append(unit)
 		# 同一跳的电弧并发出现，随后在统一命中点结算这一跳的伤害。
 		for event in hop_events:

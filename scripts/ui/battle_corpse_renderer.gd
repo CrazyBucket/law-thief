@@ -12,7 +12,7 @@ static func draw(
 		return
 	var corpses: Array[UnitState] = []
 	for unit: UnitState in state.units.values():
-		if not unit.alive and state.unit_has_slotted_gems(unit):
+		if state.is_player_split_corpse(unit):
 			corpses.append(unit)
 	corpses.sort_custom(_sort_corpse)
 	for unit in corpses:
