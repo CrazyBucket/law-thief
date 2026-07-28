@@ -620,6 +620,8 @@ func _test_status_config() -> void:
 	_expect(StatusConfig.default_duration("poison") == 2, "status config should load poison default duration")
 	_expect(StatusConfig.default_duration("rooted") == 2, "status config should load rooted default duration")
 	_expect(StatusConfig.default_duration("counter_mark") == 1, "status config should load counter mark duration")
+	_expect(StatusConfig.default_duration("frozen") == 1, "status config should load frozen duration")
+	_expect(abs(StatusConfig.float_value("frozen", "damage_taken_mult") - 1.25) < 0.001, "status config should load frozen damage multiplier")
 	_expect(abs(StatusConfig.float_value("vulnerable", "damage_taken_mult") - 1.5) < 0.001, "status config should load vulnerable damage multiplier")
 	_expect(abs(StatusConfig.float_value("weak", "attack_damage_mult") - 0.75) < 0.001, "status config should load weak attack multiplier")
 	_expect(StatusConfig.int_value("slowed", "min_move_points") == 1, "status config should load slowed min move points")
@@ -639,11 +641,13 @@ func _test_status_config() -> void:
 	incomplete["armor"].erase("default_duration")
 	incomplete["slowed"]["min_move_points"] = -1
 	incomplete["lawless"].erase("attack_bonus")
+	incomplete["frozen"].erase("damage_taken_mult")
 	var incomplete_errors := BalanceConfigValidator.validate_status_config(incomplete)
 	_expect(_contains_error(incomplete_errors, "status_config.rooted missing"), "status config validator should require every registered status")
 	_expect(_contains_error(incomplete_errors, "status_config.armor.default_duration missing"), "status config validator should require explicit default fields")
 	_expect(_contains_error(incomplete_errors, "status_config.slowed.min_move_points should be a non-negative integer"), "status config validator should reject negative movement floors")
 	_expect(_contains_error(incomplete_errors, "status_config.lawless.attack_bonus missing"), "status config should require the lawless attack bonus")
+	_expect(_contains_error(incomplete_errors, "status_config.frozen.damage_taken_mult missing"), "status config should require the frozen damage multiplier")
 	print("  [OK] status config")
 
 

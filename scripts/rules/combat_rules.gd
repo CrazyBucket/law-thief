@@ -11,6 +11,7 @@ const _UnitRewardRules = preload("res://scripts/rules/unit_reward_rules.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
+const _FrozenStatusRules = preload("res://scripts/rules/frozen_status_rules.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -57,6 +58,8 @@ static func apply_damage(
 	var final_amount := remaining
 	if StatusRules.is_vulnerable(unit):
 		final_amount = int(float(final_amount) * StatusConfig.float_value("vulnerable", "damage_taken_mult"))
+	if _FrozenStatusRules.is_frozen(unit):
+		final_amount = int(float(final_amount) * StatusConfig.float_value("frozen", "damage_taken_mult"))
 	final_amount = GemEffects.intercept_damage_for_split(
 		state,
 		unit,

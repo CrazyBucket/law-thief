@@ -6,6 +6,7 @@ const Builder = preload("res://scripts/testkit/scenario_builder.gd")
 const CombatRules = preload("res://scripts/rules/combat_rules.gd")
 const CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const DisplacementRules = preload("res://scripts/rules/displacement.gd")
+const StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const CONTRACT_PATH := "res://tests/contracts/gem_semantics.json"
 
 var _failed := false
@@ -155,6 +156,13 @@ func _run_case(contract: Dictionary) -> void:
 				continue
 			for status_id in expect["unit_status_absences"][unit_uid]:
 				_check(not unit.has_status(str(status_id)), label, "unit %s should not have status %s" % [unit_uid, status_id])
+	if expect.has("unit_flushable_status_kind_counts"):
+		for unit_uid in (expect["unit_flushable_status_kind_counts"] as Dictionary).keys():
+			var unit: UnitState = tracked_units.get(str(unit_uid), null)
+			_check(unit != null, label, "missing tracked unit %s" % unit_uid)
+			if unit != null:
+				var expected_count := int(expect["unit_flushable_status_kind_counts"][unit_uid])
+				_check(_flushable_status_kind_count(unit) == expected_count, label, "unit %s flushable status kinds expected=%d actual=%d" % [unit_uid, expected_count, _flushable_status_kind_count(unit)])
 	if expect.has("unit_effective_move_points"):
 		for unit_uid in (expect["unit_effective_move_points"] as Dictionary).keys():
 			var unit: UnitState = tracked_units.get(str(unit_uid), null)
@@ -170,6 +178,8 @@ func _run_case(contract: Dictionary) -> void:
 		_check(_count_tiles(state, Constants.TILE_MOD_POISON_FOG) == int(expect["poison_fog_cells"]), label, "poison fog count expected=%d actual=%d" % [int(expect["poison_fog_cells"]), _count_tiles(state, Constants.TILE_MOD_POISON_FOG)])
 	if expect.has("toxic_smoke_cells"):
 		_check(_count_tiles(state, Constants.TILE_MOD_TOXIC_SMOKE) == int(expect["toxic_smoke_cells"]), label, "toxic smoke count expected=%d actual=%d" % [int(expect["toxic_smoke_cells"]), _count_tiles(state, Constants.TILE_MOD_TOXIC_SMOKE)])
+	if expect.has("shallow_water_cells"):
+		_check(_count_tiles(state, Constants.TILE_MOD_SHALLOW_WATER) == int(expect["shallow_water_cells"]), label, "shallow water count expected=%d actual=%d" % [int(expect["shallow_water_cells"]), _count_tiles(state, Constants.TILE_MOD_SHALLOW_WATER)])
 	if expect.has("tile_modifier_durations"):
 		for raw_duration in expect.get("tile_modifier_durations", []):
 			var pos := _vector_from_variant(raw_duration.get("pos", Vector2i.ZERO))
@@ -224,6 +234,14 @@ func _count_tiles_with_modifier_duration(state: GameState, modifier: String, dur
 	var count := 0
 	for tile: TileState in state.tiles.values():
 		if tile.has_modifier(modifier) and int(tile.get_modifier(modifier).get("duration", -1)) == duration:
+			count += 1
+	return count
+
+
+func _flushable_status_kind_count(unit: UnitState) -> int:
+	var count := 0
+	for status: StatusInstance in unit.statuses:
+		if StatusRegistry.is_flushable(status.status_id):
 			count += 1
 	return count
 
@@ -357,6 +375,10 @@ func _apply_setup_statuses(state: GameState, unit: UnitState, source: UnitState,
 				StatusRules.apply_wet(state, unit, int(raw_status.get("duration", 2)), source.uid)
 			Constants.STATUS_LIGHT_EXPOSED:
 				StatusRules.apply_light_exposed(state, unit, int(raw_status.get("stacks", 1)), source.uid)
+			_:
+				var status := StatusInstance.create(status_id, int(raw_status.get("stacks", 1)), int(raw_status.get("duration", 0)), source.uid)
+				status.value = int(raw_status.get("value", 0))
+				StatusRegistry.apply_to_unit(unit, status)
 
 
 func _run_post_step(state: GameState, tracked_units: Dictionary, events: Array, raw_step: Dictionary) -> void:

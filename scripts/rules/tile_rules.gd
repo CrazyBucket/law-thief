@@ -2,6 +2,7 @@ class_name TileRules
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 
 static func _rng_service() -> Node:
 	return Engine.get_main_loop().root.get_node_or_null("RngService")
@@ -31,6 +32,8 @@ static var _ENTER_EFFECTS: Dictionary = {
 	Constants.TILE_MOD_POISON_PUDDLE: [
 		{"key": "poison", "apply": func(state: GameState, unit: UnitState) -> void:
 			StatusRules.apply_poison(state, unit, 1, 0)},
+		{"key": "wet", "apply": func(state: GameState, unit: UnitState) -> void:
+			StatusRules.apply_wet(state, unit, 2)},
 	],
 }
 
@@ -92,6 +95,9 @@ static func on_unit_entered(state: GameState, unit: UnitState, from_pos: Vector2
 
 	if not opts.get("skip_overlay", false):
 		_apply_enter_effects_for_occupied_cells(state, unit)
+		if not _anchor_occupies_modifier(state, unit, from_pos, Constants.TILE_MOD_SHALLOW_WATER) \
+				and _unit_occupies_modifier(state, unit, Constants.TILE_MOD_SHALLOW_WATER):
+			_apply_shallow_water_wet(state, unit)
 
 
 ## 移动路径中的中间格不结算地块进入效果；仅保留路径钩子。
@@ -139,6 +145,9 @@ static func create_poison_fog(state: GameState, pos: Vector2i, duration: int = -
 	if duration < 0:
 		duration = CombatConfig.poison_fog_duration()
 	var tile := state.get_tile(pos)
+	if tile.has_modifier(Constants.TILE_MOD_SHALLOW_WATER):
+		_convert_water_to_poison_puddle(state, tile)
+		return
 	# 水洼中无法形成毒雾，但可变成毒水洼（如已有水洼则转化）
 	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
 		_convert_water_to_poison_puddle(state, tile)
@@ -178,13 +187,42 @@ static func create_overlay(
 			if not BoardUtils.in_bounds(state, pos):
 				return {"ok": false, "message": "position out of bounds: %s" % pos}
 			var tile := state.get_tile(pos)
-			if not tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+			if not tile.has_ground_tag(Constants.GROUND_TAG_WATER) \
+					and not tile.has_modifier(Constants.TILE_MOD_SHALLOW_WATER):
 				return {"ok": false, "message": "poison_puddle requires a water tile at %s" % pos}
+			tile.remove_modifier(Constants.TILE_MOD_SHALLOW_WATER)
 			tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 			var puddle_duration := duration if duration > 0 else CombatConfig.poison_puddle_duration()
 			tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, puddle_duration, payload)
 			return {"ok": true}
+		Constants.TILE_MOD_SHALLOW_WATER:
+			create_shallow_water(state, pos, duration if duration > 0 else 2)
+			return {"ok": true}
 	return {"ok": false, "message": "unknown overlay id: %s" % overlay_id}
+
+
+static func create_shallow_water(state: GameState, pos: Vector2i, duration: int = 2) -> bool:
+	if not BoardUtils.in_bounds(state, pos):
+		return false
+	var tile := state.get_tile(pos)
+	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
+		tile.remove_modifier(Constants.TILE_MOD_TOXIC_SMOKE)
+		create_poison_fog(state, pos, duration)
+		return false
+	tile.remove_modifier(Constants.TILE_MOD_FIRE)
+	tile.remove_modifier(Constants.TILE_MOD_POISON_FOG)
+	tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
+	tile.remove_modifier(Constants.TILE_MOD_SHALLOW_WATER)
+	tile.add_modifier(Constants.TILE_MOD_SHALLOW_WATER, maxi(1, duration))
+	_apply_shallow_water_to_occupant(state, pos)
+	return true
+
+
+static func apply_turn_start_shallow_water(state: GameState, unit: UnitState) -> void:
+	if state == null or unit == null or not unit.alive or _tile_effect_immune(state):
+		return
+	if _unit_occupies_modifier(state, unit, Constants.TILE_MOD_SHALLOW_WATER):
+		_apply_shallow_water_wet(state, unit)
 
 
 static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> void:
@@ -193,6 +231,11 @@ static func create_fire(state: GameState, pos: Vector2i, duration: int = -1) -> 
 	if duration < 0:
 		duration = CombatConfig.fire_duration()
 	var tile := state.get_tile(pos)
+
+	if tile.has_modifier(Constants.TILE_MOD_SHALLOW_WATER):
+		tile.remove_modifier(Constants.TILE_MOD_SHALLOW_WATER)
+		state.log("浅水 %s 与火焰相互抵消" % [pos])
+		return
 
 	# 火 + 水洼 → 熄灭（直接 return，不创建火）
 	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
@@ -230,7 +273,8 @@ static func create_toxic_smoke(state: GameState, pos: Vector2i, duration: int = 
 	if not BoardUtils.in_bounds(state, pos):
 		return
 	var tile := state.get_tile(pos)
-	if tile.has_ground_tag(Constants.GROUND_TAG_WATER):
+	if tile.has_ground_tag(Constants.GROUND_TAG_WATER) \
+			or tile.has_modifier(Constants.TILE_MOD_SHALLOW_WATER):
 		_convert_water_to_poison_puddle(state, tile)
 		return
 	tile.remove_modifier(Constants.TILE_MOD_POISON_FOG)
@@ -377,7 +421,22 @@ static func _run_overlay_reactions(state: GameState, tile: TileState, incoming_t
 
 static func _convert_water_to_poison_puddle(state: GameState, tile: TileState) -> void:
 	state.log("水洼 %s 被毒雾污染，变为毒水洼" % [tile.pos])
+	tile.remove_modifier(Constants.TILE_MOD_SHALLOW_WATER)
+	tile.remove_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 	tile.add_modifier(Constants.TILE_MOD_POISON_PUDDLE, CombatConfig.poison_puddle_duration())
+
+
+static func _apply_shallow_water_to_occupant(state: GameState, pos: Vector2i) -> void:
+	if _tile_effect_immune(state):
+		return
+	var occupant := state.get_unit_at(pos)
+	if occupant != null and occupant.alive:
+		_apply_shallow_water_wet(state, occupant)
+
+
+static func _apply_shallow_water_wet(state: GameState, unit: UnitState) -> void:
+	StatusRules.clear_burning(unit)
+	StatusRules.apply_wet(state, unit, 2)
 
 
 static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileState]:
@@ -391,6 +450,18 @@ static func _occupied_tiles(state: GameState, unit: UnitState) -> Array[TileStat
 static func _unit_occupies_modifier(state: GameState, unit: UnitState, modifier_type: String) -> bool:
 	for tile in _occupied_tiles(state, unit):
 		if tile.has_modifier(modifier_type):
+			return true
+	return false
+
+
+static func _anchor_occupies_modifier(
+	state: GameState,
+	unit: UnitState,
+	anchor: Vector2i,
+	modifier_type: String
+) -> bool:
+	for cell in FootprintRules.cells_at(unit, anchor):
+		if BoardUtils.in_bounds(state, cell) and state.get_tile(cell).has_modifier(modifier_type):
 			return true
 	return false
 

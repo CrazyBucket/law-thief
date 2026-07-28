@@ -6,6 +6,7 @@ const _SplitMoveRules = preload("res://scripts/rules/split_move_rules.gd")
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const _StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
+const WetReactionRules = preload("res://scripts/rules/wet_reaction_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const StatusConfig = preload("res://scripts/core/status_config.gd")
 
@@ -36,6 +37,8 @@ static func apply_burning(
 	source_uid: String = ""
 ) -> void:
 	var resolved_stacks := stacks if stacks >= 0 else _default_stacks("burning")
+	resolved_stacks = WetReactionRules.consume_for_fire(state, unit, resolved_stacks, source_uid)
+	if resolved_stacks <= 0: return
 	_apply(state, unit, Constants.STATUS_BURNING, {
 		"stacks": resolved_stacks,
 		"duration": _default_duration("burning"),
@@ -196,15 +199,7 @@ static func can_move(unit: UnitState) -> bool:
 
 
 static func move_block_reason(unit: UnitState) -> String:
-	for status in unit.statuses:
-		if not _StatusRegistry.blocks_movement(status.status_id):
-			continue
-		match status.status_id:
-			Constants.STATUS_PARALYZED:
-				return "被麻痹，无法移动"
-			Constants.STATUS_ROOTED:
-				return "被束缚，无法移动"
-	return ""
+	return _StatusActionRules.move_block_reason(unit)
 
 
 static func can_attack(unit: UnitState) -> bool:
@@ -219,10 +214,7 @@ static func attack_block_reason(unit: UnitState) -> String:
 
 
 static func action_block_reason(unit: UnitState) -> String:
-	if unit != null and unit.has_status(Constants.STATUS_PARALYZED):
-		var text := TranslationServer.translate("status.paralyzed.block")
-		return "被麻痹，无法行动" if text == "status.paralyzed.block" else text
-	return ""
+	return _StatusActionRules.action_block_reason(unit)
 
 
 static func get_armor_bonus(unit: UnitState) -> int:
@@ -506,6 +498,7 @@ static func tick_turn_start(state: GameState) -> void:
 static func tick_unit_turn_start(state: GameState, unit: UnitState) -> void:
 	if state == null or unit == null or not unit.alive:
 		return
+	TileRules.apply_turn_start_shallow_water(state, unit)
 	_apply_blue_turn_start_effects(state, unit)
 	_tick_phase(state, unit, _StatusRegistry.TICK_TURN_START)
 

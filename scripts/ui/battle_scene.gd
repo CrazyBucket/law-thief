@@ -4,6 +4,7 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const StatusIcons = preload("res://scripts/ui/status_icons.gd")
+const StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 const DamageTextManagerScript = preload("res://scripts/ui/damage_text_manager.gd")
 const BattleEventPlayerScript = preload("res://scripts/ui/battle_event_player.gd")
@@ -155,6 +156,7 @@ const _EDITOR_STATUS_IDS: Array[String] = [
 	Constants.STATUS_BURNING,
 	Constants.STATUS_SLOWED,
 	Constants.STATUS_PARALYZED,
+	Constants.STATUS_FROZEN,
 	Constants.STATUS_WET,
 	Constants.STATUS_ROOTED,
 	Constants.STATUS_VULNERABLE,
@@ -501,7 +503,6 @@ func _start_battle(encounter_id: String) -> void:
 	_inspect_uid = _controller.selected_unit_uid
 	_inspect_cell = Vector2i(-1, -1)
 	_controller.select_action("")
-	_refresh()
 	_board.init_unit_orientations()
 	var carried_gem := _controller.get_held_gem()
 	if carried_gem != null:
@@ -523,8 +524,6 @@ func _on_action_pressed(action: String) -> void:
 	else:
 		_controller.select_action(action)
 		_message_label.text = _controller.get_action_hint()
-	_refresh()
-	_sync_unit_slot_panels()
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
@@ -538,6 +537,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		return
 	var unit := state.get_unit_at(cell)
 	var action := _controller.selected_action
+	var presentation_refreshed := false
 	if unit == null and action == Constants.ACTION_EXTRACT:
 		unit = state.get_corpse_at(cell)
 	if action.is_empty():
@@ -563,6 +563,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 					_controller.state
 				)
 				_player_animating = false
+				presentation_refreshed = true
 			else:
 				_show_result(move_result)
 				_set_inspect_target(cell)
@@ -596,6 +597,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 					_controller.state
 				)
 				_player_animating = false
+				presentation_refreshed = true
 			else:
 				_player_animating = false
 				_set_inspect_target(cell)
@@ -625,7 +627,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			else:
 				_dismiss_popup()
 				_set_inspect_target(cell)
-	_refresh()
+	if not presentation_refreshed:
+		_refresh()
 
 
 func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
@@ -1040,17 +1043,21 @@ func _play_presentation_sequence(state_before: GameState, events: Array, economy
 	if not pending_battle_end.is_empty():
 		_apply_battle_end(pending_battle_end)
 		return
-	_try_auto_skip_paralyzed_player_turn()
+	_try_auto_skip_incapacitated_player_turn()
 
-func _try_auto_skip_paralyzed_player_turn() -> void:
+func _try_auto_skip_incapacitated_player_turn() -> void:
 	if _enemy_phase_running or _controller == null or _controller.state == null:
 		return
 	if _controller.state.phase != Constants.PHASE_PLAYER:
 		return
 	var player: UnitState = _controller.state.get_player()
-	if player == null or not player.has_status(Constants.STATUS_PARALYZED):
+	var skip_status := StatusActionRules.turn_skip_status(player)
+	if skip_status.is_empty():
 		return
-	_message_label.text = "麻痹生效，跳过本回合"
+	var message_key := "status.frozen.skip" if skip_status == Constants.STATUS_FROZEN else "status.paralyzed.skip"
+	var fallback := "冻结生效，跳过本回合" if skip_status == Constants.STATUS_FROZEN else "麻痹生效，跳过本回合"
+	var translated := TranslationServer.translate(message_key)
+	_message_label.text = fallback if translated == message_key else translated
 	_on_end_turn_pressed()
 
 

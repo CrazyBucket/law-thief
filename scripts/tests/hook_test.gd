@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -14,7 +16,7 @@ func _run_tests() -> void:
 	_test_blue_poison_contact()
 	_test_black_poison_death()
 	_test_red_gem_triggers_on_attack()
-	_test_water_conduction_hits_unit_standing_in_water()
+	_test_water_conduction_hits_every_unit_in_water()
 	_test_editor_console_spawns_and_edits_unit()
 	_test_editor_console_batch_move_delete_commands()
 	_test_editor_console_entities_overlays_and_export()
@@ -153,22 +155,24 @@ func _test_red_gem_triggers_on_attack() -> void:
 	print("  [OK] red gem explosion triggers on attack hit")
 
 
-func _test_water_conduction_hits_unit_standing_in_water() -> void:
+func _test_water_conduction_hits_every_unit_in_water() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("template_c", 42)
 	var state := ctrl.state
 	var player := state.get_player()
-	assert(ctrl.run_editor_command("move 1,6 2,5").get("ok", false), "move player in range of water")
+	assert(ctrl.run_editor_command("move 1,6 3,5").get("ok", false), "move player into water")
 	assert(ctrl.run_editor_command("spawn unit_patrol_guard 4,5 --team enemy").get("ok", false), "spawn enemy in water")
-	assert(ctrl.run_editor_command("spawn gem_conductive 2,5 --slot red").get("ok", false), "give player arc gem")
+	assert(ctrl.run_editor_command("spawn gem_conductive 3,5 --slot red").get("ok", false), "give player arc gem")
 	var guard := state.get_unit_at(Vector2i(4, 5))
 	assert(guard != null, "enemy should stand on water")
-	assert(StatusRules.is_wet(guard), "standing in water should apply wet")
-	var hp_before := guard.hp
+	assert(StatusRules.is_wet(player) and StatusRules.is_wet(guard), "both units standing in water should be wet")
+	var player_hp_before := player.hp
+	var guard_hp_before := guard.hp
 	var atk := ctrl.try_attack_cell(Vector2i(4, 5))
 	assert(atk.get("ok", false), "attack water should succeed")
-	assert(guard.hp < hp_before, "enemy in water should take arc damage from water shock")
-	print("  [OK] water conduction hits unit standing in water")
+	assert(guard.hp < guard_hp_before, "enemy in water should take arc damage from water shock")
+	assert(player.hp < player_hp_before, "the source standing in water should also take arc damage")
+	print("  [OK] water conduction hits every unit in water, including its source")
 
 
 func _test_editor_console_spawns_and_edits_unit() -> void:

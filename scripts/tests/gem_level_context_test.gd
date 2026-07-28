@@ -5,6 +5,7 @@ const BattleQueryService = preload("res://scripts/battle/battle_query_service.gd
 const BattleHudPresenter = preload("res://scripts/ui/battle_hud_presenter.gd")
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 
 var _failed := false
 
@@ -19,6 +20,7 @@ func _run_tests() -> void:
 	_test_hud_level_summary_uses_slot_config()
 	_test_query_preview_uses_slot_config()
 	_test_blue_poison_contact_uses_level_config()
+	_test_blue_ice_contact_slows_attacker()
 	_test_blue_pillar_poison_uses_level_config()
 	_test_blue_pillar_explosion_uses_level_config()
 	_test_blue_pillar_gravity_uses_level_config()
@@ -138,6 +140,19 @@ func _test_blue_poison_contact_uses_level_config() -> void:
 	print("  [OK] blue poison contact uses level config")
 
 
+func _test_blue_ice_contact_slows_attacker() -> void:
+	var state := _create_state()
+	var player := state.get_player()
+	state.move_unit(player, Vector2i(2, 3))
+	_mount_gems(state, player, Constants.SLOT_BLUE, [Constants.GEM_ICE])
+	var attacker := _spawn_guard(state, Vector2i(3, 3), "blue_ice_contact_attacker")
+	var result := AttackPipeline.execute_aimed(state, attacker, player.pos, [AttackPipeline.TAG_MELEE])
+	_expect(result.get("ok", false), "enemy attack against blue ice carrier should succeed")
+	_expect(attacker.has_status(Constants.STATUS_SLOWED), "blue ice should slow the attacker that contacts its carrier")
+	_expect(not player.has_status(Constants.STATUS_SLOWED), "blue ice should not slow its carrier when attacked")
+	print("  [OK] blue ice contact slows attacker")
+
+
 func _test_blue_pillar_poison_uses_level_config() -> void:
 	var state := _create_state("template_a")
 	var pillar := state.get_tile(Vector2i(7, 5))
@@ -238,7 +253,7 @@ func _test_ice_red_level_three_freezes_slowed_target() -> void:
 	StatusRules.apply_slowed(state, target, 1, player.uid)
 	var result := AttackPipeline.execute_aimed(state, player, target.pos, [AttackPipeline.TAG_RANGED])
 	_expect(result.get("ok", false), "ice level 3 attack should succeed")
-	_expect(target.has_status(Constants.STATUS_PARALYZED), "ice level 3 should freeze slowed target")
+	_expect(target.has_status(Constants.STATUS_FROZEN), "ice level 3 should freeze slowed target")
 	print("  [OK] ice red level 3 freezes slowed target")
 
 

@@ -6,6 +6,7 @@ const TAG_ORDER: Array[String] = [
 	"fire",
 	"poison",
 	"arc",
+	"tide",
 	"gravity",
 	"impact",
 	"ice",
@@ -44,6 +45,7 @@ static func build_context(
 	var registry := _data_registry()
 	if registry == null:
 		return context
+	var state_tag_metadata := _state_tag_metadata(state, registry)
 	var slots := _slots_accepting(owner, slot_type)
 	for slot in slots:
 		if not _slot_can_contribute(slot, state.turn_index):
@@ -62,8 +64,8 @@ static func build_context(
 		source_gem_uids.append(gem.uid)
 		if primary_slot != null and slot == primary_slot:
 			context["primary_tag"] = tag
-	_resolve_levels(context, state)
-	_resolve_combos(context, state)
+	_resolve_levels(context, state_tag_metadata)
+	_resolve_combos(context, state_tag_metadata)
 	if str(context.get("primary_tag", "")).is_empty():
 		var tags: Array[String] = context["tags"]
 		if not tags.is_empty():
@@ -87,59 +89,58 @@ static func has_combo(context: Dictionary, combo_id: String) -> bool:
 	return combo_level(context, combo_id) > 0
 
 
-static func _resolve_levels(context: Dictionary, state: GameState) -> void:
-	var registry := _data_registry()
+static func _resolve_levels(context: Dictionary, state_tag_metadata: Dictionary) -> void:
 	var tag_counts: Dictionary = context["tag_counts"]
 	var tag_levels: Dictionary = context["tag_levels"]
 	var tags: Array[String] = context["tags"]
+	var max_stack_by_tag: Dictionary = state_tag_metadata.get("max_stack_by_tag", {})
 	for tag in _sorted_tags(tag_counts.keys()):
-		var max_stack := _max_stack_for_tag(state, tag, registry)
+		var max_stack := int(max_stack_by_tag.get(tag, 3))
 		tag_levels[tag] = clampi(int(tag_counts.get(tag, 0)), 0, max_stack)
 		tags.append(tag)
 
 
-static func _resolve_combos(context: Dictionary, state: GameState) -> void:
-	var registry := _data_registry()
-	if registry == null:
-		return
+static func _resolve_combos(context: Dictionary, state_tag_metadata: Dictionary) -> void:
 	var tags: Array[String] = context["tags"]
 	var tag_levels: Dictionary = context["tag_levels"]
 	var combos: Array[String] = context["combos"]
 	var combo_levels: Dictionary = context["combo_levels"]
+	var combo_tags_by_tag: Dictionary = state_tag_metadata.get("combo_tags_by_tag", {})
 	for i in range(tags.size()):
 		for j in range(i + 1, tags.size()):
 			var a := tags[i]
 			var b := tags[j]
-			if not _tags_can_combo(state, a, b, registry):
+			if not _tags_can_combo(a, b, combo_tags_by_tag):
 				continue
 			var combo_id := _combo_id(a, b)
 			combos.append(combo_id)
 			combo_levels[combo_id] = mini(int(tag_levels.get(a, 0)), int(tag_levels.get(b, 0)))
 
 
-static func _tags_can_combo(state: GameState, a: String, b: String, registry: Node) -> bool:
-	return b in _combo_tags_for_tag(state, a, registry) or a in _combo_tags_for_tag(state, b, registry)
+static func _tags_can_combo(a: String, b: String, combo_tags_by_tag: Dictionary) -> bool:
+	var a_combos: Dictionary = combo_tags_by_tag.get(a, {})
+	var b_combos: Dictionary = combo_tags_by_tag.get(b, {})
+	return a_combos.has(b) or b_combos.has(a)
 
 
-static func _combo_tags_for_tag(state: GameState, tag: String, registry: Node) -> Array[String]:
-	var results: Array[String] = []
+static func _state_tag_metadata(state: GameState, registry: Node) -> Dictionary:
+	var max_stack_by_tag := {}
+	var combo_tags_by_tag := {}
 	for gem in state.gems.values():
-		if registry.get_gem_tag(gem) != tag:
+		var tag := str(registry.get_gem_tag(gem))
+		if tag.is_empty():
 			continue
+		max_stack_by_tag[tag] = maxi(
+			int(max_stack_by_tag.get(tag, 3)), int(registry.get_gem_max_stack_level(gem))
+		)
+		var combo_tags: Dictionary = combo_tags_by_tag.get(tag, {})
 		for combo_tag in registry.get_gem_combo_tags(gem):
-			if combo_tag not in results:
-				results.append(combo_tag)
-	return results
-
-
-static func _max_stack_for_tag(state: GameState, tag: String, registry: Node) -> int:
-	var max_stack := 3
-	if registry == null:
-		return max_stack
-	for gem in state.gems.values():
-		if registry.get_gem_tag(gem) == tag:
-			max_stack = maxi(max_stack, int(registry.get_gem_max_stack_level(gem)))
-	return max_stack
+			combo_tags[str(combo_tag)] = true
+		combo_tags_by_tag[tag] = combo_tags
+	return {
+		"max_stack_by_tag": max_stack_by_tag,
+		"combo_tags_by_tag": combo_tags_by_tag,
+	}
 
 
 static func _slots_accepting(owner: Variant, slot_type: String) -> Array:

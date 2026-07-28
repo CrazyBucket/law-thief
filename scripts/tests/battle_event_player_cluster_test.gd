@@ -106,13 +106,15 @@ func _run_test() -> void:
 	assert(board.operations == ["explode", "damage", "move"], "blast damage and knockback must start together at impact")
 	board.operations.clear()
 	await player.play_events([
-		{"type": "projectile", "from": Vector2i(1, 1), "to": Vector2i(5, 1)},
+		{"type": "projectile", "from": Vector2i(1, 1), "to": Vector2i(5, 1), "element": "fire", "gem_level": 3},
 		{"type": "projectile", "from": Vector2i(1, 1), "to": Vector2i(4, 0)},
 		{"type": "projectile", "from": Vector2i(1, 1), "to": Vector2i(4, 2)},
 		{"type": "damage", "pos": Vector2i(5, 1), "damage": 3, "uid": "missing_a", "victim_uid": "missing_a", "is_crit": false},
 	])
 	assert(board.projectile_batches.size() == 1, "split projectiles should use one volley task")
 	assert(board.projectile_batches[0].size() == 3, "the volley should start all three projectiles together")
+	assert(board.projectile_batches[0][0].get("element", "") == "fire", "projectile volleys must retain elemental visual metadata")
+	assert(int(board.projectile_batches[0][0].get("gem_level", 0)) == 3, "projectile volleys must retain the resolved gem level")
 	assert(board.operations == ["projectile_volley", "damage"], "projectile damage must wait for the volley impact")
 	board.operations.clear()
 	await player.play_events([

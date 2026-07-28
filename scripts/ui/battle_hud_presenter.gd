@@ -1,6 +1,5 @@
 class_name BattleHudPresenter
 extends RefCounted
-
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const IntentIcons = preload("res://scripts/ui/intent_icons.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
@@ -8,7 +7,6 @@ const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 const OldMageHudPanel = preload("res://scripts/ui/old_mage_hud_panel.gd")
-
 const _STATUS_PANEL_WIDTH := 320.0
 const _RELIC_BAR_FALLBACK_H := 320.0
 
@@ -502,8 +500,10 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	_refresh_intent_row(unit)
 	if unit.behavior_id == "old_mage":
 		_slot_box.add_child(OldMageHudPanel.create_pool_chip(_unit_looks()))
+	var detail_lines_by_slot_index := _slot_chip_detail_lines_by_index(state, unit)
 	for slot_index in range(unit.slots.size()):
-		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index))
+		var detail_lines: Array = detail_lines_by_slot_index.get(slot_index, [])
+		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index, detail_lines))
 
 
 func _refresh_cell_inspect(state: GameState, cell: Vector2i) -> void:
@@ -605,6 +605,8 @@ func _overlay_display_name(overlay_id: String) -> String:
 			return "毒烟"
 		Constants.TILE_MOD_POISON_PUDDLE:
 			return "毒水"
+		Constants.TILE_MOD_SHALLOW_WATER:
+			return "浅水"
 	return "地面状态"
 
 
@@ -727,7 +729,7 @@ func _clear_inspect_header(title: String) -> void:
 		_inspect_status_row.get_child(0).free()
 
 
-func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_index: int) -> Control:
+func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_index: int, detail_lines: Array) -> Control:
 	var chip := PanelContainer.new()
 	var color := _slot_color(slot.slot_type)
 	var gem: GemState = null
@@ -766,7 +768,7 @@ func _create_slot_chip(state: GameState, unit: UnitState, slot: SlotState, slot_
 			if gem_icon != null:
 				row.add_child(gem_icon)
 			label.text = "%s %s" % [slot_prefix, _gem_display_name(gem)]
-			_set_tooltip(chip, _slot_chip_tooltip(gem, slot, unit, state), _slot_chip_tooltip_spec(gem, slot, unit, state))
+			_set_tooltip(chip, _slot_chip_tooltip(gem, detail_lines), _slot_chip_tooltip_spec(gem, slot, detail_lines))
 	if unit.behavior_id == "old_mage" \
 		and slot.gem_uid.is_empty() \
 		and slot.slot_type != Constants.SLOT_BLACK \
@@ -810,19 +812,18 @@ func _slot_effect_context(unit: UnitState, slot: SlotState) -> String:
 	return RulesIndex.slot_inspect_context(unit, slot)
 
 
-func _slot_chip_tooltip(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> String:
+func _slot_chip_tooltip(gem: GemState, detail_lines: Array) -> String:
 	var gem_name: String = _gem_display_name(gem)
 	var lines: Array[String] = [gem_name]
-	lines.append_array(_slot_chip_detail_lines(gem, slot, unit, state))
+	lines.append_array(detail_lines)
 	return "\n".join(lines)
 
 
-func _slot_chip_tooltip_spec(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> Dictionary:
+func _slot_chip_tooltip_spec(gem: GemState, slot: SlotState, detail_lines: Array) -> Dictionary:
 	var display_name := _slot_display_name(slot.slot_type)
 	if not slot.dual_type.is_empty():
 		display_name = "%s/%s" % [display_name, _slot_display_name(slot.dual_type)]
-	var details := _slot_chip_detail_lines(gem, slot, unit, state)
-	var detail_text := "\n".join(details)
+	var detail_text := "\n".join(detail_lines)
 	return {
 		"title": _gem_display_name(gem),
 		"subtitle": "%s槽" % display_name,
@@ -844,7 +845,22 @@ func _slot_state_tooltip_spec(display_name: String, body: String, color: Color) 
 	}
 
 
-func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null) -> Array[String]:
+func _slot_chip_detail_lines_by_index(state: GameState, unit: UnitState) -> Dictionary:
+	var details_by_slot_index := {}
+	var contexts_by_slot_type := {}
+	for slot_index in range(unit.slots.size()):
+		var slot: SlotState = unit.slots[slot_index]
+		if slot == null or slot.gem_uid.is_empty(): continue
+		var gem: GemState = state.gems.get(slot.gem_uid, null)
+		if gem == null: continue
+		var slot_type := slot.slot_type
+		if not contexts_by_slot_type.has(slot_type):
+			contexts_by_slot_type[slot_type] = GemTagResolver.build_context(state, unit, slot_type, GemEffects.TIMING_ACTIVE)
+		details_by_slot_index[slot_index] = _slot_chip_detail_lines(gem, slot, unit, state, contexts_by_slot_type[slot_type])
+	return details_by_slot_index
+
+
+func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, state: GameState = null, gem_ctx: Dictionary = {}) -> Array[String]:
 	var lines: Array[String] = []
 	if state == null:
 		var effect: String = GemEffects.get_slot_effect_description(gem, slot.slot_type, _slot_effect_context(unit, slot))
@@ -852,7 +868,7 @@ func _slot_chip_detail_lines(gem: GemState, slot: SlotState, unit: UnitState, st
 			lines.append(effect)
 	if state != null:
 		var registry := _data_registry()
-		var ctx := GemTagResolver.build_context(state, unit, slot.slot_type, GemEffects.TIMING_ACTIVE)
+		var ctx := gem_ctx if not gem_ctx.is_empty() else GemTagResolver.build_context(state, unit, slot.slot_type, GemEffects.TIMING_ACTIVE)
 		var tag_levels: Dictionary = ctx.get("tag_levels", {})
 		var combo_levels: Dictionary = ctx.get("combo_levels", {})
 		if not tag_levels.is_empty():

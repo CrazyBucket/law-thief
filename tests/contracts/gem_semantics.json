@@ -302,8 +302,222 @@
       }
     },
     {
+      "id": "tide/red/1_extinguish_then_flush_one",
+      "covers": ["gem_tide:red:1", "interaction:tide:extinguish_before_flush"],
+      "gems": ["gem_tide"],
+      "setup": {
+        "target_statuses": [
+          {"status": "burning", "stacks": 2},
+          {"status": "stored_flurry", "stacks": 3}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "stored_flurry": {"stacks": 2},
+            "wet": {"duration": 2}
+          }
+        },
+        "unit_status_absences": {"contract_target": ["burning"]},
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/red/2_flush_two_layers",
+      "covers": ["gem_tide:red:2"],
+      "gems": ["gem_tide", "gem_tide"],
+      "setup": {
+        "target_statuses": [
+          {"status": "stored_flurry", "stacks": 3}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "stored_flurry": {"stacks": 1},
+            "wet": {"duration": 2}
+          }
+        },
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/red/3_remove_all_layers_of_one_kind_only",
+      "covers": ["gem_tide:red:3"],
+      "gems": ["gem_tide", "gem_tide", "gem_tide"],
+      "setup": {
+        "target_statuses": [
+          {"status": "stored_flurry", "stacks": 3},
+          {"status": "lawless", "stacks": 1}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_flushable_status_kind_counts": {"contract_target": 1},
+        "unit_statuses": {"contract_target": {"wet": {"duration": 2}}},
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/blue/1_first_active_attack_only",
+      "covers": ["gem_tide:blue:1"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_tide"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "poison", "stacks": 4}
+        ]
+      },
+      "post_steps": [
+        {"type": "execute_attack", "source": "player", "target": "contract_target"},
+        {"type": "execute_attack", "source": "player", "target": "contract_target"}
+      ],
+      "expect": {
+        "damage": 30,
+        "unit_statuses": {"player": {"poison": {"stacks": 3}}},
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/blue/2_first_two_active_attacks",
+      "covers": ["gem_tide:blue:2"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_tide", "gem_tide"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "poison", "stacks": 4}
+        ]
+      },
+      "post_steps": [
+        {"type": "execute_attack", "source": "player", "target": "contract_target"},
+        {"type": "execute_attack", "source": "player", "target": "contract_target"}
+      ],
+      "expect": {
+        "damage": 30,
+        "unit_statuses": {"player": {"poison": {"stacks": 2}}},
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/blue/3_every_active_attack_removes_one_kind",
+      "covers": ["gem_tide:blue:3"],
+      "mounts": [
+        {"uid": "contract_target", "slot": "blue", "gems": ["gem_tide", "gem_tide", "gem_tide"]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "extra_move", "stacks": 3},
+          {"status": "lawless", "stacks": 1},
+          {"status": "poison", "stacks": 2}
+        ]
+      },
+      "post_steps": [
+        {"type": "execute_attack", "source": "player", "target": "contract_target"},
+        {"type": "execute_attack", "source": "player", "target": "contract_target"}
+      ],
+      "expect": {
+        "damage": 30,
+        "unit_flushable_status_kind_counts": {"player": 0},
+        "shallow_water_cells": 1
+      }
+    },
+    {
+      "id": "tide/black/1_flush_each_unit_once",
+      "covers": ["gem_tide:black:1"],
+      "player_pos": [2, 3],
+      "target_pos": [3, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_tide"]}
+      ],
+      "extra_units": [
+        {"uid": "tide_black_near", "pos": [4, 3]}
+      ],
+      "setup": {
+        "player_statuses": [{"status": "poison", "stacks": 3}],
+        "unit_statuses": [
+          {"uid": "tide_black_near", "statuses": [{"status": "poison", "stacks": 3}]}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {"poison": {"stacks": 2}},
+          "tide_black_near": {"poison": {"stacks": 2}}
+        },
+        "shallow_water_cells": 2
+      }
+    },
+    {
+      "id": "tide/black/2_flush_each_unit_twice",
+      "covers": ["gem_tide:black:2"],
+      "player_pos": [2, 3],
+      "target_pos": [3, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_tide", "gem_tide"]}
+      ],
+      "extra_units": [
+        {"uid": "tide_black_near", "pos": [4, 3]}
+      ],
+      "setup": {
+        "player_statuses": [{"status": "poison", "stacks": 3}],
+        "unit_statuses": [
+          {"uid": "tide_black_near", "statuses": [{"status": "poison", "stacks": 3}]}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "player": {"poison": {"stacks": 1}},
+          "tide_black_near": {"poison": {"stacks": 1}}
+        },
+        "shallow_water_cells": 2
+      }
+    },
+    {
+      "id": "tide/black/3_remove_one_kind_from_each_unit",
+      "covers": ["gem_tide:black:3"],
+      "player_pos": [2, 3],
+      "target_pos": [3, 3],
+      "target_stats": {"hp": 10, "max_hp": 10},
+      "mounts": [
+        {"uid": "contract_target", "slot": "black", "gems": ["gem_tide", "gem_tide", "gem_tide"]}
+      ],
+      "extra_units": [
+        {"uid": "tide_black_near", "pos": [4, 3]}
+      ],
+      "setup": {
+        "player_statuses": [
+          {"status": "poison", "stacks": 3},
+          {"status": "lawless", "stacks": 1}
+        ],
+        "unit_statuses": [
+          {
+            "uid": "tide_black_near",
+            "statuses": [
+              {"status": "poison", "stacks": 3},
+              {"status": "lawless", "stacks": 1}
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_flushable_status_kind_counts": {
+          "player": 1,
+          "tide_black_near": 1
+        },
+        "shallow_water_cells": 2
+      }
+    },
+    {
       "id": "ice/red/1_apply_slow",
-      "covers": ["implementation:gem_ice:red:1:dry_slow_placeholder"],
+      "covers": ["gem_ice:red:1"],
       "gems": ["gem_ice"],
       "expect": {
         "damage": 10,
@@ -312,12 +526,36 @@
             "slowed": {"stacks": 1}
           }
         },
+        "unit_status_absences": {"player": ["slowed"]},
+        "event_counts": {"frost_pulse": 1}
+      }
+    },
+    {
+      "id": "ice/red/1_wet_target_freezes_and_consumes_wet",
+      "covers": ["interaction:wet_ice:freeze"],
+      "gems": ["gem_ice"],
+      "setup": {
+        "target_statuses": [
+          {"status": "wet", "duration": 2}
+        ]
+      },
+      "expect": {
+        "damage": 10,
+        "unit_statuses": {
+          "contract_target": {
+            "frozen": {"duration": 1}
+          }
+        },
+        "unit_status_absences": {
+          "contract_target": ["wet", "paralyzed", "slowed"],
+          "player": ["slowed"]
+        },
         "event_counts": {"frost_pulse": 1}
       }
     },
     {
       "id": "ice/red/2_double_slow",
-      "covers": ["implementation:gem_ice:red:2:dry_slow_placeholder"],
+      "covers": ["gem_ice:red:2"],
       "gems": ["gem_ice", "gem_ice"],
       "expect": {
         "damage": 10,
@@ -326,12 +564,13 @@
             "slowed": {"stacks": 2}
           }
         },
+        "unit_status_absences": {"player": ["slowed"]},
         "event_counts": {"frost_pulse": 1}
       }
     },
     {
       "id": "ice/red/3_freeze_slowed_target",
-      "covers": ["implementation:gem_ice:red:3:paralyzed_placeholder"],
+      "covers": ["gem_ice:red:3"],
       "gems": ["gem_ice", "gem_ice", "gem_ice"],
       "setup": {
         "target_statuses": [
@@ -342,9 +581,13 @@
         "damage": 10,
         "unit_statuses": {
           "contract_target": {
-            "slowed": {"stacks": 3},
-            "paralyzed": {"duration": 1}
+            "slowed": {"stacks": 1},
+            "frozen": {"duration": 1}
           }
+        },
+        "unit_status_absences": {
+          "contract_target": ["paralyzed"],
+          "player": ["slowed"]
         },
         "event_counts": {"frost_pulse": 1}
       }
@@ -1531,8 +1774,8 @@
           }
         },
         "unit_status_absences": {
-          "black_ice_neighbor": ["slowed", "paralyzed"],
-          "black_ice_outside": ["sluggish", "slowed", "paralyzed"]
+          "black_ice_neighbor": ["slowed", "paralyzed", "frozen"],
+          "black_ice_outside": ["sluggish", "slowed", "paralyzed", "frozen"]
         },
         "event_counts": {"frost_pulse": 1}
       }
@@ -1558,16 +1801,16 @@
           }
         },
         "unit_status_absences": {
-          "black_ice_neighbor": ["paralyzed"],
-          "black_ice_outside": ["sluggish", "slowed", "paralyzed"]
+          "black_ice_neighbor": ["paralyzed", "frozen"],
+          "black_ice_outside": ["sluggish", "slowed", "paralyzed", "frozen"]
         },
         "unit_effective_move_points": {"black_ice_neighbor": 1},
         "event_counts": {"frost_pulse": 1}
       }
     },
     {
-      "id": "ice/black/3_current_paralysis_placeholder",
-      "covers": ["implementation:gem_ice:black:3:paralyzed_placeholder"],
+      "id": "ice/black/3_freezes",
+      "covers": ["gem_ice:black:3"],
       "player_stats": {"base_attack": 20},
       "target_stats": {"hp": 20, "max_hp": 20},
       "mounts": [
@@ -1582,8 +1825,11 @@
           "black_ice_neighbor": {
             "sluggish": {"duration": 1},
             "slowed": {"stacks": 1, "duration": 0},
-            "paralyzed": {"duration": 1}
+            "frozen": {"duration": 1}
           }
+        },
+        "unit_status_absences": {
+          "black_ice_neighbor": ["paralyzed"]
         },
         "event_counts": {"frost_pulse": 1}
       }

@@ -41,7 +41,6 @@ const ENTITY_SPIKE_TEXTURE := preload("res://assets/entities/entity_spike.png")
 const ENTITY_BARREL_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Barrel_0.png")
 const ENTITY_ROCK_TEXTURE := preload("res://assets/demo/doodle-rpg/ALL SPRITES/Rock1_0.png")
 const ROUTE_ARROWS := [preload("res://assets/ui/route_arrows_generated/route_arrow_ne.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_se.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_sw.png"), preload("res://assets/ui/route_arrows_generated/route_arrow_nw.png")]
-
 signal cell_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i, has_cell: bool)
 signal cell_released(cell: Vector2i, has_cell: bool)
@@ -51,7 +50,6 @@ signal editor_tool_dropped(tool: Dictionary, cell: Vector2i, has_cell: bool)
 signal animation_finished()
 signal move_animation_finished()
 signal projectile_animation_finished()
-
 class BoardAnimationHostState:
 	var pulse_time: float = 0.0
 	var move_offsets: Dictionary = {}
@@ -155,7 +153,7 @@ var _projectile_fx: BattleProjectileFx = null
 var _particle_fx: BattleParticleFx = null
 var _shader_fx_seed: int = 0
 var _shader_fx_pool = BattleShaderFxPoolScript.new()
-
+var _frozen_unit_visuals := preload("res://scripts/ui/frozen_unit_visuals.gd").new()
 @export_group("Light Beam FX")
 @export_range(2.0, 30.0, 0.5) var light_beam_base_half_width: float = 13.5
 @export_range(0.1, 3.0, 0.05) var light_beam_global_scale: float = 1.0
@@ -221,7 +219,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_board_texture = get_node_or_null("Grids")
 	_ensure_water_layers()
+	_fx_textures = BoardFxTexturesClass.new()
 	_ensure_combat_visual_layers()
+	_frozen_unit_visuals.configure(self)
 	_shader_fx_pool.configure(_beam_layer)
 	_shader_fx_pool.prewarm(FxLightningShader, _LIGHTNING_FX_POOL_SIZE)
 	_shader_fx_pool.prewarm(FxRadialBurstShader, _RADIAL_FX_POOL_SIZE)
@@ -235,7 +235,6 @@ func _ready() -> void:
 	_slime_sprites_by_variant["green"] = _slime_sprites
 	_gem_sprites = GEM_SPRITES_SCRIPT.new()
 	_prop_sprites = PROP_SPRITES_SCRIPT.new()
-	_fx_textures = BoardFxTexturesClass.new()
 	set_process(true)
 	call_deferred("_sync_unit_orientations")
 
@@ -322,6 +321,7 @@ func _process(delta: float) -> void:
 		_anim.walk_phase[mv_uid] = _anim.walk_phase.get(mv_uid, 0.0) + scaled_dt
 		visuals_dirty = true
 	if state != null:
+		visuals_dirty = _frozen_unit_visuals.sync_active_units(state) or visuals_dirty
 		_update_overlay_shader_activity()
 		if _update_gem_echo_shader_activity():
 			visuals_dirty = true
@@ -852,7 +852,7 @@ func _ensure_combat_visual_layers() -> void:
 	if _projectile_fx == null:
 		_projectile_fx = BattleProjectileFx.new()
 		_projectile_fx.name = "ProjectileFx"
-		_projectile_fx.configure(Callable(self, "grid_to_screen"))
+		_projectile_fx.configure(Callable(self, "grid_to_screen"), _fx_textures)
 		_projectile_fx.finished.connect(_on_projectile_fx_finished)
 		_beam_layer.add_child(_projectile_fx)
 	if _particle_fx == null:
@@ -1544,7 +1544,7 @@ func _draw_unit_body(unit: UnitState) -> void:
 	if pose_tex != null:
 		if hover_alpha > 0.01:
 			_draw_unit_texture_outline(pose_tex, Rect2(top_left, sprite_size), hover_alpha)
-		draw_texture_rect(pose_tex, Rect2(top_left, sprite_size), false, tint)
+		_frozen_unit_visuals.draw_unit(self, unit, pose_tex, Rect2(top_left, sprite_size), tint)
 	elif hover_alpha > 0.01:
 		_draw_unit_focus_outline(unit, Color(UiPalette.TEXT_BRIGHT, 0.92), IsoCoordinates.visual(1.8), offset, 0.0, hover_alpha)
 
@@ -3383,21 +3383,21 @@ func play_projectile(
 	from_grid: Vector2i,
 	to_grid: Vector2i,
 	proj_color: Color = Color(0.95, 0.92, 0.45),
-	source_uid: String = ""
+	source_uid: String = "", element: String = "", gem_level: int = 0
 ) -> void:
 	play_projectiles([{
 		"from": from_grid,
 		"to": to_grid,
 		"color": proj_color,
-		"source_uid": source_uid,
+		"source_uid": source_uid, "element": element, "gem_level": gem_level,
 	}])
 func play_projectile_task(
 	from_grid: Vector2i,
 	to_grid: Vector2i,
 	proj_color: Color = Color(0.95, 0.92, 0.45),
-	source_uid: String = ""
+	source_uid: String = "", element: String = "", gem_level: int = 0
 ) -> void:
-	play_projectile(from_grid, to_grid, proj_color, source_uid)
+	play_projectile(from_grid, to_grid, proj_color, source_uid, element, gem_level)
 	await projectile_animation_finished
 
 

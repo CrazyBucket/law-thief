@@ -115,6 +115,8 @@ gem.fire.name,烈焰,Fire
 gem.fire.symbol,炎,Fire
 gem.ice.name,寒冰,Ice
 gem.ice.symbol,冰,Ice
+gem.tide.name,潮汐,Tide
+gem.tide.symbol,潮,Tide
 unit.player.name,窃律者,Law Thief
 unit.bomb_rat.name,炸弹鼠,Bomb Rat
 unit.patrol_guard.name,巡路甲兵,Patrol Guard
@@ -317,6 +319,13 @@ gem.level.black.gravity,引力 Lv{level}：拉扯{pull_steps}格，减速：{app
 gem.level.black.arc,导电 Lv{level}：{strike_radius}格内打击{strike_targets},Conductive Lv{level}: strike {strike_targets} within {strike_radius} tiles
 gem.level.black.fire,烈焰 Lv{level}：{death_fire_radius}格内生成{death_fire_count}团火焰，持续{death_fire_duration}回合；优先单位格：{prefer_occupied_cells},Fire Lv{level}: create {death_fire_count} fires within {death_fire_radius} tiles for {death_fire_duration} turns; prefer occupied {prefer_occupied_cells}
 gem.level.black.ice,寒冰 Lv{level}：{death_radius}格内迟滞，减速{slowed_stacks}层，冻结{freeze_duration}回合,Ice Lv{level}: sluggish within {death_radius} tiles; {slowed_stacks} slowed; freeze for {freeze_duration} turns
+gem.level.red.tide,潮汐 Lv{level}：命中后{flush_effect}，并生成浅水,Tide Lv{level}: {flush_effect} after hitting and create shallow water
+gem.level.blue.tide,潮汐 Lv{level}：{trigger_window}，对攻击者{flush_effect}，自身脚下生成浅水,Tide Lv{level}: {trigger_window}; {flush_effect} on the attacker and create shallow water under self
+gem.level.black.tide,潮汐 Lv{level}：死亡时对周围3×3内每个单位{flush_effect}，并生成浅水,Tide Lv{level}: on death, {flush_effect} on every unit in the surrounding 3x3 and create shallow water
+gem.level.tide.flush_all,彻底拔除1种可冲洗状态,remove every layer of one flushable status
+gem.level.tide.flush_count,冲洗{count}次,flush {count} time(s)
+gem.level.tide.trigger_all,每次受到主动攻击后,after every active attack received
+gem.level.tide.trigger_limited,每回合前{count}次受到主动攻击后,after the first {count} active attack(s) received each round
 gem.level.black.split,分裂 Lv{level}：生成{clone_count}个分身，保留{stat_ratio}属性,Split Lv{level}: create {clone_count} clones retaining {stat_ratio} stats
 gem.level.split.redirect.random_ratio,随机单位转移,redirect to one random unit
 gem.level.split.redirect.equal_all,所有单位均分,share among all units
@@ -328,3 +337,10 @@ status.disarmed.short,械{stacks},Disarm {stacks}
 status.disarmed.tooltip,缴械：无法攻击，剩余 {stacks} 次行动,Disarmed: cannot attack for {stacks} action(s)
 status.disarmed.block,被缴械，无法攻击,Disarmed: cannot attack
 status.paralyzed.block,被麻痹，无法行动,Paralyzed: cannot act
+status.paralyzed.skip,麻痹生效，跳过本回合,Paralysis takes effect; turn skipped
+status.frozen.name,冻结,Frozen
+status.frozen.short,冻,Frozen
+status.frozen.tooltip,冻结：跳过下次行动，受到的普通伤害 +{damage_bonus}%,Frozen: skip the next action and take +{damage_bonus}% normal damage
+status.frozen.block,被冻结，无法行动,Frozen: cannot act
+status.frozen.move_block,被冻结，无法移动,Frozen: cannot move
+status.frozen.skip,冻结生效，跳过本回合,Frozen takes effect; turn skipped

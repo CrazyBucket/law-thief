@@ -8,6 +8,7 @@
   "lawless": {"default_stacks": 1, "default_duration": 0, "attack_bonus": 1},
   "bomb_rat_plunder": {"default_stacks": 1, "default_duration": 0},
   "paralyzed": {"default_stacks": 1, "default_duration": 1},
+  "frozen": {"default_stacks": 1, "default_duration": 1, "damage_taken_mult": 1.25},
   "slowed": {"default_stacks": 1, "default_duration": 0, "min_move_points": 1},
   "wet": {"default_stacks": 1, "default_duration": 2},
   "sluggish": {"default_stacks": 1, "default_duration": 1},

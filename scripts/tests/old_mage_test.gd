@@ -19,6 +19,7 @@ func _run_test() -> void:
 	_test_ten_turn_pressure_keeps_casting()
 	_test_blue_spell_can_use_planned_movement()
 	_test_blue_control_spell_table()
+	_test_ice_consumes_wet()
 	_test_blue_light_reflects_to_two_targets()
 	_test_red_spell_table()
 	_test_conductive_grounding_preview()
@@ -382,6 +383,30 @@ func _test_blue_control_spell_table() -> void:
 	IntentSystem.execute_intent(impact_state, impact_mage)
 	assert(BoardUtils.manhattan(impact_mage.pos, source.pos) >= distance_before, "blue impact must end no closer to its attack source")
 	print("  [OK] blue control spell table")
+
+
+func _test_ice_consumes_wet() -> void:
+	var red_state := _new_state()
+	var red_mage := _mage(red_state)
+	_load_spell_gems(red_state, red_mage, "gem_ice", Constants.SLOT_RED)
+	var red_player := red_state.get_player()
+	StatusRules.apply_wet(red_state, red_player, 2, red_mage.uid)
+	IntentSystem.refresh_unit_intent(red_state, red_mage)
+	IntentSystem.execute_intent(red_state, red_mage)
+	assert(red_player.has_status(Constants.STATUS_FROZEN), "red boss ice should freeze a wet player")
+	assert(not red_player.has_status(Constants.STATUS_WET), "red boss ice should consume wet")
+
+	var blue_state := _new_state()
+	var blue_mage := _mage(blue_state)
+	blue_state.move_unit(blue_mage, Vector2i(1, 4))
+	_load_spell_gems(blue_state, blue_mage, "gem_ice", Constants.SLOT_BLUE)
+	var blue_player := blue_state.get_player()
+	StatusRules.apply_wet(blue_state, blue_player, 2, blue_mage.uid)
+	IntentSystem.refresh_unit_intent(blue_state, blue_mage)
+	IntentSystem.execute_intent(blue_state, blue_mage)
+	assert(blue_player.has_status(Constants.STATUS_FROZEN), "blue boss ice should freeze a wet player")
+	assert(not blue_player.has_status(Constants.STATUS_WET), "blue boss ice should consume wet")
+	print("  [OK] boss ice consumes wet when it freezes")
 
 
 func _test_blue_light_reflects_to_two_targets() -> void:

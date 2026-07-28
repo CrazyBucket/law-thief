@@ -31,6 +31,46 @@ static func can_act(unit: UnitState) -> bool:
 	return true
 
 
+static func move_block_reason(unit: UnitState) -> String:
+	for status in unit.statuses:
+		if not _StatusRegistry.blocks_movement(status.status_id):
+			continue
+		match status.status_id:
+			Constants.STATUS_PARALYZED:
+				return "被麻痹，无法移动"
+			Constants.STATUS_FROZEN:
+				return _translated("status.frozen.move_block", "被冻结，无法移动")
+			Constants.STATUS_ROOTED:
+				return "被束缚，无法移动"
+	return ""
+
+
+static func action_block_reason(unit: UnitState) -> String:
+	if unit != null and unit.has_status(Constants.STATUS_FROZEN):
+		return _translated("status.frozen.block", "被冻结，无法行动")
+	if unit != null and unit.has_status(Constants.STATUS_PARALYZED):
+		return _translated("status.paralyzed.block", "被麻痹，无法行动")
+	return ""
+
+
+static func turn_skip_status(unit: UnitState) -> String:
+	if unit == null:
+		return ""
+	if unit.has_status(Constants.STATUS_FROZEN):
+		return Constants.STATUS_FROZEN
+	if unit.has_status(Constants.STATUS_PARALYZED):
+		return Constants.STATUS_PARALYZED
+	return ""
+
+
+static func consume_turn_skip_status(unit: UnitState) -> String:
+	var status_id := turn_skip_status(unit)
+	if status_id.is_empty():
+		return ""
+	unit.remove_status(status_id)
+	return status_id
+
+
 static func has_extra_attack(unit: UnitState) -> bool:
 	return _has_stack_status(unit, Constants.STATUS_EXTRA_ATTACK)
 
@@ -81,3 +121,8 @@ static func _consume_stack_status(unit: UnitState, status_id: String) -> bool:
 	if status.stacks <= 0:
 		unit.remove_status(status_id)
 	return true
+
+
+static func _translated(key: String, fallback: String) -> String:
+	var text := TranslationServer.translate(key)
+	return fallback if text == key else text

@@ -22,8 +22,11 @@ static func get_def(status_id: String) -> Dictionary:
 
 
 static func display_name(status_id: String) -> String:
-	if status_id == Constants.STATUS_DISARMED:
-		return _translated("status.disarmed.name", "缴械")
+	match status_id:
+		Constants.STATUS_DISARMED:
+			return _translated("status.disarmed.name", "缴械")
+		Constants.STATUS_FROZEN:
+			return _translated("status.frozen.name", "冻结")
 	return get_def(status_id).get("display_name", status_id)
 
 
@@ -78,6 +81,14 @@ static func is_true_damage(status_id: String) -> bool:
 	return get_def(status_id).get("true_damage", false)
 
 
+static func is_flushable(status_id: String) -> bool:
+	return bool(get_def(status_id).get("flushable", false))
+
+
+static func flush_measure(status_id: String) -> String:
+	return str(get_def(status_id).get("flush_measure", "stacks"))
+
+
 static func short_label(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON:
@@ -86,6 +97,8 @@ static func short_label(status: StatusInstance) -> String:
 			return "火%d" % status.stacks
 		Constants.STATUS_PARALYZED:
 			return "麻%d" % maxi(status.duration, 1)
+		Constants.STATUS_FROZEN:
+			return _translated("status.frozen.short", "冻")
 		Constants.STATUS_SLOWED:
 			return "缓%d" % status.stacks
 		Constants.STATUS_LIGHT_EXPOSED:
@@ -138,7 +151,7 @@ static func icon_badge(status: StatusInstance) -> String:
 	match status.status_id:
 		Constants.STATUS_POISON, Constants.STATUS_BURNING, Constants.STATUS_SLOWED, Constants.STATUS_LIGHT_EXPOSED:
 			return str(status.stacks)
-		Constants.STATUS_PARALYZED, Constants.STATUS_ROOTED, Constants.STATUS_BLINDED, Constants.STATUS_WEAK:
+		Constants.STATUS_PARALYZED, Constants.STATUS_FROZEN, Constants.STATUS_ROOTED, Constants.STATUS_BLINDED, Constants.STATUS_WEAK:
 			return str(maxi(status.duration, 1))
 		Constants.STATUS_ARMOR:
 			return str(status.value)
@@ -155,6 +168,13 @@ static func tooltip(status: StatusInstance) -> String:
 			return "着火：回合结束受到 %d 点真实伤害，层数递减；处于火焰中层数x2" % status.stacks
 		Constants.STATUS_PARALYZED:
 			return "麻痹：本回合无法行动，剩余 %d 回合" % status.duration
+		Constants.STATUS_FROZEN:
+			var frozen_damage_mult := StatusConfig.float_value("frozen", "damage_taken_mult")
+			return _translated(
+				"status.frozen.tooltip",
+				"冻结：跳过下次行动，受到的普通伤害 +{damage_bonus}%",
+				{"damage_bonus": _percent_bonus_from_mult(frozen_damage_mult)}
+			)
 		Constants.STATUS_SLOWED:
 			return "缓速：移动力减少 %d 格（最低1）" % status.stacks
 		Constants.STATUS_LIGHT_EXPOSED:
@@ -254,6 +274,7 @@ static var _DEFS: Dictionary = {
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_TURN_END,
 		"true_damage": true,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_BURNING: {
@@ -271,6 +292,8 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.ARMOR_STEEL,
 		"stack_rule": STACK_MAX_VALUE,
 		"tick_phase": TICK_TURN_END,
+		"flushable": true,
+		"flush_measure": "value",
 		"blocks_movement": false,
 	},
 	Constants.STATUS_LIGHT_EXPOSED: {
@@ -279,6 +302,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.EXPOSE_YELLOW,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_BLINDED: {
@@ -287,6 +311,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.BLIND_SAND,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_START,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_ROOTED: {
@@ -295,6 +320,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.BIND_VIOLET,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_START,
+		"flushable": true,
 		"blocks_movement": true,
 	},
 	Constants.STATUS_EXPOSED: {
@@ -311,6 +337,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.DISORDER_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_OVERLOAD_AI_CONTROL: {
@@ -359,6 +386,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.EXPOSE_YELLOW,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_STARTLED_FEATHER: {
@@ -367,6 +395,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.DISORDER_RED,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_PARALYZED: {
@@ -379,12 +408,23 @@ static var _DEFS: Dictionary = {
 		"blocks_movement": true,
 		"blocks_action": true,
 	},
+	Constants.STATUS_FROZEN: {
+		"display_name": "冻结",
+		"type": TYPE_DEBUFF,
+		"color": UiPalette.FROZEN_CYAN,
+		"stack_rule": STACK_REPLACE,
+		# 冻结与麻痹一样在持有者自己的行动窗口消耗，但拥有独立伤害语义。
+		"tick_phase": TICK_NONE,
+		"blocks_movement": true,
+		"blocks_action": true,
+	},
 	Constants.STATUS_SLOWED: {
 		"display_name": "缓速",
 		"type": TYPE_DEBUFF,
 		"color": UiPalette.SLOW_CYAN,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_TURN_START,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_WET: {
@@ -401,6 +441,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.STAGNATE_ICE,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_VULNERABLE: {
@@ -409,6 +450,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_DISARMED: {
@@ -417,6 +459,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 		"blocks_attack": true,
 	},
@@ -426,6 +469,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.VULNERABLE_RED,
 		"stack_rule": STACK_REPLACE,
 		"tick_phase": TICK_TURN_END,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_COUNTER_MARK: {
@@ -442,6 +486,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.EXPOSE_YELLOW,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 	Constants.STATUS_EXTRA_MOVE: {
@@ -450,6 +495,7 @@ static var _DEFS: Dictionary = {
 		"color": UiPalette.WET_BLUE,
 		"stack_rule": STACK_VALUE,
 		"tick_phase": TICK_NONE,
+		"flushable": true,
 		"blocks_movement": false,
 	},
 }

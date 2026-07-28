@@ -6,6 +6,7 @@ extends EnemyBehavior
 ## because it is encounter-local and must never leak into a run save.
 
 const _Displacement = preload("res://scripts/rules/displacement.gd")
+const _FrozenStatusRules = preload("res://scripts/rules/frozen_status_rules.gd")
 
 const POOL_IDS := [
 	"gem_explosion", "gem_conductive", "gem_fire", "gem_ice",
@@ -736,7 +737,7 @@ static func _execute_spell(state: GameState, unit: UnitState, intent: IntentStat
 			"gem_ice":
 				if blue_target != null:
 					if blue_target.has_status(Constants.STATUS_SLOWED) or blue_target.has_status(Constants.STATUS_WET):
-						StatusRules.apply_paralyzed(state, blue_target, 1, unit.uid)
+						_FrozenStatusRules.apply(state, blue_target, 1, unit.uid)
 					else:
 						StatusRules.apply_slowed(state, blue_target, 2, unit.uid, 0)
 			"gem_poison":
@@ -759,7 +760,7 @@ static func _execute_spell(state: GameState, unit: UnitState, intent: IntentStat
 				TileRules.end_overlay_batch(state)
 			"gem_ice":
 				if player.pos in cells:
-					if player.has_status(Constants.STATUS_SLOWED) or player.has_status(Constants.STATUS_WET): StatusRules.apply_paralyzed(state, player, 1, unit.uid)
+					if player.has_status(Constants.STATUS_SLOWED) or player.has_status(Constants.STATUS_WET): _FrozenStatusRules.apply(state, player, 1, unit.uid)
 					else: StatusRules.apply_slowed(state, player, 2, unit.uid, 0)
 			"gem_poison":
 				if player.pos in cells: StatusRules.apply_poison(state, player, 2, 2, unit.uid)
@@ -1091,7 +1092,7 @@ static func _spell_preview_detail(gem: GemState, slot_type: String) -> String:
 			"gem_explosion": return "落点3×3，8伤害"
 			"gem_conductive": return "反击来源8，弹射4"
 			"gem_fire": return "着火2层，火焰2回合"
-			"gem_ice": return "缓速2；潮湿/已缓速则麻痹1回合"
+			"gem_ice": return "缓速2；潮湿/已缓速则冻结1回合"
 			"gem_poison": return "中毒2层，并复制最长负面状态"
 			"gem_light": return "两道弱光，各5伤害＋曝光1"
 			"gem_impact": return "远离攻击来源位移至多3格"
@@ -1099,7 +1100,7 @@ static func _spell_preview_detail(gem: GemState, slot_type: String) -> String:
 		"gem_explosion": return "中心12，外围8"
 		"gem_conductive": return "全场6；接地2；潮湿10"
 		"gem_fire": return "3×3各4，火焰2回合"
-		"gem_ice": return "三路寒潮4＋缓速2/麻痹1"
+		"gem_ice": return "三路寒潮4＋缓速2/冻结1"
 		"gem_poison": return "3×3各2＋中毒2，毒雾2回合"
 		"gem_light": return "整行/列9＋曝光1"
 		"gem_impact": return "整行8，沿线击退"

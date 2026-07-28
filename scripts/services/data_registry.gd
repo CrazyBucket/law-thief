@@ -13,6 +13,7 @@ const ProceduralEncounterGenerator = preload("res://scripts/services/procedural_
 const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
 const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
 const OldMageEncounterSetup = preload("res://scripts/services/old_mage_encounter_setup.gd")
+const TideRules = preload("res://scripts/rules/tide_rules.gd")
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
 const ABILITY_BLUE_TURN_START := "blue_turn_start"
@@ -49,7 +50,6 @@ var _unit_defs: Dictionary = {}
 var _encounters: Dictionary = {}
 var _relic_defs: Dictionary = {}
 var _uid_counter: int = 0
-
 func _ready() -> void:
 	_register_gem_effect_profiles()
 	_load_gem_effect_levels_from_json()
@@ -65,7 +65,6 @@ func _ready() -> void:
 	_load_encounters_from_json()
 	_validate_adventure_progression_refs()
 	_load_relic_defs_from_json()
-
 func create_battle_state(encounter_id: String, seed_value: int = 0, room_id: String = "", restore_run_player_state: bool = true) -> GameState:
 	var encounter: Dictionary = _encounters.get(encounter_id, {})
 	var current_chapter := 1
@@ -195,15 +194,11 @@ func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> 
 	return EncounterEnemyResolver.resolve(encounter, encounter_id, Callable(RngService, "weighted_pick"))
 func next_runtime_uid(prefix: String) -> String:
 	return _next_uid(prefix)
-
-
 func has_unit_def(unit_def_id: String) -> bool:
 	return _unit_defs.has(unit_def_id)
 
-
 func get_unit_def(unit_def_id: String) -> Dictionary:
 	return _unit_defs.get(unit_def_id, {}).duplicate(true)
-
 
 func get_unit_balance_value(unit_def_id: String, key: String, fallback: Variant = null) -> Variant:
 	var def: Dictionary = _unit_defs.get(unit_def_id, {})
@@ -291,6 +286,7 @@ func get_overlay_ids() -> Array[String]:
 		Constants.TILE_MOD_FIRE,
 		Constants.TILE_MOD_TOXIC_SMOKE,
 		Constants.TILE_MOD_POISON_PUDDLE,
+		Constants.TILE_MOD_SHALLOW_WATER,
 	]
 
 
@@ -334,6 +330,8 @@ func get_overlay_display_name(overlay_id: String) -> String:
 			return "Toxic Smoke"
 		Constants.TILE_MOD_POISON_PUDDLE:
 			return "Poison Puddle"
+		Constants.TILE_MOD_SHALLOW_WATER:
+			return "Shallow Water"
 	return overlay_id
 
 
@@ -354,11 +352,13 @@ func get_overlay_default_duration(overlay_id: String) -> int:
 			return CombatConfig.toxic_smoke_duration()
 		Constants.TILE_MOD_POISON_PUDDLE:
 			return CombatConfig.poison_puddle_duration()
+		Constants.TILE_MOD_SHALLOW_WATER:
+			return 2
 	return 0
 
 
 func get_gem_def(gem_ref: Variant) -> Dictionary:
-	return _resolve_gem_def(gem_ref)
+	return _resolve_gem_def(gem_ref).duplicate(true)
 
 
 func get_gem_display_name(gem_ref: Variant) -> String:
@@ -1134,19 +1134,19 @@ func _register_gem_effect_profiles() -> void:
 			},
 		},
 		"flurry": {"ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.flurry.unit_red_active"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.flurry.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.flurry.black_death"}}},
+		"tide": {"ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.tide.unit_red_active"}, ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.tide.enemy_red_action"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.tide.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.tide.black_death"}}},
 	}
 
 func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
 	var gem_id := _gem_id_from_ref(gem_ref)
-	var base: Dictionary = _gem_defs.get(gem_id, {}).duplicate(true)
+	var base: Dictionary = _gem_defs.get(gem_id, {})
 	if gem_ref is GemState:
 		var gem := gem_ref as GemState
 		if not gem.def_overrides.is_empty():
-			base = _deep_merge_dict(base, gem.def_overrides)
+			return _deep_merge_dict(base, gem.def_overrides)
 	return base
 func _effect_profile(profile_id: String) -> Dictionary:
 	return _gem_effect_profiles.get(profile_id, {})
-
 
 func _translate_ability_description(profile_id: String, ability_slot: String) -> String:
 	var profile: Dictionary = _effect_profile(profile_id)
@@ -1239,6 +1239,7 @@ func _gem_effect_level_summary_params(level_def: Dictionary, level: int) -> Dict
 		params["strike_targets"] = _translate_key("gem.level.target.all", {}, "all")
 	elif level_def.has("strike_count"):
 		params["strike_targets"] = _format_gem_effect_level_summary_value("strike_count", level_def["strike_count"])
+	TideRules.add_level_summary_params(params, level_def, Callable(self, "_translate_key"))
 	return params
 
 

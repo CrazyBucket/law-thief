@@ -28,6 +28,7 @@ const GEM_COUNTER := "gem_counter"
 const GEM_ECHO := "gem_echo"
 const GEM_FLURRY := "gem_flurry"
 const GEM_IMPACT := "gem_impact"
+const GEM_TIDE := "gem_tide"
 
 const TILE_FLOOR := "tile_floor"
 const TILE_WATER := "tile_water"
@@ -60,6 +61,7 @@ const ACTION_NONE := ""
 const STATUS_POISON := "poison"
 const STATUS_BURNING := "burning"
 const STATUS_PARALYZED := "paralyzed"
+const STATUS_FROZEN := "frozen"
 const STATUS_SLOWED := "slowed"
 const STATUS_WET := "wet"
 const STATUS_ARMOR := "armor"
@@ -88,6 +90,7 @@ const TILE_MOD_FIRE := "fire"
 const TILE_MOD_TOXIC_SMOKE := "toxic_smoke"
 
 const TILE_MOD_POISON_PUDDLE := "poison_puddle"
+const TILE_MOD_SHALLOW_WATER := "shallow_water"
 
 # ─── 基础地块 ground 标签 ──────────────────────────────────────────────────────
 const GROUND_TAG_FLAMMABLE  := "ground:flammable"   # 可被点燃（草地、草丛）

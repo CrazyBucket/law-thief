@@ -230,5 +230,23 @@
       "blue_damaged": "impact",
       "black_death": "impact"
     }
+  },
+  "gem_tide": {
+    "display_name_key": "gem.tide.name",
+    "symbol_key": "gem.tide.symbol",
+    "symbol": "潮",
+    "color": [0.25, 0.82, 0.95, 1.0],
+    "tag": "tide",
+    "element": "water",
+    "pool_tier": 1,
+    "max_stack_level": 3,
+    "combos": [],
+    "rarity": "common",
+    "ability_profiles": {
+      "unit_red_active": "tide",
+      "enemy_red_action": "tide",
+      "blue_damaged": "tide",
+      "black_death": "tide"
+    }
   }
 }

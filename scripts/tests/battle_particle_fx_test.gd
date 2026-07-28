@@ -1,6 +1,7 @@
 extends SceneTree
 
 const _ParticleFx = preload("res://scripts/ui/battle_particle_fx.gd")
+const _Vpf = preload("res://scripts/ui/vfx_pack_frames.gd")
 
 
 func _initialize() -> void:
@@ -8,6 +9,9 @@ func _initialize() -> void:
 
 
 func _run_tests() -> void:
+	assert(_Vpf.is_pack_available())
+	assert(_Vpf.frame_paths(_Vpf.EFFECT_SMALL_HIT).size() == 7)
+	assert(_Vpf.frame_paths(_Vpf.EFFECT_PROJECTILE).size() == 10)
 	var fx := _ParticleFx.new()
 	root.add_child(fx)
 	fx.add({

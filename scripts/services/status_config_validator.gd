@@ -11,6 +11,7 @@ const ENTRY_KEYS := {
 	"lawless": true,
 	"bomb_rat_plunder": true,
 	"paralyzed": true,
+	"frozen": true,
 	"slowed": true,
 	"wet": true,
 	"sluggish": true,
@@ -65,6 +66,8 @@ static func validate(config: Dictionary) -> Array[String]:
 			"slowed":
 				extra_required_fields = ["min_move_points"]
 			"vulnerable":
+				extra_required_fields = ["damage_taken_mult"]
+			"frozen":
 				extra_required_fields = ["damage_taken_mult"]
 			"weak":
 				extra_required_fields = ["attack_damage_mult"]

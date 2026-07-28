@@ -6,6 +6,8 @@ const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
+const _StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
 
 var _ctrl_ref: WeakRef
 var _ctrl: BattleController:
@@ -46,9 +48,9 @@ func begin_enemy_phase() -> Dictionary:
 	var events: Array[Dictionary] = []
 	var player: UnitState = ctrl.state.get_player()
 	StatusRules.clear_extra_action_statuses(player)
-	if player != null and player.has_status(Constants.STATUS_PARALYZED):
-		ctrl.state.log("%s 因麻痹跳过回合" % player.uid)
-		player.remove_status(Constants.STATUS_PARALYZED)
+	var player_skip_status := _StatusActionRules.consume_turn_skip_status(player)
+	if not player_skip_status.is_empty():
+		ctrl.state.log("%s 因%s跳过回合" % [player.uid, _StatusRegistry.display_name(player_skip_status)])
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
 	ctrl._check_battle_end()
 	if ctrl.state.phase == Constants.PHASE_ENDED:
@@ -88,9 +90,9 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 		}
 	BehaviorRegistry.get_behavior(enemy.behavior_id).on_turn_start(ctrl.state, enemy)
 	StatusRules.tick_unit_turn_start(ctrl.state, enemy)
-	if enemy.has_status(Constants.STATUS_PARALYZED):
-		enemy.remove_status(Constants.STATUS_PARALYZED)
-		ctrl.state.log("%s 因麻痹跳过回合" % enemy.uid)
+	var enemy_skip_status := _StatusActionRules.consume_turn_skip_status(enemy)
+	if not enemy_skip_status.is_empty():
+		ctrl.state.log("%s 因%s跳过回合" % [enemy.uid, _StatusRegistry.display_name(enemy_skip_status)])
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 		return {
@@ -157,8 +159,8 @@ func finish_enemy_phase() -> Dictionary:
 	ctrl._check_battle_end()
 	var auto_enemy_execution: Dictionary = {}
 	var player: UnitState = ctrl.state.get_player()
-	if ctrl.state.phase != Constants.PHASE_ENDED and player != null and player.has_status(Constants.STATUS_PARALYZED):
-		# 麻痹占用玩家自己的行动窗口；无需等待玩家再点一次结束回合。
+	if ctrl.state.phase != Constants.PHASE_ENDED and not _StatusActionRules.turn_skip_status(player).is_empty():
+		# 行动跳过状态占用玩家自己的行动窗口；无需等待玩家再点一次结束回合。
 		auto_enemy_execution = begin_enemy_phase()
 	ctrl._emit_changed()
 	return {

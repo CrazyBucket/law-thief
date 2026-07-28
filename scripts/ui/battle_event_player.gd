@@ -412,7 +412,9 @@ func _play_projectile_volley(batch: Array) -> void:
 			single.get("from", Vector2i.ZERO),
 			single.get("to", Vector2i.ZERO),
 			projectile_color,
-			str(single.get("source_uid", ""))
+			str(single.get("source_uid", "")),
+			str(single.get("element", "")),
+			int(single.get("gem_level", 0))
 		)
 	else:
 		var shots: Array = []
@@ -422,6 +424,8 @@ func _play_projectile_volley(batch: Array) -> void:
 				"to": projectile_event.get("to", Vector2i.ZERO),
 				"color": projectile_event.get("color", Color(0.95, 0.92, 0.45)),
 				"source_uid": str(projectile_event.get("source_uid", "")),
+				"element": str(projectile_event.get("element", "")),
+				"gem_level": int(projectile_event.get("gem_level", 0)),
 			})
 		await _board.play_projectiles_task(shots)
 

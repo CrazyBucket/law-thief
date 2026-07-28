@@ -54,6 +54,11 @@
       "1": {"echo_tag_count": 1, "followup_ratio": 0.0},
       "2": {"echo_tag_count": 2, "followup_ratio": 0.0},
       "3": {"echo_tag_count": 2, "followup_ratio": 0.5}
+    },
+    "tide": {
+      "1": {"flush_count": 1, "flush_all_one_status": false},
+      "2": {"flush_count": 2, "flush_all_one_status": false},
+      "3": {"flush_count": 0, "flush_all_one_status": true}
     }
   },
   "blue": {
@@ -111,6 +116,11 @@
       "1": {"echo_tag_count": 1, "first_tag_strength": 1},
       "2": {"echo_tag_count": 2, "first_tag_strength": 1},
       "3": {"echo_tag_count": 2, "first_tag_strength": 2}
+    },
+    "tide": {
+      "1": {"trigger_limit": 1, "flush_count": 1, "flush_all_one_status": false},
+      "2": {"trigger_limit": 2, "flush_count": 1, "flush_all_one_status": false},
+      "3": {"trigger_limit": 0, "flush_count": 0, "flush_all_one_status": true}
     }
   },
   "black": {
@@ -168,6 +178,11 @@
       "1": {"echo_tag_count": 1, "first_tag_repeat_count": 1},
       "2": {"echo_tag_count": 2, "first_tag_repeat_count": 1},
       "3": {"echo_tag_count": 2, "first_tag_repeat_count": 2}
+    },
+    "tide": {
+      "1": {"death_radius": 1, "flush_count": 1, "flush_all_one_status": false},
+      "2": {"death_radius": 1, "flush_count": 2, "flush_all_one_status": false},
+      "3": {"death_radius": 1, "flush_count": 0, "flush_all_one_status": true}
     }
   }
 }

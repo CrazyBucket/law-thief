@@ -105,6 +105,7 @@ static func terms_for_text(text: String) -> Array[Dictionary]:
 		Constants.STATUS_POISON: ["中毒", "毒雾", "毒烟"],
 		Constants.STATUS_SLOWED: ["缓速"],
 		Constants.STATUS_PARALYZED: ["麻痹"],
+		Constants.STATUS_FROZEN: ["冻结"],
 		Constants.STATUS_WET: ["潮湿", "水洼"],
 		Constants.STATUS_ARMOR: ["护盾"],
 		Constants.STATUS_ROOTED: ["束缚"],
@@ -188,6 +189,8 @@ static func _status_glossary_body(status_id: String) -> String:
 			return "回合结束时造成真实伤害；处在火焰或毒烟中时会加剧。"
 		Constants.STATUS_PARALYZED:
 			return "无法行动，持续时间按回合减少。"
+		Constants.STATUS_FROZEN:
+			return "跳过下次行动，受到的普通伤害提高；冻结会消耗潮湿。"
 		Constants.STATUS_SLOWED:
 			return "降低移动力，但不会低于 1 格。"
 		Constants.STATUS_LIGHT_EXPOSED:

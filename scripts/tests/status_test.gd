@@ -1,5 +1,8 @@
 extends SceneTree
 
+const StatusIcons = preload("res://scripts/ui/status_icons.gd")
+const FrozenStatusRules = preload("res://scripts/rules/frozen_status_rules.gd")
+
 
 func _initialize() -> void:
 	call_deferred("_run_tests")
@@ -20,6 +23,7 @@ func _run_tests() -> void:
 	_test_status_combat_multipliers_from_config()
 	_test_disarm_blocks_one_action()
 	_test_paralyzed_consumes_at_action_window()
+	_test_frozen_consumes_wet_and_action_window()
 	_test_relic_numeric_refs_runtime()
 	print("STATUS_TEST_PASS")
 	quit()
@@ -199,6 +203,7 @@ func _test_status_combat_multipliers_from_config() -> void:
 	attacker.base_attack = 8
 	StatusRules.apply_weak(state, attacker)
 	assert(CombatRules.attack_damage(state, attacker) == 6, "weak attack multiplier should come from status config")
+	assert(StatusIcons.has_icon(Constants.STATUS_WEAK), "weak should have a status icon")
 	StatusRules.apply_vulnerable(state, target)
 	CombatRules.apply_damage(state, target, 4, attacker.uid, "test_hit")
 	assert(target.hp == 4, "vulnerable damage multiplier should come from status config")
@@ -245,6 +250,38 @@ func _test_paralyzed_consumes_at_action_window() -> void:
 	assert(controller.state.phase == Constants.PHASE_ENEMY, "automatic paralysis skip should leave the battle in enemy phase")
 	assert(not player.has_status(Constants.STATUS_PARALYZED), "paralysis should clear while automatically skipping the player action window")
 	print("  [OK] paralysis automatically consumes the player action window")
+
+
+func _test_frozen_consumes_wet_and_action_window() -> void:
+	var damage_state := _make_state()
+	var source := _make_unit(damage_state, "freeze_source")
+	var target := _make_unit(damage_state, "freeze_target")
+	StatusRules.apply_wet(damage_state, target, 2, source.uid)
+	FrozenStatusRules.apply(damage_state, target, 1, source.uid)
+	assert(target.has_status(Constants.STATUS_FROZEN), "freezing should apply the independent frozen status")
+	assert(not target.has_status(Constants.STATUS_WET), "freezing should consume wet")
+	assert(not target.has_status(Constants.STATUS_PARALYZED), "frozen should not be represented as paralysis")
+	assert(not StatusRules.can_act(target) and not StatusRules.can_move(target), "frozen should block the next action")
+	CombatRules.apply_damage(damage_state, target, 4, source.uid, "frozen_test")
+	assert(target.hp == 5, "frozen target should take 25% more normal damage")
+	assert(StatusIcons.has_icon(Constants.STATUS_FROZEN), "frozen should have a status icon")
+
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 8043)
+	var state := controller.state
+	var player := state.get_player()
+	var enemy: UnitState = state.get_alive_enemies()[0]
+	FrozenStatusRules.apply(state, player, 1, enemy.uid)
+	assert(not controller.can_use_action(Constants.ACTION_MOVE), "frozen player should not offer movement")
+	assert(not controller.can_use_action(Constants.ACTION_ATTACK), "frozen player should not offer attacks")
+	controller.begin_enemy_phase()
+	FrozenStatusRules.apply(state, player, 1, enemy.uid)
+	var turn_start: Dictionary = controller.finish_enemy_phase()
+	var automatic_skip: Dictionary = turn_start.get("auto_enemy_execution", {})
+	assert(not automatic_skip.is_empty(), "frozen player should automatically advance to the enemy phase")
+	assert(controller.state.phase == Constants.PHASE_ENEMY, "automatic frozen skip should leave the battle in enemy phase")
+	assert(not player.has_status(Constants.STATUS_FROZEN), "frozen should clear while consuming the player action window")
+	print("  [OK] frozen consumes wet, increases damage, and skips one action")
 
 
 func _test_relic_numeric_refs_runtime() -> void:

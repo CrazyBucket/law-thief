@@ -22,3 +22,10 @@ artifacts/verify/
 
 # Demo: 大而重的 VFX，通常 symlink 指向本机「下载」，避免克隆后他人机器路径失效而入库
 /assets/demo/vfx-free-pack
+
+# Local Mini Magick Shoots 2 frames: the source licence permits in-game use,
+# but forbids redistributing the raw PNG files with this repository.
+/assets/demo/mini-magick-shoots-2/
+
+# Local image-generation intermediates; only the processed game assets are committed.
+/tmp/imagegen/

@@ -110,7 +110,9 @@ func tick_modifiers() -> void:
 func has_tile_tag(tag: String) -> bool:
 	match tag:
 		Constants.TAG_TILE_CONDUCTIVE:
-			return has_ground_tag(Constants.GROUND_TAG_WATER)
+			return has_ground_tag(Constants.GROUND_TAG_WATER) \
+				or has_modifier(Constants.TILE_MOD_SHALLOW_WATER) \
+				or has_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 		Constants.TAG_TILE_INTERACTIVE:
 			return tile_id == Constants.TILE_PILLAR
 		Constants.TAG_TILE_FLAMMABLE:
@@ -118,7 +120,9 @@ func has_tile_tag(tag: String) -> bool:
 		Constants.TAG_TILE_ICE:
 			return has_ground_tag(Constants.GROUND_TAG_ICE)
 		Constants.TAG_TILE_WATER:
-			return has_ground_tag(Constants.GROUND_TAG_WATER)
+			return has_ground_tag(Constants.GROUND_TAG_WATER) \
+				or has_modifier(Constants.TILE_MOD_SHALLOW_WATER) \
+				or has_modifier(Constants.TILE_MOD_POISON_PUDDLE)
 	return false
 
 

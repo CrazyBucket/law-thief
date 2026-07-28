@@ -6,6 +6,7 @@ const SPARSE_ASSETS := {
 	"res://assets/overlays/vegetation/overlay_grass_tall.png": 0.35,
 	"res://assets/overlays/vegetation/overlay_grass_thicket.png": 0.45,
 	"res://assets/overlays/effects/overlay_poison_water_glints.png": 0.10,
+	"res://assets/overlays/effects/overlay_shallow_water_ripples.png": 0.20,
 }
 const ROUTE_ARROW_MASKS := [
 	"res://assets/ui/route_arrows_generated/route_arrow_ne.png",
@@ -76,8 +77,11 @@ func _check_route_arrow_masks() -> void:
 func _load_image(path: String) -> Image:
 	var texture := load(path) as Texture2D
 	if texture == null:
-		_require(false, "overlay texture failed to load: %s" % path)
-		return null
+		var source := Image.load_from_file(path)
+		if source == null or source.is_empty():
+			_require(false, "overlay texture failed to load: %s" % path)
+			return null
+		return source
 	return texture.get_image()
 
 

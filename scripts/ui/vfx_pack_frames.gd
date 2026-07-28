@@ -1,11 +1,11 @@
 class_name VfxPackFrames
 extends RefCounted
 
-const PACK_ROOT := "res://assets/demo/vfx-free-pack"
-const FPS_SUBDIR := "60fps"
+const PACK_ROOT := "res://assets/vfx/foozle-pixel-magic-effects"
 
-const EFFECT_EXPLOSION := "Effect_Explosion"
-const EFFECT_SMALL_HIT := "Effect_SmallHit"
+const EFFECT_EXPLOSION := "Explosion"
+const EFFECT_SMALL_HIT := "Explosion"
+const EFFECT_PROJECTILE := "Wind"
 const EFFECT_PUFF := "Effect_PuffAndStars"
 const EFFECT_HEAL_CHARGE := "Effect_Charged"
 const EFFECT_GEM_SPARK := "Effect_PowerChords"
@@ -33,41 +33,23 @@ static func frame_paths(effect_top_folder: String) -> PackedStringArray:
 
 
 static func _gather_sorted_png_paths(effect_folder: String) -> PackedStringArray:
-	var frames_root := "%s/%s/%s/%s" % [PACK_ROOT, effect_folder, FPS_SUBDIR, "Frames"]
-	var d_variants := DirAccess.open(frames_root)
-	if d_variants == null:
-		return PackedStringArray()
-	var variant_names: Array[String] = []
-	d_variants.list_dir_begin()
-	while true:
-		var entry: String = d_variants.get_next()
-		if entry == "":
-			break
-		if entry.begins_with("."):
-			continue
-		if d_variants.current_is_dir():
-			variant_names.append(entry)
-	d_variants.list_dir_end()
-	if variant_names.is_empty():
-		return PackedStringArray()
-	variant_names.sort()
-	var variant_path := frames_root.path_join(variant_names[0])
-	var d_frames := DirAccess.open(variant_path)
-	if d_frames == null:
+	var frames_root := PACK_ROOT.path_join(effect_folder)
+	var frames_dir := DirAccess.open(frames_root)
+	if frames_dir == null:
 		return PackedStringArray()
 	var pngs: Array[String] = []
-	d_frames.list_dir_begin()
+	frames_dir.list_dir_begin()
 	while true:
-		var fname: String = d_frames.get_next()
+		var fname: String = frames_dir.get_next()
 		if fname == "":
 			break
 		if fname.begins_with("."):
 			continue
-		if d_frames.current_is_dir():
+		if frames_dir.current_is_dir():
 			continue
 		if fname.to_lower().ends_with(".png"):
-			pngs.append(variant_path.path_join(fname))
-	d_frames.list_dir_end()
+			pngs.append(frames_root.path_join(fname))
+	frames_dir.list_dir_end()
 	pngs.sort()
 	var out_paths: PackedStringArray = PackedStringArray()
 	for p_path in pngs:

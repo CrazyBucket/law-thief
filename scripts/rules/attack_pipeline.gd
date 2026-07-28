@@ -1,6 +1,5 @@
 class_name AttackPipeline
 extends RefCounted
-
 const _ContactResolver = preload("res://scripts/rules/contact_resolver.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 const EntityRules = preload("res://scripts/rules/entity_rules.gd")
@@ -16,12 +15,10 @@ const ShieldRules = preload("res://scripts/rules/shield_rules.gd")
 const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 const AttackSegmentRules = preload("res://scripts/rules/attack_segment_rules.gd")
 const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
-static func _relic_effect_registry() -> Node:
-	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
-
-static func _rng_service() -> Node:
-	return Engine.get_main_loop().root.get_node_or_null("RngService")
-
+const TideRules = preload("res://scripts/rules/tide_rules.gd")
+const WetReactionRules = preload("res://scripts/rules/wet_reaction_rules.gd")
+static func _relic_effect_registry() -> Node: return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+static func _rng_service() -> Node: return Engine.get_main_loop().root.get_node_or_null("RngService")
 # ─── 攻击标签集合 ────────────────────────────────────────────────────────────
 const TAG_RANGED       := "ranged"
 const TAG_MELEE        := "melee"
@@ -34,7 +31,6 @@ const TAG_ARC          := "arc"
 const TAG_FIRE_ON_HIT  := "fire_on_hit"
 const TAG_FIRE_TILE    := "fire_tile"
 const TAG_SLOW_ON_HIT  := "slow_on_hit"
-const TAG_SLOW_SELF    := "slow_self"
 const TAG_GRAVITY_AURA := "gravity_aura"
 const TAG_FORCED_MOVE  := "forced_move"
 const TAG_NO_KILL_PROC := "no_kill_proc"
@@ -43,23 +39,24 @@ const TAG_LIGHT_BEAM   := "light_beam"
 const TAG_COUNTER      := "counter"
 const TAG_ECHO         := "echo"
 const TAG_IMPACT       := "impact_attack"
+const PROJECTILE_VISUAL_ELEMENTS := ["fire", "poison", "arc", "ice", "explosion"]
 
 const PROFILE_TAG_ALIASES: Dictionary = {
 	"fire_gem": "fire",
 }
-
 const ATTACK_TAGS_BY_GEM_TAG: Dictionary = {
 	"explosion": [TAG_EXPLOSIVE],
 	"poison": [TAG_POISON],
 	"gravity": [TAG_GRAVITY_AURA],
 	"arc": [TAG_ARC],
 	"fire": [TAG_FIRE_ON_HIT, TAG_FIRE_TILE],
-	"ice": [TAG_SLOW_ON_HIT, TAG_SLOW_SELF],
+	"ice": [TAG_SLOW_ON_HIT],
 	"split": [TAG_SPLIT_SHOT],
 	"light": [TAG_LIGHT_BEAM],
 	"counter": [TAG_COUNTER],
 	"echo": [TAG_ECHO],
 	"impact": [TAG_IMPACT],
+	"tide": ["tide"],
 }
 const HIT_TAG_HANDLERS: Array[Dictionary] = [
 	{"tag": TAG_EXPLOSIVE, "handler": "_apply_explosion_hit_tag"},
@@ -68,6 +65,7 @@ const HIT_TAG_HANDLERS: Array[Dictionary] = [
 	{"tag": TAG_FIRE_ON_HIT, "handler": "_apply_fire_on_hit_tag"},
 	{"tag": TAG_SLOW_ON_HIT, "handler": "_apply_slow_on_hit_tag"},
 	{"tag": TAG_ARC, "handler": "_apply_arc_hit_tag"},
+	{"tag": "tide", "handler": "_apply_tide_hit_tag"},
 ]
 ## 以瞄准格为唯一空间锚点执行攻击（空地 / 单位共用）
 static func execute_aimed(
@@ -232,8 +230,6 @@ static func _phase_post_attack(ctx: AttackContext) -> void:
 	var killed := ctx.target != null and not ctx.target.alive
 	if ctx.has_tag(TAG_GRAVITY_AURA) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_gravity_aura(ctx)
-	if ctx.has_tag(TAG_SLOW_SELF) and not ctx.has_tag(TAG_LIGHT_BEAM):
-		_apply_ice_self_slow(ctx)
 
 	if ctx.has_tag(TAG_COUNTER) and not ctx.has_tag(TAG_LIGHT_BEAM):
 		_apply_red_counter(ctx)
@@ -317,6 +313,7 @@ static func _apply_hit_tag_handler(
 				StatusRules.apply_burning(ctx.state, hit_unit, 1, ctx.attacker.uid)
 		"_apply_slow_on_hit_tag":
 			if hit_unit != null and hit_unit.alive:
+				ctx.push_event({"type": "frost_pulse", "pos": hit_unit.pos})
 				GemEffects.apply_ice_hit_effect(
 					ctx.state,
 					hit_unit,
@@ -325,7 +322,8 @@ static func _apply_hit_tag_handler(
 				)
 		"_apply_arc_hit_tag":
 			_apply_arc_at_cell(ctx, hit_cell, hit_unit, gem_ctx)
-
+		"_apply_tide_hit_tag":
+			TideRules.apply_attack_hit(ctx, hit_cell, hit_unit, gem_ctx)
 static func _apply_arc_at_cell(
 	ctx: AttackContext,
 	hit_cell: Vector2i,
@@ -333,7 +331,9 @@ static func _apply_arc_at_cell(
 	gem_ctx: Dictionary
 ) -> void:
 	var hit_tile := ctx.state.get_tile(hit_cell)
-	if hit_tile != null and hit_tile.has_tile_tag(Constants.TAG_TILE_WATER):
+	if hit_unit != null and StatusRules.is_wet(hit_unit):
+		WetReactionRules.apply_arc(ctx.state, hit_unit, ctx.attacker, ctx.events, gem_ctx)
+	elif hit_tile != null and hit_tile.has_tile_tag(Constants.TAG_TILE_WATER):
 		GemEffects.apply_water_conduction(ctx.state, hit_cell, ctx.attacker, ctx.events, gem_ctx)
 	elif hit_unit != null:
 		GemEffects.apply_arc_bounce_from_anchor(
@@ -679,11 +679,6 @@ static func _gem_tag_from_profile(profile: String) -> String:
 	return str(PROFILE_TAG_ALIASES.get(profile, profile))
 
 
-static func _apply_ice_self_slow(ctx: AttackContext) -> void:
-	ctx.push_event({"type": "frost_pulse", "pos": ctx.attacker.pos})
-	StatusRules.apply_slowed(ctx.state, ctx.attacker, 1, ctx.attacker.uid)
-
-
 static func _try_deflect(ctx: AttackContext) -> void:
 	if ctx.target == null:
 		return
@@ -822,8 +817,15 @@ static func compute_split_wing_cells(attacker_pos: Vector2i, aim_pos: Vector2i) 
 
 
 static func _push_projectile_event(ctx: AttackContext, from_pos: Vector2i, to_pos: Vector2i) -> void:
-	ctx.push_event({"type": "projectile", "from": from_pos, "to": to_pos,
-		"source_uid": ctx.attacker.uid})
+	var event := {"type": "projectile", "from": from_pos, "to": to_pos,
+		"source_uid": ctx.attacker.uid}
+	var gem_ctx: Dictionary = ctx.payload.get("gem_tag_context", {})
+	var element := GemEffects.light_element_for_context(gem_ctx)
+	if element in PROJECTILE_VISUAL_ELEMENTS:
+		event["element"] = element
+		event["gem_level"] = clampi(GemTagResolver.tag_level(gem_ctx, element), 1, 3)
+		event["color"] = GemEffects.light_color_for_context(gem_ctx)
+	ctx.push_event(event)
 
 
 static func _apply_split_wings(ctx: AttackContext) -> void:

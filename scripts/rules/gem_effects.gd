@@ -16,13 +16,13 @@ const _GemLightVisuals = preload("res://scripts/rules/gem_light_visuals.gd")
 const _GemExplosionRules = preload("res://scripts/rules/gem_explosion_rules.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
 const _ColoredSlimeRules = preload("res://scripts/rules/colored_slime_rules.gd")
+const _FrozenStatusRules = preload("res://scripts/rules/frozen_status_rules.gd")
 const FootprintRules = preload("res://scripts/rules/footprint_rules.gd")
 const FlurryRules = preload("res://scripts/rules/flurry_rules.gd")
 const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
-static func _rng_service() -> Node:
-	return Engine.get_main_loop().root.get_node_or_null("RngService")
-static func _relic_effect_registry() -> Node:
-	return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
+const TideRules = preload("res://scripts/rules/tide_rules.gd")
+static func _rng_service() -> Node: return Engine.get_main_loop().root.get_node_or_null("RngService")
+static func _relic_effect_registry() -> Node: return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 const TIMING_ACTIVE := "active"
 const TIMING_TURN_START := "turn_start"
 const TIMING_TURN_END := "turn_end"
@@ -31,7 +31,6 @@ const TIMING_ON_DEATH := "on_death"
 const TIMING_MOVED_THROUGH := "moved_through"
 const TIMING_FORCED_MOVE := "forced_move"   # 被强制位移时（击退、引力等）
 const TIMING_ON_CONTACT := "on_contact"     # 接触时（碰撞、相邻、攻击）
-
 const MODE_TRIGGER := "trigger"
 const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
 const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
@@ -46,7 +45,7 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"arc",
 	"impact",
 	"gravity",
-	"ice",
+	"ice", "tide",
 	"poison",
 	"fire_gem",
 	"explosion",
@@ -57,12 +56,9 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"flurry",
 ]
 const SPLIT_ORIGIN_SLOT_PREFIX := "split_origin_slot:"
-static func begin_explosion_reaction_chain() -> void:
-	_GemExplosionRules.begin_reaction_chain()
-static func end_explosion_reaction_chain() -> void:
-	_GemExplosionRules.end_reaction_chain()
-static func split_origin_slot_key(gem_uid: String) -> String:
-	return "%s%s" % [SPLIT_ORIGIN_SLOT_PREFIX, gem_uid]
+static func begin_explosion_reaction_chain() -> void: _GemExplosionRules.begin_reaction_chain()
+static func end_explosion_reaction_chain() -> void: _GemExplosionRules.end_reaction_chain()
+static func split_origin_slot_key(gem_uid: String) -> String: return "%s%s" % [SPLIT_ORIGIN_SLOT_PREFIX, gem_uid]
 static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
 	# The old mage's blue slots are telegraphed spell material, not generic reactive gems.
 	if unit != null and unit.behavior_id == "old_mage" and slot_type == Constants.SLOT_BLUE:
@@ -1015,6 +1011,8 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 					gem_ctx
 				)
 			return true
+		"tide":
+			return TideRules.apply_blue_damaged_from_hook(state, owner, source, ctx, _slot)
 		"split":
 			return true
 		"light":
@@ -1290,9 +1288,11 @@ static func _run_unit_death_effect_with_events(
 					if slowed_stacks > 0:
 						StatusRules.apply_slowed(state, unit, slowed_stacks, owner.uid, slowed_min_move_points)
 					if freeze_duration > 0:
-						StatusRules.apply_paralyzed(state, unit, freeze_duration, owner.uid)
+						_FrozenStatusRules.apply(state, unit, freeze_duration, owner.uid)
 					out_events.append(_EventBuilder.area_effect("frost_pulse", unit.pos))
 			return true
+		"tide":
+			return TideRules.apply_black_death_from_hook(state, owner, gem_ctx)
 		"split":
 			var split_ctx := gem_ctx.duplicate(true)
 			split_ctx["split_trigger_gem_uid"] = gem.uid
@@ -1939,7 +1939,9 @@ static func _events_from_ctx(ctx: Dictionary) -> Array[Dictionary]:
 		if event is Dictionary:
 			events.append(event as Dictionary)
 	return events
-## 攻击水域：对相连水域及其边缘格上的所有潮湿单位各造成一次电弧伤害
+static func arc_reaction_damage(source: UnitState, state: GameState) -> int: return _calc_arc_damage(source, state)
+static func arc_reaction_hit(state: GameState, from_pos: Vector2i, target: UnitState, source_uid: String, damage: int, events: Array[Dictionary], gem_ctx: Dictionary = {}) -> void: _arc_to(state, from_pos, target, source_uid, damage, events, gem_ctx)
+## 攻击水域：对相连水域中的全部单位及边缘格上的潮湿单位各造成一次电弧伤害，包括站在水里的释放者
 static func apply_water_conduction(
 	state: GameState,
 	anchor_pos: Vector2i,
@@ -2066,17 +2068,17 @@ static func _arc_to(
 
 ## ─── 冰冻（ice）辅助 ──────────────────────────────────────────────────────
 
-## 命中冰冻效果：潮湿单位直接冻结（麻痹+缓速），普通单位仅缓速
+## 命中冰冻效果：潮湿单位直接冻结，普通单位仅缓速
 static func apply_ice_hit_effect(state: GameState, target: UnitState, source_uid: String, level: int = 1) -> void:
 	if not target.alive:
 		return
 	var level_def: Dictionary = _effect_level_def("ice", Constants.SLOT_RED, maxi(1, level))
 	var slowed_min_move_points := int(level_def["slowed_min_move_points"])
 	if bool(level_def["freeze_if_target_slowed"]) and target.has_status(Constants.STATUS_SLOWED):
-		_freeze_target(state, target, source_uid, slowed_min_move_points)
+		_freeze_target(state, target, source_uid)
 		return
 	if StatusRules.is_wet(target):
-		_freeze_target(state, target, source_uid, slowed_min_move_points)
+		_freeze_target(state, target, source_uid)
 		return
 	StatusRules.apply_slowed(
 		state,
@@ -2087,10 +2089,8 @@ static func apply_ice_hit_effect(state: GameState, target: UnitState, source_uid
 	)
 
 
-static func _freeze_target(state: GameState, target: UnitState, source_uid: String, slowed_min_move_points: int = 1) -> void:
-	StatusRules.apply_paralyzed(state, target, 1, source_uid)
-	StatusRules.apply_slowed(state, target, 2, source_uid, slowed_min_move_points)
-	target.remove_status(Constants.STATUS_WET)
+static func _freeze_target(state: GameState, target: UnitState, source_uid: String) -> void:
+	_FrozenStatusRules.apply(state, target, 1, source_uid)
 	state.log("%s 被冻结！" % target.uid)
 
 
