@@ -49,11 +49,11 @@ const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
 	"poison",
 	"fire_gem",
 	"explosion",
-	"split",
 	"light",
 	"counter",
 	"echo",
 	"flurry",
+	"split",
 ]
 const SPLIT_ORIGIN_SLOT_PREFIX := "split_origin_slot:"
 static func begin_explosion_reaction_chain() -> void: _GemExplosionRules.begin_reaction_chain()
@@ -1146,6 +1146,8 @@ static func _run_death_hooks_with_events(
 	death_gems.sort_custom(func(a: GemState, b: GemState) -> bool:
 		return _black_death_order_index(a) < _black_death_order_index(b)
 	)
+	var deferred_split_gem: GemState = death_gems.pop_back() if not death_gems.is_empty() and _ability_profile(death_gems.back(), ABILITY_BLACK_DEATH) == "split" else null
+	if deferred_split_gem != null: gem_ctx["split_spawn_deferred"] = true
 	for gem in death_gems:
 		_run_unit_death_effect_with_events(state, unit, gem, out_events, gem_ctx)
 	var repeat_count := FlurryRules.black_flurry_value(gem_ctx)
@@ -1160,7 +1162,8 @@ static func _run_death_hooks_with_events(
 			if tag == "flurry" or tag == "split":
 				continue
 			_run_unit_death_effect_with_events(state, unit, gem, out_events, repeat_ctx)
-
+	if deferred_split_gem != null:
+		_run_unit_death_effect_with_events(state, unit, deferred_split_gem, out_events, gem_ctx)
 
 static func _black_death_order_index(gem: GemState) -> int:
 	var profile := _ability_profile(gem, ABILITY_BLACK_DEATH)
@@ -1168,7 +1171,6 @@ static func _black_death_order_index(gem: GemState) -> int:
 	if idx < 0:
 		return BLACK_DEATH_PROFILE_ORDER.size()
 	return idx
-
 
 static func _run_unit_death_effect_with_events(
 	state: GameState,
@@ -1539,7 +1541,6 @@ static func _apply_blue_echo(
 					for _repeat in range(strength):
 						_reflect_light_on_damage(state, owner, source, gem_ctx, out_events)
 
-
 static func _apply_black_echo(
 	state: GameState,
 	owner: UnitState,
@@ -1555,13 +1556,13 @@ static func _apply_black_echo(
 	var echo_level_def: Dictionary = _effect_level_def("echo", _effect_level_scope(gem_ctx, Constants.SLOT_BLACK), echo_level)
 	for i in range(tags.size()):
 		var tag := tags[i]
+		if tag == "split" and bool(gem_ctx.get("split_spawn_deferred", false)): continue
 		var gem := _find_gem_by_tag(state, owner, Constants.SLOT_BLACK, tag)
 		if gem == null:
 			continue
 		var repeat_count := int(echo_level_def["first_tag_repeat_count"]) if i == 0 else 1
 		for _repeat in range(repeat_count):
 			_run_unit_death_effect_with_events(state, owner, gem, out_events, echo_ctx)
-
 
 static func _find_gem_by_tag(state: GameState, owner: UnitState, slot_type: String, tag: String) -> GemState:
 	for slot in owner.slots_accepting(slot_type):
@@ -1571,7 +1572,6 @@ static func _find_gem_by_tag(state: GameState, owner: UnitState, slot_type: Stri
 		if gem != null and str(_data_registry().get_gem_tag(gem)) == tag:
 			return gem
 	return null
-
 
 static func light_color_for_context(gem_ctx: Dictionary) -> Color:
 	return _GemLightVisuals.color_for_context(gem_ctx)

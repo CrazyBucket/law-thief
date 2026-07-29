@@ -8,6 +8,13 @@ const SPARSE_ASSETS := {
 	"res://assets/overlays/effects/overlay_poison_water_glints.png": 0.10,
 	"res://assets/overlays/effects/overlay_shallow_water_ripples.png": 0.20,
 }
+const SHALLOW_WATER_MASKS := [
+	"res://assets/overlays/effects/overlay_shallow_water_puddle_01.png",
+	"res://assets/overlays/effects/overlay_shallow_water_puddle_02.png",
+	"res://assets/overlays/effects/overlay_shallow_water_puddle_03.png",
+	"res://assets/overlays/effects/overlay_shallow_water_puddle_04.png",
+	"res://assets/overlays/effects/overlay_shallow_water_puddle_05.png",
+]
 const ROUTE_ARROW_MASKS := [
 	"res://assets/ui/route_arrows_generated/route_arrow_ne.png",
 	"res://assets/ui/route_arrows_generated/route_arrow_se.png",
@@ -30,6 +37,16 @@ func _run() -> void:
 		var ratio := _alpha_ratio(image, Rect2i(Vector2i.ZERO, image.get_size()))
 		_require(ratio <= float(SPARSE_ASSETS[path]), "%s is too visually dense for an overlay (%.3f)" % [path, ratio])
 		_require(_transparent_corners(image), "%s must not carry an opaque tile-shaped background" % path)
+	for path in SHALLOW_WATER_MASKS:
+		var image := _load_image(path)
+		if image == null:
+			continue
+		var ratio := _alpha_ratio(image, Rect2i(Vector2i.ZERO, image.get_size()))
+		_require(image.get_size() == Vector2i(128, 64), "%s must match one isometric cell" % path)
+		_require(ratio >= 0.06 and ratio <= 0.20, "%s puddle coverage must stay readable and sparse (%.3f)" % [path, ratio])
+		_require(_transparent_frame_border(image, Rect2i(Vector2i.ZERO, image.get_size())), "%s puddles must not touch the frame" % path)
+		_require(_inside_inset_diamond(image, 0.86), "%s puddles must stay inside the tile diamond" % path)
+		_require(_is_white_alpha_mask(image), "%s must remain a white alpha mask for the shared water shader" % path)
 	_check_fire_frames()
 	_check_route_arrow_masks()
 	if not _failures.is_empty():
@@ -109,6 +126,32 @@ func _transparent_frame_border(image: Image, rect: Rect2i) -> bool:
 	for y in range(rect.position.y, rect.end.y):
 		if image.get_pixel(rect.position.x, y).a > 0.01 or image.get_pixel(rect.end.x - 1, y).a > 0.01:
 			return false
+	return true
+
+
+func _is_white_alpha_mask(image: Image) -> bool:
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var pixel := image.get_pixel(x, y)
+			if pixel.a > 0.01 and (
+				pixel.r < 0.99 or pixel.g < 0.99 or pixel.b < 0.99 or pixel.a < 0.99
+			):
+				return false
+	return true
+
+
+func _inside_inset_diamond(image: Image, inset: float) -> bool:
+	var center := (Vector2(image.get_size()) - Vector2.ONE) * 0.5
+	var half_size := Vector2(image.get_size()) * 0.5
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			if image.get_pixel(x, y).a <= 0.01:
+				continue
+			var point := Vector2(x, y)
+			var distance := absf(point.x - center.x) / half_size.x \
+				+ absf(point.y - center.y) / half_size.y
+			if distance > inset:
+				return false
 	return true
 
 

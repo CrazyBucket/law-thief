@@ -757,6 +757,31 @@
       }
     },
     {
+      "id": "split/black/spawn_after_own_repeated_death_effects",
+      "covers": ["gem_split:black:1", "gem_flurry:black:1"],
+      "gems": [],
+      "player_stats": {"base_attack": 10},
+      "target_stats": {"hp": 1, "max_hp": 20, "base_attack": 20},
+      "mounts": [
+        {"uid": "contract_target", "clear_slots": true, "slot": "black", "gems": ["gem_split", "gem_explosion", "gem_flurry"]}
+      ],
+      "expect": {
+        "damage": 1,
+        "event_counts": {"explode": 2, "split_spawn": 2},
+        "split_clones": {
+          "origin": "contract_target",
+          "count": 2,
+          "each_stats": {"hp": 6, "max_hp": 6, "base_attack": 6},
+          "total_slots": 10,
+          "total_gems": 3,
+          "disabled_split_slots": 1,
+          "dropped_gems": 0,
+          "source_slots_cleared": true,
+          "source_gems_preserved": true
+        }
+      }
+    },
+    {
       "id": "light/red/1_half_damage_line",
       "covers": ["gem_light:red:1"],
       "gems": ["gem_light"],

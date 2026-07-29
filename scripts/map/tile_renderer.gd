@@ -4,7 +4,6 @@ extends RefCounted
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _AdventureRoomIcons := preload("res://scripts/ui/adventure_room_icons.gd")
-const ShallowWaterOverlayRenderer = preload("res://scripts/map/shallow_water_overlay_renderer.gd")
 const GRASS_SPROUTS_PATH := "res://assets/overlays/vegetation/overlay_grass_sprouts.png"
 const GRASS_PATCH_PATH := "res://assets/overlays/vegetation/overlay_grass_patch.png"
 const GRASS_TALL_PATH := "res://assets/overlays/vegetation/overlay_grass_tall.png"
@@ -29,7 +28,6 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 		top_color = top_color.lerp(highlight_color, highlight_color.a)
 	_draw_block(canvas, center, top_color, palette["left"], palette["right"])
 	_draw_tile_detail(canvas, center, tile)
-	ShallowWaterOverlayRenderer.draw_if_present(canvas, center, tile)
 	if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
 		_draw_poison_puddle(canvas, center)
 	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
@@ -134,7 +132,6 @@ static func _draw_modifier_overlays(
 	occupied: bool
 ) -> void:
 	if draw_pass == PASS_BACK:
-		ShallowWaterOverlayRenderer.draw_if_present(canvas, center, tile, _modifier_stage(tile, Constants.TILE_MOD_SHALLOW_WATER, 2))
 		if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
 			_draw_poison_puddle(canvas, center, _modifier_stage(tile, Constants.TILE_MOD_POISON_PUDDLE, 2))
 	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):

@@ -1,11 +1,10 @@
 extends Control
-
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
 const AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const WaterLayerClass = preload("res://scripts/map/water_layer.gd")
+const ShallowWaterLayerClass = preload("res://scripts/map/shallow_water_overlay_renderer.gd")
 const WaterAutotileClass = preload("res://scripts/map/water_autotile.gd")
-
 const KNIGHT_SPRITES_SCRIPT := preload("res://scripts/ui/doodle_unit_sprites.gd")
 const PLAYER_SPRITES_SCRIPT := preload("res://scripts/ui/female_adventurer_sprites.gd")
 const SLIME_SPRITES_SCRIPT := preload("res://scripts/ui/slime_sprites.gd")
@@ -123,6 +122,7 @@ var _board_texture: Sprite2D = null
 var _board_texture_region: Rect2 = Rect2()
 var _water_fill_layer: Node2D = null
 var _water_edge_layer: Node2D = null
+var _shallow_water_layer: Node2D = null
 var _water_visual_signature: int = -1
 var _overlay_shader_viewports: Array[SubViewport] = []
 var _gem_echo_shader_viewport: SubViewport = null
@@ -237,8 +237,6 @@ func _ready() -> void:
 	_prop_sprites = PROP_SPRITES_SCRIPT.new()
 	set_process(true)
 	call_deferred("_sync_unit_orientations")
-
-
 func _warm_shader_fx_rendering() -> void:
 	_shader_fx_pool.warm_rendering([FxLightningShader, FxRadialBurstShader, FxCloudPulseShader])
 
@@ -922,7 +920,11 @@ func _ensure_water_layers() -> void:
 	fill_material.set_shader_parameter("water_top", WATER_TOP)
 	_water_fill_layer.material = fill_material
 	add_child(_water_fill_layer)
-
+	_shallow_water_layer = ShallowWaterLayerClass.new()
+	_shallow_water_layer.name = "ShallowWaterLayer"
+	_shallow_water_layer.show_behind_parent = true
+	_shallow_water_layer.z_index = 0
+	add_child(_shallow_water_layer)
 	_water_edge_layer = WaterLayerClass.new()
 	_water_edge_layer.name = "WaterEdgeLayer"
 	_water_edge_layer.layer_kind = WaterLayerClass.LayerKind.EDGE
@@ -939,11 +941,9 @@ func _load_generated_texture(path: String) -> Texture2D:
 		return null
 	return ImageTexture.create_from_image(image)
 
-
 func _load_generated_image(path: String) -> Image:
 	var texture := load(path) as Texture2D
 	return texture.get_image() if texture != null else null
-
 
 func _clear_water_visuals() -> void:
 	_water_visual_signature = -1
