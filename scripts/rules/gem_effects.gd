@@ -1782,7 +1782,7 @@ static func _effect_level_def(tag: String, scope: String, level: int) -> Diction
 
 static func red_poison_hit_config(gem_ctx: Dictionary = {}) -> Dictionary:
 	var poison_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "poison"))
-	return _effect_level_def("poison", _effect_level_scope(gem_ctx, Constants.SLOT_RED), poison_level)
+	return _effect_level_def("poison", Constants.SLOT_RED, poison_level)
 
 
 static func _data_registry() -> Node:

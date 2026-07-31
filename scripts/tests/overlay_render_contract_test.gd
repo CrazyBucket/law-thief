@@ -32,6 +32,8 @@ func _run() -> void:
 	await process_frame
 	var viewports := board.find_children("OverlayShaderViewport*", "SubViewport", true, false)
 	_require(viewports.size() == 6, "grass, fog, and smoke must keep six shader-backed texture sources")
+	var cloud_shader := load("res://scenes/battle/overlay_cloud_parts.gdshader") as Shader
+	var cloud_viewport_count := 0
 	for viewport in viewports:
 		var overlay_viewport := viewport as SubViewport
 		_require(overlay_viewport.transparent_bg, "%s must render with transparency" % overlay_viewport.name)
@@ -40,6 +42,16 @@ func _run() -> void:
 		if overlay_viewport.get_child_count() == 1:
 			var sprite := overlay_viewport.get_child(0) as Sprite2D
 			_require(sprite != null and sprite.material is ShaderMaterial, "%s must use a shader material" % overlay_viewport.name)
+			if sprite != null and sprite.material is ShaderMaterial and (sprite.material as ShaderMaterial).shader == cloud_shader:
+				cloud_viewport_count += 1
+	_require(cloud_viewport_count == 2, "poison fog and toxic smoke must share the cloud atlas through separate palette shaders")
+	var cloud_lifecycle: RefCounted = board.get("_poison_cloud_lifecycle")
+	cloud_lifecycle.call("sync", state, 1.0)
+	var fog_before_swap: Dictionary = cloud_lifecycle.call("visuals_for_cell", Vector2i(1, 0))
+	board.call("set_battle_state", state.clone())
+	var fog_after_swap: Dictionary = cloud_lifecycle.call("visuals_for_cell", Vector2i(1, 0))
+	_require(fog_after_swap == fog_before_swap, "presentation state replacement must not restart active poison cloud fades")
+	board.call("set_battle_state", state)
 	var echo_viewport := board.find_child("GemEchoShaderViewport", true, false) as SubViewport
 	_require(echo_viewport != null, "gem echoes must create a dedicated shader viewport")
 	if echo_viewport != null:
@@ -73,6 +85,18 @@ func _run() -> void:
 	_require(entity_ui_fn.contains("entity.max_hp <= 0") and entity_ui_fn.contains("draw_combined_hp_bar"), "entity UI must show HP only for destructible entities")
 	var shader_source := FileAccess.get_file_as_string("res://scenes/battle/overlay_drift.gdshader")
 	_require(shader_source.contains("TIME") and shader_source.contains("VERTEX"), "overlay drift must remain GPU animated")
+	var cloud_shader_source := FileAccess.get_file_as_string("res://scenes/battle/overlay_cloud_parts.gdshader")
+	_require(cloud_shader_source.contains("shadow_color") and cloud_shader_source.contains("mid_color") and cloud_shader_source.contains("highlight_color"), "poison cloud shader must own fog and smoke palette mapping")
+	_require(cloud_shader_source.contains("TIME") and cloud_shader_source.contains("opacity"), "poison cloud shader must keep restrained alpha breathing")
+	var cloud_layout_source := FileAccess.get_file_as_string("res://scripts/map/overlay_cloud_layout.gd")
+	_require(cloud_layout_source.contains("NOMINAL_CHARACTER_HEIGHT") and cloud_layout_source.contains("\"front\": vertical >= 0.55"), "poison cloud distribution must use character height and low front parts")
+	_require(cloud_layout_source.contains("\"direction\"") and cloud_layout_source.contains("\"particles\""), "poison cloud parts must keep independent directions and bridge particles")
+	var cloud_renderer_source := FileAccess.get_file_as_string("res://scripts/map/poison_cloud_renderer.gd")
+	_require(cloud_renderer_source.contains("_draw_cell_anchor") and cloud_renderer_source.contains("diamond_corners"), "poison cloud effects must visibly anchor to their owning cell")
+	var lifecycle_source := FileAccess.get_file_as_string("res://scripts/map/poison_cloud_lifecycle.gd")
+	_require(lifecycle_source.contains("FADE_IN_SECONDS") and lifecycle_source.contains("FADE_OUT_SECONDS") and lifecycle_source.contains("_smoothstep01"), "poison cloud groups must fade smoothly in and out")
+	_require(board_source.contains("_poison_cloud_lifecycle.visuals_for_cell"), "both poison cloud draw passes must consume lifecycle alpha")
+	_require(board_source.contains("_poison_cloud_lifecycle.prepare_state_change(state, value)"), "presentation state clones must not restart every poison cloud fade")
 	var echo_shader_source := FileAccess.get_file_as_string("res://scenes/battle/gem_echo_smoke.gdshader")
 	_require(echo_shader_source.contains("TIME") and echo_shader_source.contains("fbm"), "gem echo smoke must remain procedurally animated")
 	_require(echo_shader_source.contains("smoke_stream") and echo_shader_source.contains("fract(time") and not echo_shader_source.contains("smoke_ribbon") and not echo_shader_source.contains("ring_radius"), "gem echo smoke must use visibly travelling puffs instead of static ribbons or a circular border")

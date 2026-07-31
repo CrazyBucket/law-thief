@@ -2,6 +2,7 @@ class_name TileRenderer
 extends RefCounted
 
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
+const PoisonCloudRendererClass := preload("res://scripts/map/poison_cloud_renderer.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _AdventureRoomIcons := preload("res://scripts/ui/adventure_room_icons.gd")
 const GRASS_SPROUTS_PATH := "res://assets/overlays/vegetation/overlay_grass_sprouts.png"
@@ -9,8 +10,9 @@ const GRASS_PATCH_PATH := "res://assets/overlays/vegetation/overlay_grass_patch.
 const GRASS_TALL_PATH := "res://assets/overlays/vegetation/overlay_grass_tall.png"
 const GRASS_THICKET_PATH := "res://assets/overlays/vegetation/overlay_grass_thicket.png"
 const POISON_WATER_GLINTS_PATH := "res://assets/overlays/effects/overlay_poison_water_glints.png"
-const POISON_FOG_BODY_PATH := "res://assets/overlays/effects/overlay_poison_fog_body.png"
-const TOXIC_SMOKE_BODY_PATH := "res://assets/overlays/effects/overlay_toxic_smoke_body.png"
+const POISON_CLOUD_PARTS_PATH := PoisonCloudRendererClass.ATLAS_PATH
+const POISON_FOG_CLOUD_TEXTURE_KEY := PoisonCloudRendererClass.FOG_TEXTURE_KEY
+const TOXIC_SMOKE_CLOUD_TEXTURE_KEY := PoisonCloudRendererClass.SMOKE_TEXTURE_KEY
 const FIRE_LOOP_PATH := "res://assets/overlays/effects/overlay_fire_loop.png"
 const SIDE_DEPTH := 10.0
 const PASS_BACK := "back"
@@ -31,9 +33,9 @@ static func draw_tile(canvas: Control, center: Vector2, tile: TileState, highlig
 	if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
 		_draw_poison_puddle(canvas, center)
 	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
-		_draw_poison_fog(canvas, center, false)
+		_draw_poison_fog(canvas, center, tile.pos, false)
 	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-		_draw_toxic_smoke(canvas, center, false)
+		_draw_toxic_smoke(canvas, center, tile.pos, false)
 	if tile.has_modifier(Constants.TILE_MOD_FIRE):
 		_draw_fire(canvas, center, false)
 
@@ -45,7 +47,8 @@ static func draw_tile_overlays(
 	tile: TileState,
 	highlight_color: Color = Color.TRANSPARENT,
 	draw_pass: String = PASS_BACK,
-	occupied: bool = false
+	occupied: bool = false,
+	modifier_visuals: Variant = null
 ) -> void:
 	if draw_pass == PASS_BACK:
 		if highlight_color.a > 0.0:
@@ -55,7 +58,7 @@ static func draw_tile_overlays(
 		elif tile.tile_id == Constants.TILE_PILLAR:
 			_draw_pillar(canvas, center)
 	_draw_surface_overlay(canvas, center, tile, draw_pass, occupied)
-	_draw_modifier_overlays(canvas, center, tile, draw_pass, occupied)
+	_draw_modifier_overlays(canvas, center, tile, draw_pass, occupied, modifier_visuals)
 
 
 static func draw_hover_outline(canvas: Control, center: Vector2, color: Color = Color(0.95, 0.95, 1.0, 0.95)) -> void:
@@ -129,29 +132,58 @@ static func _draw_modifier_overlays(
 	center: Vector2,
 	tile: TileState,
 	draw_pass: String,
-	occupied: bool
+	occupied: bool,
+	modifier_visuals: Variant
 ) -> void:
 	if draw_pass == PASS_BACK:
 		if tile.has_modifier(Constants.TILE_MOD_POISON_PUDDLE):
 			_draw_poison_puddle(canvas, center, _modifier_stage(tile, Constants.TILE_MOD_POISON_PUDDLE, 2))
-	if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
-		var fog_stage := _modifier_stage(tile, Constants.TILE_MOD_POISON_FOG, CombatConfig.poison_fog_duration())
+	var fog_visual := _modifier_visual(
+		tile,
+		Constants.TILE_MOD_POISON_FOG,
+		CombatConfig.poison_fog_duration(),
+		modifier_visuals
+	)
+	if float(fog_visual["alpha"]) > 0.001:
 		if draw_pass == PASS_BACK:
-			_draw_poison_fog(canvas, center, false, fog_stage)
+			_draw_poison_fog(canvas, center, tile.pos, false, fog_visual["stage"], occupied, fog_visual["alpha"])
 		elif occupied:
-			_draw_poison_fog(canvas, center, true, fog_stage)
-	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-		var smoke_stage := _modifier_stage(tile, Constants.TILE_MOD_TOXIC_SMOKE, 1)
+			_draw_poison_fog(canvas, center, tile.pos, true, fog_visual["stage"], occupied, fog_visual["alpha"])
+	var smoke_visual := _modifier_visual(
+		tile,
+		Constants.TILE_MOD_TOXIC_SMOKE,
+		CombatConfig.toxic_smoke_duration(),
+		modifier_visuals
+	)
+	if float(smoke_visual["alpha"]) > 0.001:
 		if draw_pass == PASS_BACK:
-			_draw_toxic_smoke(canvas, center, false, smoke_stage)
+			_draw_toxic_smoke(canvas, center, tile.pos, false, smoke_visual["stage"], occupied, smoke_visual["alpha"])
 		elif occupied:
-			_draw_toxic_smoke(canvas, center, true, smoke_stage)
+			_draw_toxic_smoke(canvas, center, tile.pos, true, smoke_visual["stage"], occupied, smoke_visual["alpha"])
 	if tile.has_modifier(Constants.TILE_MOD_FIRE):
 		var fire_stage := _modifier_stage(tile, Constants.TILE_MOD_FIRE, CombatConfig.fire_duration())
 		if draw_pass == PASS_BACK:
 			_draw_fire(canvas, center, false, fire_stage)
 		elif occupied:
 			_draw_fire(canvas, center, true, fire_stage)
+
+
+static func _modifier_visual(
+	tile: TileState,
+	effect_type: String,
+	default_duration: int,
+	provided: Variant
+) -> Dictionary:
+	if provided is Dictionary:
+		if provided.has(effect_type):
+			return provided[effect_type]
+		return {"alpha": 0.0, "stage": 1.0}
+	if tile.has_modifier(effect_type):
+		return {
+			"alpha": 1.0,
+			"stage": _modifier_stage(tile, effect_type, default_duration),
+		}
+	return {"alpha": 0.0, "stage": 1.0}
 
 
 static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState) -> void:
@@ -510,127 +542,82 @@ static func _fire_frame_source(texture: Texture2D, center: Vector2) -> Rect2:
 	return Rect2(Vector2(float(frame % 2), float(frame / 2)) * frame_size, frame_size)
 
 
-static func _draw_poison_fog(canvas: Control, center: Vector2, front: bool, stage: float = 1.0) -> void:
-	var texture := _load_overlay_texture(POISON_FOG_BODY_PATH)
-	if texture == null:
-		return
-	var content_rect := _overlay_texture_content_rect(texture)
-	var entries := [
-		{"offset": Vector2(-17.0, 8.0), "width_ratio": 0.38, "lift": 0.43, "alpha": 0.48, "drift": 2.9, "speed": 0.72},
-		{"offset": Vector2(1.0, 3.0), "width_ratio": 0.52, "lift": 0.58, "alpha": 0.58, "drift": 3.4, "speed": 0.84},
-		{"offset": Vector2(19.0, 9.0), "width_ratio": 0.34, "lift": 0.40, "alpha": 0.42, "drift": 2.6, "speed": 0.68},
-	]
-	var clip_from := 0.12
-	var clip_to := 1.0
-	var tint := Color(0.72, 1.0, 0.42, 1.0)
-	if front:
-		clip_from = 0.72
-	else:
-		_draw_poison_fog_haze(canvas, center, stage)
-	for i in range(entries.size()):
-		var entry: Dictionary = entries[i]
-		var alpha := float(entry["alpha"]) * lerpf(0.55, 1.0, stage)
-		var drift_px := IsoCoordinates.visual(float(entry["drift"]) * lerpf(0.7, 1.0, stage))
-		if front:
-			alpha *= 0.62
-			drift_px *= 0.62
-		_draw_overlay_body_texture(
-			canvas,
-			center + entry["offset"],
-			texture,
-			content_rect.size,
-			float(entry["width_ratio"]) * lerpf(0.88, 1.0, stage),
-			lerpf(float(entry["lift"]) + 0.03, float(entry["lift"]), stage),
-			clip_from,
-			clip_to,
-			alpha,
-			drift_px,
-			float(entry["speed"]) + float(i) * 0.05,
-			content_rect,
-			tint
-		)
+static func _draw_poison_fog(
+	canvas: Control,
+	center: Vector2,
+	cell: Vector2i,
+	front: bool,
+	stage: float = 1.0,
+	occupied: bool = false,
+	overall_alpha: float = 1.0
+) -> void:
+	_draw_poison_cloud_parts(
+		canvas,
+		center,
+		cell,
+		Constants.TILE_MOD_POISON_FOG,
+		front,
+		stage,
+		occupied,
+		overall_alpha
+	)
 
 
-static func _draw_poison_fog_haze(canvas: Control, center: Vector2, stage: float) -> void:
-	var t := _time_sec()
-	var seed := _overlay_phase_seed(center)
-	var pulse := sin(t * 0.95 + seed) * 0.5 + 0.5
-	var diamond := IsoCoordinates.diamond_corners(center)
-	var wash_alpha := lerpf(0.16, 0.26, stage) + pulse * 0.03
-	canvas.draw_colored_polygon(diamond, Color(0.24, 0.56, 0.18, wash_alpha))
-	var puffs := [
-		{"offset": Vector2(-18.0, 4.0), "radius": Vector2(32.0, 14.0), "alpha": 0.12},
-		{"offset": Vector2(1.0, -1.0), "radius": Vector2(42.0, 18.0), "alpha": 0.14},
-		{"offset": Vector2(20.0, 5.0), "radius": Vector2(30.0, 13.0), "alpha": 0.11},
-	]
-	for i in range(puffs.size()):
-		var puff: Dictionary = puffs[i]
-		var wobble := Vector2(
-			sin(t * 0.72 + seed + float(i) * 1.7) * IsoCoordinates.visual(1.6),
-			cos(t * 0.58 + seed + float(i) * 1.1) * IsoCoordinates.visual(0.8)
-		)
-		var offset: Vector2 = puff["offset"]
-		var radius: Vector2 = puff["radius"]
-		_draw_soft_fog_blob(
-			canvas,
-			center + offset + wobble,
-			IsoCoordinates.visual_vec(radius * lerpf(0.82, 1.0, stage)),
-			Color(0.48, 0.82, 0.28, float(puff["alpha"]) * lerpf(0.72, 1.0, stage))
-		)
+static func _draw_toxic_smoke(
+	canvas: Control,
+	center: Vector2,
+	cell: Vector2i,
+	front: bool,
+	stage: float = 1.0,
+	occupied: bool = false,
+	overall_alpha: float = 1.0
+) -> void:
+	_draw_poison_cloud_parts(
+		canvas,
+		center,
+		cell,
+		Constants.TILE_MOD_TOXIC_SMOKE,
+		front,
+		stage,
+		occupied,
+		overall_alpha
+	)
 
 
-static func _draw_soft_fog_blob(canvas: Control, center: Vector2, radius: Vector2, color: Color) -> void:
-	for layer in range(3):
-		var scale := 1.0 - float(layer) * 0.27
-		var alpha_scale := 0.26 + float(layer) * 0.13
-		var points := PackedVector2Array()
-		var point_count := 18
-		for i in range(point_count):
-			var angle := TAU * float(i) / float(point_count)
-			var ripple := 1.0 + sin(angle * 3.0 + center.x * 0.03) * 0.08
-			points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y) * scale * ripple)
-		var layer_color := color
-		layer_color.a *= alpha_scale
-		canvas.draw_colored_polygon(points, layer_color)
+static func _draw_poison_cloud_parts(
+	canvas: Control,
+	center: Vector2,
+	cell: Vector2i,
+	effect_type: String,
+	front: bool,
+	stage: float,
+	occupied: bool,
+	overall_alpha: float
+) -> void:
+	PoisonCloudRendererClass.draw(
+		canvas,
+		_cloud_parts_texture(effect_type),
+		center,
+		cell,
+		effect_type,
+		front,
+		stage,
+		occupied,
+		_time_sec(),
+		overall_alpha
+	)
 
 
-static func _draw_toxic_smoke(canvas: Control, center: Vector2, front: bool, stage: float = 1.0) -> void:
-	var texture := _load_overlay_texture(TOXIC_SMOKE_BODY_PATH)
-	if texture == null:
-		return
-	var content_rect := _overlay_texture_content_rect(texture)
-	var entries := [
-		{"offset": Vector2(-9.0, 5.0), "width_ratio": 0.30, "lift": 0.48, "alpha": 0.30, "drift": 1.5, "speed": 0.56},
-		{"offset": Vector2(8.0, 1.0), "width_ratio": 0.42, "lift": 0.66, "alpha": 0.40, "drift": 1.8, "speed": 0.62},
-		{"offset": Vector2(20.0, 8.0), "width_ratio": 0.26, "lift": 0.40, "alpha": 0.26, "drift": 1.3, "speed": 0.5},
-	]
-	var clip_from := 0.1
-	var clip_to := 1.0
-	var tint := Color(0.72, 0.9, 0.44, 1.0)
-	if front:
-		clip_from = 0.72
-	for i in range(entries.size()):
-		var entry: Dictionary = entries[i]
-		var alpha := float(entry["alpha"]) * lerpf(0.72, 1.0, stage)
-		var drift_px := IsoCoordinates.visual(float(entry["drift"]) * lerpf(0.82, 1.0, stage))
-		if front:
-			alpha *= 0.8
-			drift_px *= 0.7
-		_draw_overlay_body_texture(
-			canvas,
-			center + entry["offset"],
-			texture,
-			content_rect.size,
-			float(entry["width_ratio"]),
-			float(entry["lift"]),
-			clip_from,
-			clip_to,
-			alpha,
-			drift_px,
-			float(entry["speed"]) + float(i) * 0.04,
-			content_rect,
-			tint
-		)
+static func _cloud_parts_texture(effect_type: String) -> Texture2D:
+	var key := (
+		TOXIC_SMOKE_CLOUD_TEXTURE_KEY
+		if effect_type == Constants.TILE_MOD_TOXIC_SMOKE
+		else POISON_FOG_CLOUD_TEXTURE_KEY
+	)
+	var animated := _animated_overlay_textures.get(key) as Texture2D
+	if animated != null:
+		return animated
+	return _load_overlay_texture(POISON_CLOUD_PARTS_PATH)
 
 
 static func _draw_poison_puddle(canvas: Control, center: Vector2, stage: float = 1.0) -> void:

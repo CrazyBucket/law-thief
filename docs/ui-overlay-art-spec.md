@@ -165,7 +165,7 @@ If the task is still in exploration mode, pause after the design proposal and co
 These choices are already established for the battle board and should be preserved unless the visual direction is deliberately revised:
 
 - grass and bush use sparse transparent sprites, a tip-weighted GPU sway shader, per-cell phase variation, and split back/front drawing;
-- poison fog and toxic smoke use continuously drifting shader-backed textures, with fog lighter and faster and smoke heavier and slower;
+- poison fog and toxic smoke assemble one neutral 5x9 pixel-cloud atlas into deterministic per-cell clusters; each part moves independently, lower parts enter the front pass, and stable group fades plus wrap-edge gradients smooth appearance and removal; a restrained inset diamond anchors each effect to its cell, while fog uses broken green corners with wide horizontal drift and smoke uses purple-gray center dashes with a narrow thick, visibly faster vertical churn;
 - fire uses a four-frame low-flame atlas plus restrained procedural drift, because changing flame silhouettes read better than noise-only deformation;
 - fire intensity decreases through scale and opacity as its remaining duration falls;
 - poison puddles do not draw a second filled puddle body; they add disconnected contaminated glints, ripples, and seep marks over existing water;

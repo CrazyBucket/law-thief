@@ -1,6 +1,8 @@
 extends Control
 const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const TileRenderer = preload("res://scripts/map/tile_renderer.gd")
+const PoisonCloudRendererClass := preload("res://scripts/map/poison_cloud_renderer.gd")
+const PoisonCloudLifecycleClass := preload("res://scripts/map/poison_cloud_lifecycle.gd")
 const AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const WaterLayerClass = preload("res://scripts/map/water_layer.gd")
 const ShallowWaterLayerClass = preload("res://scripts/map/shallow_water_overlay_renderer.gd")
@@ -98,6 +100,7 @@ var _active_aura_alpha_by_uid: Dictionary = {}
 var state: GameState = null:
 	set(value):
 		var prev_id := state.get_instance_id() if state != null else 0
+		_poison_cloud_lifecycle.prepare_state_change(state, value)
 		state = value
 		var next_id := value.get_instance_id() if value != null else 0
 		if next_id != prev_id:
@@ -154,6 +157,7 @@ var _particle_fx: BattleParticleFx = null
 var _shader_fx_seed: int = 0
 var _shader_fx_pool = BattleShaderFxPoolScript.new()
 var _frozen_unit_visuals := preload("res://scripts/ui/frozen_unit_visuals.gd").new()
+var _poison_cloud_lifecycle := PoisonCloudLifecycleClass.new()
 @export_group("Light Beam FX")
 @export_range(2.0, 30.0, 0.5) var light_beam_base_half_width: float = 13.5
 @export_range(0.1, 3.0, 0.05) var light_beam_global_scale: float = 1.0
@@ -240,7 +244,6 @@ func _ready() -> void:
 func _warm_shader_fx_rendering() -> void:
 	_shader_fx_pool.warm_rendering([FxLightningShader, FxRadialBurstShader, FxCloudPulseShader])
 
-
 func _update_origin() -> void:
 	var board_sz := _board_size()
 	IsoCoordinates.tile_scale = IsoCoordinates.compute_tile_scale(size, board_sz)
@@ -311,6 +314,7 @@ func _process(delta: float) -> void:
 	var scaled_dt := delta * _animation_speed_scale
 	var has_overlays := not overlay_specs.is_empty() or not overlay_routes.is_empty()
 	var visuals_dirty := _update_overlay_fades(delta)
+	visuals_dirty = _poison_cloud_lifecycle.sync(state, delta) or visuals_dirty
 	if has_overlays or not active_turn_unit_uid.is_empty():
 		visuals_dirty = true
 	for mv_uid in _anim.move_offsets.keys():
@@ -374,7 +378,7 @@ func _has_animated_tile_overlays() -> bool:
 			or tile.tile_id == Constants.TILE_BUSH
 		):
 			return true
-	return false
+	return _poison_cloud_lifecycle.has_visuals()
 
 
 func _ensure_overlay_shader_textures() -> void:
@@ -385,31 +389,8 @@ func _ensure_overlay_shader_textures() -> void:
 		{"path": TileRenderer.GRASS_PATCH_PATH, "sway": 19.0, "vertical": 0.0, "speed": 1.34, "tip_bias": 1.0, "tip_power": 1.65},
 		{"path": TileRenderer.GRASS_TALL_PATH, "sway": 22.0, "vertical": 0.0, "speed": 1.28, "tip_bias": 1.0, "tip_power": 1.8},
 		{"path": TileRenderer.GRASS_THICKET_PATH, "sway": 17.0, "vertical": 0.0, "speed": 1.18, "tip_bias": 1.0, "tip_power": 1.9},
-		{
-			"path": TileRenderer.POISON_FOG_BODY_PATH,
-			"sway": 22.0,
-			"vertical": 8.0,
-			"speed": 0.68,
-			"tip_bias": 0.24,
-			"tip_power": 0.78,
-			"tint": Color(0.64, 1.0, 0.34, 1.0),
-			"alpha_boost": 1.45,
-			"saturation_boost": 1.22,
-			"alpha_breathe": 0.08,
-		},
-		{
-			"path": TileRenderer.TOXIC_SMOKE_BODY_PATH,
-			"sway": 15.0,
-			"vertical": 4.5,
-			"speed": 0.46,
-			"tip_bias": 0.34,
-			"tip_power": 1.0,
-			"tint": Color(0.66, 0.86, 0.36, 1.0),
-			"alpha_boost": 1.18,
-			"saturation_boost": 1.05,
-			"alpha_breathe": 0.05,
-		},
 	]
+	specs.append_array(PoisonCloudRendererClass.shader_specs())
 	for index in range(specs.size()):
 		var spec: Dictionary = specs[index]
 		var source := load(str(spec["path"])) as Texture2D
@@ -420,24 +401,32 @@ func _ensure_overlay_shader_textures() -> void:
 		viewport.disable_3d = true
 		viewport.transparent_bg = true
 		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		viewport.size = Vector2i(source.get_width() + 64, source.get_height() + 64)
-		viewport.set_meta("overlay_path", str(spec["path"]))
+		var cloud_parts := bool(spec.get("cloud_parts", false))
+		var padding := 0 if cloud_parts else 64
+		viewport.size = Vector2i(source.get_width() + padding, source.get_height() + padding)
+		var overlay_key := str(spec.get("key", spec["path"]))
+		viewport.set_meta("overlay_path", overlay_key)
 		var sprite := Sprite2D.new()
 		sprite.texture = source
 		sprite.position = Vector2(viewport.size) * 0.5
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		var material := ShaderMaterial.new()
-		material.shader = OverlayDriftShader
-		material.set_shader_parameter("sway_px", float(spec["sway"]))
-		material.set_shader_parameter("vertical_px", float(spec["vertical"]))
-		material.set_shader_parameter("speed", float(spec["speed"]))
-		material.set_shader_parameter("phase", float(index) * 1.37)
-		material.set_shader_parameter("tip_bias", float(spec["tip_bias"]))
-		material.set_shader_parameter("tip_power", float(spec["tip_power"]))
-		material.set_shader_parameter("tint", spec.get("tint", Color.WHITE))
-		material.set_shader_parameter("alpha_boost", float(spec.get("alpha_boost", 1.0)))
-		material.set_shader_parameter("saturation_boost", float(spec.get("saturation_boost", 1.0)))
-		material.set_shader_parameter("alpha_breathe", float(spec.get("alpha_breathe", 0.0)))
+		if cloud_parts:
+			PoisonCloudRendererClass.configure_shader_material(
+				material, str(spec["effect_type"]), float(index) * 1.37
+			)
+		else:
+			material.shader = OverlayDriftShader
+			material.set_shader_parameter("sway_px", float(spec["sway"]))
+			material.set_shader_parameter("vertical_px", float(spec["vertical"]))
+			material.set_shader_parameter("speed", float(spec["speed"]))
+			material.set_shader_parameter("phase", float(index) * 1.37)
+			material.set_shader_parameter("tip_bias", float(spec["tip_bias"]))
+			material.set_shader_parameter("tip_power", float(spec["tip_power"]))
+			material.set_shader_parameter("tint", spec.get("tint", Color.WHITE))
+			material.set_shader_parameter("alpha_boost", float(spec.get("alpha_boost", 1.0)))
+			material.set_shader_parameter("saturation_boost", float(spec.get("saturation_boost", 1.0)))
+			material.set_shader_parameter("alpha_breathe", float(spec.get("alpha_breathe", 0.0)))
 		sprite.material = material
 		viewport.add_child(sprite)
 		add_child(viewport)
@@ -445,9 +434,11 @@ func _ensure_overlay_shader_textures() -> void:
 		var source_rect: Rect2 = TileRenderer._overlay_texture_content_rect(source)
 		var source_offset := (Vector2(viewport.size) - source.get_size()) * 0.5
 		TileRenderer.register_animated_overlay_texture(
-			str(spec["path"]),
+			overlay_key,
 			viewport.get_texture(),
-			Rect2(source_offset + source_rect.position, source_rect.size)
+			Rect2(Vector2.ZERO, source.get_size())
+			if cloud_parts
+			else Rect2(source_offset + source_rect.position, source_rect.size)
 		)
 
 
@@ -475,11 +466,16 @@ func _active_overlay_shader_paths() -> Dictionary:
 			active[TileRenderer.GRASS_TALL_PATH] = true
 			active[TileRenderer.GRASS_THICKET_PATH] = true
 		if tile.has_modifier(Constants.TILE_MOD_POISON_FOG):
-			active[TileRenderer.POISON_FOG_BODY_PATH] = true
+			active[TileRenderer.POISON_FOG_CLOUD_TEXTURE_KEY] = true
 		if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
-			active[TileRenderer.TOXIC_SMOKE_BODY_PATH] = true
+			active[TileRenderer.TOXIC_SMOKE_CLOUD_TEXTURE_KEY] = true
+	for effect_type in _poison_cloud_lifecycle.active_effects():
+		active[
+			TileRenderer.TOXIC_SMOKE_CLOUD_TEXTURE_KEY
+			if effect_type == Constants.TILE_MOD_TOXIC_SMOKE
+			else TileRenderer.POISON_FOG_CLOUD_TEXTURE_KEY
+		] = true
 	return active
-
 
 func _update_gem_echo_shader_activity() -> bool:
 	var active_gem_ids := _active_gem_echo_ids()
@@ -1291,7 +1287,10 @@ func _draw_tile(grid: Vector2i) -> void:
 	var tile := state.get_tile(grid)
 	var highlight := _tile_highlight(grid)
 	# 地砖底由 Grids 贴图统一绘制，这里只叠加高亮与特殊地块（水/柱/毒/火等）
-	TileRenderer.draw_tile_overlays(self, center, tile, highlight, TileRenderer.PASS_BACK, false)
+	TileRenderer.draw_tile_overlays(
+		self, center, tile, highlight, TileRenderer.PASS_BACK, false,
+		_poison_cloud_lifecycle.visuals_for_cell(grid)
+	)
 
 
 func _draw_front_tile_overlay_at(grid: Vector2i, occupied: bool = false) -> void:
@@ -1312,7 +1311,8 @@ func _draw_front_tile_overlay_at(grid: Vector2i, occupied: bool = false) -> void
 		tile,
 		Color.TRANSPARENT,
 		TileRenderer.PASS_FRONT,
-		true
+		true,
+		_poison_cloud_lifecycle.visuals_for_cell(grid)
 	)
 
 

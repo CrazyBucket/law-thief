@@ -21,6 +21,9 @@ const ROUTE_ARROW_MASKS := [
 	"res://assets/ui/route_arrows_generated/route_arrow_sw.png",
 	"res://assets/ui/route_arrows_generated/route_arrow_nw.png",
 ]
+const CLOUD_PARTS_ATLAS := "res://assets/overlays/effects/overlay_poison_cloud_parts.png"
+const CLOUD_PARTS_COLUMNS := 5
+const CLOUD_PARTS_ROWS := 9
 
 var _failures: Array[String] = []
 
@@ -47,6 +50,7 @@ func _run() -> void:
 		_require(_transparent_frame_border(image, Rect2i(Vector2i.ZERO, image.get_size())), "%s puddles must not touch the frame" % path)
 		_require(_inside_inset_diamond(image, 0.86), "%s puddles must stay inside the tile diamond" % path)
 		_require(_is_white_alpha_mask(image), "%s must remain a white alpha mask for the shared water shader" % path)
+	_check_cloud_parts_atlas()
 	_check_fire_frames()
 	_check_route_arrow_masks()
 	if not _failures.is_empty():
@@ -56,6 +60,25 @@ func _run() -> void:
 		return
 	print("OVERLAY_ASSET_CONTRACT_TEST_PASS")
 	quit(0)
+
+
+func _check_cloud_parts_atlas() -> void:
+	var image := _load_image(CLOUD_PARTS_ATLAS)
+	if image == null:
+		return
+	_require(image.get_size() == Vector2i(630, 630), "poison cloud atlas must remain the optimized 5x9 sheet")
+	_require(image.get_width() % CLOUD_PARTS_COLUMNS == 0, "poison cloud atlas width must divide into five columns")
+	_require(image.get_height() % CLOUD_PARTS_ROWS == 0, "poison cloud atlas height must divide into nine rows")
+	var frame_size := Vector2i(
+		image.get_width() / CLOUD_PARTS_COLUMNS,
+		image.get_height() / CLOUD_PARTS_ROWS
+	)
+	for row in range(CLOUD_PARTS_ROWS):
+		for column in range(CLOUD_PARTS_COLUMNS):
+			var rect := Rect2i(Vector2i(column, row) * frame_size, frame_size)
+			var ratio := _alpha_ratio(image, rect)
+			_require(ratio >= 0.04 and ratio <= 0.15, "cloud part %d,%d must stay isolated and sparse (%.3f)" % [column, row, ratio])
+			_require(_transparent_frame_border(image, rect), "cloud part %d,%d must not touch its atlas cell" % [column, row])
 
 
 func _check_fire_frames() -> void:
