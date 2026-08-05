@@ -8,8 +8,6 @@ var edge_mask: int = 0
 var edge_variant: String = ""
 var floor_variant: int = 0
 var surface_variant: String = ""
-var slots: Array = []  # Array[SlotState] — 地块槽位（机关柱等特殊地块才有）
-
 ## 地面固有属性标签（由 tile_id 决定，运行时不可变）
 ## 使用字符串集合而非枚举，支持一块地同时具有多个属性
 var ground_tags: Array[String] = []
@@ -20,24 +18,6 @@ static func create(pos: Vector2i, tile_id: String = "tile_floor") -> TileState:
 	tile.pos = pos
 	tile.tile_id = tile_id
 	tile._init_ground_tags()
-	return tile
-
-
-## 创建带槽位的特殊地块
-static func create_with_slots(pos: Vector2i, tile_id: String, slot_defs: Array) -> TileState:
-	var tile := TileState.new()
-	tile.pos = pos
-	tile.tile_id = tile_id
-	tile._init_ground_tags()
-	for slot_data in slot_defs:
-		tile.slots.append(
-			SlotState.create(
-				slot_data.get("slot_type", Constants.SLOT_RED),
-				slot_data.get("gem_uid", ""),
-				slot_data.get("locked", false),
-				slot_data.get("lock_type", "")
-			)
-		)
 	return tile
 
 
@@ -57,16 +37,6 @@ func _init_ground_tags() -> void:
 
 func has_ground_tag(tag: String) -> bool:
 	return tag in ground_tags
-
-
-func has_slots() -> bool:
-	return not slots.is_empty()
-
-
-func get_slot_by_index(index: int) -> SlotState:
-	if index < 0 or index >= slots.size():
-		return null
-	return slots[index]
 
 
 func has_modifier(modifier_type: String) -> bool:
@@ -113,8 +83,6 @@ func has_tile_tag(tag: String) -> bool:
 			return has_ground_tag(Constants.GROUND_TAG_WATER) \
 				or has_modifier(Constants.TILE_MOD_SHALLOW_WATER) \
 				or has_modifier(Constants.TILE_MOD_POISON_PUDDLE)
-		Constants.TAG_TILE_INTERACTIVE:
-			return tile_id == Constants.TILE_PILLAR
 		Constants.TAG_TILE_FLAMMABLE:
 			return has_ground_tag(Constants.GROUND_TAG_FLAMMABLE)
 		Constants.TAG_TILE_ICE:
@@ -135,6 +103,4 @@ func clone() -> TileState:
 	tile.edge_variant = edge_variant
 	tile.floor_variant = floor_variant
 	tile.ground_tags = ground_tags.duplicate()
-	for slot in slots:
-		tile.slots.append(slot.clone() if slot != null else null)
 	return tile

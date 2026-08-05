@@ -175,10 +175,6 @@ func transfer_gem(gem: GemState, target, opts: Dictionary = {}) -> bool:
 			var unit: UnitState = state.units.get(target.owner_uid, null)
 			var slot: SlotState = unit.get_slot_by_index(target.slot_index) if unit != null else null
 			moved = _GemTransfer.to_unit_slot(state, gem, unit, slot)
-		_GemLocation.TILE_SLOT:
-			var tile: TileState = state.get_tile(target.pos)
-			var slot: SlotState = tile.slots[target.slot_index] if target.slot_index >= 0 and target.slot_index < tile.slots.size() else null
-			moved = _GemTransfer.to_tile_slot(state, gem, tile, slot)
 		_GemLocation.GROUND:
 			moved = _GemTransfer.to_ground(state, gem, target.pos, opts.get("metadata", {}))
 		_:

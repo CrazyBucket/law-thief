@@ -93,10 +93,6 @@ static func overload_gem_count(state: GameState) -> int:
 		if unit == null or not unit.alive:
 			continue
 		count += _count_overload_slot_gems(unit.slots)
-	for tile in state.tiles.values():
-		if tile == null:
-			continue
-		count += _count_overload_slot_gems(tile.slots)
 	return count
 
 

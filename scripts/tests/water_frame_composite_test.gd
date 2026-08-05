@@ -39,6 +39,7 @@ func _initialize() -> void:
 
 	_verify_source_preservation(sheet_top, source_top, range(8), "top/Sprite468")
 	_verify_source_preservation(sheet_right, source_right, range(8), "right/Sprite469")
+	_verify_frame_semantics(sheet_top, 0, 3, "top/Sprite468")
 	_verify_single_tile_uses_top_pair()
 	_verify_single_fill_stays_inside_shore()
 	_verify_shape("single", [Vector2i(0, 0)])

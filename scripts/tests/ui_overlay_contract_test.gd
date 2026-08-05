@@ -9,6 +9,7 @@ func _run_test() -> void:
 	print("=== UI Overlay Contract Test ===")
 	_test_move_hover_route()
 	_test_enemy_intent_route()
+	await _test_old_mage_ui_contract()
 	_test_relic_bar_layout_compacts_before_scroll()
 	await _test_battle_scene_click_inspect()
 	await _test_battle_scene_consumes_queued_battle_end()
@@ -67,6 +68,66 @@ func _test_enemy_intent_route() -> void:
 	assert(_find_route(completed_highlights, "intent").is_empty(), "completed selected intent must not draw a route back to its old path")
 	assert(not _has_overlay_cell(completed_highlights, "intent_path", final_pos), "completed selected intent must not retain its destination as a movement overlay")
 	print("  [OK] selected enemy intent route overlay")
+
+
+func _test_old_mage_ui_contract() -> void:
+	var game_service: Node = root.get_node("GameService")
+	var settings: Node = root.get_node("SettingsService")
+	var previous_encounter := str(game_service.pending_encounter_id)
+	var previous_room := str(game_service.pending_room_id)
+	var previous_mode := str(game_service.pending_battle_mode)
+	var previous_show_tutorial := bool(settings.get_value("show_tutorial"))
+	settings.set_value("show_tutorial", false)
+	game_service.pending_encounter_id = "boss_chapter_1"
+	game_service.pending_room_id = "ui_old_mage_contract"
+	game_service.pending_battle_mode = "normal"
+	var packed := load("res://scenes/battle/battle_scene.tscn") as PackedScene
+	var scene := packed.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var ctrl: BattleController = scene.get("_controller")
+	var state: GameState = ctrl.state
+	var mage := _find_old_mage(state)
+	assert(mage != null, "boss UI contract should start with an old mage")
+	assert(ctrl.get_tutorial_hint() != "", "boss encounter should expose a localized guidance hint")
+	IntentSystem.refresh_unit_intent(state, mage)
+	ctrl.selected_unit_uid = mage.uid
+	var spell_highlights := ctrl.get_highlights()
+	assert(_has_overlay_kind(spell_highlights, "danger"), "spell intent should expose a damage danger overlay")
+	assert(mage.intent.preview_text.find("施法后销毁") >= 0, "spell warning should state that the cast gem is destroyed")
+	IntentSystem.execute_intent(state, mage)
+	IntentSystem.refresh_unit_intent(state, mage)
+	var refill_highlights := ctrl.get_highlights()
+	assert(_has_overlay_kind(refill_highlights, "intent_path"), "refill should expose pool candidate cells")
+	assert(_has_overlay_kind(refill_highlights, "target"), "refill should expose the locked pool gem")
+	mage.hp = 19
+	assert(ctrl.get_tutorial_hint().find("终局") >= 0, "low HP phase should replace generic guidance")
+	scene.call("_on_cell_clicked", mage.pos)
+	await process_frame
+	var stats: Label = scene.get("_inspect_stats")
+	assert(stats.text.find("施法") >= 0 or stats.text.find("终末") >= 0, "old mage inspect panel should show phase state")
+	var slot_box: Container = scene.get("_slot_box")
+	var pool_chip_found := false
+	for child in slot_box.get_children():
+		if child is PanelContainer and str((child as Control).tooltip_text).find("技能池") >= 0:
+			pool_chip_found = true
+			break
+	assert(pool_chip_found, "old mage inspect panel should show the seven-gem skill pool chip")
+	var child_count_before := scene.get_child_count()
+	scene.call("_show_old_mage_tutorial_intro")
+	await process_frame
+	assert(scene.get_child_count() == child_count_before + 1, "old mage encounter should open its tutorial overlay")
+	var overlay := scene.get_child(scene.get_child_count() - 1) as ColorRect
+	assert(overlay.mouse_filter == Control.MOUSE_FILTER_STOP, "old mage tutorial overlay should block battle input")
+	overlay.queue_free()
+	scene.queue_free()
+	await process_frame
+	game_service.pending_encounter_id = previous_encounter
+	game_service.pending_room_id = previous_room
+	game_service.pending_battle_mode = previous_mode
+	settings.set_value("show_tutorial", previous_show_tutorial)
+	print("  [OK] old mage guidance, warning, and inspect UI contract")
 
 
 func _test_relic_bar_layout_compacts_before_scroll() -> void:
@@ -244,3 +305,17 @@ func _find_unit_by_def(state: GameState, def_id: String) -> UnitState:
 		if unit.unit_def_id == def_id:
 			return unit
 	return null
+
+
+func _find_old_mage(state: GameState) -> UnitState:
+	for unit in state.get_alive_enemies():
+		if unit.behavior_id == "old_mage":
+			return unit
+	return null
+
+
+func _has_overlay_kind(highlights: Dictionary, kind: String) -> bool:
+	for raw_overlay in highlights.get("overlays", []):
+		if raw_overlay is Dictionary and str((raw_overlay as Dictionary).get("kind", "")) == kind:
+			return true
+	return false

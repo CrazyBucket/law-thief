@@ -265,6 +265,8 @@ func _test_counter_red_triggers_followup() -> void:
 			guard = unit
 			break
 	assert(guard != null, "guard should exist")
+	guard.hp = 100
+	guard.max_hp = 100
 	var guard_hp_before := guard.hp
 	var player_hp_before := player.hp
 	var result := ctrl.try_attack_cell(guard.pos)

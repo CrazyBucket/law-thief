@@ -21,9 +21,6 @@ func _run_tests() -> void:
 	_test_query_preview_uses_slot_config()
 	_test_blue_poison_contact_uses_level_config()
 	_test_blue_ice_contact_slows_attacker()
-	_test_blue_pillar_poison_uses_level_config()
-	_test_blue_pillar_explosion_uses_level_config()
-	_test_blue_pillar_gravity_uses_level_config()
 	_test_poison_red_level_two_cross_fog()
 	_test_fire_poison_combo_creates_toxic_smoke()
 	_test_ice_red_level_three_freezes_slowed_target()
@@ -51,14 +48,10 @@ func _test_effect_level_config_lookup() -> void:
 	var blue_poison_l1: Dictionary = reg.get_gem_effect_level_def("poison", Constants.SLOT_BLUE, 1)
 	_expect(int(blue_poison_l1.get("contact_poison_stacks", 0)) == 1, "blue poison should define contact poison stacks")
 	_expect(int(blue_poison_l1.get("turn_end_poison_duration", 0)) == 2, "blue poison should define turn-end poison duration")
-	_expect(int(blue_poison_l1.get("pillar_radius", 0)) == 2, "blue poison should define pillar radius")
 	var red_poison_l1: Dictionary = reg.get_gem_effect_level_def("poison", Constants.SLOT_RED, 1)
 	_expect(int(red_poison_l1.get("hit_poison_stacks", 0)) == 1, "red poison should define hit poison stacks")
 	_expect(int(red_poison_l1.get("hit_poison_duration", -1)) == 0, "red poison should define hit poison duration")
 	var blue_explosion_l1: Dictionary = reg.get_gem_effect_level_def("explosion", Constants.SLOT_BLUE, 1)
-	_expect(int(blue_explosion_l1.get("pillar_damage", 0)) == 1, "blue explosion should define pillar damage")
-	var blue_gravity_l1: Dictionary = reg.get_gem_effect_level_def("gravity", Constants.SLOT_BLUE, 1)
-	_expect(int(blue_gravity_l1.get("pillar_pull_radius", 0)) == 2, "blue gravity should define pillar pull radius")
 	var blue_ice_l2: Dictionary = reg.get_gem_effect_level_def("ice", Constants.SLOT_BLUE, 2)
 	_expect(int(blue_ice_l2.get("contact_slowed_stacks", 0)) == 2, "blue ice level 2 should define two contact slow stacks")
 	_expect(int(blue_ice_l2.get("slowed_min_move_points", -1)) == 0, "blue ice level 2 should author the zero movement floor")
@@ -153,63 +146,6 @@ func _test_blue_ice_contact_slows_attacker() -> void:
 	print("  [OK] blue ice contact slows attacker")
 
 
-func _test_blue_pillar_poison_uses_level_config() -> void:
-	var state := _create_state("template_a")
-	var pillar := state.get_tile(Vector2i(7, 5))
-	_mount_tile_gem(state, pillar, Constants.GEM_POISON)
-	var target := _spawn_guard(state, Vector2i(5, 5), "pillar_poison_target")
-	var far_target := _spawn_guard(state, Vector2i(4, 5), "pillar_poison_far_target")
-	var events: Array[Dictionary] = []
-	var ok := GemEffects.trigger_tile_gem(state, pillar, pillar.slots[0], events)
-	_expect(ok, "pillar poison trigger should succeed")
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var level_def: Dictionary = reg.get_gem_effect_level_def("poison", Constants.SLOT_BLUE, 1)
-	var poison := target.get_status(Constants.STATUS_POISON)
-	_expect(poison != null, "pillar poison should affect target within configured radius")
-	_expect(poison.stacks == int(level_def.get("pillar_poison_stacks", 1)), "pillar poison stacks should come from config")
-	_expect(poison.duration == int(level_def.get("pillar_poison_duration", 2)), "pillar poison duration should come from config")
-	_expect(far_target.get_status(Constants.STATUS_POISON) == null, "pillar poison should not affect target outside configured radius")
-	var burst := _first_event(events, "poison_burst")
-	_expect(int(burst.get("radius", -1)) == int(level_def.get("pillar_radius", 0)), "pillar poison event radius should come from config")
-	print("  [OK] blue pillar poison uses level config")
-
-
-func _test_blue_pillar_explosion_uses_level_config() -> void:
-	var state := _create_state("template_a")
-	var pillar := state.get_tile(Vector2i(7, 5))
-	_mount_tile_gem(state, pillar, Constants.GEM_EXPLOSION)
-	var target := _spawn_guard(state, Vector2i(6, 5), "pillar_explosion_target")
-	var far_target := _spawn_guard(state, Vector2i(5, 5), "pillar_explosion_far_target")
-	var hp_before := target.hp
-	var far_hp_before := far_target.hp
-	var events: Array[Dictionary] = []
-	var ok := GemEffects.trigger_tile_gem(state, pillar, pillar.slots[0], events)
-	_expect(ok, "pillar explosion trigger should succeed")
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var level_def: Dictionary = reg.get_gem_effect_level_def("explosion", Constants.SLOT_BLUE, 1)
-	_expect(hp_before - target.hp == int(level_def.get("pillar_damage", 1)), "pillar explosion damage should come from config")
-	_expect(far_target.hp == far_hp_before, "pillar explosion should not affect target outside configured radius")
-	var explode := _first_event(events, "explode")
-	_expect(int(explode.get("radius", -1)) == int(level_def.get("pillar_radius", 0)), "pillar explosion event radius should come from config")
-	print("  [OK] blue pillar explosion uses level config")
-
-
-func _test_blue_pillar_gravity_uses_level_config() -> void:
-	var state := _create_state("template_a")
-	var pillar := state.get_tile(Vector2i(7, 5))
-	_mount_tile_gem(state, pillar, Constants.GEM_GRAVITY)
-	var target := _spawn_guard(state, Vector2i(5, 5), "pillar_gravity_target")
-	var far_target := _spawn_guard(state, Vector2i(4, 5), "pillar_gravity_far_target")
-	var events: Array[Dictionary] = []
-	var ok := GemEffects.trigger_tile_gem(state, pillar, pillar.slots[0], events)
-	_expect(ok, "pillar gravity trigger should succeed")
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	var level_def: Dictionary = reg.get_gem_effect_level_def("gravity", Constants.SLOT_BLUE, 1)
-	_expect(target.pos == Vector2i(5, 5) + Vector2i(int(level_def.get("pillar_pull_steps", 1)), 0), "pillar gravity pull steps should come from config")
-	_expect(far_target.pos == Vector2i(4, 5), "pillar gravity should not affect target outside configured radius")
-	print("  [OK] blue pillar gravity uses level config")
-
-
 func _test_poison_red_level_two_cross_fog() -> void:
 	var state := _create_state()
 	var player := state.get_player()
@@ -288,20 +224,6 @@ func _mount_gems(state: GameState, unit: UnitState, slot_type: String, gem_ids: 
 		var gem := GemState.create(gem_uid, gem_ids[i], {})
 		state.gems[gem_uid] = gem
 		assert(_GemTransfer.to_unit_slot(state, gem, unit, slot))
-
-
-func _mount_tile_gem(state: GameState, tile: TileState, gem_id: String, slot_index: int = 0) -> void:
-	var slot := tile.get_slot_by_index(slot_index)
-	_expect(slot != null, "tile slot should exist for mounted gem")
-	if slot == null:
-		return
-	var reg: Node = Engine.get_main_loop().root.get_node("DataRegistry")
-	if not slot.gem_uid.is_empty():
-		_GemTransfer.remove(state, slot.gem_uid)
-	var gem_uid: String = reg.next_runtime_uid("tile_gem")
-	var gem := GemState.create(gem_uid, gem_id, {})
-	state.gems[gem_uid] = gem
-	assert(_GemTransfer.to_tile_slot(state, gem, tile, slot))
 
 
 func _spawn_guard(state: GameState, pos: Vector2i, uid: String) -> UnitState:

@@ -530,7 +530,6 @@ static func tick_round_end_environment(
 		tile.tick_modifiers()
 	TileRules.spread_fire(state)
 	_tick_grass_growth(state)
-	_apply_tile_pillar_auras(state)
 
 
 ## 分阶段 turn_end，严格执行以下顺序：
@@ -541,7 +540,7 @@ static func tick_round_end_environment(
 ## 5. 油桶着火检测
 ## 6. 地块 modifier 倒计时
 ## 7. 火焰蔓延 + 草地生长
-## 8. Pillar 光环
+## 8. 环境效果完成
 static func tick_turn_end(state: GameState, events: Array[Dictionary] = []) -> void:
 	# 阶段 1：地块停留结算
 	for unit in state.units.values():
@@ -576,8 +575,6 @@ static func tick_turn_end(state: GameState, events: Array[Dictionary] = []) -> v
 	TileRules.spread_fire(state)
 	_tick_grass_growth(state)
 
-	# 阶段 9：Pillar 光环
-	_apply_tile_pillar_auras(state)
 
 
 ## 地块停留效果（通过 TileRules 的进入效果表统一分发）
@@ -724,12 +721,6 @@ static func _tick_grass_growth(state: GameState) -> void:
 			tile.tile_id = Constants.TILE_BUSH
 			tile._init_ground_tags()
 			state.log("草地 %s 长成草丛" % [tile.pos])
-
-
-static func _apply_tile_pillar_auras(state: GameState) -> void:
-	for tile in state.tiles.values():
-		if tile.tile_id == Constants.TILE_PILLAR and tile.has_tile_tag(Constants.TAG_TILE_INTERACTIVE):
-			TileEffects.tick_pillar_aura(state, tile)
 
 
 static func _apply_blue_turn_start_effects(state: GameState, unit: UnitState) -> void:

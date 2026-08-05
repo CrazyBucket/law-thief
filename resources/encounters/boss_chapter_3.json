@@ -15,11 +15,6 @@
       {"def_id": "unit_patrol_guard", "pos": [6, 6]}
     ]}
   ],
-  "tiles": [
-    {"pos": [3, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "red"}]},
-    {"pos": [3, 5], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
-    {"pos": [5, 6], "tile_id": "tile_pillar", "slots": [{"slot_type": "black"}]}
-  ],
   "entities": [
     {"entity_id": "entity_rock", "pos": [2, 3]}, {"entity_id": "entity_rock", "pos": [2, 4]},
     {"entity_id": "entity_spike", "pos": [4, 3]}, {"entity_id": "entity_spike", "pos": [4, 4]}

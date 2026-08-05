@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTRACT="$ROOT/tests/contracts/gem_semantics.json"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+expect_rejected() {
+  local label="$1"
+  local filter="$2"
+  local candidate="$TMP_DIR/$label.json"
+  jq "$filter" "$CONTRACT" >"$candidate"
+  if SEMANTIC_CONTRACT_PATH="$candidate" bash "$ROOT/tools/semantic_contract_guard" >/dev/null 2>&1; then
+    echo "SEMANTIC_CONTRACT_SELF_TEST_FAIL accepted=$label" >&2
+    exit 1
+  fi
+}
+
+expect_rejected empty_covers '.cases[0].covers = []'
+expect_rejected unrelated_evidence '.cases[0].expect = {"fire_cells": 1}'
+expect_rejected invalid_skip_type '.cases[0].skip_initial_attack = "yes"'
+expect_rejected unknown_gem '.cases[0].covers = ["gem_missing:red:1"]'
+
+echo "SEMANTIC_CONTRACT_SELF_TEST_PASS cases=4"

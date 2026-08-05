@@ -22,7 +22,6 @@ func _run_test() -> void:
 	_test_ice_consumes_wet()
 	_test_blue_light_reflects_to_two_targets()
 	_test_red_spell_table()
-	_test_conductive_grounding_preview()
 	_test_blue_conductive_requires_and_hits_active_attacker()
 	_test_blue_explosion_centers_on_planned_endpoint()
 	_test_impact_charge_keeps_locked_row()
@@ -340,22 +339,6 @@ func _test_red_spell_table() -> void:
 		if str(spec["gem"]) == "gem_poison":
 			assert(state.get_tile(player.pos).has_modifier(Constants.TILE_MOD_POISON_FOG), "red poison should leave two-turn poison fog")
 	print("  [OK] red spell table damages and statuses")
-
-
-func _test_conductive_grounding_preview() -> void:
-	var state := _new_state()
-	var mage := _mage(state)
-	_load_spell_gems(state, mage, "gem_conductive", Constants.SLOT_RED)
-	IntentSystem.refresh_unit_intent(state, mage)
-	var safe_effects := mage.intent.preview_effects.filter(func(effect): return effect.kind == "mage_grounded")
-	assert(not safe_effects.is_empty(), "red conductive must preview grounded safe cells")
-	var player := state.get_player()
-	state.move_unit(player, Vector2i(3, 1))
-	IntentSystem.refresh_unit_intent(state, mage)
-	var hp_before := player.hp
-	IntentSystem.execute_intent(state, mage)
-	assert(player.hp == hp_before - 2, "a pillar-adjacent player must take only 2 conductive damage")
-	print("  [OK] conductive grounding preview and damage")
 
 
 func _test_blue_control_spell_table() -> void:

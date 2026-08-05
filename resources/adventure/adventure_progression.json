@@ -22,7 +22,7 @@
       "shifting_quarry", "split_sanctum"
     ],
     "ELITE_COMBAT": [
-      "enforcer_gate", "law_beast_arena", "toxic_furnace", "storm_pillars"
+      "enforcer_gate", "law_beast_arena", "toxic_furnace", "storm_flood"
     ]
   },
   "boss_encounters": ["boss_chapter_1", "boss_chapter_2", "boss_chapter_3"]

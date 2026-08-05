@@ -8,6 +8,7 @@ const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 const OldMageHudPanel = preload("res://scripts/ui/old_mage_hud_panel.gd")
 const _STATUS_PANEL_WIDTH := 320.0
+const _STATUS_PANEL_HEIGHT := 204.0
 const _RELIC_BAR_FALLBACK_H := 320.0
 
 var _controller: BattleController = null
@@ -354,7 +355,10 @@ func fit_status_panel_height() -> void:
 func _apply_status_panel_height(margins: Vector2) -> void:
 	_sync_panel_clip_heights()
 	_status_vbox.queue_sort()
-	var panel_h := _status_vbox.get_combined_minimum_size().y + margins.y
+	# Keep the inspect card in a reserved HUD lane. Combat presentation can
+	# replace its contents while an attack is resolving, but it must not move
+	# the action queue or any editor dock below it.
+	var panel_h := _STATUS_PANEL_HEIGHT
 	_status_panel.custom_minimum_size.y = panel_h
 	_status_panel.size.y = panel_h
 	_status_panel.offset_bottom = _status_panel.offset_top + panel_h
@@ -524,8 +528,6 @@ func _refresh_cell_inspect(state: GameState, cell: Vector2i) -> void:
 		var traits := _ground_trait_summary(tile)
 		if not traits.is_empty():
 			lines.append("属性：%s" % traits)
-		if tile.has_slots():
-			lines.append("槽位：%s" % _tile_slot_summary(state, tile))
 	if lines.is_empty():
 		lines.append("无特殊状态")
 	_inspect_stats.text = "\n".join(lines)
@@ -576,8 +578,6 @@ func _tile_display_name(tile: TileState) -> String:
 			return "草地"
 		Constants.TILE_BUSH:
 			return "灌木"
-		Constants.TILE_PILLAR:
-			return "机关柱"
 	return "地面"
 
 
@@ -618,24 +618,6 @@ func _ground_trait_summary(tile: TileState) -> String:
 		parts.append("冰")
 	if tile.has_ground_tag(Constants.GROUND_TAG_FLAMMABLE):
 		parts.append("可燃")
-	return " · ".join(parts)
-
-
-func _tile_slot_summary(state: GameState, tile: TileState) -> String:
-	var parts: Array[String] = []
-	for i in range(tile.slots.size()):
-		var slot: SlotState = tile.slots[i]
-		if slot == null:
-			continue
-		var label := "%s槽" % _slot_display_name(slot.slot_type)
-		if slot.is_overload_slot():
-			label = "过载" + label
-		if slot.gem_uid.is_empty():
-			label += " 空"
-		else:
-			var gem: GemState = state.gems.get(slot.gem_uid, null)
-			label += " %s" % (_gem_display_name(gem) if gem != null else "宝石")
-		parts.append(label)
 	return " · ".join(parts)
 
 

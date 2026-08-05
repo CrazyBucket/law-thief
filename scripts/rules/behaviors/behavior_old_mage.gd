@@ -507,7 +507,6 @@ static func _spell_intent(state: GameState, unit: UnitState, player: UnitState, 
 	elif slot.slot_type == Constants.SLOT_BLUE and gem.gem_id == "gem_impact":
 		intent.plan_metadata["mage_retreat_path"] = cells
 	if slot.slot_type == Constants.SLOT_RED and gem.gem_id == "gem_conductive":
-		intent.plan_metadata["mage_grounded_cells"] = _grounded_cells(state)
 		intent.plan_metadata["mage_wet_cells"] = _wet_unit_cells(state, unit)
 	return intent
 
@@ -653,8 +652,7 @@ static func _spell_preview_damage(state: GameState, player: UnitState, gem: GemS
 			_: return 0
 	match gem.gem_id:
 		"gem_explosion": return 12 if player.pos == target else 8
-		"gem_conductive":
-			return 10 if player.has_status(Constants.STATUS_WET) else (2 if _is_grounded_by_pillar(state, player.pos) else 6)
+		"gem_conductive": return 10 if player.has_status(Constants.STATUS_WET) else 6
 		"gem_fire": return 4
 		"gem_ice": return 4
 		"gem_poison": return 2
@@ -990,24 +988,6 @@ static func _light_path_from(state: GameState, origin: Vector2i, direction: Vect
 		if entity != null and entity.alive and entity.blocks_projectile():
 			break
 		current += direction
-	return cells
-
-
-static func _is_grounded_by_pillar(state: GameState, pos: Vector2i) -> bool:
-	for direction in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]:
-		var tile := state.get_tile(pos + direction)
-		if tile != null and tile.tile_id == Constants.TILE_PILLAR:
-			return true
-	return false
-
-
-static func _grounded_cells(state: GameState) -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	for y in range(state.board_size.y):
-		for x in range(state.board_size.x):
-			var cell := Vector2i(x, y)
-			if _is_grounded_by_pillar(state, cell):
-				cells.append(cell)
 	return cells
 
 

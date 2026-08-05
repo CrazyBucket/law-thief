@@ -37,7 +37,7 @@ Random candidates must fit the same footprint at their slot. In particular, do n
 
 Map hazards use existing encounter fields:
 
-- `tiles`: `tile_water`, `tile_ice`, `tile_grass`, `tile_bush`, or a slotted `tile_pillar`.
+- `tiles`: `tile_water`, `tile_ice`, `tile_grass`, or `tile_bush`.
 - tile `overlays`: `poison_fog`, `fire`, `toxic_smoke`, or `poison_puddle`, with `duration`.
 - `entities`: `entity_rock`, `entity_prop`, `entity_spike`, or `entity_barrel`.
 

@@ -34,6 +34,8 @@ static func apply_damage(
 ) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	if _editor_player_invincible(state, unit):
+		return 0
 	var resolved_damage_context := DamageContext.normalize(source_uid, reason, damage_context)
 	if _try_resolve_counter_mark_before_hit(state, unit, source_uid):
 		return 0
@@ -95,6 +97,8 @@ static func apply_true_damage(
 ) -> int:
 	if not unit.alive or amount <= 0:
 		return 0
+	if _editor_player_invincible(state, unit):
+		return 0
 	var resolved_damage_context := DamageContext.normalize(source_uid, reason, damage_context)
 	if reason == "burning" or reason == "tile_fire":
 		_apply_blue_reactive_effects(state, unit, source_uid, reason, amount, resolved_damage_context)
@@ -118,6 +122,14 @@ static func apply_true_damage(
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
 	return amount
+
+
+static func _editor_player_invincible(state: GameState, unit: UnitState) -> bool:
+	# This flag is only written by the debug battle editor. Keeping the check in
+	# the shared damage boundary also covers hazards, status damage, and true
+	# damage without weakening normal combat rules.
+	return state != null and unit != null and unit.uid == state.player_uid \
+		and bool(state.battle_temp_flags.get("editor_invincible_player", false))
 
 
 static func begin_deferred_death_hooks(event_sink: Array[Dictionary] = []) -> void:

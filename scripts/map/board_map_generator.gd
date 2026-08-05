@@ -24,15 +24,9 @@ static func build(state: GameState, encounter: Dictionary) -> void:
 		if not BoardUtils.in_bounds(state, pos):
 			continue
 		var tile_id: String = tile_data.get("tile_id", Constants.TILE_FLOOR)
-		var slot_defs: Array = tile_data.get("slots", [])
-		if not slot_defs.is_empty():
-			# 带槽位的特殊地块（祭坛、机关柱等）
-			var slotted_tile := TileState.create_with_slots(pos, tile_id, slot_defs)
-			state.tiles[state.tile_key(pos)] = slotted_tile
-		else:
-			var placed: TileState = state.tiles[state.tile_key(pos)]
-			placed.tile_id = tile_id
-			placed._init_ground_tags()
+		var placed: TileState = state.tiles[state.tile_key(pos)]
+		placed.tile_id = tile_id
+		placed._init_ground_tags()
 		var tile: TileState = state.tiles[state.tile_key(pos)]
 		tile.surface_variant = str(tile_data.get("surface_variant", ""))
 		for overlay_data in tile_data.get("overlays", []):

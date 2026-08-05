@@ -1,12 +1,12 @@
 class_name BattleQueryService
 extends RefCounted
-
 const _StatusUi = preload("res://scripts/ui/status_ui.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTagResolver = preload("res://scripts/rules/gem_tag_resolver.gd")
 const IntentPreviewRules = preload("res://scripts/rules/intent_preview_rules.gd")
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const OldMageGuidance = preload("res://scripts/battle/old_mage_guidance.gd")
 const _BattleOverlayPresenter = preload("res://scripts/ui/battle_overlay_presenter.gd")
 
 var _ctrl_ref: WeakRef
@@ -166,16 +166,10 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 	match tile.tile_id:
 		Constants.TILE_WATER:
 			lines.append("水洼：导电连锁区域")
-		Constants.TILE_PILLAR:
-			lines.append("机关柱：嵌入宝石产生持续光环")
 	if tile.has_modifier("poison_fog"):
 		lines.append("毒雾：进入叠毒；回合结束仍在其中会继续叠毒（每层 %d 伤害）" % CombatConfig.poison_fog_damage())
 	if tile.has_modifier(Constants.TILE_MOD_TOXIC_SMOKE):
 		lines.append("毒烟：同时视为火焰与毒雾，持续 1 回合")
-	if tile.has_slots():
-		for i in range(tile.slots.size()):
-			var tslot: SlotState = tile.slots[i]
-			lines.append(_slot_preview_line_tile(state, tile, tslot))
 	var dropped_here := state.get_dropped_gem_uids_at(cell)
 	for gem_uid in dropped_here:
 		var dropped_gem: GemState = state.gems.get(gem_uid, null)
@@ -287,9 +281,11 @@ func get_tutorial_hint() -> String:
 	if ctrl.state == null:
 		return ""
 	var state: GameState = ctrl.state
-	if state.encounter_id != "tutorial_001" or state.phase != Constants.PHASE_PLAYER:
+	if state.phase != Constants.PHASE_PLAYER or state.phase == Constants.PHASE_ENDED:
 		return ""
-	if state.phase == Constants.PHASE_ENDED:
+	if state.encounter_id == "boss_chapter_1":
+		return OldMageGuidance.tutorial_hint(state)
+	if state.encounter_id != "tutorial_001":
 		return ""
 	var held := ctrl.get_held_gem()
 	if held == null and not state.player_acted:
@@ -307,8 +303,6 @@ func get_tutorial_hint() -> String:
 	if held == null and state.player_acted:
 		return "行动已用，结束回合"
 	return "夺爆炸，塞黑槽，击杀引爆"
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # 有效槽位标签
 # ═══════════════════════════════════════════════════════════════════════════

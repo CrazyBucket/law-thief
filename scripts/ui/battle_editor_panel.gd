@@ -7,6 +7,8 @@ signal tool_selected(tool: Dictionary)
 signal tool_drag_started(tool: Dictionary)
 signal tool_cleared()
 signal relic_requested(relic_id: String)
+signal encounter_requested(encounter_id: String)
+signal clear_enemies_requested()
 signal close_requested()
 signal panel_moved()
 
@@ -29,6 +31,7 @@ var _close_btn: Button = null
 var _status_label: Label = null
 var _search_input: LineEdit = null
 var _category_row: GridContainer = null
+var _encounter_option: OptionButton = null
 var _list_vbox: VBoxContainer = null
 var _list_scroll: ScrollContainer = null
 var _content_box: VBoxContainer = null
@@ -51,8 +54,41 @@ func setup(registry: Node) -> void:
 	_rebuild_catalog()
 	if _category_row == null:
 		return
+	_rebuild_encounter_options()
 	_refresh_category_buttons()
 	_refresh_tool_list()
+
+
+func _rebuild_encounter_options() -> void:
+	if _encounter_option == null or _registry == null:
+		return
+	_encounter_option.clear()
+	var ids: Array[String] = _registry.get_encounter_ids(true)
+	if not "procedural_normal" in ids:
+		ids.push_front("procedural_normal")
+	var current_id := ""
+	var game_service: Node = Engine.get_main_loop().root.get_node_or_null("GameService")
+	if game_service != null:
+		current_id = str(game_service.get("pending_encounter_id"))
+	for encounter_id in ids:
+		_encounter_option.add_item(encounter_id)
+		_encounter_option.set_item_tooltip(_encounter_option.item_count - 1, encounter_id)
+		if encounter_id == current_id:
+			_encounter_option.select(_encounter_option.item_count - 1)
+	if _encounter_option.selected < 0 and _encounter_option.item_count > 0:
+		_encounter_option.select(0)
+
+
+func _on_encounter_selected(index: int) -> void:
+	if _encounter_option == null or index < 0 or index >= _encounter_option.item_count:
+		return
+	_update_status_label("已选择场景，点击重载后应用")
+
+
+func _on_reload_pressed() -> void:
+	if _encounter_option == null or _encounter_option.selected < 0:
+		return
+	encounter_requested.emit(_encounter_option.get_item_text(_encounter_option.selected))
 
 
 func set_selected_tool(tool: Dictionary) -> void:
@@ -110,6 +146,45 @@ func _build_ui() -> void:
 	_content_box.add_theme_constant_override("separation", 8)
 	_content_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(_content_box)
+
+	var encounter_row := HBoxContainer.new()
+	encounter_row.add_theme_constant_override("separation", 6)
+	_content_box.add_child(encounter_row)
+	var encounter_label := Label.new()
+	encounter_label.text = "起始场景"
+	encounter_label.custom_minimum_size.x = 64
+	encounter_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	encounter_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	encounter_row.add_child(encounter_label)
+	_encounter_option = OptionButton.new()
+	_encounter_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_encounter_option.custom_minimum_size.y = 30
+	_encounter_option.item_selected.connect(_on_encounter_selected)
+	encounter_row.add_child(_encounter_option)
+	var reload_btn := Button.new()
+	reload_btn.text = "重载"
+	reload_btn.custom_minimum_size = Vector2(62, 30)
+	reload_btn.pressed.connect(_on_reload_pressed)
+	BattleUiTheme.apply_button(reload_btn, "ghost")
+	encounter_row.add_child(reload_btn)
+
+	var editor_action_row := HBoxContainer.new()
+	editor_action_row.add_theme_constant_override("separation", 6)
+	_content_box.add_child(editor_action_row)
+	var clear_enemies_btn := Button.new()
+	clear_enemies_btn.text = "清空敌人"
+	clear_enemies_btn.custom_minimum_size.y = 30
+	clear_enemies_btn.pressed.connect(func() -> void: clear_enemies_requested.emit())
+	BattleUiTheme.apply_button(clear_enemies_btn, "ghost")
+	editor_action_row.add_child(clear_enemies_btn)
+	var editor_hint := Label.new()
+	editor_hint.text = "宝石拖到格子后自动填入第一个可用槽位"
+	editor_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	editor_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	editor_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	editor_hint.add_theme_font_size_override("font_size", 10)
+	editor_hint.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
+	editor_action_row.add_child(editor_hint)
 
 	_search_input = LineEdit.new()
 	_search_input.placeholder_text = "搜索资源 id"

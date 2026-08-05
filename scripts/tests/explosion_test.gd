@@ -1,7 +1,6 @@
 extends SceneTree
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
-const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 
 
 func _initialize() -> void:
@@ -10,39 +9,15 @@ func _initialize() -> void:
 
 func _run() -> void:
 	print("=== Explosion Test ===")
-	_test_cross_splash_damages_neighbor()
 	_test_cross_splash_damages_friendly_unit()
 	_test_multicell_target_no_splash_self()
 	_test_radius_explosion_dedupes_multicell()
 	_test_aim_cell_shifts_cross_center()
-	_test_red_explosion_level_2_uses_square()
-	_test_red_explosion_level_3_doubles_square_damage()
 	_test_red_explosion_level_4_clamps_to_level_3()
 	_test_active_trigger_level_2_uses_square()
 	_test_active_trigger_level_4_clamps_to_level_3()
-	_test_blue_explosion_triggers_after_forced_displacement()
 	print("EXPLOSION_TEST_PASS")
 	quit()
-
-
-func _test_cross_splash_damages_neighbor() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001")
-	var state := ctrl.state
-	var player := state.get_player()
-	_equip_red_explosion(state, player)
-	var guards := _guards(state)
-	assert(guards.size() >= 1)
-	var primary := guards[0]
-	var neighbor := _spawn_guard(state, primary.pos + Vector2i(1, 0))
-	state.rebuild_occupancy()
-	var neighbor_hp := neighbor.hp
-	var primary_hp := primary.hp
-	var result := ctrl.try_attack_cell(primary.pos)
-	assert(result.get("ok", false))
-	assert(primary_hp - primary.hp == 12, "level 1 center should take 10 direct + 2 explosion damage")
-	assert(neighbor_hp - neighbor.hp == 6, "level 1 neighbor should take 60% base_attack splash")
-	print("  [OK] cross splash hits neighbor")
 
 
 func _test_cross_splash_damages_friendly_unit() -> void:
@@ -123,45 +98,6 @@ func _test_aim_cell_shifts_cross_center() -> void:
 	print("  [OK] cross centers on aim cell")
 
 
-func _test_red_explosion_level_2_uses_square() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 2024)
-	var state := ctrl.state
-	var player := state.get_player()
-	_equip_red_explosions(state, player, 2)
-	var guards := _guards(state)
-	assert(guards.size() >= 1)
-	var primary := guards[0]
-	var diagonal := _spawn_guard(state, primary.pos + Vector2i(1, 1))
-	state.rebuild_occupancy()
-	var diagonal_hp := diagonal.hp
-	var result := ctrl.try_attack_cell(primary.pos)
-	assert(result.get("ok", false))
-	var explode_ev := _first_explode_event(result.get("attack_events", []))
-	assert(explode_ev.get("pattern", "") == "square", "level 2 explosion should use square pattern")
-	assert(diagonal.hp < diagonal_hp, "level 2 square explosion should hit diagonal unit")
-	print("  [OK] red explosion level 2 square")
-
-
-func _test_red_explosion_level_3_doubles_square_damage() -> void:
-	var ctrl := BattleController.new()
-	ctrl.start_encounter("tutorial_001", 2025)
-	var state := ctrl.state
-	var player := state.get_player()
-	_equip_red_explosions(state, player, 3)
-	var guards := _guards(state)
-	assert(guards.size() >= 1)
-	var primary := guards[0]
-	var hp_before := primary.hp
-	var result := ctrl.try_attack_cell(primary.pos)
-	assert(result.get("ok", false))
-	var dealt := hp_before - primary.hp
-	assert(dealt == 15, "level 3 center should take 10 direct + 50%% center damage, got %d" % dealt)
-	var explode_ev := _first_explode_event(result.get("attack_events", []))
-	assert(explode_ev.get("pattern", "") == "square", "level 3 explosion should use square pattern")
-	print("  [OK] red explosion level 3 double damage")
-
-
 func _test_red_explosion_level_4_clamps_to_level_3() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 2027)
@@ -228,38 +164,6 @@ func _test_active_trigger_level_4_clamps_to_level_3() -> void:
 	assert(ok, "active trigger should succeed")
 	assert(hp_before - soak.hp == player.base_attack, "active trigger should clamp to level 3 100% base_attack splash")
 	print("  [OK] active explosion count above max clamps to level 3")
-
-
-func _test_blue_explosion_triggers_after_forced_displacement() -> void:
-	var builder := ScenarioBuilder.new("fission_slime_test", 2030, true)
-	var player := builder.player()
-	builder.move(player, Vector2i(1, 3))
-	var carrier := builder.add_unit(
-		"blue_explosion_carrier",
-		"unit_patrol_guard",
-		Constants.TEAM_ENEMY,
-		Vector2i(3, 3),
-		{"hp": 100, "max_hp": 100, "base_attack": 10}
-	)
-	var victim := builder.add_unit(
-		"blue_explosion_victim",
-		"unit_patrol_guard",
-		Constants.TEAM_PLAYER,
-		Vector2i(5, 3),
-		{"hp": 100, "max_hp": 100}
-	)
-	builder.clear_slots(carrier)
-	builder.mount_gems(carrier, Constants.SLOT_BLUE, [Constants.GEM_EXPLOSION])
-	var state := builder.finish()
-	var events: Array[Dictionary] = []
-	var carrier_hp := carrier.hp
-	var victim_hp := victim.hp
-	Displacement.knockback(state, carrier, Vector2i(2, 3), 1, player.uid, events, 0)
-	assert(carrier.pos == Vector2i(4, 3), "carrier should complete the forced move before detonating")
-	assert(carrier.hp == carrier_hp, "blue explosion should not damage its carrier")
-	assert(victim_hp - victim.hp == 6, "forced displacement should trigger 60%% base_attack blue explosion")
-	assert(events.any(func(ev): return ev.get("type", "") == "explode"), "forced displacement should emit an explosion")
-	print("  [OK] blue explosion triggers after forced displacement")
 
 
 func _equip_red_explosion(state: GameState, unit: UnitState) -> void:

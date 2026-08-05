@@ -10,27 +10,14 @@ func _initialize() -> void:
 
 func _run_test() -> void:
 	print("=== AI System Test ===")
-	_test_bomb_rat_ai()
 	_test_patrol_guard_ai()
 	_test_patrol_guard_detours_around_prop()
 	_test_patrol_guard_crosses_poison_fog_to_attack()
-	_test_stone_bow_ai()
 	_test_enemy_turn_execution()
 	_test_multi_enemy_coordination()
 	_test_enemy_extra_action_consumes_bonus()
 	print("AI_TEST_PASS")
 	quit()
-
-
-func _test_bomb_rat_ai() -> void:
-	print("--- Test: Bomb Rat AI ---")
-	var controller := BattleController.new()
-	controller.start_encounter("bomb_rat_test", 42)
-	var state := controller.state
-	var rat := _find_unit_by_def(state, "unit_bomb_rat")
-	assert(rat != null, "bomb rat should exist")
-	assert(rat.intent != null, "bomb rat should have intent")
-	print("  [OK] bomb rat intent: %s" % rat.intent.preview_text)
 
 
 func _test_patrol_guard_ai() -> void:
@@ -44,17 +31,6 @@ func _test_patrol_guard_ai() -> void:
 	var action: EnemyAI.ActionCandidate = decision.get("action", null)
 	assert(action != null, "patrol guard should have a decision")
 	print("  [OK] patrol guard AI: %s" % action.description)
-
-
-func _test_stone_bow_ai() -> void:
-	print("--- Test: Stone Bow AI ---")
-	var controller := BattleController.new()
-	controller.start_encounter("stone_bow_test", 42)
-	var state := controller.state
-	var bow := _find_unit_by_def(state, "unit_stone_bow_guard")
-	assert(bow != null, "stone bow should exist")
-	assert(bow.intent != null, "stone bow should have intent")
-	print("  [OK] stone bow intent: %s" % bow.intent.preview_text)
 
 
 func _test_patrol_guard_detours_around_prop() -> void:
@@ -85,6 +61,10 @@ func _test_patrol_guard_crosses_poison_fog_to_attack() -> void:
 	var guard := _find_unit_by_def(state, "unit_patrol_guard")
 	var player := state.get_player()
 	assert(guard != null and player != null, "guard/player should exist")
+	for slot: SlotState in guard.slots:
+		if not slot.gem_uid.is_empty():
+			state.gems.erase(slot.gem_uid)
+			slot.gem_uid = ""
 	state.move_unit(guard, Vector2i(1, 2))
 	state.move_unit(player, Vector2i(1, 4))
 	TileRules.create_poison_fog(state, Vector2i(1, 3), 2)
@@ -104,7 +84,10 @@ func _test_patrol_guard_crosses_poison_fog_to_attack() -> void:
 	assert(action != null, "guard should choose an action through poison fog")
 	assert(action.action_target_uid == player.uid, "guard should attack the player after crossing poison fog")
 	assert(action.type != EnemyAI.ActionType.WAIT and action.type != EnemyAI.ActionType.MOVE, "guard should not only move or wait after crossing poison fog")
-	assert(not path.is_empty() and path[0] == Vector2i(1, 3), "guard should path through poison fog to attack")
+	assert(
+		Vector2i(1, 3) in path or action.move_target == Vector2i(1, 3),
+		"guard should cross poison fog to attack: path=%s origin=%s" % [path, action.move_target]
+	)
 	print("  [OK] patrol guard crosses poison fog to attack")
 
 

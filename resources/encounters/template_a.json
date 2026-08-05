@@ -10,8 +10,5 @@
     {"pos": [6, 3], "entity_id": "entity_spike"},
     {"pos": [4, 3], "entity_id": "entity_prop"},
     {"pos": [2, 4], "entity_id": "entity_prop", "prop_sprite": "DecorRock3_0"}
-  ],
-  "tiles": [
-    {"pos": [7, 5], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]}
   ]
 }

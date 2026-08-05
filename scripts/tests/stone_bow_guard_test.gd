@@ -18,6 +18,7 @@ func _run_test() -> void:
 	_test_kite_retreat_then_shoot()
 	_test_hold_position_when_in_range()
 	_test_intent_tracks_player_after_move()
+	_test_poison_skill_overrides_kiting()
 	print("STONE_BOW_GUARD_TEST_PASS")
 	quit()
 
@@ -187,6 +188,27 @@ func _test_intent_tracks_player_after_move() -> void:
 	print("  [OK] enemy intent refreshes after player move")
 
 
+func _test_poison_skill_overrides_kiting() -> void:
+	var controller := BattleController.new()
+	controller.start_encounter("stone_bow_test", 42)
+	var state := controller.state
+	var bow := _find_bow(state)
+	var player := state.get_player()
+	assert(bow != null and player != null, "stone bow/player should exist")
+	_clear_red_slot(state, bow)
+	_embed_red_gem(state, bow, Constants.GEM_POISON)
+	state.move_unit(player, bow.pos + Vector2i(0, 1))
+	IntentSystem.refresh_unit_intent(state, bow)
+	assert(bow.intent.type == "poison_attack", "poison gem should override kiting, got %s" % bow.intent.type)
+	assert(bow.intent.path.is_empty(), "adjacent poison attack should stay in place")
+	var hp_before := player.hp
+	var events := IntentSystem.execute_intent(state, bow)
+	assert(not events.is_empty(), "stone bow poison attack should emit events")
+	assert(player.hp < hp_before, "stone bow poison attack should deal damage")
+	assert(player.has_status(Constants.STATUS_POISON), "stone bow poison attack should apply poison")
+	print("  [OK] stone bow poison skill overrides kiting")
+
+
 func _find_bow(state: GameState) -> UnitState:
 	for unit in state.units.values():
 		if unit.unit_def_id == "unit_stone_bow_guard":
@@ -200,3 +222,15 @@ func _clear_red_slot(state: GameState, bow: UnitState) -> void:
 		return
 	state.gems.erase(red.gem_uid)
 	red.gem_uid = ""
+
+
+func _embed_red_gem(state: GameState, bow: UnitState, gem_id: String) -> void:
+	var red := bow.get_slot(Constants.SLOT_RED)
+	assert(red != null, "stone bow should have a red slot")
+	var gem := GemState.new()
+	gem.uid = "stone_bow_guard_%s" % gem_id
+	gem.gem_id = gem_id
+	gem.owner_uid = bow.uid
+	gem.slot_index = bow.slots.find(red)
+	state.gems[gem.uid] = gem
+	red.gem_uid = gem.uid

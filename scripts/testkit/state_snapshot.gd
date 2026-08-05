@@ -56,7 +56,7 @@ static func capture(state: GameState, events: Array = [], include_log: bool = tr
 	tile_keys.sort()
 	for key in tile_keys:
 		var tile: TileState = state.tiles[key]
-		if tile.tile_id != "tile_floor" or not tile.modifiers.is_empty() or not tile.slots.is_empty():
+		if tile.tile_id != "tile_floor" or not tile.modifiers.is_empty():
 			snapshot["tiles"].append(_tile(tile))
 
 	var entity_uids := state.entities.keys()
@@ -140,22 +140,11 @@ static func _gem(gem: GemState) -> Dictionary:
 
 
 static func _tile(tile: TileState) -> Dictionary:
-	var slots: Array = []
-	for slot: SlotState in tile.slots:
-		slots.append({
-			"slot_type": slot.slot_type,
-			"dual_type": slot.dual_type,
-			"gem_uid": slot.gem_uid,
-			"locked": slot.locked,
-			"lock_type": slot.lock_type,
-			"overload_slot": slot.is_overload_slot(),
-		})
 	return {
 		"pos": _vec(tile.pos),
 		"tile_id": tile.tile_id,
 		"ground_tags": tile.ground_tags.duplicate(),
 		"modifiers": _json_safe(tile.modifiers),
-		"slots": slots,
 	}
 
 

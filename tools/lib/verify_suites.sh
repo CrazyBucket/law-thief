@@ -81,24 +81,42 @@ CORE_TESTS=(
 )
 
 GEM_TESTS=(
+  arc_bounce_test
+  attack_tag_combo_test
   balance_config_test
+  blue_black_combo_test
+  chaos_launcher_test
   combat_transaction_test
   battle_architecture_test
+  deferred_death_sink_test
+  enemy_initial_gem_contract_test
+  enemy_red_gem_test
   gem_semantic_contract_test
   intent_consistency_contract_test
   explosion_test
+  flurry_and_ruffled_crow_test
+  gem_echo_test
   gem_level_context_test
+  gem_pool_roll_test
+  gem_tag_resolver_test
   status_test
   prop_entity_test
   stone_bow_guard_test
   split_shot_test
   gravity_test
+  hook_test
+  impact_gem_test
+  light_colored_scope_test
+  light_gem_effect_test
   bomb_rat_test
+  overload_test
   tile_overlay_reaction_test
   law_worm_test
   gem_insert_replace_test
   fission_slime_test
   gem_transfer_test
+  skill_test
+  tide_gem_test
 )
 
 BATTLE_TESTS=(
@@ -119,6 +137,9 @@ BATTLE_TESTS=(
   stone_bow_guard_test
   split_shot_test
   bomb_rat_test
+  displacement_test
+  rolling_armadillo_test
+  tile_move_cost_test
   fission_slime_test
 )
 
@@ -133,6 +154,8 @@ ADVENTURE_TESTS=(
   economy_service_test
   event_service_test
   adventure_rule_registry_test
+  room_flow_service_test
+  run_service_acquire_gem_test
   shop_service_test
 )
 
@@ -148,21 +171,92 @@ PERSISTENCE_TESTS=(
 )
 
 UI_TESTS=(
+  battle_editor_ui_test
+  battle_light_beam_fx_test
   battle_overlay_presenter_test
+  battle_particle_fx_test
+  battle_projectile_fx_test
+  battle_reward_card_factory_test
+  battle_reward_overlay_test
+  battle_slot_panel_layout_test
   adventure_map_copy_presenter_test
+  board_input_adapter_test
   board_overlay_api_test
+  event_scene_ui_test
+  frame_up_test
+  frozen_unit_visual_test
+  gem_projectile_visual_test
+  menu_audio_settings_test
+  menu_settings_page_ui_test
+  overlay_asset_contract_test
+  overlay_cloud_layout_test
   presentation_state_applier_test
   overlay_render_contract_test
+  rest_scene_ui_test
+  shop_scene_ui_test
   ui_overlay_contract_test
   ui_visual_regression_contract_test
   transition_manager_test
   ui_compile_test
+  water_autotile_test
+  water_frame_composite_test
+  water_render_contract_test
 )
 
 LOCALIZATION_TESTS=(
   adventure_map_copy_presenter_test
   event_service_test
   ui_compile_test
+)
+
+AI_TESTS=(
+  ai_candidate_selector_test
+  ai_red_skill_scorer_test
+  ai_test
+  enemy_red_gem_test
+  intent_consistency_contract_test
+  old_mage_test
+  patrol_guard_test
+  rolling_armadillo_test
+)
+
+ENCOUNTER_TESTS=(
+  encounter_catalog_loader_test
+  encounter_composition_test
+  encounter_content_diagnostics_test
+  encounter_enemy_resolver_test
+  encounter_load_test
+  enemy_initial_gem_contract_test
+  map_test
+  patrol_guard_test
+  procedural_encounter_generator_test
+)
+
+EDITOR_TESTS=(
+  battle_editor_cli_test
+  battle_editor_encounter_codec_test
+  battle_editor_ui_test
+  editor_run_isolation_test
+  hook_test
+)
+
+MAP_TESTS=(
+  map_test
+  overlay_asset_contract_test
+  overlay_cloud_layout_test
+  overlay_render_contract_test
+  poison_cloud_lifecycle_test
+  tile_move_cost_test
+  tile_overlay_reaction_test
+  water_autotile_test
+  water_frame_composite_test
+  water_render_contract_test
+)
+
+RELIC_TESTS=(
+  crowbar_relic_test
+  prop_entity_test
+  vernier_caliper_relic_test
 )
 
 ALL_TESTS=()
@@ -222,12 +316,28 @@ select_changed_tests() {
     fi
   done <<<"$changed"
 
+  # A runtime source with a same-named focused test should select that test in
+  # addition to its broader domain suite. This keeps specialized regressions
+  # reachable without maintaining a second basename mapping by hand.
+  while IFS= read -r path; do
+    if [[ "$path" =~ ^scripts/.+\.gd$ && ! "$path" =~ ^scripts/tests/ ]]; then
+      test_name="$(basename "$path" .gd)_test"
+      if [[ -f "$root/scripts/tests/${test_name}.gd" ]]; then
+        append_tests "$test_name"
+      fi
+    fi
+  done <<<"$changed"
+
   if grep -Eq '^tests/contracts/gem_semantics\.json$|^scripts/rules/(gem_effects|gem_tag_resolver|attack_pipeline)\.gd$|^scripts/core/combat_config\.gd$|^resources/gems/' <<<"$changed"; then
     append_tests "${GEM_TESTS[@]}"
   fi
 
   if grep -Eq '^scripts/(rules|battle)/|^resources/combat/|^resources/units/unit_defs\.json$|^resources/relics/' <<<"$changed"; then
     append_tests "${BATTLE_TESTS[@]}"
+  fi
+
+  if grep -Eq '^scripts/rules/(ai_|intent_|behaviors/)|^scripts/battle/|^resources/units/' <<<"$changed"; then
+    append_tests "${AI_TESTS[@]}"
   fi
 
   # Shared state shapes can affect battle, adventure, and persistence together.
@@ -239,12 +349,28 @@ select_changed_tests() {
     append_tests "${ADVENTURE_TESTS[@]}"
   fi
 
+  if grep -Eq '^resources/encounters/|^resources/units/|^tests/fixtures/encounters/|^scripts/services/(encounter_catalog_loader|encounter_enemy_resolver|procedural_encounter_generator)\.gd$|^scripts/map/board_map_generator\.gd$' <<<"$changed"; then
+    append_tests "${ENCOUNTER_TESTS[@]}"
+  fi
+
   if grep -Eq '^scripts/services/(persistence_path_policy|run_history_service|save_manager|save_service|settings_service)\.gd$' <<<"$changed"; then
     append_tests "${PERSISTENCE_TESTS[@]}"
   fi
 
   if grep -Eq '^scripts/ui/|^scenes/(ui|adventure|battle)/|^assets/ui/' <<<"$changed"; then
     append_tests "${UI_TESTS[@]}"
+  fi
+
+  if grep -Eq '^scripts/map/|^resources/(tiles|overlays)/|^assets/(tiles|overlays)/' <<<"$changed"; then
+    append_tests "${MAP_TESTS[@]}"
+  fi
+
+  if grep -Eq '^scripts/debug/battle_editor|^scripts/ui/battle_editor|^scenes/.+battle_editor|^resources/encounters/' <<<"$changed"; then
+    append_tests "${EDITOR_TESTS[@]}"
+  fi
+
+  if grep -Eq '^resources/relics/|^scripts/.+relic' <<<"$changed"; then
+    append_tests "${RELIC_TESTS[@]}"
   fi
 
   if grep -Eq '^localization/strings\.csv$|^scripts/tools/build_localization_translations\.gd$' <<<"$changed"; then

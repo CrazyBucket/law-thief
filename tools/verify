@@ -72,6 +72,13 @@ if ! "$ROOT/tools/file_size_guard" >"$FILE_SIZE_LOG" 2>&1; then
   exit 1
 fi
 
+VERIFY_SELECTION_LOG="$REPORT_DIR/verify_selection_guard.log"
+if ! bash "$ROOT/tools/verify_selection_guard" >"$VERIFY_SELECTION_LOG" 2>&1; then
+  echo "VERIFY_FAIL verify_selection_guard (see artifacts/verify/verify_selection_guard.log)"
+  cat "$VERIFY_SELECTION_LOG"
+  exit 1
+fi
+
 SOURCE_ENCODING_LOG="$REPORT_DIR/source_encoding_guard.log"
 if ! "$ROOT/tools/source_encoding_guard" >"$SOURCE_ENCODING_LOG" 2>&1; then
   echo "VERIFY_FAIL source_encoding_guard (see artifacts/verify/source_encoding_guard.log)"
@@ -80,6 +87,12 @@ if ! "$ROOT/tools/source_encoding_guard" >"$SOURCE_ENCODING_LOG" 2>&1; then
 fi
 
 DESIGN_SYNC_LOG="$REPORT_DIR/design_sync_guard.log"
+DESIGN_SYNC_SELF_TEST_LOG="$REPORT_DIR/design_sync_guard_self_test.log"
+if ! bash "$ROOT/tools/design_sync_guard_self_test" >"$DESIGN_SYNC_SELF_TEST_LOG" 2>&1; then
+  echo "VERIFY_FAIL design_sync_guard_self_test (see artifacts/verify/design_sync_guard_self_test.log)"
+  cat "$DESIGN_SYNC_SELF_TEST_LOG"
+  exit 1
+fi
 if ! bash "$ROOT/tools/design_sync_guard" >"$DESIGN_SYNC_LOG" 2>&1; then
   echo "VERIFY_FAIL design_sync_guard (see artifacts/verify/design_sync_guard.log)"
   cat "$DESIGN_SYNC_LOG"
@@ -148,10 +161,18 @@ fi
 passed=0
 failed=0
 start="$(date +%s)"
+test_timeout_seconds="${VERIFY_TEST_TIMEOUT_SECONDS:-120}"
+if [[ ! "$test_timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+  echo "VERIFY_FAIL invalid VERIFY_TEST_TIMEOUT_SECONDS=$test_timeout_seconds"
+  exit 2
+fi
 : >"$REPORT_DIR/verify.log"
+: >"$REPORT_DIR/test-durations.tsv"
 echo "VERIFY_GODOT $GODOT" | tee -a "$REPORT_DIR/verify.log"
 cat "$FILE_SIZE_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$VERIFY_SELECTION_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$SOURCE_ENCODING_LOG" | tee -a "$REPORT_DIR/verify.log"
+cat "$DESIGN_SYNC_SELF_TEST_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$DESIGN_SYNC_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$COMBAT_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
 cat "$UI_ARCHITECTURE_LOG" | tee -a "$REPORT_DIR/verify.log"
@@ -177,6 +198,7 @@ for test_name in "${TESTS[@]}"; do
   save_root="$(godot_host_path "$user_root/save")"
   test_log="$REPORT_DIR/${log_name}.log"
   if WSLENV="LAW_THIEF_SAVE_ROOT${WSLENV:+:$WSLENV}" LAW_THIEF_SAVE_ROOT="$save_root" \
+    timeout --foreground "${test_timeout_seconds}s" \
     "$GODOT" --headless --path "$ROOT" --script "$local_path" >"$test_log" 2>&1; then
     test_exit=0
   else
@@ -190,9 +212,14 @@ for test_name in "${TESTS[@]}"; do
   test_duration=$(($(date +%s) - test_start))
   if [[ "$test_exit" -eq 0 && "$log_guard_exit" -eq 0 ]]; then
     echo "VERIFY_PASS $test_name duration=${test_duration}s" | tee -a "$REPORT_DIR/verify.log"
+    printf '%s\t%d\tpass\n' "$test_name" "$test_duration" >>"$REPORT_DIR/test-durations.tsv"
     passed=$((passed + 1))
   else
-    failure_reason="exit=$test_exit"
+    if [[ "$test_exit" -eq 124 ]]; then
+      failure_reason="timeout=${test_timeout_seconds}s"
+    else
+      failure_reason="exit=$test_exit"
+    fi
     if [[ "$log_guard_exit" -ne 0 ]]; then
       failure_reason="runtime error"
     fi
@@ -201,18 +228,39 @@ for test_name in "${TESTS[@]}"; do
       bash "$ROOT/tools/test_log_guard" "$test_log" || true
     fi
     tail -40 "$test_log"
+    printf '%s\t%d\tfail\n' "$test_name" "$test_duration" >>"$REPORT_DIR/test-durations.tsv"
     failed=$((failed + 1))
   fi
 done
 
 duration=$(($(date +%s) - start))
-printf '{"mode":"%s","selected":%d,"passed":%d,"failed":%d,"duration_seconds":%d}\n' \
-  "$MODE" "${#TESTS[@]}" "$passed" "$failed" "$duration" >"$REPORT_DIR/report.json"
+sort -t $'\t' -k2,2nr "$REPORT_DIR/test-durations.tsv" >"$REPORT_DIR/slow-tests.tsv"
+head -10 "$REPORT_DIR/slow-tests.tsv" | while IFS=$'\t' read -r slow_name slow_duration slow_status; do
+  [[ -n "$slow_name" ]] && echo "VERIFY_SLOW test=$slow_name duration=${slow_duration}s status=$slow_status" | tee -a "$REPORT_DIR/verify.log"
+done
+
+fast_budget_seconds=null
+fast_budget_exceeded=false
+if [[ "$MODE" == "fast" ]]; then
+  fast_budget_seconds="${VERIFY_FAST_MAX_SECONDS:-240}"
+  if [[ ! "$fast_budget_seconds" =~ ^[1-9][0-9]*$ ]]; then
+    echo "VERIFY_FAIL invalid VERIFY_FAST_MAX_SECONDS=$fast_budget_seconds" | tee -a "$REPORT_DIR/verify.log"
+    fast_budget_exceeded=true
+  elif (( duration > fast_budget_seconds )); then
+    echo "VERIFY_FAIL fast_budget duration=${duration}s budget=${fast_budget_seconds}s" | tee -a "$REPORT_DIR/verify.log"
+    fast_budget_exceeded=true
+  else
+    echo "VERIFY_FAST_BUDGET_PASS duration=${duration}s budget=${fast_budget_seconds}s" | tee -a "$REPORT_DIR/verify.log"
+  fi
+fi
+
+printf '{"mode":"%s","selected":%d,"passed":%d,"failed":%d,"duration_seconds":%d,"fast_budget_seconds":%s,"fast_budget_exceeded":%s}\n' \
+  "$MODE" "${#TESTS[@]}" "$passed" "$failed" "$duration" "$fast_budget_seconds" "$fast_budget_exceeded" >"$REPORT_DIR/report.json"
 echo "VERIFY_SUMMARY mode=$MODE selected=${#TESTS[@]} passed=$passed failed=$failed duration=${duration}s report=artifacts/verify/report.json"
 if ! "$ROOT/tools/coverage" >"$REPORT_DIR/semantic-coverage.log"; then
   echo "VERIFY_FAIL semantic_coverage (see artifacts/verify/semantic-coverage.log)"
   cat "$REPORT_DIR/semantic-coverage.log"
   exit 1
 fi
-head -1 "$REPORT_DIR/semantic-coverage.log"
-test "$failed" -eq 0
+grep -m1 '^SEMANTIC_COVERAGE ' "$REPORT_DIR/semantic-coverage.log"
+test "$failed" -eq 0 && [[ "$fast_budget_exceeded" == false ]]

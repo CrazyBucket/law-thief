@@ -9,8 +9,6 @@
     "anchors": [[1,1], [2,2], [3,1], [4,2], [5,1], [1,4], [2,5], [3,6], [4,5], [5,6], [6,5], [7,4]]
   },
   "tiles": [
-    {"pos": [3, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
-    {"pos": [3, 5], "tile_id": "tile_pillar", "slots": [{"slot_type": "red"}]},
     {"pos": [6, 4], "tile_id": "tile_water"}
   ],
   "entities": [

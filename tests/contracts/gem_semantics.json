@@ -24,7 +24,7 @@
         "unit_damages": {"contract_target": 20, "player": 3},
         "unit_statuses": {
           "contract_target": {
-            "burning": {"stacks": 4}
+            "burning": {"stacks": 2}
           }
         }
       }
@@ -118,7 +118,7 @@
         "poison_fog_cells": 1,
         "unit_statuses": {
           "contract_target": {
-            "poison": {"stacks": 2}
+            "poison": {"stacks": 1}
           }
         }
       }
@@ -132,7 +132,7 @@
         "poison_fog_cells": 5,
         "unit_statuses": {
           "contract_target": {
-            "poison": {"stacks": 2}
+            "poison": {"stacks": 1}
           }
         },
         "event_matches": [{"type": "poison_burst", "pattern": "cross"}]
@@ -147,7 +147,7 @@
         "poison_fog_cells": 5,
         "unit_statuses": {
           "contract_target": {
-            "poison": {"stacks": 2}
+            "poison": {"stacks": 1}
           }
         },
         "tile_modifier_durations": [
@@ -1102,6 +1102,7 @@
     },
     {
       "id": "explosion/blue/1_burning_detonates_cross",
+      "skip_initial_attack": true,
       "covers": ["gem_explosion:blue:1"],
       "player_stats": {"base_attack": 0},
       "mounts": [
@@ -1122,6 +1123,7 @@
     },
     {
       "id": "explosion/blue/1_forced_displacement_detonates_cross",
+      "skip_initial_attack": true,
       "covers": ["gem_explosion:blue:1"],
       "player_stats": {"base_attack": 0},
       "player_pos": [1, 3],
@@ -1145,6 +1147,7 @@
     },
     {
       "id": "explosion/blue/1_explosion_chain_triggers_each_carrier_once",
+      "skip_initial_attack": true,
       "covers": ["gem_explosion:blue:1"],
       "player_stats": {"base_attack": 0},
       "target_stats": {"base_attack": 10, "hp": 100, "max_hp": 100},
@@ -1542,7 +1545,7 @@
         "damage": 10,
         "unit_statuses": {
           "player": {
-            "burning": {"stacks": 2, "duration": 0}
+            "burning": {"stacks": 1, "duration": 0}
           }
         },
         "fire_cells": 1,
@@ -1566,7 +1569,7 @@
         "damage": 10,
         "unit_statuses": {
           "player": {
-            "burning": {"stacks": 8, "duration": 0}
+            "burning": {"stacks": 6, "duration": 0}
           }
         },
         "fire_cells": 1
@@ -1590,7 +1593,7 @@
         "damage": 20,
         "unit_statuses": {
           "player": {
-            "burning": {"stacks": 10, "duration": 0}
+            "burning": {"stacks": 7, "duration": 0}
           }
         },
         "fire_cells": 1
@@ -1939,6 +1942,7 @@
     },
     {
       "id": "counter/blue/2_carries_red_tags",
+      "skip_initial_attack": true,
       "covers": ["gem_counter:blue:2"],
       "player_stats": {"base_attack": 0},
       "mounts": [
@@ -1956,7 +1960,7 @@
         },
         "unit_statuses": {
           "player": {
-            "burning": {"stacks": 2, "duration": 0}
+            "burning": {"stacks": 1, "duration": 0}
           }
         }
       }

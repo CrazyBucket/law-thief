@@ -17,7 +17,6 @@ app.subtitle,窃律者 MVP,Law Thief MVP
 tile.floor.name,地面,Floor
 tile.spike.name,尖刺,Spike
 tile.water.name,水洼,Water
-tile.pillar.name,机关柱,Pillar
 intent.wait,等待,Wait
 gem.rarity.common,普通,Common
 gem.rarity.uncommon,稀有,Uncommon
@@ -147,31 +146,26 @@ gem.effect.explosion.player_skill,引爆目标格；伤害随攻击与宝石等�
 gem.effect.explosion.unit_red_active,攻击命中后爆炸；中心追加伤害并波及周围,Explode after an attack hits; deal bonus damage at the center and splash nearby
 gem.effect.explosion.enemy_red_action,攻击命中后爆炸；中心追加伤害并波及周围,Explode after an attack hits; deal bonus damage at the center and splash nearby
 gem.effect.explosion.black_death,死亡：以自身攻击引发 3×3 爆炸,Death: cause a 3×3 blast based on the owner's attack
-gem.effect.explosion.tile_turn_start,光环：1 格内敌人每回合 1 伤害,Aura: deal 1 damage each turn to enemies within 1 tile
 gem.effect.poison.player_skill,剧毒：目标周围 3x3 铺设毒雾并叠加中毒,Venom: create poison fog in a 3x3 area and add poison stacks
 gem.effect.poison.unit_red_active,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
 gem.effect.poison.enemy_red_action,触发：自身格制造毒雾,Trigger: create poison fog on the owner's cell
 gem.effect.poison.blue_damaged,被动：接触施加 1 层毒；2 级回合结束向最近未中毒友方传 1 层毒,Passive: inflict 1 poison stack on contact; at level 2, spread 1 poison stack to the nearest clean ally at turn end
 gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
-gem.effect.poison.tile_turn_start,光环：2 格内敌人每回合中毒,Aura: poison enemies within 2 tiles each turn
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害,Gravity: pull the target toward you and deal {damage} collision damage
 gem.effect.gravity.unit_red_active,触发：普通攻击范围随等级 +0/+1/+2；命中后将周围 2 格单位拉扯 1/2/3 步,Trigger: basic attack range gains +0/+1/+2; on hit pull units within 2 tiles by 1/2/3 steps
 gem.effect.gravity.enemy_red_action,引力拉近+碰撞({damage}),Pull and collide for {damage}
 gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
-gem.effect.gravity.tile_turn_start,光环：2 格内单位每回合被拉拽,Aura: pull units within 2 tiles each turn
 gem.effect.heavy_armor.player_skill,重甲：给自己加 3 点护甲（2 回合）,Heavy Armor: gain 3 armor for 2 turns
 gem.effect.heavy_armor.unit_red_active,触发：获得 2 点护甲（1 回合）,Trigger: gain 2 armor for 1 turn
 gem.effect.heavy_armor.enemy_red_action,等待,Wait
 gem.effect.heavy_armor.armor_bonus,被动：+2 护甲,Passive: +2 armor
 gem.effect.heavy_armor.black_death,死亡：最近友方获得 3 护甲,Death: nearest ally gains 3 armor
-gem.effect.heavy_armor.tile_turn_start,光环：2 格内玩家每回合 +1 护甲,Aura: player within 2 tiles gains +1 armor each turn
 gem.effect.conductive.player_skill,导电：电击目标水洼连通区域所有单位,Conductive: shock all units in the connected water region
 gem.effect.conductive.unit_red_active,触发：电击自身所在水洼连通区域,Trigger: shock the connected water region under the owner
 gem.effect.conductive.enemy_red_action,电击 ({damage}),Shock ({damage})
 gem.effect.conductive.blue_turn_start,被动：站在水洼上电击周围敌人,Passive: while on water, shock nearby enemies
 gem.effect.conductive.armor_bonus,被动：站在水洼上 +1 护甲,Passive: gain +1 armor while standing on water
 gem.effect.conductive.black_death,死亡：周围水洼导电连锁,Death: chain conductive shocks through nearby water
-gem.effect.conductive.tile_turn_start,光环：3 格内水洼每回合电击,Aura: water within 3 tiles shocks each turn
 gem.effect.fragile.player_skill,碎击：对目标造成 3 伤害，但宝石碎裂消失,Shatter: deal 3 damage to the target, then destroy the gem
 gem.effect.fragile.unit_red_active,触发：自毁并造成范围伤害,Trigger: self-destruct and deal area damage
 gem.effect.fragile.enemy_red_action,冲撞自毁 ({damage}),Fragile charge ({damage})
@@ -344,3 +338,10 @@ status.frozen.tooltip,冻结：跳过下次行动，受到的普通伤害 +{dama
 status.frozen.block,被冻结，无法行动,Frozen: cannot act
 status.frozen.move_block,被冻结，无法移动,Frozen: cannot move
 status.frozen.skip,冻结生效，跳过本回合,Frozen takes effect; turn skipped
+boss.old_mage.tutorial.title,老法师：读懂施法与抢夺,Old Mage: Read the Spell and Steal
+boss.old_mage.tutorial.body,老法师会在施法与补充之间交替。红槽技能是主动法术，蓝槽技能需要满足反应条件；预警会锁定目标、范围与落点。优先抢走技能池宝石，非池宝石只会让它浪费一回合。低于 20 生命后每回合黑化一个槽位，移动力固定为 2。,The mage alternates between casting and refilling. Red slots are active spells and blue slots need a reaction; warnings lock the target, area, and landing point. Steal pool gems first. A non-pool gem only wastes its turn. Below 20 HP it blackens one slot each turn and stays at 2 MV.
+boss.old_mage.tutorial.begin,开始战斗,Begin Fight
+boss.old_mage.hint.cast,老法师正在施法：观察槽位颜色、技能、伤害与范围预警，再离开锁定区域。,The mage is casting: read the slot color, skill, damage, and area warning, then leave the locked area.
+boss.old_mage.hint.refill,老法师正在补充：技能池宝石会被优先锁定，锁定后目标不会因你的移动改变。,The mage is refilling: pool gems are prioritized and the locked target will not retarget when you move.
+boss.old_mage.hint.decoy,这颗宝石不在技能池内。老法师会销毁它并空过本回合。,This gem is outside the skill pool. The mage destroys it and skips casting this turn.
+boss.old_mage.hint.low_hp,老法师进入终局：每回合会把一个非黑槽转为黑槽，移动力固定为 2。,The mage is in its final phase: one non-black slot becomes black each turn and MV stays at 2.

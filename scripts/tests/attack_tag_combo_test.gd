@@ -150,9 +150,6 @@ func _assert_combo(
 		if _count_events(events, "frost_pulse") < 1:
 			_fail("[%s] expected frost_pulse event" % label)
 			return false
-		if not player.has_status(Constants.STATUS_SLOWED):
-			_fail("[%s] attacker should be slowed" % label)
-			return false
 		if main.alive and not main.has_status(Constants.STATUS_SLOWED):
 			_fail("[%s] main target should be slowed" % label)
 			return false

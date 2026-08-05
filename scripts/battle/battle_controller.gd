@@ -18,6 +18,7 @@ var state: GameState = null
 var selected_action: String = ""
 var selected_unit_uid: String = ""
 var editor_unlimited_actions: bool = false
+var editor_player_invincible: bool = false
 
 var _action_svc: BattleActionService = null
 var _turn_svc: BattleTurnService = null
@@ -79,6 +80,7 @@ func start_encounter(
 	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
 	state.battle_temp_flags.clear()
+	state.battle_temp_flags["editor_invincible_player"] = editor_player_invincible_enabled()
 	_connect_relic_signals(state)
 	state.on_battle_start.emit()
 	_emit_changed()
@@ -164,25 +166,6 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	return _action_svc.try_trigger(target_uid, slot_index)
 
 
-func try_extract_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
-	_ensure_services()
-	return _action_svc.try_extract_tile(tile_pos, slot_index)
-
-
-func try_insert_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
-	_ensure_services()
-	return _action_svc.try_insert_tile(tile_pos, slot_index)
-
-
-func try_trigger_tile(tile_pos: Vector2i, slot_index: int) -> Dictionary:
-	_ensure_services()
-	return _action_svc.try_trigger_tile(tile_pos, slot_index)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 槽位可用性检查
-# ═══════════════════════════════════════════════════════════════════════════
-
 func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 	if state == null:
 		return _fail("战斗未开始")
@@ -199,24 +182,6 @@ func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 		Constants.ACTION_INSERT:
 			return GemRules.can_insert(state, player, target, slot)
 	return _fail("当前操作不支持槽位")
-
-
-func check_tile_slot_action(tile_pos: Vector2i, slot_index: int) -> Dictionary:
-	if state == null:
-		return _fail("战斗未开始")
-	var player := state.get_player()
-	var tile := state.get_tile(tile_pos)
-	if player == null or tile == null or not tile.has_slots():
-		return _fail("目标无效")
-	var slot := tile.get_slot_by_index(slot_index)
-	if slot == null:
-		return _fail("槽位无效")
-	match selected_action:
-		Constants.ACTION_EXTRACT:
-			return GemRules.can_extract_tile(state, player, tile, slot)
-		Constants.ACTION_INSERT:
-			return GemRules.can_insert_tile(state, player, tile, slot)
-	return _fail("当前操作不支持地块槽位")
 
 
 func check_dropped_gem_action(gem_uid: String) -> Dictionary:
@@ -339,6 +304,26 @@ func _editor_available() -> bool:
 
 func editor_unlimited_actions_enabled() -> bool:
 	return editor_unlimited_actions and _editor_available()
+
+
+func editor_player_invincible_enabled() -> bool:
+	return editor_player_invincible and _editor_available()
+
+
+func editor_battle_active() -> bool:
+	# Editor commands are available in debug builds, but only an explicit
+	# editor encounter may bypass normal battle termination rules.
+	if not _editor_available():
+		return false
+	var game_service: Node = Engine.get_main_loop().root.get_node_or_null("GameService")
+	return game_service == null or str(game_service.get("pending_battle_mode")) == "editor"
+
+
+func set_editor_player_invincible(enabled: bool) -> void:
+	editor_player_invincible = enabled
+	if state != null:
+		state.battle_temp_flags["editor_invincible_player"] = editor_player_invincible_enabled()
+		_emit_changed()
 
 
 func player_move_budget(player: UnitState) -> int:

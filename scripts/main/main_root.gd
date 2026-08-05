@@ -646,7 +646,7 @@ func _on_editor_pressed() -> void:
 	if _navigating:
 		return
 	_close_page()
-	GameService.start_editor_battle("tutorial_001")
+	GameService.start_editor_battle("procedural_normal")
 	_transition_to_scene("res://scenes/battle/battle_scene.tscn")
 
 

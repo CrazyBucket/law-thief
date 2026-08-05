@@ -203,16 +203,14 @@ func check_battle_end() -> void:
 	if ctrl.state == null:
 		return
 	var player: UnitState = ctrl.state.get_player()
-	if player == null or not player.alive:
-		if _try_inherit_split_clone(ctrl):
-			return
-		ctrl.state.phase = Constants.PHASE_ENDED
-		ctrl.state.result = "lose"
-		ctrl.state.log("战斗失败")
-		ctrl.state.on_battle_end.emit("lose")
-		ctrl.battle_ended.emit("lose")
+	if ctrl.editor_battle_active():
+		_keep_editor_playable(ctrl, player)
 		return
-	if ctrl.state.get_alive_enemies().is_empty():
+	var enemies_empty: bool = ctrl.state.get_alive_enemies().is_empty()
+	# A split clone can die before the last enemy is removed.  The corpse still
+	# owns the gems, so victory must settle the lineage before the ordinary
+	# player-death branch turns the encounter into a loss.
+	if enemies_empty and player != null and (player.alive or player.has_tag(Constants.TAG_UNIT_SPLIT_CLONE)):
 		if not _merge_split_clones_on_win(ctrl):
 			ctrl.state.log("战斗结算：分裂回归未完成，暂不结束战斗以避免丢失宝石")
 			ctrl._emit_changed()
@@ -223,7 +221,38 @@ func check_battle_end() -> void:
 		ctrl.state.on_battle_end.emit("win")
 		ctrl.battle_ended.emit("win")
 		return
+	if player == null or not player.alive:
+		if _try_inherit_split_clone(ctrl):
+			return
+		ctrl.state.phase = Constants.PHASE_ENDED
+		ctrl.state.result = "lose"
+		ctrl.state.log("战斗失败")
+		ctrl.state.on_battle_end.emit("lose")
+		ctrl.battle_ended.emit("lose")
+		return
 	ctrl._emit_changed()
+
+
+func _keep_editor_playable(ctrl, player: UnitState) -> void:
+	if player != null and player.alive and not ctrl.state.get_alive_enemies().is_empty():
+		return
+	var needs_reset: bool = (
+		ctrl.state.phase == Constants.PHASE_ENDED
+		or not ctrl.state.result.is_empty()
+		or ctrl.state.phase != Constants.PHASE_PLAYER
+	)
+	# Editor deaths are observable state, not a terminal result. Return to the
+	# player phase so the board remains editable even if death happened during
+	# enemy resolution or a previously terminal state is being repaired.
+	ctrl.state.phase = Constants.PHASE_PLAYER
+	ctrl.state.result = ""
+	ctrl.state.player_moved = false
+	ctrl.state.player_acted = false
+	ctrl.state.clear_split_move()
+	ctrl.selected_action = ""
+	if needs_reset:
+		ctrl.state.log("编辑模式：死亡状态保留，战斗未结算")
+		ctrl._emit_changed()
 
 
 func _apply_move_bonus(state: GameState) -> void:
@@ -277,10 +306,10 @@ func _merge_split_clones_on_win(ctrl) -> bool:
 		push_error("BattleTurnService: missing split origin %s" % origin_uid)
 		return false
 	var living_clones: Array[UnitState] = ctrl.state.get_alive_split_clones(origin_uid)
-	if living_clones.is_empty():
-		push_error("BattleTurnService: split origin %s has no living clones to merge" % origin_uid)
-		return false
 	var all_clones: Array[UnitState] = ctrl.state.get_split_clones(origin_uid)
+	if all_clones.is_empty():
+		push_error("BattleTurnService: split origin %s has no clones to merge" % origin_uid)
+		return false
 	var total_hp := 0
 	for clone in living_clones:
 		total_hp += clone.hp

@@ -55,8 +55,6 @@ static func draw_tile_overlays(
 			draw_highlight_fill(canvas, center, highlight_color)
 		if _AdventureRoomDisplay.is_room_tile(tile.tile_id):
 			_draw_room_label(canvas, center, tile.tile_id)
-		elif tile.tile_id == Constants.TILE_PILLAR:
-			_draw_pillar(canvas, center)
 	_draw_surface_overlay(canvas, center, tile, draw_pass, occupied)
 	_draw_modifier_overlays(canvas, center, tile, draw_pass, occupied, modifier_visuals)
 
@@ -193,8 +191,6 @@ static func _draw_tile_detail(canvas: Control, center: Vector2, tile: TileState)
 	match tile.tile_id:
 		Constants.TILE_FLOOR:
 			_draw_floor_noise(canvas, center, tile.floor_variant)
-		Constants.TILE_PILLAR:
-			_draw_pillar(canvas, center)
 
 
 static func draw_spikes(canvas: Control, center: Vector2) -> void:
@@ -309,23 +305,6 @@ static func _palette(tile: TileState) -> Dictionary:
 				"right": base_color.darkened(0.1),
 			}
 
-static func _draw_pillar(canvas: Control, center: Vector2) -> void:
-	# 机关柱，画一个带有槽位暗示的柱子
-	var base := center + Vector2(0, -5)
-	var pts := PackedVector2Array([
-		base + Vector2(-12, 0),
-		base + Vector2(-12, -25),
-		base + Vector2(0, -32),
-		base + Vector2(12, -25),
-		base + Vector2(12, 0),
-		base + Vector2(0, 6)
-	])
-	canvas.draw_colored_polygon(pts, Color(0.2, 0.25, 0.3))
-	canvas.draw_polyline(pts, Color(0.1, 0.15, 0.2), 2.0, true)
-	
-	var t := _time_sec()
-	var pulse := sin(t * 3.0) * 0.5 + 0.5
-	canvas.draw_circle(base + Vector2(0, -18), 5.0, Color(0.2, 0.6, 1.0, 0.5 + pulse * 0.5))
 
 static func _draw_grass_overlay(
 	canvas: Control,

@@ -609,7 +609,7 @@ static func _validate_encounter_tile(
 		return errors
 	var tile := raw_tile as Dictionary
 	for field_id in tile.keys():
-		if str(field_id) not in ["pos", "tile_id", "slots", "overlays"]:
+		if str(field_id) not in ["pos", "tile_id", "overlays"]:
 			errors.append("%s.%s is unknown" % [prefix, field_id])
 	var tile_id := str(tile.get("tile_id", ""))
 	if tile_id.is_empty():
@@ -620,12 +620,6 @@ static func _validate_encounter_tile(
 		errors.append("%s.pos missing" % prefix)
 	else:
 		errors.append_array(_validate_grid_position("%s.pos" % prefix, tile["pos"], board_size))
-	var slots: Variant = tile.get("slots", [])
-	if not slots is Array:
-		errors.append("%s.slots should be array" % prefix)
-	else:
-		for index in range((slots as Array).size()):
-			errors.append_array(_validate_encounter_slot("%s.slots[%d]" % [prefix, index], (slots as Array)[index], known_gem_ids))
 	var overlays: Variant = tile.get("overlays", [])
 	if not overlays is Array:
 		errors.append("%s.overlays should be array" % prefix)

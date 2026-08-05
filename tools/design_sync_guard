@@ -9,6 +9,10 @@ elif [[ -d "$ROOT/../learning-notes/game/design/law-thief" ]]; then
 elif [[ -d "/Users/jinhuiwu/code/learning-notes/game/design/law-thief" ]]; then
   RESOLVED_DESIGN_ROOT="/Users/jinhuiwu/code/learning-notes/game/design/law-thief"
 else
+  if [[ "${DESIGN_SYNC_REQUIRED:-0}" == "1" || "${CI:-false}" == "true" ]]; then
+    echo "DESIGN_SYNC_UNAVAILABLE design repository is required but not present" >&2
+    exit 1
+  fi
   echo "DESIGN_SYNC_UNAVAILABLE design repository not present; local guard skipped"
   exit 0
 fi

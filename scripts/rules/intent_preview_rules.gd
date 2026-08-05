@@ -150,12 +150,6 @@ static func populate_effects(intent: IntentState) -> void:
 					"target_uid": intent.source_uid,
 					"certainty": PreviewEffect.CONDITIONAL,
 				}))
-			var grounded_cells: Array = intent.plan_metadata.get("mage_grounded_cells", [])
-			if not grounded_cells.is_empty():
-				intent.preview_effects.append(PreviewEffect.create("mage_grounded", grounded_cells, {
-					"source_uid": intent.source_uid,
-					"metadata": {"damage": 2},
-				}))
 			var wet_cells: Array = intent.plan_metadata.get("mage_wet_cells", [])
 			if not wet_cells.is_empty():
 				intent.preview_effects.append(PreviewEffect.create("mage_wet_danger", wet_cells, {

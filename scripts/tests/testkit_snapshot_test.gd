@@ -4,6 +4,8 @@ const Snapshot = preload("res://scripts/testkit/state_snapshot.gd")
 const SnapshotDiff = preload("res://scripts/testkit/state_diff.gd")
 const Builder = preload("res://scripts/testkit/scenario_builder.gd")
 
+var _failures: Array[String] = []
+
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -28,10 +30,20 @@ func _run() -> void:
 	var events: Array = result.get("events", [])
 	var after := Snapshot.capture(state, events, false)
 	var diff := SnapshotDiff.between(before, after)
-	assert(result.get("ok", false))
-	assert(target.hp == 76, "three red explosions should deal 24 damage according to detailed gem design")
-	assert(after["invariants"].is_empty())
-	assert(after["event_violations"].is_empty())
-	assert(not diff["units"]["changed"].is_empty())
+	_check(result.get("ok", false), "snapshot attack should succeed")
+	_check(target.hp == 85, "three red explosions should deal 10 attack + 5 center damage")
+	_check(after["invariants"].is_empty(), "snapshot should preserve battle invariants")
+	_check(after["event_violations"].is_empty(), "snapshot events should satisfy the event contract")
+	_check(not diff["units"]["changed"].is_empty(), "snapshot diff should record the damaged unit")
+	if not _failures.is_empty():
+		for failure in _failures:
+			push_error(failure)
+		quit(1)
+		return
 	print("TESTKIT_SNAPSHOT_PASS")
 	quit(0)
+
+
+func _check(condition: bool, message: String) -> void:
+	if not condition:
+		_failures.append(message)

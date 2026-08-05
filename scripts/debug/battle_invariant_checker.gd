@@ -178,13 +178,6 @@ static func _check_gem_location_consistency(state: GameState, out: Array[String]
 				continue
 			_record_gem_location(state, slot.gem_uid, "unit:%s:%d" % [unit.uid, i], counts, out)
 			expected[slot.gem_uid] = _GemLocation.unit_slot(unit.uid, i)
-	for tile: TileState in state.tiles.values():
-		for i in range(tile.slots.size()):
-			var slot: SlotState = tile.slots[i]
-			if slot == null or slot.gem_uid.is_empty():
-				continue
-			_record_gem_location(state, slot.gem_uid, "tile:%s:%d" % [tile.pos, i], counts, out)
-			expected[slot.gem_uid] = _GemLocation.tile_slot(tile.pos, i)
 	for raw_uid in state.gems.keys():
 		var gem_uid := str(raw_uid)
 		var count := int(counts.get(gem_uid, 0))

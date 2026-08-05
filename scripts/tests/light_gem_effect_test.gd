@@ -181,7 +181,7 @@ func _test_light_flurry_arc_keeps_defeated_anchor() -> void:
 	_check(not target.alive, "the first light segment should defeat its target")
 	_check(_count_events(events, "light_beam") == 2, "light flurry should preserve both beam segments")
 	_check(_count_events(events, "arc") == 2, "both light segments should arc from the retained hit anchor")
-	_check(arc_target.hp == 98, "light flurry should preserve both segment-scaled arc hits")
+	_check(arc_target.hp == 96, "light flurry should preserve two independent 2-damage arc hits")
 
 
 func _test_light_ice_slows_target_not_attacker() -> void:
@@ -235,7 +235,7 @@ func _test_light_explosion_blasts_at_beam_end() -> void:
 	var events: Array = result.get("events", [])
 	_check(result.get("ok", false), "light+explosion attack should succeed")
 	_check(target.hp == 95, "light+explosion should not explode at the normal aim target")
-	_check(blast_victim.hp == 83, "light+explosion should explode at beam end and hit adjacent end targets")
+	_check(blast_victim.hp == 89, "light+explosion should deal 5 beam damage plus 6 adjacent explosion damage")
 	_check(_has_event_at(events, "explode", Vector2i(7, 1)), "light+explosion should emit explosion at beam end")
 	_check(not _has_event_at(events, "explode", target.pos), "light+explosion should not emit explosion at the aim cell")
 

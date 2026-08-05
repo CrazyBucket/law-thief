@@ -40,17 +40,12 @@ func mark_held(holder_uid: String) -> void:
 
 
 func mark_slotted(slot_owner_uid: String, index: int) -> void:
-	# 旧入口缺少地块坐标，只保留给存档兼容；新代码应调用下面两个明确入口。
 	location = _GemLocation.unit_slot(slot_owner_uid, index) if not slot_owner_uid.is_empty() \
-		else _GemLocation.tile_slot(Vector2i.ZERO, index)
+		else _GemLocation.detached()
 
 
 func mark_unit_slotted(unit_uid: String, index: int) -> void:
 	location = _GemLocation.unit_slot(unit_uid, index)
-
-
-func mark_tile_slotted(tile_pos: Vector2i, index: int) -> void:
-	location = _GemLocation.tile_slot(tile_pos, index)
 
 
 func mark_ground(drop_pos: Vector2i) -> void:
@@ -69,9 +64,7 @@ func clone() -> GemState:
 func _infer_legacy_location_kind() -> void:
 	location.pos = Vector2i(-1, -1)
 	if location.slot_index >= 0:
-		location.kind = _GemLocation.UNIT_SLOT if not location.owner_uid.is_empty() else _GemLocation.TILE_SLOT
-		if location.kind == _GemLocation.TILE_SLOT:
-			location.pos = Vector2i.ZERO
+		location.kind = _GemLocation.UNIT_SLOT if not location.owner_uid.is_empty() else _GemLocation.DETACHED
 	elif not location.owner_uid.is_empty():
 		location.kind = _GemLocation.HAND
 	else:

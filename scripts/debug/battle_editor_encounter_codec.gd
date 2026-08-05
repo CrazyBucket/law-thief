@@ -55,12 +55,9 @@ static func _build_tile_entry(state: GameState, tile: TileState) -> Dictionary:
 	if tile == null:
 		return {}
 	var has_overlay := not tile.modifiers.is_empty()
-	if tile.tile_id == Constants.TILE_FLOOR and not tile.has_slots() and not has_overlay:
+	if tile.tile_id == Constants.TILE_FLOOR and not has_overlay:
 		return {}
 	var entry := {"pos": _encode_position(tile.pos), "tile_id": tile.tile_id}
-	var slots := _collect_slot_entries(state, tile.slots)
-	if not slots.is_empty():
-		entry["slots"] = slots
 	if has_overlay:
 		var overlays: Array[Dictionary] = []
 		for modifier in tile.modifiers:

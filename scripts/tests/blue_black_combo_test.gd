@@ -68,6 +68,7 @@ func _run_tests() -> void:
 	_test_black_light_judges_exposed_targets()
 	_test_black_counter_hits_killer()
 	_test_black_death_priority_over_slot_order()
+	_test_black_effect_events_precede_owner_death()
 	if _failed:
 		push_error("BLUE_BLACK_COMBO_TEST_FAIL")
 		quit(1)
@@ -461,6 +462,39 @@ func _test_black_death_priority_over_slot_order() -> void:
 	print("  [OK] black_death_priority_over_slot_order")
 
 
+func _test_black_effect_events_precede_owner_death() -> void:
+	_case_count += 1
+	var controller := BattleController.new()
+	controller.start_encounter("tutorial_001", 12345)
+	var state := controller.state
+	var victim: UnitState = null
+	for unit: UnitState in state.units.values():
+		if unit.unit_def_id == "unit_patrol_guard":
+			victim = unit
+			break
+	if victim == null:
+		_fail("[black_death_event_order] tutorial guard is missing")
+		return
+	var black_slot := victim.get_slot(Constants.SLOT_BLACK)
+	if black_slot == null:
+		_fail("[black_death_event_order] tutorial guard needs a black slot")
+		return
+	_mount_gem_on_slot(state, victim, black_slot, Constants.GEM_EXPLOSION)
+	victim.hp = 1
+	controller.select_action(Constants.ACTION_ATTACK)
+	var result := controller.try_attack_cell(victim.pos)
+	if not result.get("ok", false):
+		_fail("[black_death_event_order] attack should succeed")
+		return
+	var events: Array = result.get("attack_events", [])
+	var effect_index := _first_event_index(events, "explode")
+	var death_index := _first_event_index(events, "die", victim.uid)
+	if effect_index < 0 or death_index <= effect_index:
+		_fail("[black_death_event_order] black effect must precede owner death: %s" % _event_types(events))
+		return
+	print("  [OK] black_effect_events_precede_owner_death")
+
+
 func _test_dual_blue_slot_contact() -> void:
 	_case_count += 1
 	var state := _create_state()
@@ -561,6 +595,23 @@ func _count_events(events: Array, event_type: String) -> int:
 		if str(ev.get("type", "")) == event_type:
 			n += 1
 	return n
+
+
+func _first_event_index(events: Array, event_type: String, uid: String = "") -> int:
+	for index in range(events.size()):
+		var event: Dictionary = events[index]
+		if str(event.get("type", "")) != event_type:
+			continue
+		if uid.is_empty() or str(event.get("uid", event.get("victim_uid", ""))) == uid:
+			return index
+	return -1
+
+
+func _event_types(events: Array) -> String:
+	var types: Array[String] = []
+	for event: Dictionary in events:
+		types.append(str(event.get("type", "")))
+	return ", ".join(types)
 
 
 func _count_poison_overlays(state: GameState) -> int:

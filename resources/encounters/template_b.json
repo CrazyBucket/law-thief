@@ -63,19 +63,5 @@
       "entity_id": "entity_prop",
       "prop_sprite": "Post1_0"
     }
-  ],
-  "tiles": [
-    {
-      "pos": [
-        2,
-        2
-      ],
-      "tile_id": "tile_pillar",
-      "slots": [
-        {
-          "slot_type": "blue"
-        }
-      ]
-    }
   ]
 }

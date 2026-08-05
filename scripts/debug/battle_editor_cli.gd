@@ -489,9 +489,7 @@ func _run_editor_set_tile(ctrl, tokens: Array, start_index: int) -> Dictionary:
 	if not BoardUtils.in_bounds(ctrl.state, pos):
 		return _fail("position out of bounds: %s" % pos)
 	var existing: TileState = ctrl.state.get_tile(pos)
-	_clear_tile_gems(ctrl, existing)
-	var slot_defs := _default_tile_slot_defs(tile_id)
-	var tile := TileState.create(pos, tile_id) if slot_defs.is_empty() else TileState.create_with_slots(pos, tile_id, slot_defs)
+	var tile := TileState.create(pos, tile_id)
 	ctrl.state.tiles[ctrl.state.tile_key(pos)] = tile
 	return _finalize_mutation(ctrl, "set tile at %s to %s" % [pos, tile_id], true)
 
@@ -521,9 +519,8 @@ func _run_editor_spawn_gem(ctrl, tokens: Array, start_index: int) -> Dictionary:
 		if target_kind.is_empty():
 			return _fail("unknown gem target: %s" % tokens[next_index])
 	var unit: UnitState = ctrl.state.get_unit_at(pos)
-	var tile: TileState = ctrl.state.get_tile(pos)
 	if target_kind.is_empty():
-		target_kind = "unit" if unit != null else "tile"
+		target_kind = "unit"
 	var slot_index := -1
 	var slot: SlotState = null
 	var target_label := ""
@@ -536,21 +533,12 @@ func _run_editor_spawn_gem(ctrl, tokens: Array, start_index: int) -> Dictionary:
 		slot = unit.get_slot_by_index(slot_index)
 		target_label = "unit %s slot %s" % [unit.unit_def_id, _editor_slot_label(slot)]
 	else:
-		if tile == null or not tile.has_slots():
-			return _fail("no slotted tile at %s" % pos)
-		slot_index = _find_editor_slot_index(tile.slots, preferred_slot)
-		if slot_index < 0:
-			return _fail("no available slot on tile at %s" % pos)
-		slot = tile.get_slot_by_index(slot_index)
-		target_label = "tile %s slot %s" % [tile.tile_id, _editor_slot_label(slot)]
+		return _fail("only unit slots are editable")
 	_clear_slot_gem(ctrl, slot)
 	var gem_uid: String = _data_registry(ctrl).next_runtime_uid("runtime_gem")
 	var gem: GemState = _data_registry(ctrl).create_gem_instance(gem_uid, gem_id)
 	ctrl.state.gems[gem.uid] = gem
-	if target_kind == "unit" and unit != null:
-		GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
-	else:
-		GemTransfer.to_tile_slot(ctrl.state, gem, tile, slot)
+	GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
 	return _finalize_mutation(ctrl, "spawned %s in %s" % [gem_id, target_label], false, {"gem_uid": gem.uid})
 
 
@@ -574,7 +562,6 @@ func _run_editor_delete_gem(ctrl, tokens: Array, start_index: int) -> Dictionary
 		if target_kind.is_empty():
 			return _fail("unknown gem target: %s" % tokens[next_index])
 	var unit: UnitState = ctrl.state.get_unit_at(pos)
-	var tile: TileState = ctrl.state.get_tile(pos)
 	var slot_index := -1
 	var slot: SlotState = null
 	var target_label := ""
@@ -587,13 +574,7 @@ func _run_editor_delete_gem(ctrl, tokens: Array, start_index: int) -> Dictionary
 		slot = unit.get_slot_by_index(slot_index)
 		target_label = "unit %s slot %s" % [unit.unit_def_id, _editor_slot_label(slot)]
 	else:
-		if tile == null or not tile.has_slots():
-			return _fail("no slotted tile at %s" % pos)
-		slot_index = _find_editor_filled_slot_index(tile.slots, preferred_slot)
-		if slot_index < 0:
-			return _fail("no gem found on tile at %s" % pos)
-		slot = tile.get_slot_by_index(slot_index)
-		target_label = "tile %s slot %s" % [tile.tile_id, _editor_slot_label(slot)]
+		return _fail("only unit slots are editable")
 	var gem: GemState = ctrl.state.gems.get(slot.gem_uid, null)
 	var gem_id := gem.gem_id if gem != null else "unknown_gem"
 	_clear_slot_gem(ctrl, slot)
@@ -745,15 +726,12 @@ func _build_editor_export_encounter(ctrl) -> Dictionary:
 		return _compare_editor_positions(a.get("pos", Vector2i.ZERO), b.get("pos", Vector2i.ZERO))
 	)
 	for tile in ctrl.state.tiles.values():
-		if tile.tile_id == Constants.TILE_FLOOR and not tile.has_slots():
+		if tile.tile_id == Constants.TILE_FLOOR:
 			continue
 		var tile_entry := {
 			"pos": tile.pos,
 			"tile_id": tile.tile_id,
 		}
-		var tile_slots := _collect_editor_slot_entries(ctrl, tile.slots)
-		if not tile_slots.is_empty():
-			tile_entry["slots"] = tile_slots
 		tiles.append(tile_entry)
 	tiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return _compare_editor_positions(a.get("pos", Vector2i.ZERO), b.get("pos", Vector2i.ZERO))
@@ -801,9 +779,6 @@ func _format_editor_export_tile_line(tile_entry: Dictionary) -> String:
 		"\"pos\": %s" % _format_editor_vector2i(tile_entry.get("pos", Vector2i.ZERO)),
 		"\"tile_id\": \"%s\"" % str(tile_entry.get("tile_id", Constants.TILE_FLOOR)),
 	]
-	var slots: Array = tile_entry.get("slots", [])
-	if not slots.is_empty():
-		parts.append("\"slots\": %s" % _format_editor_slot_entries_inline(slots))
 	return "{%s}" % ", ".join(parts)
 
 
@@ -859,13 +834,6 @@ func _collect_editor_slot_entries(ctrl, slots: Array) -> Array[Dictionary]:
 # Gem / slot cleanup helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-func _clear_tile_gems(ctrl, tile: TileState) -> void:
-	if tile == null:
-		return
-	for slot in tile.slots:
-		_clear_slot_gem(ctrl, slot)
-
-
 func _clear_unit_gems(ctrl, unit: UnitState) -> void:
 	if unit == null:
 		return
@@ -877,14 +845,6 @@ func _clear_slot_gem(ctrl, slot: SlotState) -> void:
 	if slot == null or slot.gem_uid.is_empty():
 		return
 	GemTransfer.remove(ctrl.state, slot.gem_uid)
-
-
-func _default_tile_slot_defs(tile_id: String) -> Array:
-	match tile_id:
-		Constants.TILE_PILLAR:
-			return [{"slot_type": Constants.SLOT_BLUE}]
-		_:
-			return []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1178,7 +1138,6 @@ func _editor_help_lines() -> Array[String]:
 		"    - units spawn on the board; gems auto-detect unit/tile unless overridden",
 		"    - example: /spawn unit_bomb_rat 2,4 --team enemy",
 		"    - example: /spawn gem_poison 2,4 --slot red --target tile",
-		"    - example: /spawn tile_pillar 4,4",
 		"    - example: /spawn entity_barrel 4,3",
 		"    - example: /spawn fire 2,2 --duration 3",
 		"  /spawn-many <unit_id> <pos> <pos> ... [--team enemy|player]",

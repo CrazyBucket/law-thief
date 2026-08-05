@@ -20,8 +20,6 @@ const ABILITY_BLUE_TURN_START := "blue_turn_start"
 const ABILITY_BLUE_DAMAGED := "blue_damaged"
 const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
 const ABILITY_BLACK_DEATH := "black_death"
-const ABILITY_TILE_ACTIVE := "tile_active"
-const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
 const _GEM_EFFECT_LEVEL_PERCENT_FIELDS := {
@@ -234,7 +232,6 @@ func get_tile_ids() -> Array[String]:
 	return [
 		Constants.TILE_FLOOR,
 		Constants.TILE_WATER,
-		Constants.TILE_PILLAR,
 		Constants.TILE_ICE,
 		Constants.TILE_GRASS,
 		Constants.TILE_BUSH,
@@ -999,8 +996,6 @@ func _register_gem_effect_profiles() -> void:
 					ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active"},
 					ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.explosion.black_death"},
-				ABILITY_TILE_ACTIVE: {"key": "gem.effect.explosion.tile_active"},
-				ABILITY_TILE_TURN_START: {"key": "gem.effect.explosion.tile_turn_start"},
 			},
 		},
 		"poison": {
@@ -1015,8 +1010,6 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.poison.enemy_red_action"},
 				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.poison.blue_damaged"},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.poison.black_death"},
-				ABILITY_TILE_ACTIVE: {"key": "gem.effect.poison.tile_active"},
-				ABILITY_TILE_TURN_START: {"key": "gem.effect.poison.tile_turn_start"},
 			},
 		},
 		"gravity": {
@@ -1030,8 +1023,6 @@ func _register_gem_effect_profiles() -> void:
 				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
 				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": CombatConfig.gravity_collision_damage()}},
 				ABILITY_BLACK_DEATH: {"key": "gem.effect.gravity.black_death"},
-				ABILITY_TILE_ACTIVE: {"key": "gem.effect.gravity.tile_active"},
-				ABILITY_TILE_TURN_START: {"key": "gem.effect.gravity.tile_turn_start"},
 			},
 		},
 		"impact": {"enemy_intent": {"type": "impact_attack", "preview_key": "gem.intent.impact_attack", "damage_mode": "base_attack", "damage": 0}, "ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.impact.unit_red_active"}, ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.impact.enemy_red_action"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.impact.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.impact.black_death"}}},
@@ -1180,8 +1171,6 @@ func _ability_slots_for_display(slot_type: String, context: String) -> Array[Str
 						ABILITY_ATTACK_BONUS,
 						ABILITY_ARMOR_BONUS,
 					]
-				"pillar":
-					return [ABILITY_TILE_TURN_START]
 		Constants.SLOT_BLACK:
 			return [ABILITY_BLACK_DEATH]
 	return []
@@ -1206,8 +1195,6 @@ func _tile_display_name_key(tile_id: String) -> String:
 	match tile_id:
 		Constants.TILE_WATER:
 			return "tile.water.name"
-		Constants.TILE_PILLAR:
-			return "tile.pillar.name"
 		Constants.TILE_ICE:
 			return "tile.ice.name"
 		Constants.TILE_GRASS:

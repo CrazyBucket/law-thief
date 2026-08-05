@@ -32,7 +32,6 @@ const GEM_TIDE := "gem_tide"
 
 const TILE_FLOOR := "tile_floor"
 const TILE_WATER := "tile_water"
-const TILE_PILLAR := "tile_pillar"    # 机关柱：有 1 个蓝槽，嵌入宝石提供持续光环
 
 const TILE_ROOM_START := "tile_room_start"
 const TILE_ROOM_END := "tile_room_end"
@@ -144,4 +143,3 @@ const DAMAGE_REASON_TRAMPLE := "trample"
 # ─── 地块语义标签 ──────────────────────────────────────────────────────────────
 # 通过 tile.has_tile_tag() 查询，将 tile_id 字面量比较集中到 TileState 内部
 const TAG_TILE_CONDUCTIVE   := "tile:conductive"   # 导体地块（电弧/电击可连锁）
-const TAG_TILE_INTERACTIVE  := "tile:interactive"  # 可交互地块（有槽位，可嵌入宝石）

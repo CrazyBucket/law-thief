@@ -8,16 +8,6 @@ const MAP_SEED := 20260525
 const STRESS_ROUNDS := 1
 const FALLBACK_WARN_THRESHOLD := 10
 
-const ROOM_LABELS: Dictionary = {
-	"START":         "起点",
-	"END":           "终点",
-	"NORMAL_COMBAT": "普通战斗",
-	"ELITE_COMBAT":  "精英战斗",
-	"REST_SITE":     "营地",
-	"SHOP":          "商店",
-	"EVENT":         "遗物节点",
-}
-
 var _failed := false
 
 
@@ -27,7 +17,6 @@ func _initialize() -> void:
 
 func _run_tests() -> void:
 	print("=== 冒险地图生成测试 ===")
-	_test_single_print()
 	_test_topology()
 	_test_event_properties()
 	_test_rules_stress()
@@ -37,45 +26,6 @@ func _run_tests() -> void:
 		return
 	print("MAP_TEST_PASS")
 	quit(0)
-
-
-# ── 单次生成并可视化打印 ──────────────────────────────────────────────────────
-
-func _test_single_print() -> void:
-	print("\n--- 单次地图生成（种子 %d）---" % MAP_SEED)
-	var gen = _AdventureMapGenerator.new()
-	var matrix: Array = gen.generate(MAP_SEED)
-	_print_map(matrix, gen)
-
-
-func _print_map(matrix: Array, gen) -> void:
-	var gs: int = gen.get_grid_size()
-
-	var header := "     "
-	for x in range(gs):
-		header += "  x=%-2d  " % x
-	print(header)
-
-	for y in range(gs - 1, -1, -1):
-		var row := "y=%d |" % y
-		for x in range(gs):
-			var node = matrix[x][y]
-			var label: String = ROOM_LABELS.get(node.room_type, node.room_type)
-			row += " %-6s |" % label
-		print(row)
-
-	print("")
-
-	print("--- 各层节点类型 ---")
-	for layer in range(gen.get_max_layer() + 1):
-		var nodes_in_layer: Array = _get_layer_nodes(matrix, layer)
-		if nodes_in_layer.is_empty():
-			continue
-		var parts: Array = []
-		for node in nodes_in_layer:
-			var label: String = ROOM_LABELS.get(node.room_type, node.room_type)
-			parts.append("(%d,%d)%s" % [node.grid_pos.x, node.grid_pos.y, label])
-		print("  第%02d层: %s" % [layer, "  ".join(parts)])
 
 
 # ── 拓扑完整性测试 ────────────────────────────────────────────────────────────

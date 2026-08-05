@@ -11,5 +11,5 @@ static func slot_inspect_context(unit: UnitState, slot: SlotState) -> String:
 	return ""
 
 
-static func tile_inspect_context(tile: TileState) -> String:
-	return "pillar" if tile.tile_id == Constants.TILE_PILLAR else ""
+static func tile_inspect_context(_tile: TileState) -> String:
+	return ""

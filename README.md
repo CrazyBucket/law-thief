@@ -42,7 +42,9 @@ AI 的相关章节；`copy combat` 或 `copy chat` 会生成并复制单文件�
 `./tools/design refresh`。Windows PowerShell / CMD 使用等价的
 `tools\design.cmd ...`，不依赖 WSL。
 
-`verify test` 是日常首选，只运行明确指定的测试；`verify changed` 按改动领域选择测试。无参数执行 `verify` 也等价于 `changed`，不会默认跑大套件。`fast` 仅用于有明确跨系统风险的改动，`all` 默认只在 CI 或明确要求时运行，`manual` 只运行压力/调试探针。加 `--list` 可只查看选择结果而不启动 Godot。所有 `verify` 模式都会执行语义覆盖检查；需要单独审计时，可用 `SEMANTIC_COVERAGE_MIN=50 ./tools/coverage` 设置最低覆盖率门禁。
+`verify test` 是日常首选，只运行明确指定的测试；`verify changed` 按改动领域选择测试。无参数执行 `verify` 也等价于 `changed`，不会默认跑大套件。`fast` 仅用于有明确跨系统风险的改动，`all` 默认只在 CI 或明确要求时运行，`manual` 只运行压力/调试探针。加 `--list` 可只查看选择结果而不启动 Godot。所有 `verify` 模式都会执行语义契约校验和覆盖检查，默认覆盖率基线为 87.17%；只有在明确审计历史基线时才用 `SEMANTIC_COVERAGE_MIN=<值> ./tools/coverage` 临时覆盖。`fast` 默认总耗时预算为 240 秒，可用 `VERIFY_FAST_MAX_SECONDS` 调整。
+
+CI 会同时 checkout `CrazyBucket/learning-notes` 作为设计权威源；仓库变量 `DESIGN_REPOSITORY_REF` 可把权威源固定到指定分支、标签或提交（默认 `main`）。若该仓库不是公开仓库，需要配置只读 Actions secret `LEARNING_NOTES_TOKEN`。CI 中设计源缺失会直接失败，不再跳过设计同步检查。
 
 主场景无头启动：
 
@@ -131,7 +133,6 @@ godot --headless --path . --script res://scripts/tests/encounter_load_test.gd
 ```text
 spawn unit_bomb_rat 2,4 --team enemy
 spawn gem_poison 2,4 --slot red --target tile
-spawn tile_altar 4,4
 spawn-many unit_patrol_guard 0,0 1,0 2,0 --team enemy
 move 2,4 3,4
 remove unit 3,4

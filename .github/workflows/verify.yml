@@ -2,6 +2,8 @@ name: verify
 
 on:
   workflow_dispatch:
+  pull_request:
+  push:
 
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -10,10 +12,26 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
-      SEMANTIC_COVERAGE_MIN: "78.88"
+      DESIGN_ROOT: ${{ github.workspace }}/design-source/game/design/law-thief
+      DESIGN_SYNC_REQUIRED: "1"
+      SEMANTIC_COVERAGE_MIN: "87.17"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout game
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout design authority
+        uses: actions/checkout@v4
+        with:
+          repository: CrazyBucket/learning-notes
+          ref: ${{ vars.DESIGN_REPOSITORY_REF || 'main' }}
+          path: design-source
+          token: ${{ secrets.LEARNING_NOTES_TOKEN || github.token }}
+          persist-credentials: false
       - uses: chickensoft-games/setup-godot@v2
         with:
           version: "4.6.3"

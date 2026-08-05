@@ -40,16 +40,9 @@ func _test_location_transitions_are_atomic() -> void:
 	assert(gem.owner_uid == enemy.uid and gem.slot_index == enemy.slots.find(enemy_slot))
 	assert(gem.location.kind == GemLocation.UNIT_SLOT)
 	assert(GemTransfer.location_count(state, gem.uid) == 1)
-	var tile := state.get_tile(player.pos)
-	var tile_slot := SlotState.create(Constants.SLOT_RED)
-	tile.slots.append(tile_slot)
-	assert(GemTransfer.to_tile_slot(state, gem, tile, tile_slot))
-	assert(enemy_slot.gem_uid.is_empty() and tile_slot.gem_uid == gem.uid)
-	assert(gem.owner_uid.is_empty() and gem.slot_index == tile.slots.find(tile_slot))
-	assert(gem.location.kind == GemLocation.TILE_SLOT and gem.location.pos == tile.pos)
 	assert(EventValidator.assert_valid([], "gem_transfer.atomic"))
 	assert(BattleInvariantChecker.assert_valid(state, "gem_transfer.atomic"))
-	print("  [OK] slot, hand, ground, unit, and tile transitions stay atomic")
+	print("  [OK] slot, hand, ground, and unit transitions stay atomic")
 
 
 func _test_occupied_destination_does_not_detach_source() -> void:

@@ -6,6 +6,14 @@ CONTRACT="$ROOT/tests/contracts/gem_semantics.json"
 OUTPUT="$ROOT/artifacts/verify/semantic-coverage.json"
 mkdir -p "$(dirname "$OUTPUT")"
 
+if ! bash "$ROOT/tools/semantic_contract_guard_self_test"; then
+  exit 1
+fi
+
+if ! bash "$ROOT/tools/semantic_contract_guard"; then
+  exit 1
+fi
+
 jq -n \
   --slurpfile defs "$ROOT/resources/gems/gem_defs.json" \
   --slurpfile contract "$CONTRACT" '
@@ -37,7 +45,6 @@ jq -n \
 jq -r '"SEMANTIC_COVERAGE verified=\(.verified) total=\(.total) coverage=\(.coverage_percent)% report=artifacts/verify/semantic-coverage.json",
   (.rows[] | select(.status == "UNVERIFIED") | "UNVERIFIED \(.key)")' "$OUTPUT"
 
-if [[ -n "${SEMANTIC_COVERAGE_MIN:-}" ]]; then
-  jq -e --argjson minimum "$SEMANTIC_COVERAGE_MIN" \
-    '.coverage_percent >= $minimum' "$OUTPUT" >/dev/null
-fi
+SEMANTIC_COVERAGE_MIN="${SEMANTIC_COVERAGE_MIN:-87.17}"
+jq -e --argjson minimum "$SEMANTIC_COVERAGE_MIN" \
+  '.coverage_percent >= $minimum' "$OUTPUT" >/dev/null

@@ -6,7 +6,6 @@ const REASON_TAGS: Dictionary = {
 	"lightning_death": "arc",
 	"burning": "fire",
 	"tile_fire": "fire",
-	"pillar_burn": "fire",
 	"poison": "poison",
 	"poison_attack": "poison",
 	"fire_attack": "fire",

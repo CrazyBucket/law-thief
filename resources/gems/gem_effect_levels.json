@@ -63,19 +63,19 @@
   },
   "blue": {
     "poison": {
-      "1": {"turn_end_spread": false, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2},
-      "2": {"turn_end_spread": true, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2},
-      "3": {"turn_end_spread": true, "copy_debuff_on_contact": true, "copy_debuff_on_damaged": true, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2, "pillar_radius": 2, "pillar_poison_stacks": 1, "pillar_poison_duration": 2}
+      "1": {"turn_end_spread": false, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2},
+      "2": {"turn_end_spread": true, "copy_debuff_on_contact": false, "copy_debuff_on_damaged": false, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2},
+      "3": {"turn_end_spread": true, "copy_debuff_on_contact": true, "copy_debuff_on_damaged": true, "contact_poison_stacks": 1, "contact_poison_duration": 0, "turn_end_poison_stacks": 1, "turn_end_poison_duration": 2}
     },
     "explosion": {
-      "1": {"detonate_on_any_damage": false, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "cross", "damage_ratio": 0.6, "pillar_radius": 1, "pillar_damage": 1},
-      "2": {"detonate_on_any_damage": true, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "cross", "damage_ratio": 0.6, "pillar_radius": 1, "pillar_damage": 1},
-      "3": {"detonate_on_any_damage": true, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "square", "damage_ratio": 0.6, "pillar_radius": 1, "pillar_damage": 1}
+      "1": {"detonate_on_any_damage": false, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "cross", "damage_ratio": 0.6},
+      "2": {"detonate_on_any_damage": true, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "cross", "damage_ratio": 0.6},
+      "3": {"detonate_on_any_damage": true, "detonate_on_burning": true, "detonate_on_explosion": true, "blast_pattern": "square", "damage_ratio": 0.6}
     },
     "gravity": {
-      "1": {"deflect_chance": 0.5, "redirect_enemy_only": false, "redirect_radius": 1, "slow_on_damaged": false, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
-      "2": {"deflect_chance": 0.75, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": false, "pillar_pull_radius": 2, "pillar_pull_steps": 1},
-      "3": {"deflect_chance": 1.0, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": true, "pillar_pull_radius": 2, "pillar_pull_steps": 1}
+      "1": {"deflect_chance": 0.5, "redirect_enemy_only": false, "redirect_radius": 1, "slow_on_damaged": false, "root_on_damaged": false},
+      "2": {"deflect_chance": 0.75, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": false},
+      "3": {"deflect_chance": 1.0, "redirect_enemy_only": true, "redirect_radius": 1, "slow_on_damaged": true, "root_on_damaged": true}
     },
     "impact": {
       "1": {"knockback_steps": 2},

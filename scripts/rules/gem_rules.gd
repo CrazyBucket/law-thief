@@ -246,128 +246,7 @@ static func trigger(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 地块槽位操作
 # ═══════════════════════════════════════════════════════════════════════════
-
-static func can_extract_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
-	if not tile.has_slots():
-		return _fail("该地块没有槽位")
-	if not slot.is_operable(state.turn_index):
-		return _fail("槽位被锁定")
-	if slot.gem_uid.is_empty():
-		return _fail("槽位为空")
-	if not state.held_gem_uid.is_empty():
-		return _fail("手中已有宝石")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > _effective_extract_range(state):
-		return _fail("超出范围")
-	return _ok()
-
-
-static func extract_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
-	var check := can_extract_tile(state, actor, tile, slot)
-	if not check.get("ok", false):
-		return check
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return _fail("宝石不存在")
-	var was_overload_slot := slot.is_overload_slot()
-	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
-	if not _GemTransfer.to_hand(state, gem, actor.uid):
-		return _fail("无法持有宝石")
-	state.battle_temp_flags.erase("held_gem_source_uid")
-	state.log("%s 从 %s 地块拔出 %s" % [actor.uid, tile.tile_id, _data_registry().get_gem_display_name(gem)])
-	if was_overload_slot:
-		_remove_tile_slot(state, tile, slot)
-		OverloadRules.sync_active_mutations_to_overload_slots(state, false)
-	else:
-		OverloadRules.leave_extract_echo(state, slot, gem, "", echo_active)
-	return _ok({"gem_uid": gem.uid})
-
-
-static func can_insert_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
-	if not tile.has_slots():
-		return _fail("该地块没有槽位")
-	if state.held_gem_uid.is_empty():
-		return _fail("手中没有宝石")
-	if not slot.is_operable(state.turn_index):
-		return _fail("槽位被锁定")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > _effective_insert_range(state):
-		return _fail("超出范围")
-	var gem: GemState = state.gems.get(state.held_gem_uid, null)
-	if gem != null:
-		var gem_def: Dictionary = _data_registry().get_gem_def(gem.gem_id)
-		var gem_slot_type: String = str(gem_def.get("slot_type", ""))
-		if not gem_slot_type.is_empty() and not slot.accepts_slot_type(gem_slot_type):
-			return _ok({"requires_overload": true})
-	return _ok({"requires_overload": not slot.gem_uid.is_empty()})
-
-
-static func insert_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
-	var check := can_insert_tile(state, actor, tile, slot)
-	if not check.get("ok", false):
-		return check
-	var gem: GemState = state.gems.get(state.held_gem_uid, null)
-	if gem == null:
-		return _fail("宝石不存在")
-	var requires_overload := bool(check.get("requires_overload", false))
-	if requires_overload and not OverloadRules.can_force_insert(state):
-		state.log("过载预兆：再次嵌入可强行压入当前槽位")
-		return _ok({
-			"gem_uid": gem.uid,
-			"inserted": false,
-			"overload_armed": true,
-			"overload_forced": false,
-		})
-	var overload_forced := false
-	if OverloadRules.can_force_insert(state):
-		overload_forced = true
-		slot = _make_overload_slot(slot)
-		tile.slots.append(slot)
-		state.log("%s 强行将 %s 压入 %s 地块，过载涌动" % [
-			actor.uid,
-			_data_registry().get_gem_display_name(gem),
-			tile.tile_id,
-		])
-	if not _GemTransfer.to_tile_slot(state, gem, tile, slot):
-		return _fail("无法嵌入宝石")
-	state.battle_temp_flags.erase("held_gem_source_uid")
-	state.log("%s 将 %s 嵌入 %s 地块" % [actor.uid, _data_registry().get_gem_display_name(gem), tile.tile_id])
-	GemEffects.on_tile_gem_inserted(state, tile, slot, gem)
-	return _ok({"gem_uid": gem.uid, "swapped_gem_uid": "", "overload_forced": overload_forced})
-
-
-static func can_trigger_tile(state: GameState, actor: UnitState, tile: TileState, slot: SlotState) -> Dictionary:
-	if not tile.has_slots():
-		return _fail("该地块没有槽位")
-	if state.player_acted:
-		return _fail("本回合已行动")
-	if slot.gem_uid.is_empty():
-		return _fail("槽位为空")
-	if not slot.is_operable(state.turn_index):
-		return _fail("槽位被锁定")
-	if BoardUtils.manhattan(actor.pos, tile.pos) > CombatConfig.trigger_range():
-		return _fail("超出范围")
-	return _ok()
-
-
-static func trigger_tile(
-	state: GameState,
-	actor: UnitState,
-	tile: TileState,
-	slot: SlotState,
-	out_events: Array[Dictionary] = []
-) -> Dictionary:
-	var check := can_trigger_tile(state, actor, tile, slot)
-	if not check.get("ok", false):
-		return check
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return _fail("宝石不存在")
-	if not GemEffects.trigger_tile_gem(state, tile, slot, out_events):
-		return _fail("该槽位不支持主动触发")
-	state.player_acted = true
-	return _ok()
-
 
 static func _make_overload_slot(slot: SlotState) -> SlotState:
 	var overflow_slot := slot.clone()
@@ -387,20 +266,8 @@ static func _remove_unit_slot(state: GameState, unit: UnitState, slot: SlotState
 	_reindex_unit_gems(state, unit)
 
 
-static func _remove_tile_slot(state: GameState, tile: TileState, slot: SlotState) -> void:
-	var idx := tile.slots.find(slot)
-	if idx < 0:
-		return
-	tile.slots.remove_at(idx)
-	_reindex_tile_gems(state, tile)
-
-
 static func _reindex_unit_gems(state: GameState, unit: UnitState) -> void:
 	_GemTransfer.reindex_unit(state, unit)
-
-
-static func _reindex_tile_gems(state: GameState, tile: TileState) -> void:
-	_GemTransfer.reindex_tile(state, tile)
 
 
 static func _behavior_for(unit: UnitState) -> GDScript:

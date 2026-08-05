@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+if DESIGN_ROOT="$TMP_DIR/missing-design-root" DESIGN_SYNC_REQUIRED=1 \
+  bash "$ROOT/tools/design_sync_guard" >/dev/null 2>&1; then
+  echo "DESIGN_SYNC_GUARD_SELF_TEST_FAIL missing required design source was accepted" >&2
+  exit 1
+fi
+
+echo "DESIGN_SYNC_GUARD_SELF_TEST_PASS"

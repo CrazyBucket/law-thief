@@ -7,7 +7,7 @@ const FIELDS := {
 	"combos": true, "rarity": true, "allow_random_pool": true, "ability_profiles": true,
 }
 const REQUIRED_FIELDS := ["display_name_key", "symbol_key", "symbol", "color", "tag", "element", "pool_tier", "max_stack_level", "combos", "rarity", "ability_profiles"]
-const ABILITY_PROFILE_KEYS := ["player_skill", "unit_red_active", "enemy_red_action", "blue_turn_start", "blue_damaged", "blue_move_through", "black_death", "tile_active", "tile_turn_start", "attack_bonus", "armor_bonus"]
+const ABILITY_PROFILE_KEYS := ["player_skill", "unit_red_active", "enemy_red_action", "blue_turn_start", "blue_damaged", "blue_move_through", "black_death", "attack_bonus", "armor_bonus"]
 const RARITIES := ["common", "uncommon", "rare", "epic", "legendary", "boss"]
 
 

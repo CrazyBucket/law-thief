@@ -561,7 +561,7 @@ func _test_gem_effect_level_config() -> void:
 		},
 		Constants.SLOT_BLUE: {
 			"gravity": {
-				"1": {"deflect_chance": -0.1, "pillar_pull_steps": 1.5},
+			"1": {"deflect_chance": -0.1, "redirect_radius": 1.5},
 			},
 			"echo": {
 				"1": {"echo_tag_count": 0, "first_tag_strength": 0},
@@ -593,7 +593,7 @@ func _test_gem_effect_level_config() -> void:
 	_expect(_contains_error(invalid_value_errors, "damage_ratio should be in [0, 1]"), "gem effect levels validator should reject out-of-range ratios")
 	_expect(_contains_error(invalid_value_errors, "light_direction_offsets should not contain duplicate offsets"), "gem effect levels validator should reject duplicate split directions")
 	_expect(_contains_error(invalid_value_errors, "deflect_chance should be in [0, 1]"), "gem effect levels validator should reject out-of-range chances")
-	_expect(_contains_error(invalid_value_errors, "pillar_pull_steps should be an integer"), "gem effect levels validator should reject fractional discrete values")
+	_expect(_contains_error(invalid_value_errors, "redirect_radius should be an integer"), "gem effect levels validator should reject fractional discrete values")
 	_expect(_contains_error(invalid_value_errors, "echo_tag_count should be positive"), "gem effect levels validator should reject zero echo pick counts")
 	_expect(_contains_error(invalid_value_errors, "first_tag_strength should be positive"), "gem effect levels validator should reject zero blue echo strength")
 	_expect(_contains_error(invalid_value_errors, "first_tag_repeat_count should be positive"), "gem effect levels validator should reject zero black echo repeat counts")

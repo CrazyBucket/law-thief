@@ -6,7 +6,7 @@ const DESIGNED_ENCOUNTERS: Array[String] = [
 	"crossfire_courtyard", "rat_run", "flooded_crossing", "spike_corridor",
 	"burning_storehouse", "poison_marsh", "frozen_gallery", "barrel_maze",
 	"shifting_quarry", "split_sanctum", "enforcer_gate", "law_beast_arena",
-	"toxic_furnace", "storm_pillars",
+	"toxic_furnace", "storm_flood",
 ]
 
 func _initialize() -> void:

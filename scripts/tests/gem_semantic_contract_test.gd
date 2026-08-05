@@ -109,8 +109,11 @@ func _run_case(contract: Dictionary) -> void:
 	for raw_tag in contract.get("action_tags", []):
 		action_tags.append(str(raw_tag))
 	var aim_cell := _vector_from_variant(contract.get("aim_cell", target.pos))
-	var result := AttackPipeline.execute_aimed(state, player, aim_cell, action_tags)
-	var events: Array = result.get("events", [])
+	var result: Dictionary = {"ok": true}
+	var events: Array[Dictionary] = []
+	if not bool(contract.get("skip_initial_attack", false)):
+		result = AttackPipeline.execute_aimed(state, player, aim_cell, action_tags)
+		events.assign(result.get("events", []))
 	for raw_step in contract.get("post_steps", []):
 		_run_post_step(state, tracked_units, events, raw_step)
 	var expect: Dictionary = contract.get("expect", {})

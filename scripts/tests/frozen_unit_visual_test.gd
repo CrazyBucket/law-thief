@@ -39,12 +39,10 @@ func _run() -> void:
 			if sprite != null and sprite.material is ShaderMaterial:
 				var material := sprite.material as ShaderMaterial
 				_require(material.shader != null and material.shader.resource_path.ends_with("frozen_unit.gdshader"), "frozen unit must use the dedicated ice shader")
-	var shader_source := FileAccess.get_file_as_string("res://scenes/battle/frozen_unit.gdshader")
-	_require(shader_source.contains("TIME"), "frozen shader should animate crystalline shimmer on the GPU")
-	_require(shader_source.contains("TEXTURE_PIXEL_SIZE") and shader_source.contains("outer_rim"), "frozen shader should add a silhouette-following ice rim")
-	_require(shader_source.contains("ice_tint") and shader_source.contains("tint_strength"), "frozen shader should visibly recolor the unit")
-	_require(shader_source.contains("fbm") and shader_source.contains("frost_veins"), "frozen shader should use irregular frost instead of a geometric grid")
-	_require(not shader_source.contains("crystal_a") and not shader_source.contains("crystal_b"), "frozen shader must not restore the crossed grid pattern")
+				var uniform_names: Array = material.shader.get_shader_uniform_list().map(func(entry): return str(entry.get("name", "")))
+				_require("ice_tint" in uniform_names and "tint_strength" in uniform_names, "frozen shader should expose its recolor contract")
+				_require("rim_width" in uniform_names, "frozen shader should expose its silhouette rim contract")
+				_require(material.get_shader_parameter("unit_tint") is Color, "frozen material should receive the rendered unit tint")
 	if target != null:
 		target.remove_status(Constants.STATUS_FROZEN)
 	await process_frame

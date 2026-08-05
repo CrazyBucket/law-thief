@@ -38,7 +38,6 @@ const ABILITY_BLUE_TURN_START := "blue_turn_start"
 const ABILITY_BLUE_DAMAGED := "blue_damaged"
 const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
 const ABILITY_BLACK_DEATH := "black_death"
-const ABILITY_TILE_TURN_START := "tile_turn_start"
 const ABILITY_ATTACK_BONUS := "attack_bonus"
 const ABILITY_ARMOR_BONUS := "armor_bonus"
 const BLACK_DEATH_PROFILE_ORDER: Array[String] = [
@@ -190,26 +189,6 @@ static func capture_blue_poison_turn_end_sources(state: GameState) -> Dictionary
 			source_uids.append(unit.uid)
 		snapshot[source_uid] = source_uids
 	return snapshot
-
-
-static func run_tile_hooks(state: GameState, tile: TileState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
-	for slot in tile.slots:
-		if not slot.accepts_slot_type(slot_type) or slot.gem_uid.is_empty():
-			continue
-		_run_slot_hook(state, tile, slot, timing, ctx)
-
-
-static func on_tile_gem_inserted(state: GameState, tile: TileState, slot: SlotState, gem: GemState) -> void:
-	var gem_name: String = _data_registry().get_gem_display_name(gem)
-	if tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
-		state.log("机关柱激活！宝石 %s 产生光环" % gem_name)
-
-
-static func trigger_tile_gem(state: GameState, tile: TileState, slot: SlotState, out_events: Array[Dictionary] = []) -> bool:
-	if tile.tile_id == Constants.TILE_PILLAR and slot.slot_type == Constants.SLOT_BLUE:
-		state.log("触发 %s 地块的 %s" % [tile.tile_id, _gem_id(state, slot)])
-		return _run_slot_hook(state, tile, slot, TIMING_TURN_START, {"events": out_events})
-	return false
 
 
 static func trigger_gem(
@@ -692,8 +671,6 @@ static func _run_slot_hook(state: GameState, owner: Variant, slot: SlotState, ti
 	var gem: GemState = state.gems.get(slot.gem_uid, null)
 	if gem == null:
 		return false
-	if owner is TileState:
-		return _run_tile_slot_hook(state, owner as TileState, slot, gem, timing, ctx)
 	if owner is UnitState:
 		return _run_unit_slot_hook(state, owner as UnitState, slot, gem, timing, ctx)
 	return false
@@ -1010,6 +987,7 @@ static func _run_unit_damaged_effect(state: GameState, owner: UnitState, _slot: 
 					_events_from_ctx(ctx),
 					gem_ctx
 				)
+				apply_arc_bounce_from_anchor(state, source, owner, _events_from_ctx(ctx), gem_ctx, false, {source.uid: true}, 1)
 			return true
 		"tide":
 			return TideRules.apply_blue_damaged_from_hook(state, owner, source, ctx, _slot)
@@ -1699,79 +1677,6 @@ static func _run_unit_contact_effect(state: GameState, owner: UnitState, gem: Ge
 	return false
 
 
-static func _run_tile_slot_hook(state: GameState, tile: TileState, slot: SlotState, gem: GemState, timing: String, ctx: Dictionary = {}) -> bool:
-	match timing:
-		TIMING_TURN_START:
-			if slot.slot_type != Constants.SLOT_BLUE or tile.tile_id != Constants.TILE_PILLAR:
-				return false
-			return _run_tile_turn_start_effect(state, tile, gem, ctx)
-	return false
-
-
-static func _run_tile_turn_start_effect(state: GameState, tile: TileState, gem: GemState, ctx: Dictionary = {}) -> bool:
-	var out_events: Array[Dictionary] = _events_from_ctx(ctx)
-	var gem_ctx: Dictionary = ctx.get("gem_tag_context", {})
-	if gem_ctx.is_empty():
-		gem_ctx = GemTagResolver.build_context(state, tile, Constants.SLOT_BLUE, TIMING_TURN_START)
-	match _ability_profile(gem, ABILITY_TILE_TURN_START):
-		"poison":
-			var poison_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "poison"))
-			var poison_level_def: Dictionary = _effect_level_def("poison", _effect_level_scope(gem_ctx, Constants.SLOT_BLUE), poison_level)
-			var pillar_radius := int(poison_level_def["pillar_radius"])
-			var pillar_stacks := int(poison_level_def["pillar_poison_stacks"])
-			var pillar_duration := int(poison_level_def["pillar_poison_duration"])
-			out_events.append(_EventBuilder.area_effect("poison_burst", tile.pos, {"radius": pillar_radius}))
-			for unit in state.units.values():
-				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= pillar_radius:
-					StatusRules.apply_poison(state, unit, pillar_stacks, pillar_duration, tile.tile_id)
-			return true
-		"explosion":
-			var explosion_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "explosion"))
-			var explosion_level_def: Dictionary = _effect_level_def("explosion", _effect_level_scope(gem_ctx, Constants.SLOT_BLUE), explosion_level)
-			var pillar_radius := int(explosion_level_def["pillar_radius"])
-			var pillar_damage := int(explosion_level_def["pillar_damage"])
-			out_events.append(_EventBuilder.explode(tile.pos, pillar_radius))
-			for unit in state.units.values():
-				if unit.alive and unit.team == Constants.TEAM_ENEMY and BoardUtils.manhattan(unit.pos, tile.pos) <= pillar_radius:
-					_damage_unit_event(state, unit, pillar_damage, "", "pillar_burn", out_events)
-			return true
-		"gravity":
-			var gravity_level := maxi(1, GemTagResolver.tag_level(gem_ctx, "gravity"))
-			var gravity_level_def: Dictionary = _effect_level_def("gravity", _effect_level_scope(gem_ctx, Constants.SLOT_BLUE), gravity_level)
-			var pillar_pull_radius := int(gravity_level_def["pillar_pull_radius"])
-			var pillar_pull_steps := int(gravity_level_def["pillar_pull_steps"])
-			out_events.append(_EventBuilder.gem_flash(tile.pos, {"color": _data_registry().get_gem_color(gem)}))
-			for unit in state.units.values():
-				if not unit.alive:
-					continue
-				if unit.pos == tile.pos:
-					continue
-				if BoardUtils.chebyshev(tile.pos, unit.pos) > pillar_pull_radius:
-					continue
-				out_events.append_array(
-					pull_unit_toward_with_events(
-						state,
-						unit,
-						tile.pos,
-						pillar_pull_steps,
-						"",
-						DamageContext.create(
-							"", "gravity_collision", ["gravity"], gem_ctx
-						)
-					)
-				)
-			return true
-	return false
-
-
-
-static func _gem_id(state: GameState, slot: SlotState) -> String:
-	var gem: GemState = state.gems.get(slot.gem_uid, null)
-	if gem == null:
-		return ""
-	return _data_registry().get_gem_display_name(gem)
-
-
 static func _effect_level_scope(gem_ctx: Dictionary, fallback_scope: String) -> String:
 	return str(gem_ctx.get("effect_level_scope", fallback_scope))
 
@@ -1991,7 +1896,9 @@ static func apply_arc_bounce_from_anchor(
 	attacker: UnitState,
 	events: Array[Dictionary],
 	gem_ctx: Dictionary = {},
-	single_target_guarantee: bool = true
+	single_target_guarantee: bool = true,
+	excluded_uids: Dictionary = {},
+	max_hops: int = -1
 ) -> void:
 	if anchor == null or attacker == null: return
 	var arc_damage := _calc_arc_damage(attacker, state)
@@ -2004,6 +1911,7 @@ static func apply_arc_bounce_from_anchor(
 	# Lv3 已有三跳；超过三级的每颗导电继续额外提供一跳。
 	bounce_hops += maxi(0, arc_count - 3)
 	if registry != null: bounce_hops += int(registry.query_modifier("arc_bounce_count_bonus", state))
+	if max_hops >= 0: bounce_hops = mini(bounce_hops, max_hops)
 	var arc_range := int(level_def["range"])
 	var opposing_in_range := state.units.values().filter(func(unit: UnitState): return unit.alive and unit.team != attacker.team and BoardUtils.chebyshev(anchor.pos, unit.pos) <= arc_range)
 	if single_target_guarantee and opposing_in_range.size() == 1 and opposing_in_range[0] == anchor:
@@ -2020,6 +1928,7 @@ static func apply_arc_bounce_from_anchor(
 			for unit in state.units.values():
 				if not unit.alive: continue
 				if unit.uid == arc_origin.uid: continue
+				if excluded_uids.has(unit.uid): continue
 				if hop_hit_uids.has(unit.uid): continue
 				if unit.team == attacker.team: continue
 				if BoardUtils.chebyshev(arc_origin.pos, unit.pos) > arc_range: continue

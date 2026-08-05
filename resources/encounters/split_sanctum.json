@@ -7,7 +7,6 @@
     {"pos": [6, 6], "candidates": ["unit_bomb_rat", "unit_stone_bow_guard"]}
   ],
   "tiles": [
-    {"pos": [2, 2], "tile_id": "tile_pillar", "slots": [{"slot_type": "blue"}]},
     {"pos": [3, 3], "tile_id": "tile_water"}, {"pos": [4, 3], "tile_id": "tile_water"},
     {"pos": [3, 4], "tile_id": "tile_water"}, {"pos": [4, 4], "tile_id": "tile_water"}
   ],

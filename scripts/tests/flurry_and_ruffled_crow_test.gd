@@ -103,7 +103,7 @@ func _test_split_wing_keeps_effect_anchor_after_death() -> void:
 	)
 	_expect(not wing_target.alive, "the first split volley should defeat its wing target")
 	_expect(wing_arcs.size() == 2, "both split volleys should resolve arc from the same per-cell effect anchor")
-	_expect(arc_target.hp == 98, "the retained wing anchor should preserve both segment-scaled arc hits")
+	_expect(arc_target.hp == 96, "the retained wing anchor should preserve two standard 2-damage arc hits")
 	_expect(_valid(state, result.get("events", [])), "split-wing effect anchors should preserve invariants")
 	print("  [OK] split wing retains its per-cell effect anchor after death")
 
@@ -165,7 +165,7 @@ func _test_remaining_segments_continue_after_death() -> void:
 	_expect(_events_of_type(result.get("events", []), "damage").filter(func(event): return str(event.get("uid", "")) == target.uid).size() == 2, "defeated target should not take damage from remaining flurry segments")
 	_expect(_events_of_type(result.get("events", []), "projectile").size() == 5, "remaining flurry segments should still resolve after the target dies")
 	_expect(_events_of_type(result.get("events", []), "arc").size() == 5, "every segment should launch arc even after the primary target dies")
-	_expect(arc_target.hp == 95, "remaining flurry segments should preserve their existing segment-scaled arc damage")
+	_expect(arc_target.hp == 90, "all five segments should preserve independent 2-damage arc hits")
 	_expect(not target.alive, "the second segment should kill the target")
 	_expect(_valid(state, result.get("events", [])), "death during flurry should preserve invariants")
 	print("  [OK] target death preserves remaining segment effects")

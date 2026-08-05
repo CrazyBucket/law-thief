@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONTRACT="${SEMANTIC_CONTRACT_PATH:-$ROOT/tests/contracts/gem_semantics.json}"
+DEFINITIONS="${SEMANTIC_DEFINITIONS_PATH:-$ROOT/resources/gems/gem_defs.json}"
+
+errors="$(jq -r --slurpfile defs "$DEFINITIONS" '
+  def evidence_keys: [
+    "damage", "target_status", "target_pos", "unit_damages", "unit_positions",
+    "unit_statuses", "unit_status_absences", "unit_flushable_status_kind_counts",
+    "unit_effective_move_points", "fire_cells", "poison_fog_cells",
+    "toxic_smoke_cells", "shallow_water_cells", "tile_modifier_durations",
+    "tile_modifier_absences", "tile_modifier_duration_counts", "event_counts",
+    "event_min_counts", "event_matches", "combo_event", "split_clones"
+  ];
+  def common_gem_evidence: [
+    "damage", "unit_damages", "unit_statuses", "unit_status_absences",
+    "event_counts", "event_min_counts", "event_matches", "combo_event"
+  ];
+  def gem_evidence_keys($gem):
+    common_gem_evidence +
+    (if $gem == "gem_explosion" then
+      ["fire_cells", "poison_fog_cells", "toxic_smoke_cells"]
+    elif $gem == "gem_poison" then
+      ["poison_fog_cells", "toxic_smoke_cells", "tile_modifier_durations"]
+    elif $gem == "gem_gravity" or $gem == "gem_impact" then
+      ["target_pos", "unit_positions", "unit_effective_move_points"]
+    elif $gem == "gem_fire" then
+      ["fire_cells", "toxic_smoke_cells", "tile_modifier_durations"]
+    elif $gem == "gem_tide" then
+      ["shallow_water_cells", "tile_modifier_absences", "unit_flushable_status_kind_counts"]
+    elif $gem == "gem_ice" then
+      ["unit_effective_move_points"]
+    elif $gem == "gem_split" then
+      ["split_clones", "unit_positions"]
+    elif $gem == "gem_light" then
+      ["target_pos", "unit_positions", "tile_modifier_duration_counts"]
+    else [] end);
+  def mounted_count($case; $gem; $slot):
+    ([if $slot == "red" then $case.gems[]? else empty end]
+      + [$case.mounts[]? | select(.slot == $slot) | .gems[]?])
+    | map(select(. == $gem)) | length;
+  def case_errors($case):
+    ([if (($case.id // "") | type) != "string" or ($case.id // "") == ""
+      then "case has an empty id" else empty end]
+    + [if ($case.covers | type) != "array" or ($case.covers | length) == 0
+      then "case \($case.id // "<unknown>") has no covers" else empty end]
+    + [if ($case.expect | type) != "object"
+        or ([($case.expect | keys[]) as $key | evidence_keys | index($key)] | any) | not
+      then "case \($case.id // "<unknown>") has no supported semantic result assertion" else empty end]
+    + [if $case.skip_initial_attack != null and ($case.skip_initial_attack | type) != "boolean"
+      then "case \($case.id // "<unknown>") has non-boolean skip_initial_attack" else empty end]
+    + [
+      $case.covers[]? as $cover
+      | if ($cover | type) != "string" then
+          "case \($case.id) has a non-string cover"
+        elif ($cover | test("^gem_[^:]+:(red|blue|black):[1-9][0-9]*$")) then
+          ($cover | capture("^(?<gem>gem_[^:]+):(?<slot>red|blue|black):(?<level>[1-9][0-9]*)$")) as $key
+          | if $defs[0][$key.gem] == null then
+              "case \($case.id) covers unknown gem \($key.gem)"
+            elif ($key.level | tonumber) > ($defs[0][$key.gem].max_stack_level // 3) then
+              "case \($case.id) covers unsupported level \($cover)"
+            elif mounted_count($case; $key.gem; $key.slot) < ($key.level | tonumber) then
+              "case \($case.id) claims \($cover) without mounting that level in the declared slot"
+            elif ([($case.expect | keys[]) as $evidence
+              | gem_evidence_keys($key.gem) | index($evidence)] | any) | not then
+              "case \($case.id) lacks result evidence related to \($cover)"
+            else empty end
+        elif ($cover | test("^(combo|implementation|interaction):")) then
+          empty
+        else
+          "case \($case.id) has unsupported cover key \($cover)"
+        end
+    ]
+    + [
+      $case.covers[]? as $cover
+      | select([$case.covers[] | select(. == $cover)] | length > 1)
+      | "case \($case.id) repeats cover \($cover)"
+    ] | unique);
+  ([if .schema_version != 1 then "unsupported schema_version \(.schema_version)" else empty end]
+    + [(.cases | group_by(.id)[] | select(length > 1) | "duplicate case id \(.[0].id)")]
+    + [.cases[] | case_errors(.)[]])[]
+' "$CONTRACT")"
+
+if [[ -n "$errors" ]]; then
+  echo "SEMANTIC_CONTRACT_GUARD_FAIL" >&2
+  printf '%s\n' "$errors" >&2
+  exit 1
+fi
+
+case_count="$(jq '.cases | length' "$CONTRACT")"
+echo "SEMANTIC_CONTRACT_GUARD_PASS cases=$case_count"

@@ -47,19 +47,19 @@ func _test_chaos_on_empty_aim_with_explosion() -> void:
 	if not result.get("ok", false):
 		_fail("aimed attack failed: %s" % result.get("reason", ""))
 		return
-	var has_chaos_proc := false
+	var has_chaos_log := false
 	for line in state.combat_log:
 		if "[Relic] relic_chaos_launcher" in str(line):
-			has_chaos_proc = true
+			has_chaos_log = true
 			break
-	if not has_chaos_proc:
-		for ev in result.get("events", []):
-			var t := str(ev.get("type", ""))
-			if t == "poison_burst" or t == "fire_burst":
-				has_chaos_proc = true
-				break
-	if not has_chaos_proc:
-		_fail("chaos launcher should proc on empty-cell aimed attack")
+	var has_chaos_effect: bool = (result.get("events", []) as Array).any(
+		func(event): return str(event.get("type", "")) in ["poison_burst", "fire_burst"]
+	)
+	if not has_chaos_log:
+		_fail("chaos launcher should record its relic activation")
+		return
+	if not has_chaos_effect:
+		_fail("chaos launcher should emit its empty-cell poison or fire effect")
 		return
 	if guard.hp >= guard.max_hp:
 		_fail("cross explosion should still damage adjacent guard")

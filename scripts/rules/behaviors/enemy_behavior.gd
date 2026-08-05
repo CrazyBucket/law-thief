@@ -375,7 +375,7 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 		return [] as Array[Dictionary]
 	# The shared attack pipeline applies the gravity pull after the normal hit,
 	# preserving both the unit's base damage and the authored range bonus.
-	var result := CombatRules.ranged_attack(state, unit, target.pos, CombatConfig.attack_range())
+	var result := CombatRules.ranged_attack(state, unit, target.pos, CombatConfig.enemy_gravity_pull_range())
 	if not bool(result.get("ok", false)):
 		return [] as Array[Dictionary]
 	var events: Array[Dictionary] = []

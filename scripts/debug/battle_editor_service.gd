@@ -26,6 +26,8 @@ func execute(command_id: String, payload: Dictionary = {}) -> Dictionary:
 			return _spawn_unit(payload)
 		"spawn_many_units":
 			return _spawn_many_units(payload)
+		"clear_enemies":
+			return _clear_enemies()
 		"remove_unit":
 			return _remove_unit(payload)
 		"move_unit":
@@ -59,6 +61,30 @@ func execute(command_id: String, payload: Dictionary = {}) -> Dictionary:
 		"import_encounter_file":
 			return _import_encounter_file(payload)
 	return _fail("unknown editor command: %s" % command_id)
+
+
+func _clear_enemies() -> Dictionary:
+	var ctrl := _ctrl
+	var removed := 0
+	var enemy_uids: Array[String] = []
+	for unit in ctrl.state.units.values():
+		if unit.team == Constants.TEAM_ENEMY:
+			enemy_uids.append(unit.uid)
+	for unit_uid in enemy_uids:
+		var unit: UnitState = ctrl.state.units.get(unit_uid, null)
+		if unit == null:
+			continue
+		_clear_unit_gems(unit)
+		ctrl.state.unregister_unit(unit)
+		removed += 1
+	ctrl.state.phase = Constants.PHASE_PLAYER
+	ctrl.state.result = ""
+	ctrl.state.player_moved = false
+	ctrl.state.player_acted = false
+	ctrl.state.log("[Editor] cleared %d enemies" % removed)
+	IntentSystem.refresh_all_intents(ctrl.state)
+	ctrl._emit_changed()
+	return _ok({"message": "cleared %d enemies" % removed})
 
 
 func _spawn_unit(payload: Dictionary) -> Dictionary:
@@ -159,13 +185,8 @@ func _set_tile(payload: Dictionary) -> Dictionary:
 	if not BoardUtils.in_bounds(ctrl.state, pos):
 		return _fail("position out of bounds: %s" % pos)
 	var existing: TileState = ctrl.state.get_tile(pos)
-	_clear_tile_gems(existing)
 	var tile: TileState = TileState.create(pos, tile_id)
 	tile.surface_variant = str(payload.get("surface_variant", ""))
-	var slot_defs := _default_tile_slot_defs(tile_id)
-	if not slot_defs.is_empty():
-		tile = TileState.create_with_slots(pos, tile_id, slot_defs)
-		tile.surface_variant = str(payload.get("surface_variant", ""))
 	ctrl.state.tiles[ctrl.state.tile_key(pos)] = tile
 	return _finalize_mutation("set tile at %s to %s" % [pos, tile_id], true)
 
@@ -187,9 +208,8 @@ func _spawn_gem(payload: Dictionary) -> Dictionary:
 	]:
 		return _fail("invalid slot type: %s" % create_slot_type)
 	var unit: UnitState = ctrl.state.get_unit_at(pos)
-	var tile: TileState = ctrl.state.get_tile(pos)
 	if target_kind.is_empty():
-		target_kind = "unit" if unit != null else "tile"
+		target_kind = "unit"
 	var slot_index := -1
 	var slot: SlotState = null
 	var target_label := ""
@@ -209,30 +229,14 @@ func _spawn_gem(payload: Dictionary) -> Dictionary:
 		slot = unit.get_slot_by_index(slot_index)
 		target_label = "unit %s slot %s" % [unit.unit_def_id, _slot_label(slot)]
 	else:
-		if tile == null:
-			return _fail("no tile at %s" % pos)
-		if not create_slot_type.is_empty():
-			tile.slots.append(SlotState.create(create_slot_type))
-			requested_slot_index = tile.slots.size() - 1
-			slot_index = requested_slot_index
-		elif requested_slot_index >= 0:
-			slot_index = requested_slot_index if requested_slot_index < tile.slots.size() else -1
-		else:
-			slot_index = _find_slot_index(tile.slots, preferred_slot)
-		if slot_index < 0:
-			return _fail("no available slot on tile at %s" % pos)
-		slot = tile.get_slot_by_index(slot_index)
-		target_label = "tile %s slot %s" % [tile.tile_id, _slot_label(slot)]
+		return _fail("only unit slots are editable")
 	if slot == null or slot.locked or slot.is_split_disabled():
 		return _fail("selected slot is not editable")
 	_clear_slot_gem(slot)
 	var gem_uid: String = _data_registry().next_runtime_uid("runtime_gem")
 	var gem: GemState = _data_registry().create_gem_instance(gem_uid, gem_id)
 	ctrl.state.gems[gem.uid] = gem
-	if target_kind == "unit" and unit != null:
-		GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
-	else:
-		GemTransfer.to_tile_slot(ctrl.state, gem, tile, slot)
+	GemTransfer.to_unit_slot(ctrl.state, gem, unit, slot)
 	return _finalize_mutation("spawned %s in %s" % [gem_id, target_label], false, {"gem_uid": gem.uid})
 
 
@@ -244,7 +248,6 @@ func _remove_gem(payload: Dictionary) -> Dictionary:
 	var preferred_slot := str(payload.get("slot_type", ""))
 	var target_kind := str(payload.get("target_kind", ""))
 	var unit: UnitState = ctrl.state.get_unit_at(pos)
-	var tile: TileState = ctrl.state.get_tile(pos)
 	var slot_index := int(payload.get("slot_index", -1))
 	var slot: SlotState = null
 	var target_label := ""
@@ -261,17 +264,7 @@ func _remove_gem(payload: Dictionary) -> Dictionary:
 			return _fail("no gem found on unit at %s" % pos)
 		target_label = "unit %s slot %s" % [unit.unit_def_id, _slot_label(slot)]
 	else:
-		if tile == null or not tile.has_slots():
-			return _fail("no slotted tile at %s" % pos)
-		if slot_index >= 0:
-			slot = tile.get_slot_by_index(slot_index)
-		else:
-			slot_index = _find_filled_slot_index(tile.slots, preferred_slot)
-			if slot_index >= 0:
-				slot = tile.get_slot_by_index(slot_index)
-		if slot == null or slot.gem_uid.is_empty():
-			return _fail("no gem found on tile at %s" % pos)
-		target_label = "tile %s slot %s" % [tile.tile_id, _slot_label(slot)]
+		return _fail("only unit slots are editable")
 	var gem: GemState = ctrl.state.gems.get(slot.gem_uid, null)
 	var gem_id := gem.gem_id if gem != null else "unknown_gem"
 	_clear_slot_gem(slot)
@@ -550,13 +543,6 @@ func _apply_import_encounter(encounter: Dictionary, source_label: String) -> Dic
 	})
 
 
-func _clear_tile_gems(tile: TileState) -> void:
-	if tile == null:
-		return
-	for slot in tile.slots:
-		_clear_slot_gem(slot)
-
-
 func _clear_unit_gems(unit: UnitState) -> void:
 	if unit == null:
 		return
@@ -568,14 +554,6 @@ func _clear_slot_gem(slot: SlotState) -> void:
 	if slot == null or slot.gem_uid.is_empty():
 		return
 	GemTransfer.remove(_ctrl.state, slot.gem_uid)
-
-
-func _default_tile_slot_defs(tile_id: String) -> Array:
-	match tile_id:
-		Constants.TILE_PILLAR:
-			return [{"slot_type": Constants.SLOT_BLUE}]
-		_:
-			return []
 
 
 func _slot_label(slot: SlotState) -> String:

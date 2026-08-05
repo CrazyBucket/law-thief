@@ -15,9 +15,7 @@
       "unit_red_active": "explosion",
       "enemy_red_action": "explosion",
       "blue_damaged": "explosion",
-      "black_death": "explosion",
-      "tile_active": "explosion",
-      "tile_turn_start": "explosion"
+      "black_death": "explosion"
     }
   },
   "gem_poison": {
@@ -36,9 +34,7 @@
       "unit_red_active": "poison",
       "enemy_red_action": "poison",
       "blue_damaged": "poison",
-      "black_death": "poison",
-      "tile_active": "poison",
-      "tile_turn_start": "poison"
+      "black_death": "poison"
     }
   },
   "gem_gravity": {
@@ -57,9 +53,7 @@
       "unit_red_active": "gravity",
       "enemy_red_action": "gravity",
       "blue_damaged": "gravity",
-      "black_death": "gravity",
-      "tile_active": "gravity",
-      "tile_turn_start": "gravity"
+      "black_death": "gravity"
     }
   },
   "gem_conductive": {

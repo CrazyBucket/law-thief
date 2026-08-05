@@ -4,7 +4,6 @@ extends RefCounted
 const DETACHED := "detached"
 const HAND := "hand"
 const UNIT_SLOT := "unit_slot"
-const TILE_SLOT := "tile_slot"
 const GROUND := "ground"
 
 var kind: String = DETACHED
@@ -28,14 +27,6 @@ static func unit_slot(unit_uid: String, index: int):
 	var value = load("res://scripts/data/gem_location.gd").new()
 	value.kind = UNIT_SLOT
 	value.owner_uid = unit_uid
-	value.slot_index = index
-	return value
-
-
-static func tile_slot(tile_pos: Vector2i, index: int):
-	var value = load("res://scripts/data/gem_location.gd").new()
-	value.kind = TILE_SLOT
-	value.pos = tile_pos
 	value.slot_index = index
 	return value
 
@@ -87,8 +78,6 @@ func is_valid() -> bool:
 			return not owner_uid.is_empty() and slot_index == -1 and pos == Vector2i(-1, -1)
 		UNIT_SLOT:
 			return not owner_uid.is_empty() and slot_index >= 0 and pos == Vector2i(-1, -1)
-		TILE_SLOT:
-			return owner_uid.is_empty() and slot_index >= 0 and pos != Vector2i(-1, -1)
 		GROUND:
 			return owner_uid.is_empty() and slot_index == -1 and pos != Vector2i(-1, -1)
 	return false
@@ -100,8 +89,6 @@ func describe() -> String:
 			return "hand:%s" % owner_uid
 		UNIT_SLOT:
 			return "unit:%s:%d" % [owner_uid, slot_index]
-		TILE_SLOT:
-			return "tile:%s:%d" % [pos, slot_index]
 		GROUND:
 			return "ground:%s" % pos
 	return DETACHED
