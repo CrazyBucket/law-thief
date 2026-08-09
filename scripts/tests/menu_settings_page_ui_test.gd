@@ -69,6 +69,9 @@ func _run_tests() -> void:
 	for key in original_settings.keys():
 		settings_service.call("set_value", str(key), original_settings[key])
 	_check(settings_service.call("get_all") == original_settings, "test should restore the original persisted settings")
+	for _frame_index in range(26):
+		await process_frame
+	_check(main_root.get_node_or_null("BattleUiResourceWarmup") == null, "menu idle frames should finish battle UI resource warmup")
 
 	main_root.free()
 	await process_frame

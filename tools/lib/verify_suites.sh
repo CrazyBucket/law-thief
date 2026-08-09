@@ -182,6 +182,7 @@ UI_TESTS=(
   battle_projectile_fx_test
   battle_reward_card_factory_test
   battle_reward_overlay_test
+  battle_reward_view_test
   battle_slot_panel_layout_test
   adventure_map_copy_presenter_test
   board_input_adapter_test

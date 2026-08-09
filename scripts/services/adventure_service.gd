@@ -245,7 +245,7 @@ func _navigate_to_room(room_type: String) -> void:
 			GameService.start_battle(encounter_id)
 			_mark_pending_battle(encounter_id)
 			RunService.save_run()
-			get_tree().change_scene_to_file(BATTLE_SCENE)
+			_transition_out_to(BATTLE_SCENE)
 		"ELITE_COMBAT":
 			var pool: Array[String] = AdventureProgressionConfig.combat_encounters(room_type)
 			if pool.is_empty():
@@ -257,14 +257,14 @@ func _navigate_to_room(room_type: String) -> void:
 			GameService.start_battle(encounter_id)
 			_mark_pending_battle(encounter_id)
 			RunService.save_run()
-			get_tree().change_scene_to_file(BATTLE_SCENE)
+			_transition_out_to(BATTLE_SCENE)
 		"END":
 			var encounter_id := _boss_encounter_for_chapter(get_current_chapter())
 			GameService.adventure_return = true
 			GameService.start_battle(encounter_id)
 			_mark_pending_battle(encounter_id)
 			RunService.save_run()
-			get_tree().change_scene_to_file(BATTLE_SCENE)
+			_transition_out_to(BATTLE_SCENE)
 		_:
 			RunService.set_run_phase("ROOM")
 			RunService.set_pending_decision({

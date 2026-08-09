@@ -1,181 +1,7 @@
-extends Control
-const SlotPopup = preload("res://scripts/ui/slot_popup.gd")
-const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
-const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
-const StatusUi = preload("res://scripts/ui/status_ui.gd")
-const StatusIcons = preload("res://scripts/ui/status_icons.gd")
-const StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
-const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
-const DamageTextManagerScript = preload("res://scripts/ui/damage_text_manager.gd")
-const BattleEventPlayerScript = preload("res://scripts/ui/battle_event_player.gd")
-const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
-const BattleHudPresenterScript = preload("res://scripts/ui/battle_hud_presenter.gd")
-const BattleEditorPanelScript = preload("res://scripts/ui/battle_editor_panel.gd")
-const GeneratedEncounterExportButtonScript = preload("res://scripts/ui/generated_encounter_export_button.gd")
-const RichTooltip = preload("res://scripts/ui/rich_tooltip.gd")
-const BattleRewardOverlay = preload("res://scripts/ui/battle_reward_overlay.gd")
-const BattleRewardCardFactory = preload("res://scripts/ui/battle_reward_card_factory.gd")
-const BattleSettlementService = preload("res://scripts/battle/battle_settlement_service.gd")
-const BattlePreviewPanel = preload("res://scripts/ui/battle_preview_panel.gd")
-const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
-const SystemPauseMenuScript = preload("res://scripts/ui/system_pause_menu.gd")
-const CoinIconTexture = preload("res://assets/ui/coin_gold.png")
-const _EDITOR_DOCK_TOP := 220.0
-const _EDITOR_INSPECTOR_GAP := 8.0
-var _dmg_text: Node = null
-
-@onready var _board: Control = $BoardLayer/IsometricBoard
-@onready var _status_panel: PanelContainer = $HudLayer/StatusPanel
-@onready var _status_vbox: VBoxContainer = $HudLayer/StatusPanel/VBox
-@onready var _header_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow
-@onready var _turn_chips: HBoxContainer = $HudLayer/StatusPanel/VBox/TurnChips
-@onready var _portrait: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Portrait
-@onready var _inspect_name: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/Name
-@onready var _info_col: VBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info
-@onready var _hp_bar_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow
-@onready var _shield_icon: TextureRect = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow/ShieldIcon
-@onready var _combined_hp_bar: CombinedHpBar = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpBarRow/CombinedHpBar
-@onready var _hp_text: Label = $HudLayer/StatusPanel/VBox/HeaderRow/Info/HpText
-@onready var _inspect_status_row: HBoxContainer = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip/StatusRow
-@onready var _inspect_stats: Label = $HudLayer/StatusPanel/VBox/StatsLabel
-@onready var _slot_box: Container = $HudLayer/StatusPanel/VBox/SlotClip/SlotBox
-@onready var _status_clip: Control = $HudLayer/StatusPanel/VBox/HeaderRow/Info/StatusClip
-@onready var _slot_clip: Control = $HudLayer/StatusPanel/VBox/SlotClip
-@onready var _turn_label: Label = $HudLayer/StatusPanel/VBox/TurnChips/TurnLabel
-@onready var _move_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/MoveChip
-@onready var _act_chip: Label = $HudLayer/StatusPanel/VBox/TurnChips/ActChip
-@onready var _held_label: Label = $HudLayer/StatusPanel/VBox/HeldLabel
-@onready var _hint_label: Label = $HudLayer/StatusPanel/VBox/HintLabel
-@onready var _toggle_panel_btn: Button = $HudLayer/TogglePanelBtn
-@onready var _preview_panel: PanelContainer = $HudLayer/PreviewPanel
-@onready var _preview_title: Label = $HudLayer/PreviewPanel/VBox/Title
-@onready var _preview_body: RichTextLabel = $HudLayer/PreviewPanel/VBox/Body
-@onready var _top_bar: PanelContainer = $HudLayer/TopBar
-@onready var _phase_badge: Label = $HudLayer/TopBar/HBox/PhaseBadge
-@onready var _message_label: Label = $HudLayer/TopBar/HBox/Message
-@onready var _queue_title: Label = $HudLayer/TurnQueuePanel/VBox/Title
-@onready var _queue_row: HBoxContainer = $HudLayer/TurnQueuePanel/VBox/QueueRow
-@onready var _queue_hint: Label = $HudLayer/TurnQueuePanel/VBox/Hint
-@onready var _turn_queue_panel: PanelContainer = $HudLayer/TurnQueuePanel
-@onready var _bottom_dock: PanelContainer = $HudLayer/BottomDock
-@onready var _move_group: PanelContainer = $HudLayer/BottomDock/BottomBar/MoveGroup
-@onready var _combat_group: PanelContainer = $HudLayer/BottomDock/BottomBar/CombatGroup
-@onready var _gem_group: PanelContainer = $HudLayer/BottomDock/BottomBar/GemGroup
-@onready var _turn_group: PanelContainer = $HudLayer/BottomDock/BottomBar/TurnGroup
-@onready var _move_btn: Button = $HudLayer/BottomDock/BottomBar/MoveGroup/VBox/Row/MoveBtn
-@onready var _attack_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row/AttackBtn
-@onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn
-@onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn
-@onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn
-@onready var _menu_btn: Button = $SystemMenuHud/Root/MenuBtn
-
-var _controller: BattleController = BattleController.new()
-var _event_player = BattleEventPlayerScript.new()
-var _board_input = BoardInputAdapterScript.new()
-var _hud_presenter = BattleHudPresenterScript.new()
-var _encounter_id: String = "tutorial_001"
-
-var _inspect_uid: String = ""
-var _inspect_cell: Vector2i = Vector2i(-1, -1)
-var _hover_cell: Vector2i = Vector2i(-1, -1)
-var _timeline_hover_uid: String = ""
-var _panel_visible: bool = true
-var _enemy_phase_running: bool = false
-var _enemy_action_resolving: bool = false
-var _player_animating: bool = false
-var _battle_end_applied: bool = false
-var _animation_speed_scale: float = 1.0
-var _enemy_turn_queue: Array[String] = []
-var _slot_popup: Control = null
-var _held_banner: PanelContainer = null
-var _held_banner_icon: TextureRect = null
-var _held_banner_label: Label = null
-var _console_layer: CanvasLayer = null
-var _console: Control = null
-var _generated_export_btn = null
-var _preview_view: BattlePreviewPanel = null
-var _relic_reward_overlay: Node = null
-var _relic_detail_overlay: Node = null
-var _settlement_overlay: Node = null
-var _settlement_rows_box: VBoxContainer = null
-var _settlement_result: String = ""
-var _settlement_relic_offer: Array[String] = []
-var _settlement_dropped_gems: Array[Dictionary] = []
-var _settlement_relic_pending: bool = false
-var _settlement_gem_pending: bool = false
-var _settlement_gold_amount: int = 0
-var _settlement_is_boss: bool = false
-var _settlement_root_ctrl: Control = null
-var _settlement_gold_chip_label: Label = null
-var _settlement_gold_displayed: int = 0
-var _settlement_gold_claimed: bool = false
-var _run_result_overlay: Node = null
-var _tutorial_overlay: Control = null
-var _held_gem_icon: TextureRect = null
-var _overload_chip: Label = null
-var _relic_bar_root: Control = null
-var _relic_bar_scroll: ScrollContainer = null
-var _relic_bar_vbox: Container = null
-var _rich_tooltip: RichTooltip = null
-var _tracked_player_uid: String = ""
-var _editor_mode: bool = false
-var _editor_tool: Dictionary = {}
-var _editor_drag_active: bool = false
-var _editor_panel: Control = null
-var _editor_inspector: PanelContainer = null
-var _editor_tool_label: Label = null
-var _editor_target_label: Label = null
-var _editor_hover_label: Label = null
-var _editor_contents_box: VBoxContainer = null
-var _editor_gem_list: VBoxContainer = null
-var _editor_relic_list: VBoxContainer = null
-var _editor_status_box: VBoxContainer = null
-var _editor_status_grid: GridContainer = null
-var _editor_result_label: Label = null
-var _editor_remove_unit_btn: Button = null
-var _editor_remove_entity_btn: Button = null
-var _editor_remove_overlay_btn: Button = null
-var _editor_unlimited_btn: Button = null
-var _editor_player_invincible_btn: Button = null
-var _editor_action_cell: Vector2i = Vector2i(-1, -1)
-var _editor_bound_state: GameState = null
-var _editor_dummy_stats: Dictionary = {}
-var _editor_session_active: bool = false
-var _editor_run_snapshot: Dictionary = {}
-var _editor_auto_boot_enabled: bool = true
-var _editor_panel_toggle_btn: Button = null
-var _editor_inspector_toggle_btn: Button = null
-var _editor_inspector_body: VBoxContainer = null
-var _editor_panel_user_positioned: bool = false
-var _leave_confirm_dialog: GameConfirmDialog = null
-var _battle_menu = null
-var _return_to_menu_after_leave_cancel: bool = false
-
-const _EDITOR_KIND_LABELS := {
-	"unit": "怪物",
-	"tile": "地块",
-	"entity": "实体",
-	"overlay": "Overlay",
-	"surface_overlay": "Overlay",
-	"gem": "宝石",
-	"relic": "遗物",
-}
-const _EDITOR_STATUS_IDS: Array[String] = [
-	Constants.STATUS_POISON,
-	Constants.STATUS_BURNING,
-	Constants.STATUS_SLOWED,
-	Constants.STATUS_PARALYZED,
-	Constants.STATUS_FROZEN,
-	Constants.STATUS_WET,
-	Constants.STATUS_ROOTED,
-	Constants.STATUS_VULNERABLE,
-	Constants.STATUS_WEAK,
-	Constants.STATUS_LIGHT_EXPOSED,
-	Constants.STATUS_BLINDED,
-	Constants.STATUS_ARMOR,
-]
+extends "res://scripts/ui/battle_scene_editor_adapter.gd"
 
 func _ready() -> void:
+	var ready_started_usec := Time.get_ticks_usec()
 	resized.connect(_layout_editor_ui)
 	_controller.state_changed.connect(_on_controller_state_changed)
 	_controller.battle_ended.connect(_on_battle_ended)
@@ -189,7 +15,6 @@ func _ready() -> void:
 	_board.editor_tool_drag_hovered.connect(_on_editor_tool_drag_hovered)
 	_board.editor_tool_dropped.connect(_on_editor_tool_dropped)
 	_apply_ui_theme()
-	_create_generated_export_button()
 	_ensure_preview_view().hide(true)
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
@@ -256,10 +81,17 @@ func _ready() -> void:
 		"clear_timeline_hover_cb": Callable(self , "_clear_timeline_hover"),
 	})
 	_apply_animation_speed()
-	_create_leave_confirm_dialog()
-	_create_battle_menu()
+	var start_battle_started_usec := Time.get_ticks_usec()
 	_start_battle(GameService.pending_encounter_id)
+	_startup_start_battle_duration_usec = Time.get_ticks_usec() - start_battle_started_usec
 	call_deferred("_restore_battle_reward_if_needed")
+	_startup_ready_duration_usec = Time.get_ticks_usec() - ready_started_usec
+
+func get_startup_ready_duration_ms() -> float:
+	return float(_startup_ready_duration_usec) / 1000.0
+
+func get_startup_start_battle_duration_ms() -> float:
+	return float(_startup_start_battle_duration_usec) / 1000.0
 
 func _apply_ui_theme() -> void:
 	for hud_child in $HudLayer.get_children():
@@ -319,228 +151,44 @@ func _create_rich_tooltip() -> void:
 	$HudLayer.add_child(_rich_tooltip)
 
 func _create_level_console() -> void:
+	var editor_console_scene := _lazy_resources.editor_console_scene() as PackedScene
+	if editor_console_scene == null:
+		return
 	_console_layer = CanvasLayer.new()
 	_console_layer.layer = 64
 	add_child(_console_layer)
-	_console = EditorConsoleScene.instantiate()
+	_console = editor_console_scene.instantiate()
 	_console.command_submitted.connect(_on_console_submitted)
 	_console_layer.add_child(_console)
 
-func _create_generated_export_button() -> void:
-	_generated_export_btn = GeneratedEncounterExportButtonScript.new()
-	_generated_export_btn.setup(_controller)
-	$HudLayer/TopBar/HBox.add_child(_generated_export_btn)
-	BattleUiTheme.apply_button(_generated_export_btn, "ghost")
-
 func _create_editor_ui() -> void:
-	_editor_panel = BattleEditorPanelScript.new()
-	_editor_panel.position = Vector2(8, 220)
-	_editor_panel.size = Vector2(360, 520)
-	_editor_panel.tool_selected.connect(_on_editor_tool_selected)
-	_editor_panel.tool_drag_started.connect(_on_editor_tool_drag_started)
-	_editor_panel.relic_requested.connect(_on_editor_relic_requested)
-	_editor_panel.encounter_requested.connect(_on_editor_encounter_requested)
-	_editor_panel.clear_enemies_requested.connect(_on_editor_clear_enemies_requested)
-	_editor_panel.close_requested.connect(_on_editor_panel_close_requested)
-	_editor_panel.panel_moved.connect(_on_editor_panel_moved)
-	$HudLayer.add_child(_editor_panel)
-	_editor_panel.setup(Engine.get_main_loop().root.get_node("DataRegistry"))
-	_editor_panel_toggle_btn = Button.new()
-	_editor_panel_toggle_btn.position = Vector2(8, 220)
-	_editor_panel_toggle_btn.size = Vector2(116, 32)
-	_editor_panel_toggle_btn.text = "展开编辑器"
-	_editor_panel_toggle_btn.visible = false
-	_editor_panel_toggle_btn.pressed.connect(_on_editor_panel_toggle_pressed)
-	BattleUiTheme.apply_button(_editor_panel_toggle_btn, "ghost")
-	$HudLayer.add_child(_editor_panel_toggle_btn)
-	_editor_inspector = PanelContainer.new()
-	_editor_inspector.clip_contents = true
-	_editor_inspector.mouse_filter = Control.MOUSE_FILTER_STOP
-	_editor_inspector.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.PHASE_PLAYER))
-	$HudLayer.add_child(_editor_inspector)
-	var inspector_root := VBoxContainer.new()
-	inspector_root.add_theme_constant_override("separation", 6)
-	inspector_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_editor_inspector.add_child(inspector_root)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 6)
-	inspector_root.add_child(header)
-	var title := Label.new()
-	title.text = "编辑状态"
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	header.add_child(title)
-	var header_spacer := Control.new()
-	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(header_spacer)
-	var close_btn := Button.new()
-	close_btn.custom_minimum_size = Vector2(34, 34)
-	close_btn.text = "×"
-	close_btn.pressed.connect(_on_editor_inspector_close_pressed)
-	BattleUiTheme.apply_button(close_btn, "ghost")
-	header.add_child(close_btn)
-
-	var inspector_scroll := ScrollContainer.new()
-	inspector_scroll.name = "InspectorScroll"
-	inspector_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inspector_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	inspector_root.add_child(inspector_scroll)
-	_editor_inspector_body = VBoxContainer.new()
-	_editor_inspector_body.add_theme_constant_override("separation", 6)
-	_editor_inspector_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	inspector_scroll.add_child(_editor_inspector_body)
-
-	_editor_tool_label = Label.new()
-	_editor_tool_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_editor_tool_label.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	_editor_inspector_body.add_child(_editor_tool_label)
-
-	_editor_target_label = Label.new()
-	_editor_target_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_editor_target_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	_editor_inspector_body.add_child(_editor_target_label)
-
-	_editor_hover_label = Label.new()
-	_editor_hover_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_editor_hover_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	_editor_inspector_body.add_child(_editor_hover_label)
-
-	_editor_contents_box = VBoxContainer.new()
-	_editor_contents_box.add_theme_constant_override("separation", 4)
-	_editor_inspector_body.add_child(_editor_contents_box)
-
-	var gem_title := Label.new()
-	gem_title.text = "宝石"
-	gem_title.add_theme_font_size_override("font_size", 12)
-	gem_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	_editor_contents_box.add_child(gem_title)
-
-	_editor_gem_list = VBoxContainer.new()
-	_editor_gem_list.add_theme_constant_override("separation", 4)
-	_editor_contents_box.add_child(_editor_gem_list)
-
-	var relic_title := Label.new()
-	relic_title.text = "遗物"
-	relic_title.add_theme_font_size_override("font_size", 12)
-	relic_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	_editor_contents_box.add_child(relic_title)
-
-	_editor_relic_list = VBoxContainer.new()
-	_editor_relic_list.add_theme_constant_override("separation", 4)
-	_editor_contents_box.add_child(_editor_relic_list)
-
-	_editor_status_box = VBoxContainer.new()
-	_editor_status_box.add_theme_constant_override("separation", 4)
-	_editor_inspector_body.add_child(_editor_status_box)
-	var status_title := Label.new()
-	status_title.text = "状态"
-	status_title.add_theme_font_size_override("font_size", 12)
-	status_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	_editor_status_box.add_child(status_title)
-	_editor_status_grid = GridContainer.new()
-	_editor_status_grid.columns = 5
-	_editor_status_grid.add_theme_constant_override("h_separation", 4)
-	_editor_status_grid.add_theme_constant_override("v_separation", 4)
-	_editor_status_box.add_child(_editor_status_grid)
-
-	_editor_result_label = Label.new()
-	_editor_result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_editor_result_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-	_editor_inspector_body.add_child(_editor_result_label)
-
-	var actions := GridContainer.new()
-	actions.columns = 2
-	actions.add_theme_constant_override("h_separation", 6)
-	actions.add_theme_constant_override("v_separation", 6)
-	_editor_inspector_body.add_child(actions)
-
-	_editor_remove_unit_btn = Button.new()
-	_editor_remove_unit_btn.text = "删单位"
-	_editor_remove_unit_btn.pressed.connect(_on_editor_remove_unit_pressed)
-	actions.add_child(_editor_remove_unit_btn)
-	BattleUiTheme.apply_button(_editor_remove_unit_btn, "ghost")
-
-	_editor_remove_entity_btn = Button.new()
-	_editor_remove_entity_btn.text = "删实体"
-	_editor_remove_entity_btn.pressed.connect(_on_editor_remove_entity_pressed)
-	actions.add_child(_editor_remove_entity_btn)
-	BattleUiTheme.apply_button(_editor_remove_entity_btn, "ghost")
-
-	_editor_remove_overlay_btn = Button.new()
-	_editor_remove_overlay_btn.text = "删Overlay"
-	_editor_remove_overlay_btn.pressed.connect(_on_editor_remove_overlay_pressed)
-	actions.add_child(_editor_remove_overlay_btn)
-	BattleUiTheme.apply_button(_editor_remove_overlay_btn, "ghost")
-
-	_editor_unlimited_btn = Button.new()
-	_editor_unlimited_btn.toggle_mode = true
-	_editor_unlimited_btn.text = "无限行动 关"
-	_editor_unlimited_btn.pressed.connect(_on_editor_unlimited_actions_pressed)
-	_editor_inspector_body.add_child(_editor_unlimited_btn)
-	BattleUiTheme.apply_button(_editor_unlimited_btn, "ghost")
-
-	_editor_player_invincible_btn = Button.new()
-	_editor_player_invincible_btn.toggle_mode = true
-	_editor_player_invincible_btn.text = "玩家无敌 关"
-	_editor_player_invincible_btn.pressed.connect(_on_editor_player_invincible_pressed)
-	_editor_inspector_body.add_child(_editor_player_invincible_btn)
-	BattleUiTheme.apply_button(_editor_player_invincible_btn, "ghost")
-
-
-	_editor_inspector_toggle_btn = Button.new()
-	_editor_inspector_toggle_btn.position = Vector2(size.x - 124, 108)
-	_editor_inspector_toggle_btn.size = Vector2(116, 32)
-	_editor_inspector_toggle_btn.text = "展开检查器"
-	_editor_inspector_toggle_btn.visible = false
-	_editor_inspector_toggle_btn.pressed.connect(_on_editor_inspector_toggle_pressed)
-	BattleUiTheme.apply_button(_editor_inspector_toggle_btn, "ghost")
-	$HudLayer.add_child(_editor_inspector_toggle_btn)
-
+	var editor_panel_script := _lazy_resources.editor_panel_script() as Script
+	var editor_view_script := _lazy_resources.editor_view_script() as Script
+	if editor_panel_script == null or editor_view_script == null:
+		return
+	_editor_view = editor_view_script.new()
+	var controls: Dictionary = _editor_view.build(self, editor_panel_script, DataRegistry)
+	_editor_panel = controls.get("panel")
+	_editor_panel_toggle_btn = controls.get("panel_toggle_btn")
+	_editor_inspector = controls.get("inspector")
+	_editor_inspector_body = controls.get("inspector_body")
+	_editor_tool_label = controls.get("tool_label")
+	_editor_target_label = controls.get("target_label")
+	_editor_hover_label = controls.get("hover_label")
+	_editor_contents_box = controls.get("contents_box")
+	_editor_gem_list = controls.get("gem_list")
+	_editor_relic_list = controls.get("relic_list")
+	_editor_status_box = controls.get("status_box")
+	_editor_status_grid = controls.get("status_grid")
+	_editor_result_label = controls.get("result_label")
+	_editor_remove_unit_btn = controls.get("remove_unit_btn")
+	_editor_remove_entity_btn = controls.get("remove_entity_btn")
+	_editor_remove_overlay_btn = controls.get("remove_overlay_btn")
+	_editor_unlimited_btn = controls.get("unlimited_btn")
+	_editor_player_invincible_btn = controls.get("player_invincible_btn")
+	_editor_inspector_toggle_btn = controls.get("inspector_toggle_btn")
 	_sync_editor_inspector("")
 	call_deferred("_layout_editor_ui")
-
-
-func _editor_available() -> bool:
-	return GameService.pending_battle_mode == "editor" and OS.is_debug_build() and bool(SettingsService.get_value("battle_editor_enabled"))
-
-
-func setup(encounter_id: String) -> void:
-	_encounter_id = encounter_id
-	if is_node_ready():
-		_start_battle(encounter_id)
-
-
-func _start_battle(encounter_id: String) -> void:
-	_encounter_id = encounter_id
-	var editor_battle := _editor_available()
-	if editor_battle and not _editor_session_active:
-		_begin_editor_session()
-	_battle_end_applied = false
-	_board.clear_gem_visuals()
-	_hide_preview_panel(true)
-	_tracked_player_uid = ""
-	_editor_dummy_stats.clear()
-	_editor_bound_state = null
-	_controller.start_encounter(encounter_id, 0, GameService.pending_room_id, not editor_battle)
-	_generated_export_btn.sync_for_state(_controller.state)
-	_bind_editor_state_signals()
-	_mark_visible_enemies_seen()
-	_inspect_uid = _controller.selected_unit_uid
-	_inspect_cell = Vector2i(-1, -1)
-	_controller.select_action("")
-	_board.init_unit_orientations()
-	var carried_gem := _controller.get_held_gem()
-	if carried_gem != null:
-		_board.show_held_gem_orbit(carried_gem)
-	if _editor_available() and _editor_panel != null and _editor_auto_boot_enabled:
-		_editor_auto_boot_enabled = false
-		_enter_editor_mode()
-	if not _editor_available() and bool(SettingsService.get_value("show_tutorial")):
-		if encounter_id == "tutorial_001":
-			_show_tutorial_intro()
-		elif encounter_id == "boss_chapter_1":
-			_show_old_mage_tutorial_intro()
-
 
 func _on_action_pressed(action: String) -> void:
 	if _enemy_phase_running:
@@ -552,7 +200,6 @@ func _on_action_pressed(action: String) -> void:
 	else:
 		_controller.select_action(action)
 		_message_label.text = _controller.get_action_hint()
-
 
 func _on_cell_clicked(cell: Vector2i) -> void:
 	if _editor_available():
@@ -658,98 +305,13 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 	if not presentation_refreshed:
 		_refresh()
 
-
-func _on_cell_hovered(cell: Vector2i, valid: bool) -> void:
-	_hover_cell = cell if valid else Vector2i(-1, -1)
-	if _controller == null:
-		return
-	if _editor_drag_active:
-		if not valid:
-			_board.set_hover(Vector2i(-1, -1))
-			_board.clear_editor_preview()
-			_sync_editor_hover("", "")
-			_refresh_editor_focus()
-			_hide_preview_panel(true)
-			return
-		_board.set_hover(cell)
-		var preview := _editor_preview_for_cell(cell)
-		_board.set_editor_preview(_typed_preview_cells(preview.get("cells", [])), bool(preview.get("valid", false)), true)
-		_sync_editor_hover("格子 %s" % str(cell), str(preview.get("message", "")))
-		_refresh_editor_focus()
-		_preview_title.text = "编辑预览"
-		_preview_body.text = _format_preview_body(str(preview.get("message", "")))
-		_show_preview_panel(get_viewport().get_mouse_position())
-		return
-	if not valid:
-		_hide_preview_panel(true)
-		_board.set_hover(Vector2i(-1, -1))
-		if _timeline_hover_uid.is_empty():
-			_board.set_timeline_hover_unit("")
-		BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights())
-		_refresh_editor_focus()
-		return
-	_board.set_hover(cell)
-	BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
-	if _timeline_hover_uid.is_empty():
-		var hovered_state := _view_state()
-		var hovered_unit := hovered_state.get_unit_at(cell) if hovered_state != null else null
-		_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
-	_hide_preview_panel(true)
-	_refresh_editor_focus()
-
-
-func _show_preview_panel(mouse: Vector2) -> void:
-	_ensure_preview_view().show_at(mouse, Callable(self, "_clamp_preview_panel"))
-
-
-func _hide_preview_panel(immediate: bool = false) -> void:
-	_ensure_preview_view().hide(immediate)
-
-
 func _set_preview_panel_visible(shown: bool, immediate: bool = false) -> void:
 	_ensure_preview_view().set_visible(shown, immediate)
-
-
-func _ensure_preview_view() -> BattlePreviewPanel:
-	if _preview_view == null:
-		_preview_view = BattlePreviewPanel.new(_preview_panel, _preview_title, _preview_body)
-	return _preview_view
-
-
-func _format_preview_body(body: String) -> String:
-	if body.is_empty():
-		return ""
-	var lines: PackedStringArray = body.split("\n")
-	var formatted: Array[String] = []
-	for line in lines:
-		if line.begins_with("→"):
-			formatted.append("[color=#7fd4ff]%s[/color]" % line)
-		elif line.begins_with("意图:"):
-			formatted.append("[color=#ffb07a]%s[/color]" % line)
-		elif line.begins_with("状态:"):
-			formatted.append("[color=#ff7070]%s[/color]" % line)
-		elif line.begins_with("预判:"):
-			formatted.append("[color=#ffd166]%s[/color]" % line)
-		else:
-			formatted.append("[color=#c8cad4]%s[/color]" % line)
-	return "\n".join(formatted)
-
-
-func _sync_unit_slot_panels() -> void:
-	if _controller == null or _board == null:
-		return
-	var action := _controller.selected_action
-	if action in [Constants.ACTION_EXTRACT, Constants.ACTION_INSERT]:
-		_board.configure_unit_slot_panels(action, _controller.check_slot_action)
-	else:
-		_board.clear_unit_slot_panels()
-
 
 func _on_board_unit_slot_selected(unit_uid: String, slot_index: int) -> void:
 	if _player_animating or _enemy_phase_running:
 		return
 	_on_popup_slot_selected(unit_uid, slot_index)
-
 
 func _on_popup_dropped_gem_selected(gem_uid: String) -> void:
 	var result := _controller.try_extract_dropped(gem_uid)
@@ -760,7 +322,6 @@ func _on_popup_dropped_gem_selected(gem_uid: String) -> void:
 		_message_label.text = "已从地面拔取，选择槽位嵌入"
 	_refresh()
 	_sync_unit_slot_panels()
-
 
 func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 	var action := _controller.selected_action
@@ -795,7 +356,6 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 	_refresh()
 	_sync_unit_slot_panels()
 
-
 func _begin_held_gem_extract(source_grid: Vector2i, result: Dictionary) -> void:
 	var gem_uid := str(result.get("gem_uid", ""))
 	if gem_uid.is_empty() or _controller.state == null:
@@ -804,7 +364,6 @@ func _begin_held_gem_extract(source_grid: Vector2i, result: Dictionary) -> void:
 	if gem == null:
 		return
 	_board.start_held_gem_extract(source_grid, gem)
-
 
 func _begin_held_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
 	var gem_uid := str(result.get("gem_uid", ""))
@@ -822,7 +381,6 @@ func _begin_held_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
 		return
 	_schedule_swapped_gem_extract(target_grid, swapped_gem)
 
-
 func _schedule_swapped_gem_extract(target_grid: Vector2i, gem: GemState) -> void:
 	var duration: float = 0.38
 	if _board != null and _board.has_method("gem_insert_anim_duration"):
@@ -831,7 +389,6 @@ func _schedule_swapped_gem_extract(target_grid: Vector2i, gem: GemState) -> void
 		_on_swapped_gem_extract_ready.bind(target_grid, gem.uid),
 		CONNECT_ONE_SHOT
 	)
-
 
 func _on_swapped_gem_extract_ready(target_grid: Vector2i, gem_uid: String) -> void:
 	if not is_instance_valid(_board) or _controller == null or _controller.state == null:
@@ -845,15 +402,12 @@ func _on_swapped_gem_extract_ready(target_grid: Vector2i, gem_uid: String) -> vo
 		return
 	_board.start_held_gem_extract(target_grid, gem)
 
-
 func _on_popup_cancelled() -> void:
 	_refresh()
-
 
 func _dismiss_popup() -> void:
 	if _slot_popup != null and _slot_popup.is_showing():
 		_slot_popup.hide_popup()
-
 
 func _on_end_turn_pressed() -> void:
 	if _enemy_phase_running:
@@ -866,7 +420,6 @@ func _on_end_turn_pressed() -> void:
 		_refresh()
 		return
 	_run_enemy_phase_async(turn_end_execution)
-
 
 func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 	_enemy_phase_running = true
@@ -936,12 +489,10 @@ func _run_enemy_phase_async(opening_execution: Dictionary = {}) -> void:
 	_message_label.text = _controller.get_action_hint()
 	_refresh()
 
-
 func _await_scene_timer(seconds: float) -> void:
 	if not is_inside_tree():
 		return
 	await get_tree().create_timer(_scaled_anim_time(seconds)).timeout
-
 
 func _exit_tree() -> void:
 	_end_editor_session()
@@ -950,32 +501,34 @@ func _exit_tree() -> void:
 		_dmg_text.queue_free()
 		_dmg_text = null
 
-
 func _on_back_pressed() -> void:
 	if _leave_confirm_dialog == null:
-		_confirm_leave_battle()
+		_create_leave_confirm_dialog()
+	if _leave_confirm_dialog == null:
 		return
 	_leave_confirm_dialog.popup_centered(Vector2i(420, 180))
 
-
 func _on_menu_pressed() -> void:
+	if _battle_menu == null:
+		_create_battle_menu()
 	if _battle_menu == null:
 		return
 	_dismiss_popup()
 	_hide_preview_panel(true)
 	_battle_menu.open_menu()
 
-
 func _create_battle_menu() -> void:
 	if _battle_menu != null:
 		return
-	_battle_menu = SystemPauseMenuScript.new()
+	var menu_script := _lazy_resources.system_pause_menu_script()
+	if menu_script == null:
+		return
+	_battle_menu = menu_script.new()
 	_battle_menu.name = "SystemPauseMenu"
 	_battle_menu.configure_context("battle.menu.resume", "继续战斗")
 	_battle_menu.save_and_exit_requested.connect(_on_battle_menu_save_and_exit_requested)
 	_battle_menu.animation_speed_changed.connect(_apply_animation_speed)
 	add_child(_battle_menu)
-
 
 func _on_battle_menu_save_and_exit_requested() -> void:
 	if _battle_menu != null:
@@ -983,11 +536,13 @@ func _on_battle_menu_save_and_exit_requested() -> void:
 	_return_to_menu_after_leave_cancel = true
 	_on_back_pressed()
 
-
 func _create_leave_confirm_dialog() -> void:
 	if _leave_confirm_dialog != null:
 		return
-	_leave_confirm_dialog = GameConfirmDialog.new()
+	var dialog_script := _lazy_resources.game_confirm_dialog_script()
+	if dialog_script == null:
+		return
+	_leave_confirm_dialog = dialog_script.new()
 	_leave_confirm_dialog.configure(
 		tr("battle.leave.confirm.title"),
 		tr("battle.leave.confirm.body"),
@@ -998,14 +553,12 @@ func _create_leave_confirm_dialog() -> void:
 	_leave_confirm_dialog.cancelled.connect(_on_leave_confirm_cancelled)
 	add_child(_leave_confirm_dialog)
 
-
 func _on_leave_confirm_cancelled() -> void:
 	if not _return_to_menu_after_leave_cancel:
 		return
 	_return_to_menu_after_leave_cancel = false
 	if _battle_menu != null:
 		_battle_menu.open_menu()
-
 
 func _confirm_leave_battle() -> void:
 	if _player_animating or _enemy_phase_running or _event_player.is_playing():
@@ -1035,7 +588,6 @@ func _confirm_leave_battle() -> void:
 	GameService.reset_session_state()
 	get_tree().change_scene_to_file("res://scenes/main/main.tscn")
 
-
 func _on_battle_ended(result: String) -> void:
 	if _battle_end_applied:
 		return
@@ -1043,18 +595,6 @@ func _on_battle_ended(result: String) -> void:
 		_event_player.queue_battle_end(result)
 		return
 	_apply_battle_end(result)
-
-
-func _show_result(result: Dictionary) -> void:
-	if result.get("ok", false):
-		_message_label.text = _controller.get_action_hint()
-	else:
-		var reason: String = result.get("reason", "")
-		if reason.is_empty():
-			reason = "无法执行"
-		push_warning("BattleScene: action failed — %s" % reason)
-		_message_label.text = reason
-
 
 func _on_console_submitted(command: String) -> void:
 	if _enemy_phase_running or _player_animating:
@@ -1077,20 +617,13 @@ func _on_console_submitted(command: String) -> void:
 		_console.append_log(reason, "#ff8a80")
 		_message_label.text = reason
 
-
 func _data_registry() -> Node:
 	return Engine.get_main_loop().root.get_node("DataRegistry")
-
-
-func _view_state() -> GameState:
-	return _event_player.get_view_state(_controller.state)
-
 
 func _on_controller_state_changed() -> void:
 	if _event_player.is_playing() or _enemy_action_resolving:
 		return
 	_refresh()
-
 
 func _play_presentation_sequence(state_before: GameState, events: Array, economy_source: GameState = null) -> void:
 	if not is_inside_tree():
@@ -1127,1748 +660,22 @@ func _try_auto_skip_incapacitated_player_turn() -> void:
 	_message_label.text = fallback if translated == message_key else translated
 	_on_end_turn_pressed()
 
-
 func _refresh_economy_chips() -> void:
 	var state := _view_state()
 	if state == null:
 		return
 	_hud_presenter.refresh_economy_chips(state)
 
-
-func _apply_battle_end(result: String) -> void:
-	if GameService.pending_battle_mode == "editor":
-		# A debug editor is a persistent sandbox. Keep this defensive branch even
-		# though the controller normally suppresses the terminal signal itself.
-		_battle_end_applied = false
-		_controller._check_battle_end()
-		_message_label.text = "编辑模式：死亡状态保留，可继续编辑"
-		_refresh()
-		return
-	if _battle_end_applied:
-		return
-	_battle_end_applied = true
-	_message_label.text = "战斗结束 — %s" % ("胜利" if result == "win" else "失败")
-	_hint_label.text = ""
-	var end_turn := _controller.state.turn_index if _controller.state != null else 0
-	_phase_badge.text = "结束 · 第%d回合" % end_turn
-	_phase_badge.add_theme_color_override("font_color", BattleUiTheme.PHASE_END)
-	if result == "win" and RunService.is_run_active():
-		_settlement_gold_amount = _grant_combat_gold_once()
-		var room_id := GameService.pending_room_id
-		var relic_offer: Array[String] = _battle_relic_offer(room_id)
-		var has_relics := not relic_offer.is_empty() and not relic_offer.all(
-			func(rid: String) -> bool: return rid == "relic_placeholder"
-		)
-		_settlement_result = result
-		_settlement_is_boss = AdventureService.pending_room_type.to_upper() == "END"
-		_settlement_relic_offer = []
-		if has_relics:
-			_settlement_relic_offer = relic_offer
-		_settlement_relic_pending = has_relics
-		_settlement_dropped_gems = []
-		if _has_pending_dropped_gem_reward():
-			_settlement_dropped_gems = _dropped_gem_offer()
-		_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
-		_open_battle_settlement()
-		return
-	if result != "win" and RunService.is_run_active() and GameService.adventure_return:
-		_show_run_result_overlay("lose")
-		return
-	_finish_battle_and_navigate(result)
-
-
-func _consume_pending_battle_end_if_any() -> bool:
-	if _battle_end_applied:
-		return false
-	var pending_battle_end := _event_player.take_pending_battle_end()
-	if pending_battle_end.is_empty() and _controller.state != null and _controller.state.phase == Constants.PHASE_ENDED:
-		pending_battle_end = _controller.state.result
-	if pending_battle_end.is_empty():
-		return false
-	_apply_battle_end(pending_battle_end)
-	return true
-
-
-func _battle_relic_offer(room_id: String) -> Array[String]:
-	var room_type := AdventureService.pending_room_type.to_upper()
-	return RunService.get_or_roll_relic_offer(
-		room_id,
-		DataRegistry.get_battle_relic_offer_source(room_type),
-		DataRegistry.get_battle_relic_offer_count(room_type)
-	)
-
-
-func _grant_combat_gold_once() -> int:
-	var grant_result := BattleSettlementService.grant_combat_gold(
-		GameService.pending_room_id,
-		AdventureService.pending_room_type,
-		GameService.adventure_return
-	)
-	if not bool(grant_result.get("ok", false)):
-		return 0
-	var entry: Dictionary = grant_result.get("entry", {})
-	_message_label.text = "战斗结束 — 胜利 · %s" % EconomyService.format_entry(entry)
-	return int(grant_result.get("amount", 0))
-
-
-func _open_battle_settlement() -> void:
-	_mark_battle_reward_pending("settlement", _settlement_result, _settlement_relic_pending)
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_overlay.queue_free()
-	_settlement_gold_claimed = false
-	_settlement_gold_displayed = maxi(0, RunService.get_balance("gold") - _settlement_gold_amount)
-	_settlement_overlay = _build_settlement_overlay()
-	add_child(_settlement_overlay)
-
-
-func _build_settlement_overlay() -> Node:
-	var settlement := DataRegistry.get_battle_reward_ui_layout("settlement")
-	var canvas := CanvasLayer.new()
-	canvas.layer = int(settlement.get("canvas_layer", 0))
-
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-	_settlement_root_ctrl = root_ctrl
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.9)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	root_ctrl.add_child(_build_gold_chip())
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.TEXT_GOLD))
-	panel.custom_minimum_size = Vector2(float(settlement.get("panel_width", 0)), 0)
-	center.add_child(panel)
-
-	var margin := MarginContainer.new()
-	var panel_margin := int(settlement.get("panel_margin", 0))
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_%s" % side, panel_margin)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", int(settlement.get("content_separation", 0)))
-	margin.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "首领已伏诛" if _settlement_is_boss else "战斗胜利"
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var subtitle := Label.new()
-	subtitle.text = "战利品结算"
-	subtitle.add_theme_font_size_override("font_size", 13)
-	subtitle.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(subtitle)
-
-	var sep := HSeparator.new()
-	vbox.add_child(sep)
-
-	_settlement_rows_box = VBoxContainer.new()
-	_settlement_rows_box.add_theme_constant_override("separation", int(settlement.get("row_separation", 0)))
-	vbox.add_child(_settlement_rows_box)
-
-	var continue_wrap := CenterContainer.new()
-	var continue_btn := Button.new()
-	continue_btn.text = _settlement_continue_label()
-	continue_btn.custom_minimum_size = Vector2(
-		float(settlement.get("continue_button_width", 0)),
-		float(settlement.get("continue_button_height", 0))
-	)
-	BattleUiTheme.apply_button(continue_btn, "end")
-	continue_btn.pressed.connect(_on_settlement_continue)
-	continue_wrap.add_child(continue_btn)
-	vbox.add_child(continue_wrap)
-
-	_refresh_settlement_rows()
-	_animate_panel_in(panel)
-	return canvas
-
-
-## 结算页左上角的金币总额 chip，作为金币飞行落点。
-func _build_gold_chip() -> Control:
-	var chip := PanelContainer.new()
-	chip.add_theme_stylebox_override("panel", BattleUiTheme.chip_style(BattleUiTheme.TEXT_GOLD))
-	chip.position = Vector2(18, 16)
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 6)
-	chip.add_child(hbox)
-
-	var icon := TextureRect.new()
-	icon.texture = CoinIconTexture
-	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	icon.custom_minimum_size = Vector2(22, 22)
-	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hbox.add_child(icon)
-
-	_settlement_gold_chip_label = Label.new()
-	_settlement_gold_chip_label.text = str(_settlement_gold_displayed)
-	_settlement_gold_chip_label.add_theme_font_size_override("font_size", 18)
-	_settlement_gold_chip_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	_settlement_gold_chip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hbox.add_child(_settlement_gold_chip_label)
-
-	return chip
-
-
-## 面板整体入场保持轻量，避免奖励领取流程反复抢戏。
-func _animate_panel_in(panel: Control) -> void:
-	panel.modulate.a = 0.0
-	panel.pivot_offset = panel.custom_minimum_size * 0.5
-	panel.scale = Vector2(0.97, 0.97)
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(panel, "modulate:a", 1.0, 0.14)
-	tween.tween_property(panel, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-
-
-func _settlement_continue_label() -> String:
-	if _settlement_is_boss:
-		var chapter := AdventureService.get_current_chapter()
-		if chapter < AdventureService.get_chapter_count():
-			return "进入第 %d 关" % (chapter + 1)
-		return "凯旋 · 通关"
-	return "返回路线"
-
-
-func _refresh_settlement_rows(play_intro: bool = true) -> void:
-	if _settlement_rows_box == null or not is_instance_valid(_settlement_rows_box):
-		return
-	for child in _settlement_rows_box.get_children():
-		child.queue_free()
-	var rows: Array[Control] = []
-	if _settlement_gold_amount > 0:
-		if _settlement_gold_claimed:
-			rows.append(_build_settlement_row(
-				"金币", "+%d" % _settlement_gold_amount, "", BattleUiTheme.TEXT_MUTED, Callable(), CoinIconTexture
-			))
-		else:
-			rows.append(_build_settlement_row(
-				"金币", "+%d" % _settlement_gold_amount, "领取", BattleUiTheme.TEXT_GOLD, Callable(self, "_on_settlement_claim_gold"), CoinIconTexture
-			))
-	if not _settlement_relic_offer.is_empty():
-		if _settlement_relic_pending:
-			rows.append(_build_settlement_row(
-				"遗物", "三选一", "领取", BattleUiTheme.TEXT_GOLD, Callable(self, "_open_settlement_relic"), null
-			))
-		else:
-			rows.append(_build_settlement_row(
-				"遗物", "已领取", "", BattleUiTheme.TEXT_MUTED, Callable(), null
-			))
-	if not _settlement_dropped_gems.is_empty():
-		if _settlement_gem_pending:
-			rows.append(_build_settlement_row(
-				"掉落宝石", "%d 颗" % _settlement_dropped_gems.size(), "拾取", BattleUiTheme.TEXT_GOLD, Callable(self, "_open_settlement_gem"), null
-			))
-		else:
-			rows.append(_build_settlement_row(
-				"掉落宝石", "已处理", "", BattleUiTheme.TEXT_MUTED, Callable(), null
-			))
-	for row in rows:
-		_settlement_rows_box.add_child(row)
-	if rows.is_empty():
-		var empty := Label.new()
-		empty.text = "无额外战利品"
-		empty.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_settlement_rows_box.add_child(empty)
-	elif play_intro:
-		BattleRewardOverlay.animate_cards_in(self, rows, {"stagger": 0.035, "from": Vector2(32.0, 4.0), "tilt": 0.0})
-
-
-func _build_settlement_row(label_text: String, value_text: String, action_text: String, value_color: Color, action_cb: Callable, icon_tex: Texture2D) -> Control:
-	var settlement := DataRegistry.get_battle_reward_ui_layout("settlement")
-	var row := PanelContainer.new()
-	row.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER))
-	row.custom_minimum_size = Vector2(
-		float(settlement.get("row_width", 0)),
-		float(settlement.get("row_height", 0))
-	)
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 10)
-	row.add_child(hbox)
-
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(28, 28)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		hbox.add_child(icon)
-
-	var name_lbl := Label.new()
-	name_lbl.text = label_text
-	name_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hbox.add_child(name_lbl)
-
-	var value_lbl := Label.new()
-	value_lbl.text = value_text
-	value_lbl.add_theme_font_size_override("font_size", 16)
-	value_lbl.add_theme_color_override("font_color", value_color)
-	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	value_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hbox.add_child(value_lbl)
-
-	if not action_text.is_empty() and action_cb.is_valid():
-		var btn := Button.new()
-		btn.text = action_text
-		btn.custom_minimum_size = Vector2(
-			float(settlement.get("row_action_width", 0)),
-			float(settlement.get("row_action_height", 0))
-		)
-		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		BattleUiTheme.apply_button(btn, "end")
-		btn.pressed.connect(action_cb)
-		hbox.add_child(btn)
-	else:
-		var spacer := Control.new()
-		spacer.custom_minimum_size = Vector2(14, 0)
-		hbox.add_child(spacer)
-
-	return row
-
-
-func _on_settlement_claim_gold() -> void:
-	if _settlement_gold_claimed:
-		return
-	_settlement_gold_claimed = true
-	var from_global := _settlement_rows_box.get_global_rect().get_center() if _settlement_rows_box != null else get_viewport_rect().get_center()
-	var to_global := Vector2(40, 28)
-	if _settlement_gold_chip_label != null and is_instance_valid(_settlement_gold_chip_label):
-		to_global = _settlement_gold_chip_label.get_global_rect().get_center()
-	_spawn_coin_burst(from_global, to_global, 12)
-	_refresh_settlement_rows(false)
-
-
-## 金币迸发动画：从奖励行向左上角金币 chip 抛出若干金币精灵，逐枚到达时累加显示数值。
-func _spawn_coin_burst(from_global: Vector2, to_global: Vector2, count: int) -> void:
-	if _settlement_root_ctrl == null or not is_instance_valid(_settlement_root_ctrl):
-		_settlement_gold_displayed += _settlement_gold_amount
-		_update_gold_chip_label()
-		return
-	var per_coin: int = maxi(1, int(round(float(_settlement_gold_amount) / float(count))))
-	var remaining := _settlement_gold_amount
-	for i in range(count):
-		var coin := TextureRect.new()
-		coin.texture = CoinIconTexture
-		coin.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		coin.size = Vector2(24, 24)
-		coin.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var scatter := Vector2(randf_range(-60.0, 60.0), randf_range(-40.0, 20.0))
-		coin.global_position = from_global - coin.size * 0.5 + scatter
-		_settlement_root_ctrl.add_child(coin)
-		var add_amount: int = remaining if i == count - 1 else per_coin
-		remaining -= add_amount
-		var target := to_global - coin.size * 0.5
-		var delay := float(i) * 0.04
-		var dur := randf_range(0.42, 0.58)
-		var tween := create_tween()
-		tween.tween_interval(delay)
-		tween.tween_property(coin, "global_position", target, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tween.parallel().tween_property(coin, "scale", Vector2(0.6, 0.6), dur)
-		tween.tween_callback(_on_coin_arrived.bind(add_amount))
-		tween.tween_callback(coin.queue_free)
-
-
-func _on_coin_arrived(add_amount: int) -> void:
-	_settlement_gold_displayed += add_amount
-	_update_gold_chip_label()
-
-
-func _update_gold_chip_label() -> void:
-	if _settlement_gold_chip_label != null and is_instance_valid(_settlement_gold_chip_label):
-		_settlement_gold_chip_label.text = str(_settlement_gold_displayed)
-		var pop := create_tween()
-		_settlement_gold_chip_label.pivot_offset = _settlement_gold_chip_label.size * 0.5
-		pop.tween_property(_settlement_gold_chip_label, "scale", Vector2(1.25, 1.25), 0.06)
-		pop.tween_property(_settlement_gold_chip_label, "scale", Vector2.ONE, 0.1)
-
-
-func _open_settlement_relic() -> void:
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_overlay.visible = false
-	var overlay := _build_relic_overlay(_settlement_relic_offer, _settlement_result)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _open_settlement_gem() -> void:
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_overlay.visible = false
-	var empty_relics: Array[String] = []
-	var overlay := _build_dropped_gem_overlay(_settlement_dropped_gems, empty_relics, _settlement_result)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _return_to_settlement() -> void:
-	_mark_battle_reward_pending("settlement", _settlement_result, _settlement_relic_pending)
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_overlay.visible = true
-		_refresh_settlement_rows(false)
-	else:
-		_open_battle_settlement()
-
-
-func _on_settlement_continue() -> void:
-	var is_final_boss := _settlement_is_boss and AdventureService.get_current_chapter() >= AdventureService.get_chapter_count()
-	if is_final_boss:
-		if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-			_settlement_overlay.queue_free()
-		_settlement_overlay = null
-		_show_run_result_overlay("win")
-		return
-	_finalize_settlement_navigation()
-
-
-func _finalize_settlement_navigation() -> void:
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_overlay.queue_free()
-	_settlement_overlay = null
-	var battle_result := _settlement_result
-	if GameService.adventure_return and RunService.is_run_active():
-		RunService.mark_room_resolved(GameService.pending_room_id, {
-			"room_id": GameService.pending_room_id,
-			"room_type": AdventureService.pending_room_type,
-			"battle_result": battle_result,
-			"summary": "战斗房间已结算。",
-		})
-	RunService.clear_pending_decision()
-	RunService.set_run_phase("MAP")
-	_finish_battle_and_navigate(battle_result)
-
-
-## 整局胜利/战败的独立结算页。kind: "win"（通关）/ "lose"（战败）。
-func _show_run_result_overlay(kind: String) -> void:
-	if _run_result_overlay != null and is_instance_valid(_run_result_overlay):
-		return
-	var is_win := kind == "win"
-	var accent: Color = BattleUiTheme.TEXT_GOLD if is_win else UiPalette.HP_LOW
-
-	var canvas := CanvasLayer.new()
-	canvas.layer = 90
-	var root_ctrl := Control.new()
-	root_ctrl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.theme = BattleUiTheme.build_theme()
-	canvas.add_child(root_ctrl)
-
-	var bg := ColorRect.new()
-	bg.color = Color(UiPalette.BG_DEEP, 0.95)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root_ctrl.add_child(center)
-
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(accent))
-	panel.custom_minimum_size = Vector2(440, 0)
-	center.add_child(panel)
-
-	var margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_%s" % side, 30)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 16)
-	margin.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "凯旋归来" if is_win else "战败"
-	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", accent)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var subtitle := Label.new()
-	subtitle.text = "三关线路全部打通，本局胜利。" if is_win else "你在第 %d 关倒下了。" % AdventureService.get_current_chapter()
-	subtitle.add_theme_font_size_override("font_size", 13)
-	subtitle.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(subtitle)
-
-	vbox.add_child(HSeparator.new())
-
-	var stats_box := VBoxContainer.new()
-	stats_box.add_theme_constant_override("separation", 8)
-	for stat in _run_result_stats():
-		stats_box.add_child(_build_run_result_stat_row(str(stat[0]), str(stat[1])))
-	vbox.add_child(stats_box)
-
-	var back_btn := Button.new()
-	back_btn.text = "返回主菜单"
-	back_btn.custom_minimum_size = Vector2(0, 48)
-	BattleUiTheme.apply_button(back_btn, "end" if is_win else "ghost")
-	back_btn.pressed.connect(func() -> void:
-		if _run_result_overlay != null and is_instance_valid(_run_result_overlay):
-			_run_result_overlay.queue_free()
-		_run_result_overlay = null
-		if is_win:
-			_finalize_settlement_navigation()
-		else:
-			_finish_battle_and_navigate("lose")
-	)
-	vbox.add_child(back_btn)
-
-	_run_result_overlay = canvas
-	add_child(canvas)
-	_animate_panel_in(panel)
-
-
-func _run_result_stats() -> Array:
-	var gold := RunService.get_balance("gold")
-	var relic_count := 0
-	var run := RunService.get_run()
-	if run != null:
-		relic_count = run.owned_relics.size()
-	var turns := _controller.state.turn_index if _controller != null and _controller.state != null else 0
-	return [
-		["到达章节", "%d / %d" % [AdventureService.get_current_chapter(), AdventureService.get_chapter_count()]],
-		["累计金币", str(gold)],
-		["持有遗物", str(relic_count)],
-		["坚持回合", str(turns)],
-	]
-
-
-func _build_run_result_stat_row(label_text: String, value_text: String) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	var name_lbl := Label.new()
-	name_lbl.text = label_text
-	name_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(name_lbl)
-	var value_lbl := Label.new()
-	value_lbl.text = value_text
-	value_lbl.add_theme_font_size_override("font_size", 16)
-	value_lbl.add_theme_color_override("font_color", BattleUiTheme.TEXT)
-	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(value_lbl)
-	return row
-
-
-func _placeholder_relic_offer() -> Array[String]:
-	var offer: Array[String] = []
-	offer.append("relic_placeholder")
-	return offer
-
-
-func _show_gem_reward(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> void:
-	_mark_battle_reward_pending("gem", battle_result, not relic_offer.is_empty())
-	var overlay := _build_gem_overlay(gem_offer, relic_offer, battle_result)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _show_dropped_gem_reward(dropped_gems: Array[Dictionary], relic_offer: Array[String], battle_result: String) -> void:
-	_mark_battle_reward_pending("dropped_gem", battle_result, not relic_offer.is_empty())
-	var overlay := _build_dropped_gem_overlay(dropped_gems, relic_offer, battle_result)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _dropped_gem_offer() -> Array[Dictionary]:
-	if _controller == null or _controller.state == null:
-		return [] as Array[Dictionary]
-	return BattleSettlementService.dropped_gem_offer(_controller.state)
-
-
-func _has_pending_dropped_gem_reward() -> bool:
-	if _controller == null or _controller.state == null:
-		return false
-	return BattleSettlementService.has_pending_dropped_gem_reward(_controller.state)
-
-
-func _build_dropped_gem_overlay(dropped_gems: Array[Dictionary], relic_offer: Array[String], battle_result: String) -> Node:
-	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
-	var vbox: VBoxContainer = frame["vbox"]
-
-	var title := Label.new()
-	title.text = "选择一颗掉落宝石嵌入"
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
-	var cards: Array[Control] = []
-	for drop in dropped_gems:
-		var card := _build_dropped_gem_card(drop, battle_result, relic_offer, frame["canvas"])
-		cards_row.add_child(card)
-		cards.append(card)
-	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
-	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
-	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
-
-	var skip_width := float(scroll_metrics.get("width", 0.0))
-	var on_skip := func() -> void:
-		_on_dropped_gem_insert_skipped(battle_result, relic_offer, frame["canvas"])
-	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "不嵌入", on_skip, skip_width))
-
-	return frame["canvas"]
-
-
-func _build_dropped_gem_card(drop: Dictionary, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	var gem_uid := str(drop.get("gem_uid", ""))
-	var gem_id := str(drop.get("gem_id", ""))
-	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
-	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
-	return BattleRewardCardFactory.dropped_gem_card(drop, rarity_color, _data_registry(), UnitLooks, func() -> void:
-		_on_dropped_gem_selected_for_insert(gem_uid, battle_result, relic_offer, canvas)
-	)
-
-
-func _on_dropped_gem_selected_for_insert(gem_uid: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
-	if _controller == null or _controller.state == null:
-		_message_label.text = "无法嵌入：战斗状态不存在。"
-		return
-	var gem: GemState = _controller.state.gems.get(gem_uid, null)
-	if gem == null or not _controller.state.dropped_gems.has(gem_uid):
-		_message_label.text = "无法嵌入：掉落宝石不存在。"
-		return
-	if canvas != null and is_instance_valid(canvas):
-		canvas.queue_free()
-	var overlay := _build_dropped_gem_slot_overlay(gem_uid, battle_result, relic_offer)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _build_dropped_gem_slot_overlay(gem_uid: String, battle_result: String, relic_offer: Array[String]) -> Node:
-	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
-	var vbox: VBoxContainer = frame["vbox"]
-	var canvas: Node = frame["canvas"]
-
-	var gem: GemState = _controller.state.gems.get(gem_uid, null)
-	var title := Label.new()
-	title.text = "嵌入 %s" % (DataRegistry.get_gem_display_name(gem) if gem != null else "掉落宝石")
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var slots_row := HBoxContainer.new()
-	slots_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
-	var player := _controller.state.get_player()
-	if player != null:
-		for slot_index in range(player.slots.size()):
-			slots_row.add_child(_build_player_slot_embed_card(gem_uid, slot_index, battle_result, relic_offer, canvas))
-	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, slots_row, overlay_layout)
-	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(slots_row, overlay_layout, scroll_metrics))
-
-	var back_width := float(scroll_metrics.get("width", 0.0))
-	var on_back := func() -> void:
-		if canvas != null and is_instance_valid(canvas):
-			canvas.queue_free()
-		if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-			_open_settlement_gem()
-		else:
-			_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
-	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "返回", on_back, back_width))
-
-	return canvas
-
-
-func _build_player_slot_embed_card(gem_uid: String, slot_index: int, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	return BattleRewardCardFactory.slot_embed_card(_controller.state, slot_index, _data_registry(), UnitLooks, func() -> void:
-		_on_dropped_gem_slot_chosen(gem_uid, slot_index, battle_result, relic_offer, canvas)
-	)
-
-
-func _build_gem_overlay(gem_offer: Array[String], relic_offer: Array[String], battle_result: String) -> Node:
-	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
-	var vbox: VBoxContainer = frame["vbox"]
-
-	var title := Label.new()
-	title.text = "选择宝石"
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
-	var cards: Array[Control] = []
-	for gem_id in gem_offer:
-		if gem_id.is_empty():
-			continue
-		var card := _build_gem_card(gem_id, battle_result, relic_offer, frame["canvas"])
-		cards_row.add_child(card)
-		cards.append(card)
-	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
-	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
-
-	var skip_width := float(scroll_metrics.get("width", 0.0))
-	var on_skip := func() -> void:
-		_on_gem_chosen("", battle_result, relic_offer, frame["canvas"])
-	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "跳过", on_skip, skip_width))
-
-	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
-	return frame["canvas"]
-
-
-func _build_gem_card(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> Control:
-	var rarity: String = DataRegistry.get_gem_rarity(gem_id)
-	var rarity_color: Color = _hud_presenter.rarity_color(rarity)
-	return BattleRewardCardFactory.gem_card(gem_id, rarity_color, _data_registry(), UnitLooks, func() -> void:
-		_on_gem_chosen(gem_id, battle_result, relic_offer, canvas)
-	)
-
-
-func _on_gem_chosen(gem_id: String, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
-	if not gem_id.is_empty():
-		var acquire_result := BattleSettlementService.acquire_run_gem(gem_id)
-		if not bool(acquire_result.get("ok", false)):
-			var carried_gem_id := str(acquire_result.get("carried_gem_id", ""))
-			var carried_name := DataRegistry.get_gem_display_name(carried_gem_id) if not carried_gem_id.is_empty() else "已有手持宝石"
-			_message_label.text = "无法领取：当前手持 %s，请先跳过或在后续流程中处理。" % carried_name
-			return
-	if canvas != null and is_instance_valid(canvas):
-		canvas.queue_free()
-	_relic_reward_overlay = null
-	var has_relics := not relic_offer.is_empty() and not relic_offer.all(
-		func(rid: String) -> bool: return rid == "relic_placeholder"
-	)
-	if has_relics:
-		_show_relic_reward(relic_offer, battle_result)
-	else:
-		RunService.clear_pending_decision()
-		RunService.set_run_phase("MAP")
-		_finish_battle_and_navigate(battle_result)
-
-
-func _on_dropped_gem_slot_chosen(gem_uid: String, slot_index: int, battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
-	if _controller == null or _controller.state == null:
-		_message_label.text = "无法嵌入：战斗状态不存在。"
-		return
-	var result := BattleSettlementService.embed_dropped_gem(_controller.state, gem_uid, slot_index)
-	if not bool(result.get("ok", false)):
-		_message_label.text = "无法嵌入：%s" % str(result.get("reason", "未知错误"))
-		return
-	var gem: GemState = result.get("gem", null)
-	_message_label.text = "已嵌入 %s" % DataRegistry.get_gem_display_name(gem)
-	_refresh()
-	if canvas != null and is_instance_valid(canvas):
-		canvas.queue_free()
-	_relic_reward_overlay = null
-	_continue_after_dropped_gem_embed(battle_result, relic_offer)
-
-
-func _on_dropped_gem_insert_skipped(battle_result: String, relic_offer: Array[String], canvas: Node) -> void:
-	if canvas != null and is_instance_valid(canvas):
-		canvas.queue_free()
-	_relic_reward_overlay = null
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_return_to_settlement()
-		return
-	if _controller != null and _controller.state != null:
-		BattleSettlementService.skip_dropped_gem_reward(_controller.state)
-	_continue_after_dropped_gem_embed(battle_result, relic_offer)
-
-
-func _continue_after_dropped_gem_embed(battle_result: String, relic_offer: Array[String]) -> void:
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_settlement_gem_pending = false
-		_return_to_settlement()
-		return
-	var has_relics := not relic_offer.is_empty() and not relic_offer.all(
-		func(rid: String) -> bool: return rid == "relic_placeholder"
-	)
-	if has_relics:
-		_show_relic_reward(relic_offer, battle_result)
-	else:
-		RunService.clear_pending_decision()
-		RunService.set_run_phase("MAP")
-		_finish_battle_and_navigate(battle_result)
-
-
-func _show_relic_reward(offer: Array[String], battle_result: String) -> void:
-	if _has_pending_dropped_gem_reward():
-		_show_dropped_gem_reward(_dropped_gem_offer(), offer, battle_result)
-		return
-	_mark_battle_reward_pending("relic", battle_result, false)
-	var overlay := _build_relic_overlay(offer, battle_result)
-	_relic_reward_overlay = overlay
-	add_child(overlay)
-
-
-func _build_relic_overlay(offer: Array[String], battle_result: String) -> Node:
-	var overlay_layout := DataRegistry.get_battle_reward_ui_layout("reward_overlay")
-	var frame := BattleRewardOverlay.begin_shell(overlay_layout, int(overlay_layout.get("canvas_layer", 0)))
-	var vbox: VBoxContainer = frame["vbox"]
-
-	var is_no_relics := offer.size() == 1 and offer[0] == "relic_placeholder"
-	var accent: Color = BattleUiTheme.TEXT_MUTED if is_no_relics else BattleUiTheme.TEXT_GOLD
-
-	var title := Label.new()
-	title.text = "无可选遗物" if is_no_relics else "选择遗物"
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", accent)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var cards_row := HBoxContainer.new()
-	cards_row.add_theme_constant_override("separation", int(overlay_layout.get("card_separation", 0)))
-	var cards: Array[Control] = []
-	for relic_id in offer:
-		var def: Dictionary = DataRegistry.get_relic_def(relic_id)
-		var rarity: String = DataRegistry.get_relic_rarity(relic_id)
-		var card := _build_relic_card(relic_id, def, rarity, battle_result)
-		cards_row.add_child(card)
-		cards.append(card)
-	var scroll_metrics := BattleRewardOverlay.scroll_metrics(self, cards_row, overlay_layout)
-	vbox.add_child(BattleRewardOverlay.wrap_cards_scroll(cards_row, overlay_layout, scroll_metrics))
-
-	var skip_width := float(scroll_metrics.get("width", 0.0))
-	var on_skip := func() -> void:
-		_on_relic_overlay_dismissed(battle_result)
-	vbox.add_child(BattleRewardOverlay.build_action_button(overlay_layout, "跳过", on_skip, skip_width))
-
-	BattleRewardOverlay.animate_cards_in(self, cards, {"hover": true})
-	return frame["canvas"]
-
-
-func _build_relic_card(relic_id: String, def: Dictionary, rarity: String, battle_result: String) -> Control:
-	var is_placeholder := bool(def.get("placeholder", false))
-	var rarity_color: Color = BattleUiTheme.TEXT_MUTED if is_placeholder else _hud_presenter.rarity_color(rarity)
-	return BattleRewardCardFactory.relic_card(relic_id, def, rarity, rarity_color, _hud_presenter.relic_desc_text(def), _data_registry(), UnitLooks, func() -> void:
-		_on_relic_chosen("" if is_placeholder else relic_id, battle_result)
-	)
-
-
-func _rarity_display_name(rarity: String) -> String:
-	return BattleRewardCardFactory.rarity_display_name(rarity)
-
-
-func _on_relic_overlay_dismissed(battle_result: String) -> void:
-	if _relic_reward_overlay != null:
-		_relic_reward_overlay.queue_free()
-		_relic_reward_overlay = null
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		_return_to_settlement()
-		return
-	_on_relic_chosen("", battle_result)
-
-
-func _on_relic_chosen(relic_id: String, battle_result: String) -> void:
-	if _settlement_overlay != null and is_instance_valid(_settlement_overlay):
-		if not relic_id.is_empty():
-			BattleSettlementService.acquire_run_relic(relic_id, _controller.state if _controller != null else null)
-			_settlement_relic_pending = false
-		if _relic_reward_overlay != null:
-			_relic_reward_overlay.queue_free()
-			_relic_reward_overlay = null
-		_return_to_settlement()
-		return
-	if _has_pending_dropped_gem_reward():
-		if _relic_reward_overlay != null:
-			_relic_reward_overlay.queue_free()
-			_relic_reward_overlay = null
-		var relic_offer: Array[String] = _battle_relic_offer(GameService.pending_room_id)
-		_show_dropped_gem_reward(_dropped_gem_offer(), relic_offer, battle_result)
-		return
-	if not relic_id.is_empty():
-		BattleSettlementService.acquire_run_relic(relic_id, _controller.state if _controller != null else null)
-	if GameService.adventure_return and RunService.is_run_active():
-		RunService.mark_room_resolved(GameService.pending_room_id, {
-			"room_id": GameService.pending_room_id,
-			"room_type": AdventureService.pending_room_type,
-			"battle_result": battle_result,
-			"summary": "战斗房间已结算。",
-			"relic_id": relic_id,
-		})
-	if _relic_reward_overlay != null:
-		_relic_reward_overlay.queue_free()
-		_relic_reward_overlay = null
-	RunService.clear_pending_decision()
-	RunService.set_run_phase("MAP")
-	_finish_battle_and_navigate(battle_result)
-
-
-func _finish_battle_and_navigate(result: String) -> void:
-	if GameService.pending_battle_mode == "editor":
-		GameService.pending_battle_mode = "normal"
-		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
-		return
-	_record_enemy_codex_progress()
-	if result == "win" and _controller.state != null:
-		RunService.capture_player_battle_state(_controller.state)
-	elif result != "win" and RunService.is_run_active():
-		RunService.complete_run("loss")
-		RunService.end_run()
-	GameService.finish_battle(result, _encounter_id, _controller.state.turn_index if _controller.state != null else 0)
-	if GameService.adventure_return:
-		var was_boss_room := AdventureService.pending_room_type.to_upper() == "END"
-		GameService.adventure_return = false
-		if result == "win" and RunService.is_run_active():
-			if was_boss_room:
-				AdventureService.advance_after_boss_room()
-			else:
-				AdventureService.finish_room_and_return()
-		else:
-			AdventureService.reset_local_state()
-			get_tree().change_scene_to_file("res://scenes/main/main.tscn")
-	else:
-		get_tree().change_scene_to_file("res://scenes/main/main.tscn")
-
-
-func _mark_battle_reward_pending(reward_kind: String, battle_result: String, has_followup_relic: bool) -> void:
-	BattleSettlementService.mark_reward_pending(
-		_encounter_id,
-		reward_kind,
-		battle_result,
-		has_followup_relic,
-		GameService.pending_room_id,
-		AdventureService.pending_room_type,
-		_controller.state if _controller != null else null
-	)
-
-
-func _restore_battle_reward_if_needed() -> void:
-	if not RunService.is_run_active():
-		return
-	if RunService.get_run_phase() != "BATTLE_REWARD":
-		return
-	var pending := RunService.get_pending_decision()
-	if str(pending.get("type", "")) != "battle_reward":
-		return
-	var room_id := str(pending.get("room_id", GameService.pending_room_id))
-	BattleSettlementService.restore_pending_dropped_gems(_controller.state if _controller != null else null)
-	var battle_result := str(pending.get("battle_result", "win"))
-	var relic_offer: Array[String] = _battle_relic_offer(room_id)
-	match str(pending.get("reward_kind", "")):
-		"settlement":
-			var has_relics := not relic_offer.is_empty() and not relic_offer.all(
-				func(rid: String) -> bool: return rid == "relic_placeholder"
-			)
-			_settlement_result = battle_result
-			_settlement_is_boss = AdventureService.pending_room_type.to_upper() == "END"
-			_settlement_relic_offer = []
-			if has_relics:
-				_settlement_relic_offer = relic_offer
-			_settlement_relic_pending = has_relics
-			_settlement_dropped_gems = []
-			if _has_pending_dropped_gem_reward():
-				_settlement_dropped_gems = _dropped_gem_offer()
-			_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
-			_settlement_gold_amount = EconomyService.get_combat_reward(AdventureService.pending_room_type, room_id)
-			if _settlement_overlay == null:
-				_open_battle_settlement()
-		"dropped_gem":
-			var dropped_gems := _dropped_gem_offer()
-			if not dropped_gems.is_empty():
-				if _relic_reward_overlay == null:
-					var overlay := _build_dropped_gem_overlay(dropped_gems, relic_offer, battle_result)
-					_relic_reward_overlay = overlay
-					add_child(overlay)
-			else:
-				if not relic_offer.is_empty():
-					_show_relic_reward(relic_offer, battle_result)
-				else:
-					RunService.clear_pending_decision()
-					RunService.set_run_phase("MAP")
-					_finish_battle_and_navigate(battle_result)
-		"gem":
-			RunService.clear_pending_decision()
-			RunService.set_run_phase("MAP")
-			if not relic_offer.is_empty():
-				_show_relic_reward(relic_offer, battle_result)
-			else:
-				_finish_battle_and_navigate(battle_result)
-		"relic":
-			if _relic_reward_overlay == null:
-				var overlay := _build_relic_overlay(relic_offer, battle_result)
-				_relic_reward_overlay = overlay
-				add_child(overlay)
-
-
-func _on_toggle_panel() -> void:
-	_panel_visible = not _panel_visible
-	_status_panel.visible = _panel_visible
-	_toggle_panel_btn.text = "◀" if _panel_visible else "▶"
-	_hud_presenter.sync_toggle_btn_x(_panel_visible)
-	_hud_presenter._refresh_relic_bar(_relic_bar_available_height())
-	_editor_panel_user_positioned = false
-	_layout_editor_ui()
-
-
-func _refresh() -> void:
-	var state := _view_state()
-	if state == null:
-		return
-	_board.set_battle_state(state)
-	_board.selected_unit_uid = _inspect_uid
-	_board.set_timeline_hover_unit(_timeline_hover_uid)
-	if not _enemy_phase_running:
-		_enemy_turn_queue.clear()
-		for enemy in _controller.get_sorted_enemies():
-			_enemy_turn_queue.append(enemy.uid)
-	var hud_state := _hud_presenter.refresh({
-		"state": state,
-		"inspect_uid": _inspect_uid,
-		"inspect_cell": _inspect_cell,
-		"tracked_player_uid": _tracked_player_uid,
-		"timeline_hover_uid": _timeline_hover_uid,
-		"enemy_phase_running": _enemy_phase_running,
-		"enemy_turn_queue": _enemy_turn_queue,
-		"editor_compact": _editor_available() and _editor_mode,
-		"relic_bar_available_height": _relic_bar_available_height(),
-	})
-	_inspect_uid = str(hud_state.get("inspect_uid", _inspect_uid))
-	_inspect_cell = hud_state.get("inspect_cell", _inspect_cell)
-	_tracked_player_uid = str(hud_state.get("tracked_player_uid", _tracked_player_uid))
-	if _relic_bar_root != null and _relic_bar_scroll != null:
-		_relic_bar_root.visible = _relic_bar_scroll.visible
-	var active_turn_uid := str(hud_state.get("active_turn_uid", ""))
-	_board.set_active_turn_unit(active_turn_uid)
-	if _editor_drag_active:
-		_board.clear_overlays()
-		if _hover_cell.x >= 0:
-			var preview := _editor_preview_for_cell(_hover_cell)
-			_board.set_editor_preview(_typed_preview_cells(preview.get("cells", [])), bool(preview.get("valid", false)), true)
-		else:
-			_board.clear_editor_preview()
-	else:
-		if _enemy_phase_running:
-			_board.clear_overlays()
-		else:
-			BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
-		_board.clear_editor_preview()
-	_sync_unit_slot_panels()
-	_update_held_banner()
-	_board.queue_redraw()
-	call_deferred("_fit_status_panel")
-	call_deferred("_fit_status_panel_height")
-	call_deferred("_layout_editor_ui")
-
-
-func _relic_bar_available_height() -> float:
-	var top := 8.0
-	if _status_panel != null and _status_panel.visible:
-		top = _status_panel.position.y + _status_panel.size.y + 4.0
-	elif _toggle_panel_btn != null:
-		top = _toggle_panel_btn.position.y + maxf(_toggle_panel_btn.size.y, 40.0) + 6.0
-	var bottom := get_viewport_rect().size.y - 12.0
-	if _bottom_dock != null and _bottom_dock.visible:
-		bottom -= _bottom_dock.size.y + 8.0
-	return maxf(64.0, bottom - top)
-
-
 func _fit_status_panel() -> void:
 	if not is_node_ready():
 		return
 	_hud_presenter.fit_status_panel(_panel_visible)
-
 
 func _fit_status_panel_height() -> void:
 	if not is_node_ready():
 		return
 	_hud_presenter.fit_status_panel_height()
 	_layout_editor_ui()
-
-
-func _enter_editor_mode() -> void:
-	if not _editor_available():
-		return
-	if not _editor_session_active:
-		_begin_editor_session()
-	_editor_mode = true
-	_editor_drag_active = false
-	_sync_editor_inspector("")
-	_refresh()
-
-
-func _on_editor_mode_toggled(enabled: bool) -> void:
-	if enabled:
-		_enter_editor_mode()
-		return
-	_editor_mode = false
-	_editor_drag_active = false
-	_board.clear_editor_preview()
-	_hide_preview_panel()
-	_sync_editor_inspector("")
-	_refresh()
-
-
-func _on_editor_tool_selected(tool: Dictionary) -> void:
-	_editor_tool = tool.duplicate(true)
-	_editor_drag_active = false
-	_sync_editor_inspector("")
-	if str(_editor_tool.get("kind", "")) == "relic":
-		_sync_editor_inspector("点击左侧遗物条目添加，下方列表可移除")
-	_board.clear_editor_preview()
-
-
-func _on_editor_tool_drag_started(tool: Dictionary) -> void:
-	if not _editor_mode:
-		return
-	_editor_tool = tool.duplicate(true)
-	_editor_drag_active = true
-	_sync_editor_inspector("正在拖拽资源")
-	if _hover_cell.x >= 0:
-		var preview := _editor_preview_for_cell(_hover_cell)
-		_board.set_editor_preview(_typed_preview_cells(preview.get("cells", [])), bool(preview.get("valid", false)), true)
-
-
-func _on_editor_tool_drag_hovered(tool: Dictionary, cell: Vector2i, valid: bool) -> void:
-	if not _editor_mode:
-		return
-	_editor_tool = tool.duplicate(true)
-	_editor_drag_active = true
-	_on_cell_hovered(cell, valid)
-
-
-func _on_editor_tool_dropped(tool: Dictionary, cell: Vector2i, valid: bool) -> void:
-	if not _editor_mode:
-		return
-	_editor_tool = tool.duplicate(true)
-	if valid:
-		_try_editor_place(cell)
-	_editor_drag_active = false
-	_board.clear_editor_preview()
-	_hide_preview_panel()
-	_refresh()
-
-
-func _editor_preview_for_cell(cell: Vector2i) -> Dictionary:
-	var state := _controller.state
-	if state == null or _editor_tool.is_empty():
-		return {"valid": false, "cells": [], "message": "未选择资源"}
-	var kind := str(_editor_tool.get("kind", ""))
-	var resource_id := str(_editor_tool.get("id", ""))
-	var tile_resource_id := str(_editor_tool.get("tile_id", resource_id))
-	match kind:
-		"relic":
-			return {"valid": false, "cells": [], "message": "遗物无需落板，点击左侧条目即可获取"}
-		"unit":
-			var unit_def: Dictionary = Engine.get_main_loop().root.get_node("DataRegistry").get_unit_def(resource_id)
-			var fp_raw: Variant = unit_def.get("footprint_size", [1, 1])
-			var fp := Vector2i(1, 1)
-			if fp_raw is Array and fp_raw.size() >= 2:
-				fp = Vector2i(int(fp_raw[0]), int(fp_raw[1]))
-			var cells: Array[Vector2i] = []
-			for dx in range(fp.x):
-				for dy in range(fp.y):
-					cells.append(cell + Vector2i(dx, dy))
-			for check_cell in cells:
-				if not BoardUtils.in_bounds(state, check_cell):
-					return {"valid": false, "cells": cells, "message": "单位超出棋盘"}
-				if state.get_unit_at(check_cell) != null:
-					return {"valid": false, "cells": cells, "message": "目标格已有单位"}
-				var entity := state.get_entity_at(check_cell)
-				if entity != null and entity.alive and entity.blocks_movement():
-					return {"valid": false, "cells": cells, "message": "目标格被阻挡实体占用"}
-			return {"valid": true, "cells": cells, "message": "松手放置怪物"}
-		"tile":
-			return {
-				"valid": BoardUtils.in_bounds(state, cell),
-				"cells": [cell],
-				"message": "替换地块为 %s" % resource_id,
-			}
-		"surface_overlay":
-			return {
-				"valid": BoardUtils.in_bounds(state, cell),
-				"cells": [cell],
-				"message": "松手添加 %s" % resource_id,
-			}
-		"entity":
-			var occupied_entity := state.get_entity_at(cell)
-			if occupied_entity != null and occupied_entity.alive:
-				return {"valid": false, "cells": [cell], "message": "该格已有实体"}
-			return {"valid": true, "cells": [cell], "message": "松手放置实体"}
-		"overlay":
-			if resource_id == Constants.TILE_MOD_POISON_PUDDLE and not state.get_tile(cell).has_ground_tag(Constants.GROUND_TAG_WATER):
-				return {"valid": false, "cells": [cell], "message": "毒水洼只能放在水地块上"}
-			return {"valid": true, "cells": [cell], "message": "松手添加 overlay"}
-		"gem":
-			var unit := state.get_unit_at(cell)
-			if unit != null:
-				return {"valid": true, "cells": [cell], "message": "松手后选择单位槽位"}
-			return {"valid": false, "cells": [cell], "message": "该格没有可编辑单位"}
-	return {"valid": false, "cells": [cell], "message": "暂不支持此资源"}
-
-
-func _editor_auto_slot_index(pos: Vector2i, target_kind: String, gem_id: String) -> int:
-	var state := _controller.state
-	if state == null:
-		return -1
-	var slots: Array = []
-	if target_kind == "unit":
-		var unit := state.get_unit_at(pos)
-		if unit != null:
-			slots = unit.slots
-	var gem_type := str(DataRegistry.get_gem_def(gem_id).get("slot_type", ""))
-	for index in range(slots.size()):
-		var slot: SlotState = slots[index]
-		if slot == null or not slot.gem_uid.is_empty() or slot.locked or slot.is_split_disabled():
-			continue
-		if gem_type.is_empty() or slot.accepts_slot_type(gem_type):
-			return index
-	return -1
-
-
-func _try_editor_place(cell: Vector2i) -> void:
-	if _editor_tool.is_empty():
-		_sync_editor_inspector("先从左侧选择资源")
-		return
-	var preview := _editor_preview_for_cell(cell)
-	if not bool(preview.get("valid", false)):
-		_sync_editor_inspector(str(preview.get("message", "")))
-		return
-	var kind := str(_editor_tool.get("kind", ""))
-	var resource_id := str(_editor_tool.get("id", ""))
-	var tile_resource_id := str(_editor_tool.get("tile_id", resource_id))
-	if kind == "gem":
-		var target_kind := "unit" if _controller.state.get_unit_at(cell) != null else "tile"
-		var slot_index := _editor_auto_slot_index(cell, target_kind, resource_id)
-		if slot_index < 0:
-			_sync_editor_inspector("没有匹配的空槽位；先从右侧移除宝石")
-			return
-		var gem_result := _controller.run_editor_action("spawn_gem", {
-			"gem_id": resource_id,
-			"pos": cell,
-			"target_kind": target_kind,
-			"slot_index": slot_index,
-		})
-		_sync_editor_inspector(str(gem_result.get("message", "")))
-		_show_result(gem_result)
-		_refresh()
-		return
-	var result := {}
-	match kind:
-		"unit":
-			result = _controller.run_editor_action("spawn_unit", {
-				"unit_def_id": resource_id,
-				"pos": cell,
-				"team": Constants.TEAM_ENEMY,
-			})
-		"tile":
-			result = _controller.run_editor_action("set_tile", {"tile_id": resource_id, "pos": cell})
-		"surface_overlay":
-			result = _controller.run_editor_action("set_tile", {
-				"tile_id": tile_resource_id,
-				"pos": cell,
-				"surface_variant": str(_editor_tool.get("surface_variant", "")),
-			})
-		"entity":
-			result = _controller.run_editor_action("spawn_entity", {"entity_id": resource_id, "pos": cell})
-		"overlay":
-			result = _controller.run_editor_action("spawn_overlay", {"overlay_id": resource_id, "pos": cell})
-		_:
-			result = {"ok": false, "message": "暂不支持此资源"}
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _sync_editor_hover(title: String, detail: String) -> void:
-	if _editor_hover_label == null:
-		return
-	_editor_hover_label.text = title if detail.is_empty() else "%s\n%s" % [title, detail]
-	if _editor_panel != null and _editor_panel.has_method("set_hover_summary"):
-		_editor_panel.set_hover_summary(detail)
-		_layout_editor_ui()
-
-
-func _refresh_editor_focus() -> void:
-	if not _editor_available():
-		return
-	_sync_editor_inspector(_editor_result_label.text if _editor_result_label != null else "")
-
-
-func _sync_editor_inspector(message: String) -> void:
-	_bind_editor_state_signals()
-	if _editor_tool_label != null:
-		_editor_tool_label.text = _editor_tool_summary()
-	if _editor_target_label != null:
-		_editor_target_label.text = _editor_target_summary()
-	if _editor_result_label != null and not message.is_empty():
-		_editor_result_label.text = message
-	if _editor_player_invincible_btn != null:
-		var invincible := _controller.editor_player_invincible_enabled()
-		_editor_player_invincible_btn.button_pressed = invincible
-		_editor_player_invincible_btn.text = "玩家无敌 开" if invincible else "玩家无敌 关"
-	_rebuild_editor_contents()
-	_rebuild_editor_status_panel()
-	_refresh_editor_action_buttons()
-
-
-func _editor_tool_summary() -> String:
-	if _editor_tool.is_empty():
-		return "工具: 未选择（左侧列表选择资源）"
-	var kind := str(_editor_tool.get("kind", ""))
-	var kind_label := str(_EDITOR_KIND_LABELS.get(kind, kind))
-	var tool_id := str(_editor_tool.get("id", ""))
-	var action_hint := "拖到棋盘放置"
-	if kind == "relic":
-		action_hint = "点击条目添加"
-	return "工具: %s · %s（%s）" % [tool_id, kind_label, action_hint]
-
-
-func _editor_target_summary() -> String:
-	if not _editor_action_cell_valid():
-		return "操作目标: 点击棋盘格子锁定"
-	var state := _controller.state
-	if state == null:
-		return "操作目标: —"
-	var lines: Array[String] = ["操作目标: %s" % str(_editor_action_cell)]
-	var tile := state.get_tile(_editor_action_cell)
-	var unit := state.get_unit_at(_editor_action_cell)
-	if unit != null and unit.alive:
-		lines.append("%s · HP %d/%d" % [
-			DataRegistry.get_unit_display_name(unit.unit_def_id),
-			unit.hp,
-			unit.max_hp,
-		])
-		if unit.has_tag("unit:training_dummy"):
-			var stats: Dictionary = _editor_dummy_stats.get(unit.uid, {})
-			lines.append("稻草人: 受击 %d · 总伤 %d" % [
-				int(stats.get("hits", 0)),
-				int(stats.get("total_damage", 0)),
-			])
-	elif tile != null:
-		lines.append(DataRegistry.get_tile_display_name(tile.tile_id))
-	var entity := state.get_entity_at(_editor_action_cell)
-	if entity != null and entity.alive:
-		lines.append("实体: %s" % entity.entity_id)
-	if tile != null and not tile.modifiers.is_empty():
-		var overlay_ids: Array[String] = []
-		for modifier in tile.modifiers:
-			overlay_ids.append(str(modifier.get("type", "")))
-		lines.append("Overlay: %s" % ", ".join(overlay_ids))
-	return "\n".join(lines)
-
-
-func _bind_editor_state_signals() -> void:
-	if _controller == null or _controller.state == null or _controller.state == _editor_bound_state:
-		return
-	_editor_bound_state = _controller.state
-	_editor_bound_state.on_damage_taken.connect(_on_editor_damage_taken)
-
-
-func _refresh_editor_action_buttons() -> void:
-	var state := _controller.state
-	var cell := _editor_action_cell
-	var has_cell := state != null and cell.x >= 0
-	var tile := state.get_tile(cell) if has_cell else null
-	var unit := state.get_unit_at(cell) if has_cell else null
-	var entity := state.get_entity_at(cell) if has_cell else null
-	_editor_remove_unit_btn.disabled = not has_cell or unit == null or unit.uid == state.player_uid
-	_editor_remove_entity_btn.disabled = not has_cell or entity == null or not entity.alive
-	_editor_remove_overlay_btn.disabled = not has_cell or tile == null or tile.modifiers.is_empty()
-
-
-func _rebuild_editor_contents() -> void:
-	_clear_editor_list(_editor_gem_list)
-	_clear_editor_list(_editor_relic_list)
-	if not _editor_action_cell_valid():
-		_editor_gem_list.add_child(_editor_empty_hint("锁定格子后显示槽位"))
-		_editor_relic_list.add_child(_editor_empty_hint("—"))
-		return
-	var gem_targets := _editor_list_gem_targets(_editor_action_cell)
-	if gem_targets.is_empty():
-		_editor_gem_list.add_child(_editor_empty_hint("该格无宝石"))
-	else:
-		for target in gem_targets:
-			_editor_gem_list.add_child(_create_editor_gem_row(target))
-	if not RunService.is_run_active():
-		_editor_relic_list.add_child(_editor_empty_hint("未开启 Run"))
-		return
-	var owned := RunService.get_owned_relics()
-	if owned.is_empty():
-		_editor_relic_list.add_child(_editor_empty_hint("无遗物 · 左侧列表点击添加"))
-	else:
-		for relic_id in owned:
-			_editor_relic_list.add_child(_create_editor_relic_row(str(relic_id)))
-
-
-func _rebuild_editor_status_panel() -> void:
-	if _editor_status_grid == null:
-		return
-	for child in _editor_status_grid.get_children():
-		child.queue_free()
-	if not _editor_action_cell_valid() or _controller == null or _controller.state == null:
-		_editor_status_box.visible = false
-		return
-	var unit := _controller.state.get_unit_at(_editor_action_cell)
-	if unit == null or not unit.alive:
-		_editor_status_box.visible = false
-		return
-	_editor_status_box.visible = true
-	for status_id in _EDITOR_STATUS_IDS:
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(36, 36)
-		btn.tooltip_text = StatusRegistry.display_name(status_id)
-		btn.pressed.connect(_on_editor_apply_status.bind(status_id))
-		BattleUiTheme.apply_button(btn, "ghost")
-		var icon_tex := StatusIcons.get_icon(status_id)
-		if icon_tex != null:
-			var icon := TextureRect.new()
-			icon.texture = icon_tex
-			icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			icon.custom_minimum_size = Vector2(22, 22)
-			icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			icon.set_anchors_preset(Control.PRESET_CENTER)
-			btn.add_child(icon)
-		_editor_status_grid.add_child(btn)
-
-
-func _on_editor_apply_status(status_id: String) -> void:
-	if not _editor_action_cell_valid():
-		return
-	var result := _controller.run_editor_action("apply_unit_status", {
-		"pos": _editor_action_cell,
-		"status_id": status_id,
-	})
-	_editor_result_label.text = str(result.get("message", ""))
-	_rebuild_editor_status_panel()
-	_refresh()
-
-
-func _clear_editor_list(list: VBoxContainer) -> void:
-	if list == null:
-		return
-	for child in list.get_children():
-		child.queue_free()
-
-
-func _editor_empty_hint(text: String) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
-	return label
-
-
-func _create_editor_gem_row(target: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	var state := _controller.state
-	var gem: GemState = null
-	var slot_index := int(target.get("slot_index", -1))
-	var target_kind := str(target.get("target_kind", ""))
-	if state != null and slot_index >= 0:
-		if target_kind == "unit":
-			var unit := state.get_unit_at(_editor_action_cell)
-			if unit != null and slot_index < unit.slots.size():
-				var slot: SlotState = unit.slots[slot_index]
-				if slot != null and not slot.gem_uid.is_empty():
-					gem = state.gems.get(slot.gem_uid, null)
-	if gem != null:
-		var icon := TextureRect.new()
-		icon.texture = UnitLooks.get_gem_texture(gem)
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(16, 16)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.self_modulate = UnitLooks.gem_sprite_modulate(gem)
-		row.add_child(icon)
-	var label := Label.new()
-	var gem_name := DataRegistry.get_gem_display_name(gem) if gem != null else str(target.get("label", ""))
-	label.text = "%s槽 · %s" % [_editor_slot_label(str(target.get("slot_type", ""))), gem_name]
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 11)
-	row.add_child(label)
-	var btn := Button.new()
-	btn.text = "移除"
-	btn.custom_minimum_size = Vector2(52, 28)
-	btn.pressed.connect(_on_editor_remove_gem_target.bind(target))
-	BattleUiTheme.apply_button(btn, "ghost")
-	row.add_child(btn)
-	return row
-
-
-func _create_editor_relic_row(relic_id: String) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
-	var rarity := DataRegistry.get_relic_rarity(relic_id)
-	var rarity_col := _hud_presenter.rarity_color(rarity)
-	var icon_tex := UnitLooks.get_relic_texture(relic_id)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(20, 20)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.self_modulate = rarity_col
-		row.add_child(icon)
-	var label := Label.new()
-	label.text = str(def.get("name", relic_id))
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", rarity_col)
-	row.add_child(label)
-	var btn := Button.new()
-	btn.text = "移除"
-	btn.custom_minimum_size = Vector2(52, 28)
-	btn.pressed.connect(_on_editor_remove_relic.bind(relic_id))
-	BattleUiTheme.apply_button(btn, "ghost")
-	row.add_child(btn)
-	return row
-
-
-func _editor_list_gem_targets(cell: Vector2i) -> Array[Dictionary]:
-	var state := _controller.state
-	var targets: Array[Dictionary] = []
-	if state == null or cell.x < 0:
-		return targets
-	var unit := state.get_unit_at(cell)
-	if unit != null:
-		for i in range(unit.slots.size()):
-			var slot: SlotState = unit.slots[i]
-			if slot != null and not slot.gem_uid.is_empty():
-				var gem: GemState = state.gems.get(slot.gem_uid, null)
-				var gem_id := gem.gem_id if gem != null else "?"
-				targets.append({
-					"target_kind": "unit",
-					"slot_index": i,
-					"slot_type": slot.slot_type,
-					"label": "%s · %s" % [_editor_slot_label(slot.slot_type), gem_id],
-				})
-	return targets
-
-
-func _editor_slot_label(slot_type: String) -> String:
-	match slot_type:
-		Constants.SLOT_RED:
-			return "红"
-		Constants.SLOT_BLUE:
-			return "蓝"
-		Constants.SLOT_BLACK:
-			return "黑"
-		_:
-			return slot_type
-
-
-func _on_editor_remove_gem_target(target: Dictionary) -> void:
-	if not _editor_action_cell_valid():
-		return
-	var result := _controller.run_editor_action("remove_gem", {
-		"pos": _editor_action_cell,
-		"target_kind": str(target.get("target_kind", "")),
-		"slot_index": int(target.get("slot_index", -1)),
-		"slot_type": str(target.get("slot_type", "")),
-	})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_relic_requested(relic_id: String) -> void:
-	var run_service: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
-	if run_service != null and not run_service.is_run_active():
-		run_service.start_run(1, 1)
-	var result := _controller.run_editor_action("add_relic", {"relic_id": relic_id})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _begin_editor_session() -> void:
-	var run_service: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
-	_editor_session_active = true
-	_editor_run_snapshot = {}
-	if run_service != null and run_service.has_method("snapshot_active_run"):
-		_editor_run_snapshot = run_service.snapshot_active_run()
-	if run_service != null and run_service.has_method("begin_temporary_run"):
-		run_service.begin_temporary_run()
-
-
-func _end_editor_session() -> void:
-	if not _editor_session_active:
-		return
-	var run_service: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
-	if run_service != null and run_service.has_method("restore_run_snapshot"):
-		run_service.restore_run_snapshot(_editor_run_snapshot)
-	_editor_session_active = false
-	_editor_run_snapshot = {}
-	_editor_dummy_stats.clear()
-	_editor_bound_state = null
-	_controller.editor_unlimited_actions = false
-	_controller.set_editor_player_invincible(false)
-	if _editor_unlimited_btn != null:
-		_editor_unlimited_btn.button_pressed = false
-		_editor_unlimited_btn.text = "无限行动 关"
-	if _editor_player_invincible_btn != null:
-		_editor_player_invincible_btn.button_pressed = false
-		_editor_player_invincible_btn.text = "玩家无敌 关"
-
-
-func _on_editor_remove_relic(relic_id: String) -> void:
-	if relic_id.is_empty():
-		return
-	var result := _controller.run_editor_action("remove_relic", {"relic_id": relic_id})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _editor_action_cell_valid() -> bool:
-	return _editor_action_cell.x >= 0
-
-
-func _on_editor_remove_unit_pressed() -> void:
-	if not _editor_action_cell_valid():
-		return
-	var result := _controller.run_editor_action("remove_unit", {"pos": _editor_action_cell})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_remove_entity_pressed() -> void:
-	if not _editor_action_cell_valid():
-		return
-	var result := _controller.run_editor_action("remove_entity", {"pos": _editor_action_cell})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_remove_overlay_pressed() -> void:
-	var state := _controller.state
-	if state == null or not _editor_action_cell_valid():
-		return
-	var tile := state.get_tile(_editor_action_cell)
-	if tile == null or tile.modifiers.is_empty():
-		return
-	var overlay_id := str(tile.modifiers[0].get("type", ""))
-	var result := _controller.run_editor_action("remove_overlay", {"pos": _editor_action_cell, "overlay_id": overlay_id})
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_damage_taken(unit_uid: String, amount: int, reason: String) -> void:
-	var state := _controller.state
-	if state == null:
-		return
-	var unit: UnitState = state.units.get(unit_uid, null)
-	if unit == null or not unit.has_tag("unit:training_dummy"):
-		return
-	var stats: Dictionary = _editor_dummy_stats.get(unit_uid, {"hits": 0, "total_damage": 0, "max_hit": 0, "last_reason": ""})
-	stats["hits"] = int(stats.get("hits", 0)) + 1
-	stats["total_damage"] = int(stats.get("total_damage", 0)) + amount
-	stats["max_hit"] = maxi(int(stats.get("max_hit", 0)), amount)
-	stats["last_reason"] = reason
-	_editor_dummy_stats[unit_uid] = stats
-	if _editor_action_cell == unit.pos:
-		_sync_editor_inspector("训练稻草人已记录本次伤害")
-
-
-func _typed_preview_cells(values: Variant) -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	if values is Array:
-		for value in values:
-			if value is Vector2i:
-				cells.append(value)
-	return cells
-
-
-func _on_editor_panel_close_requested() -> void:
-	if _editor_panel != null:
-		_editor_panel.visible = false
-	if _editor_panel_toggle_btn != null:
-		_editor_panel_toggle_btn.visible = true
-	_layout_editor_ui()
-
-
-func _on_editor_panel_toggle_pressed() -> void:
-	if _editor_panel != null:
-		_editor_panel.visible = true
-	if _editor_panel_toggle_btn != null:
-		_editor_panel_toggle_btn.visible = false
-	_layout_editor_ui()
-
-
-func _on_editor_encounter_requested(encounter_id: String) -> void:
-	if encounter_id.is_empty() or not _editor_available():
-		return
-	_editor_action_cell = Vector2i(-1, -1)
-	_editor_drag_active = false
-	_board.clear_editor_preview()
-	_start_battle(encounter_id)
-	_editor_mode = true
-	_sync_editor_inspector("已载入场景 %s" % encounter_id)
-	_refresh()
-
-
-func _on_editor_clear_enemies_requested() -> void:
-	if not _editor_available():
-		return
-	var result := _controller.run_editor_action("clear_enemies")
-	_sync_editor_inspector(str(result.get("message", "")))
-	_show_result(result)
-	_refresh()
-
-
-func _on_editor_inspector_close_pressed() -> void:
-	if _editor_inspector != null:
-		_editor_inspector.visible = false
-	if _editor_inspector_toggle_btn != null:
-		_editor_inspector_toggle_btn.visible = true
-
-
-func _on_editor_inspector_toggle_pressed() -> void:
-	if _editor_inspector != null:
-		_editor_inspector.visible = true
-	if _editor_inspector_toggle_btn != null:
-		_editor_inspector_toggle_btn.visible = false
-
-
-func _on_editor_unlimited_actions_pressed() -> void:
-	var enabled := _editor_unlimited_btn != null and _editor_unlimited_btn.button_pressed
-	_controller.editor_unlimited_actions = enabled
-	if _editor_unlimited_btn != null:
-		_editor_unlimited_btn.text = "无限行动 开" if enabled else "无限行动 关"
-	_refresh()
-
-
-func _on_editor_player_invincible_pressed() -> void:
-	var enabled := _editor_player_invincible_btn != null and _editor_player_invincible_btn.button_pressed
-	_controller.set_editor_player_invincible(enabled)
-	if _editor_player_invincible_btn != null:
-		_editor_player_invincible_btn.text = "玩家无敌 开" if enabled else "玩家无敌 关"
-	_refresh()
-
-
-func _select_unit(uid: String) -> void:
-	_inspect_uid = uid
-	_inspect_cell = Vector2i(-1, -1)
-	_controller.selected_unit_uid = uid
-	_refresh()
-
 
 func _set_inspect_target(cell: Vector2i) -> void:
 	var state := _controller.state
@@ -2884,14 +691,12 @@ func _set_inspect_target(cell: Vector2i) -> void:
 	_inspect_cell = cell
 	_controller.selected_unit_uid = ""
 
-
 func _set_timeline_hover(uid: String) -> void:
 	if _timeline_hover_uid == uid:
 		return
 	_timeline_hover_uid = uid
 	_board.set_timeline_hover_unit(uid)
 	_board.queue_redraw()
-
 
 func _clear_timeline_hover(uid: String = "") -> void:
 	if not uid.is_empty() and _timeline_hover_uid != uid:
@@ -2900,50 +705,6 @@ func _clear_timeline_hover(uid: String = "") -> void:
 	var hovered_unit := _view_state().get_unit_at(_hover_cell) if _hover_cell.x >= 0 else null
 	_board.set_timeline_hover_unit(hovered_unit.uid if hovered_unit != null and hovered_unit.alive else "")
 	_board.queue_redraw()
-
-
-## 手持宝石横幅：拔出后玩家处于"必须嵌入"的中间态，状态面板里的一行小字
-## 容易被忽略，这里在屏幕顶部常驻提示，直到宝石被嵌入
-func _update_held_banner() -> void:
-	var held := _controller.get_held_gem()
-	if held == null:
-		if _held_banner != null:
-			_held_banner.visible = false
-		return
-	if _held_banner == null:
-		_create_held_banner()
-	_held_banner_icon.texture = UnitLooks.get_gem_texture(held)
-	_held_banner_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
-	GemEchoVisuals.apply_icon_material(_held_banner_icon, _controller.state, held.uid)
-	_held_banner_icon.visible = _held_banner_icon.texture != null
-	var gem_name: String = DataRegistry.get_gem_display_name(held)
-	_held_banner_label.text = "手持 %s — 点击发光槽位嵌入" % gem_name
-	_held_banner_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.25))
-	_held_banner.visible = true
-
-
-func _create_held_banner() -> void:
-	_held_banner = PanelContainer.new()
-	_held_banner.name = "HeldGemBanner"
-	_held_banner.add_theme_stylebox_override("panel", BattleUiTheme.tooltip_style())
-	_held_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_held_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_held_banner.offset_top = 56.0
-	_held_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_held_banner_icon = TextureRect.new()
-	_held_banner_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_held_banner_icon.custom_minimum_size = Vector2(20, 20)
-	_held_banner_icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	_held_banner_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	row.add_child(_held_banner_icon)
-	_held_banner_label = Label.new()
-	_held_banner_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_BODY)
-	row.add_child(_held_banner_label)
-	_held_banner.add_child(row)
-	$HudLayer.add_child(_held_banner)
 
 
 func _setup_held_gem_row() -> void:
@@ -2968,7 +729,6 @@ func _setup_held_gem_row() -> void:
 	row.add_child(_held_gem_icon)
 	row.add_child(_held_label)
 
-
 func _setup_overload_chip() -> void:
 	if _turn_chips == null or _overload_chip != null:
 		return
@@ -2978,7 +738,6 @@ func _setup_overload_chip() -> void:
 	_overload_chip.text = "过载 0"
 	_turn_chips.add_child(_overload_chip)
 
-
 func _clamp_preview_panel() -> void:
 	var max_panel_h: float = size.y * 0.42
 	if _preview_panel.size.y > max_panel_h:
@@ -2987,7 +746,6 @@ func _clamp_preview_panel() -> void:
 	var max_y: float = size.y - _preview_panel.size.y - 80.0
 	_preview_panel.position.x = clampf(_preview_panel.position.x, 8.0, maxf(max_x, 8.0))
 	_preview_panel.position.y = clampf(_preview_panel.position.y, 56.0, maxf(max_y, 56.0))
-
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -3032,7 +790,6 @@ func _input(event: InputEvent) -> void:
 			_dismiss_popup()
 			get_viewport().set_input_as_handled()
 
-
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
@@ -3059,18 +816,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	_on_end_turn_pressed()
 	get_viewport().set_input_as_handled()
 
-
 func _on_anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
 	_board.animate_move(unit_uid, from_pos, to_pos)
-
 
 func _on_anim_damage(grid: Vector2i, damage: int, is_crit: bool) -> void:
 	_board.play_damage_effect(grid, damage, is_crit)
 
-
 func _on_anim_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	_board.play_gem_flash(grid, gem_color)
-
 
 func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: String, shield_only: bool = false) -> void:
 	if _dmg_text == null or value <= 0:
@@ -3093,135 +846,26 @@ func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: Strin
 		dmg_type = DamageTextManagerScript.DMG_NORMAL
 	_dmg_text.spawn(world_pos, value, dmg_type)
 
-
-func _mark_visible_enemies_seen() -> void:
-	if _controller.state == null:
-		return
-	for unit in _controller.state.units.values():
-		if unit.team != Constants.TEAM_ENEMY:
-			continue
-		ProfileService.mark_enemy_seen(unit.unit_def_id)
-	AchievementService.refresh_progress_flags()
-
-
-func _record_enemy_codex_progress() -> void:
-	if _controller.state == null:
-		return
-	for unit in _controller.state.units.values():
-		if unit.team != Constants.TEAM_ENEMY:
-			continue
-		ProfileService.mark_enemy_seen(unit.unit_def_id)
-		if not unit.alive:
-			ProfileService.mark_enemy_killed(unit.unit_def_id)
-	AchievementService.refresh_progress_flags()
-
-
-func _show_tutorial_intro() -> void:
-	_show_tutorial_overlay(
-		"窃律者 · 操作指南",
-		"""[color=#9aa0ad]每回合资源：[/color]
-[color=#5ad8ff]● 1 次移动[/color]　[color=#ffcc44]● 1 次行动[/color]（攻击/技能/触发）
-[color=#88ff88]● 拔出/嵌入免费[/color]，可穿插在行动前后
-
-[color=#ff6666]核心：偷敌人宝石 → 装入自己槽位 → 释放技能[/color]
-
-[color=#ff5555]红槽[/color] 主动　[color=#5599ff]蓝槽[/color] 被动　[color=#888]黑槽[/color] 死亡触发
-
-[color=#ffffff]教学目标：拔工兵红槽 → 技能/黑槽嫁祸 → 结束回合[/color]""",
-		"开始战斗"
-	)
-
-
-func _show_old_mage_tutorial_intro() -> void:
-	_show_tutorial_overlay(
-		_translate_or("boss.old_mage.tutorial.title", "老法师：读懂施法与抢夺"),
-		_translate_or("boss.old_mage.tutorial.body", "老法师会在施法与补充之间交替。红槽技能是主动法术，蓝槽技能需要满足反应条件；预警会锁定目标、范围与落点。优先抢走技能池宝石，非池宝石只会让它浪费一回合。低于 20 生命后每回合黑化一个槽位，移动力固定为 2。"),
-		_translate_or("boss.old_mage.tutorial.begin", "开始战斗")
-	)
-
-
-func _translate_or(key: String, fallback: String) -> String:
-	var translated := TranslationServer.translate(key)
-	return fallback if translated == key or translated.is_empty() else translated
-
-
-func _show_tutorial_overlay(title_text: String, body_text: String, button_text: String) -> void:
-	if _tutorial_overlay != null and is_instance_valid(_tutorial_overlay):
-		_tutorial_overlay.queue_free()
-	var overlay := ColorRect.new()
-	_tutorial_overlay = overlay
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.color = Color(0.02, 0.02, 0.05, 0.82)
-	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(overlay)
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = Vector2(560, 0)
-	panel.offset_left = -280
-	panel.offset_right = 280
-	panel.offset_top = -220
-	panel.offset_bottom = 220
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
-	overlay.add_child(panel)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
-	panel.add_child(vbox)
-	var title := Label.new()
-	title.text = title_text
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	vbox.add_child(title)
-	var body := RichTextLabel.new()
-	body.bbcode_enabled = true
-	body.fit_content = true
-	body.custom_minimum_size = Vector2(0, 260)
-	body.text = body_text
-	vbox.add_child(body)
-	var btn := Button.new()
-	btn.text = button_text
-	btn.custom_minimum_size = Vector2(180, 44)
-	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	BattleUiTheme.apply_button(btn, "end")
-	btn.pressed.connect(_dismiss_tutorial_overlay)
-	vbox.add_child(btn)
-	overlay.modulate.a = 0.0
-	create_tween().tween_property(overlay, "modulate:a", 1.0, 0.28)
-
-
-func _dismiss_tutorial_overlay() -> void:
-	if _tutorial_overlay == null or not is_instance_valid(_tutorial_overlay):
-		_tutorial_overlay = null
-		return
-	_tutorial_overlay.queue_free()
-	_tutorial_overlay = null
-
-
 func set_animation_speed_scale(speed_scale: float) -> void:
 	_animation_speed_scale = maxf(speed_scale, 0.05)
 	_apply_animation_speed()
-
 
 func _apply_animation_speed() -> void:
 	_animation_speed_scale = SettingsService.get_animation_speed_scale()
 	if _board != null:
 		_board.set_animation_speed_scale(_animation_speed_scale)
 
-
 func _scaled_anim_time(base_duration: float) -> float:
 	return base_duration / _animation_speed_scale
-
 
 func _consume_enemy_turn(enemy_uid: String) -> void:
 	var idx: int = _enemy_turn_queue.find(enemy_uid)
 	if idx >= 0:
 		_enemy_turn_queue.remove_at(idx)
 
-
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		call_deferred("_refresh_relic_bar_after_resize")
-
 
 func _refresh_relic_bar_after_resize() -> void:
 	if not is_node_ready():
@@ -3230,13 +874,11 @@ func _refresh_relic_bar_after_resize() -> void:
 		_hud_presenter._refresh_relic_bar(_relic_bar_available_height())
 	_layout_editor_ui()
 
-
 func _wire_hover_interactions() -> void:
 	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _menu_btn, _toggle_panel_btn]:
 		if button == null:
 			continue
 		button.focus_mode = Control.FOCUS_NONE
-
 
 func _setup_relic_bar() -> void:
 	if _relic_bar_scroll != null:
@@ -3263,132 +905,6 @@ func _setup_relic_bar() -> void:
 	scroll.add_child(relic_grid)
 	_relic_bar_scroll = scroll
 	_relic_bar_vbox = relic_grid
-
-
-func _layout_editor_ui() -> void:
-	if not is_node_ready():
-		return
-	var viewport_size := get_viewport_rect().size
-	var left := 8.0
-	if _hud_presenter != null:
-		_hud_presenter.sync_toggle_btn_x(_panel_visible)
-	# The editor owns a fixed left dock lane. It never follows the inspect card's
-	# content height, so an attack or a new selection cannot push it into the HUD.
-	var editor_top := _EDITOR_DOCK_TOP
-	var editor_dock_visible := _editor_panel != null and _editor_panel.visible
-	if _relic_bar_root != null and _relic_bar_scroll != null:
-		var relic_width := maxf(_relic_bar_scroll.custom_minimum_size.x, 0.0)
-		var relic_h := maxf(_relic_bar_scroll.custom_minimum_size.y, 0.0)
-		var relic_left := left + 12.0
-		_relic_bar_root.position = Vector2(relic_left, editor_top)
-		_relic_bar_root.size = Vector2(relic_width, relic_h)
-		_relic_bar_scroll.size = Vector2(relic_width, relic_h)
-		# The editor owns this lane while open; keep the optional relic list from
-		# creating a second, invisible layout owner underneath the editor dock.
-		_relic_bar_root.visible = _relic_bar_scroll.visible and not editor_dock_visible
-	var bottom_limit := viewport_size.y - _bottom_dock.size.y - 8.0
-	if editor_dock_visible:
-		var editor_width := minf(380.0, maxf(viewport_size.x * 0.30, 340.0))
-		var editor_height := maxf(bottom_limit - editor_top, 240.0)
-		_editor_panel.size = Vector2(editor_width, editor_height)
-		var max_editor_x := maxf(left, viewport_size.x * 0.5 - editor_width - 8.0)
-		var editor_x := clampf(_editor_panel.position.x, left, max_editor_x) if _editor_panel_user_positioned else left
-		var max_editor_y := maxf(editor_top, bottom_limit - editor_height)
-		var editor_y := clampf(_editor_panel.position.y, editor_top, max_editor_y) if _editor_panel_user_positioned else editor_top
-		_editor_panel.position = Vector2(editor_x, editor_y)
-	if _editor_panel_toggle_btn != null:
-		_editor_panel_toggle_btn.position = Vector2(left, editor_top)
-	if _editor_inspector != null and _editor_inspector.visible:
-		var inspector_w := minf(340.0, maxf(viewport_size.x * 0.24, 300.0))
-		var inspector_top := _turn_queue_panel.position.y + _turn_queue_panel.size.y + _EDITOR_INSPECTOR_GAP
-		var inspector_h := maxf(bottom_limit - inspector_top, 240.0)
-		_editor_inspector.size = Vector2(inspector_w, inspector_h)
-		_editor_inspector.position = Vector2(viewport_size.x - inspector_w - 8.0, inspector_top)
-	if _editor_inspector_toggle_btn != null:
-		var inspector_top := _turn_queue_panel.position.y + _turn_queue_panel.size.y + _EDITOR_INSPECTOR_GAP
-		_editor_inspector_toggle_btn.position = Vector2(viewport_size.x - _editor_inspector_toggle_btn.size.x - 8.0, inspector_top)
-
-
-func _on_editor_panel_moved() -> void:
-	_editor_panel_user_positioned = true
-
-
-func _show_relic_detail_popup(relic_id: String) -> void:
-	if relic_id.is_empty():
-		return
-	_dismiss_relic_detail_popup()
-	var def: Dictionary = DataRegistry.get_relic_def(relic_id)
-	var rarity: String = DataRegistry.get_relic_rarity(relic_id)
-	var rarity_color := _hud_presenter.rarity_color(rarity)
-	var canvas := CanvasLayer.new()
-	canvas.layer = 72
-	var root := Control.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	canvas.add_child(root)
-	var bg := ColorRect.new()
-	bg.color = Color(0.03, 0.03, 0.06, 0.72)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root.add_child(bg)
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = Vector2(420, 0)
-	panel.offset_left = -210
-	panel.offset_right = 210
-	panel.offset_top = -180
-	panel.offset_bottom = 180
-	panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(rarity_color))
-	root.add_child(panel)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
-	panel.add_child(vbox)
-	var icon_tex := UnitLooks.get_relic_texture(relic_id)
-	if icon_tex != null:
-		var icon := TextureRect.new()
-		icon.texture = icon_tex
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.custom_minimum_size = Vector2(54, 54)
-		icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		vbox.add_child(icon)
-	var title := Label.new()
-	title.text = str(def.get("name", relic_id))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", rarity_color)
-	vbox.add_child(title)
-	var rarity_label := Label.new()
-	rarity_label.text = _rarity_display_name(rarity)
-	rarity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rarity_label.add_theme_font_size_override("font_size", 13)
-	rarity_label.add_theme_color_override("font_color", rarity_color.lightened(0.08))
-	vbox.add_child(rarity_label)
-	var body := RichTextLabel.new()
-	body.bbcode_enabled = false
-	body.fit_content = true
-	body.scroll_active = false
-	body.custom_minimum_size = Vector2(0, 120)
-	body.text = _hud_presenter.relic_desc_text(def)
-	body.add_theme_font_size_override("normal_font_size", 14)
-	body.add_theme_color_override("default_color", BattleUiTheme.TEXT)
-	vbox.add_child(body)
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.custom_minimum_size = Vector2(140, 40)
-	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	BattleUiTheme.apply_button(close_btn, "ghost")
-	close_btn.pressed.connect(_dismiss_relic_detail_popup)
-	vbox.add_child(close_btn)
-	_relic_detail_overlay = canvas
-	add_child(canvas)
-
-
-func _dismiss_relic_detail_popup() -> void:
-	if _relic_detail_overlay == null:
-		return
-	_relic_detail_overlay.queue_free()
-	_relic_detail_overlay = null
-
 
 func _flat_style(bg: Color, border: Color) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()

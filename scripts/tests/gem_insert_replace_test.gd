@@ -249,12 +249,18 @@ func _test_slot_panels_only_show_in_operation_range() -> void:
 	rat.pos = Vector2i(2, 2)
 	guard.pos = Vector2i(6, 6)
 	state.rebuild_occupancy()
+	controller.select_action(Constants.ACTION_EXTRACT)
 	assert(GemRules.is_unit_in_operation_range(state, player, rat, Constants.ACTION_EXTRACT), "extract fan should show for nearby target")
 	assert(not GemRules.is_unit_in_operation_range(state, player, guard, Constants.ACTION_EXTRACT), "extract fan should hide for far target")
+	assert(controller.is_unit_in_slot_action_range(rat.uid), "controller should expose nearby extract range to the renderer")
+	assert(not controller.is_unit_in_slot_action_range(guard.uid), "controller should hide far extract targets from the renderer")
 	_force_gem(state, player, Constants.SLOT_RED, Constants.GEM_POISON)
 	state.held_gem_uid = player.get_slot(Constants.SLOT_RED).gem_uid
+	controller.select_action(Constants.ACTION_INSERT)
 	assert(GemRules.is_unit_in_operation_range(state, player, rat, Constants.ACTION_INSERT), "insert fan should show for nearby target")
 	assert(not GemRules.is_unit_in_operation_range(state, player, guard, Constants.ACTION_INSERT), "insert fan should hide for far target")
+	assert(controller.is_unit_in_slot_action_range(rat.uid), "controller should expose nearby insert range to the renderer")
+	assert(not controller.is_unit_in_slot_action_range(guard.uid), "controller should hide far insert targets from the renderer")
 	print("  [OK] slot panel range filter")
 
 

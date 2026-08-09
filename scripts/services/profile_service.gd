@@ -157,19 +157,13 @@ func flush_profile() -> void:
 
 func save_profile() -> void:
 	_save_scheduled = false
-	var slot_dir := ProjectSettings.globalize_path(SaveService.get_slot_dir())
-	DirAccess.make_dir_recursive_absolute(slot_dir)
 	var data := {
 		"version": PROFILE_VERSION,
 		"flags": _flags.keys(),
 	}
-	var json_str := JSON.stringify(data, "\t")
-	var file := FileAccess.open(SaveService.slot_file_path(PROFILE_FILE_NAME), FileAccess.WRITE)
-	if file == null:
+	if not SaveService.write_json_atomic(SaveService.slot_file_path(PROFILE_FILE_NAME), data):
 		push_warning("ProfileService: cannot write active slot profile")
 		return
-	file.store_string(json_str)
-	file.close()
 	_dirty = false
 	SaveService.touch_active_slot({
 		"flag_count": _flags.size(),

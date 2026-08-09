@@ -63,6 +63,21 @@ func current_style() -> int:
 	return _current_style
 
 
+func prefetch_scene(scene_path: String) -> int:
+	if not ResourceLoader.exists(scene_path, "PackedScene"):
+		return ERR_FILE_NOT_FOUND
+	var status := ResourceLoader.load_threaded_get_status(scene_path)
+	if status in [ResourceLoader.THREAD_LOAD_IN_PROGRESS, ResourceLoader.THREAD_LOAD_LOADED]:
+		return OK
+	var request_error := ResourceLoader.load_threaded_request(
+		scene_path,
+		"PackedScene",
+		true,
+		ResourceLoader.CACHE_MODE_REUSE
+	)
+	return OK if request_error == ERR_BUSY else request_error
+
+
 func change_scene(
 	scene_path: String,
 	style: int = Style.CHECKERBOARD,
@@ -74,10 +89,8 @@ func change_scene(
 		return ERR_BUSY
 	if direction != Direction.IN and direction != Direction.OUT:
 		return ERR_INVALID_PARAMETER
-	if not ResourceLoader.exists(scene_path, "PackedScene"):
-		return ERR_FILE_NOT_FOUND
-	var request_error := ResourceLoader.load_threaded_request(scene_path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
-	if request_error != OK and request_error != ERR_BUSY:
+	var request_error := prefetch_scene(scene_path)
+	if request_error != OK:
 		return request_error
 	if direction == Direction.IN:
 		if not _hold_fully_covered(style, options):

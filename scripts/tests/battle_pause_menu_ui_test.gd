@@ -61,6 +61,7 @@ func _run_tests() -> void:
 	_check(InputMap.has_action("pause_menu"), "pause_menu input action should exist")
 	_check(_action_has_physical_key("pause_menu", KEY_ESCAPE), "Esc should map to pause_menu")
 	_check(_action_has_physical_key("end_turn", KEY_E), "E should map to end_turn")
+	_check(battle.get("_battle_menu") == null, "battle menu should stay unloaded until the player opens it")
 
 	var escape_event := InputEventKey.new()
 	escape_event.physical_keycode = KEY_ESCAPE

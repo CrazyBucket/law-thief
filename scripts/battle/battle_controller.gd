@@ -4,9 +4,9 @@ extends RefCounted
 const _BattleActionService = preload("res://scripts/battle/battle_action_service.gd")
 const _BattleTurnService = preload("res://scripts/battle/battle_turn_service.gd")
 const _BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
-const _BattleEditorCli = preload("res://scripts/debug/battle_editor_cli.gd")
-const _BattleEditorService = preload("res://scripts/debug/battle_editor_service.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const _BATTLE_EDITOR_CLI_PATH := "res://scripts/debug/battle_editor_cli.gd"
+const _BATTLE_EDITOR_SERVICE_PATH := "res://scripts/debug/battle_editor_service.gd"
 
 signal state_changed
 signal battle_ended(result: String)
@@ -23,7 +23,7 @@ var editor_player_invincible: bool = false
 var _action_svc: BattleActionService = null
 var _turn_svc: BattleTurnService = null
 var _query_svc: BattleQueryService = null
-var _editor_cli: BattleEditorCli = null
+var _editor_cli = null
 var _editor_svc = null
 
 
@@ -41,12 +41,28 @@ func _ensure_services() -> void:
 	if _query_svc == null:
 		_query_svc = _BattleQueryService.new()
 		_query_svc.setup(self)
-	if _editor_svc == null:
-		_editor_svc = _BattleEditorService.new()
-		_editor_svc.setup(self)
-	if _editor_cli == null:
-		_editor_cli = _BattleEditorCli.new()
-		_editor_cli.setup(self)
+
+
+func _ensure_editor_cli() -> bool:
+	if _editor_cli != null:
+		return true
+	var editor_cli_script := ResourceLoader.load(_BATTLE_EDITOR_CLI_PATH) as Script
+	if editor_cli_script == null:
+		return false
+	_editor_cli = editor_cli_script.new()
+	_editor_cli.setup(self)
+	return true
+
+
+func _ensure_editor_service() -> bool:
+	if _editor_svc != null:
+		return true
+	var editor_service_script := ResourceLoader.load(_BATTLE_EDITOR_SERVICE_PATH) as Script
+	if editor_service_script == null:
+		return false
+	_editor_svc = editor_service_script.new()
+	_editor_svc.setup(self)
+	return true
 
 
 func _relic_effect_registry() -> Node:
@@ -184,6 +200,16 @@ func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 	return _fail("当前操作不支持槽位")
 
 
+func is_unit_in_slot_action_range(target_uid: String) -> bool:
+	if state == null:
+		return false
+	var player := state.get_player()
+	var target: UnitState = state.units.get(target_uid, null)
+	if player == null or target == null:
+		return false
+	return GemRules.is_unit_in_operation_range(state, player, target, selected_action)
+
+
 func check_dropped_gem_action(gem_uid: String) -> Dictionary:
 	if state == null:
 		return _fail("战斗未开始")
@@ -284,14 +310,16 @@ func get_tutorial_hint() -> String:
 func run_editor_command(raw_command: String) -> Dictionary:
 	if not _editor_available():
 		return {"ok": false, "message": "battle editor is only available in debug mode"}
-	_ensure_services()
+	if not _ensure_editor_cli():
+		return {"ok": false, "message": "battle editor CLI failed to load"}
 	return _editor_cli.run(raw_command)
 
 
 func run_editor_action(command_id: String, payload: Dictionary = {}) -> Dictionary:
 	if not _editor_available():
 		return {"ok": false, "message": "battle editor is only available in debug mode"}
-	_ensure_services()
+	if not _ensure_editor_service():
+		return {"ok": false, "message": "battle editor service failed to load"}
 	return _editor_svc.execute(command_id, payload)
 
 

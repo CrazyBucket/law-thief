@@ -7,11 +7,11 @@
 ## 结论
 
 - 盘点时体积最大的运行时资源是 `assets/audio/menu_bgm_lawthief.wav`，18.13 MB；该冗余 WAV 已于 2026-08-09 移除，菜单统一使用 1.69 MB OGG。
-- 代码侧最需要优先拆分的是 `battle_scene.gd`（3,687 行）和 `isometric_board.gd`（3,660 行）；两者同时混合了 UI、输入、战斗流程、编辑器、奖励结算、绘制和动画。
-- 规则侧的首要候选是 `gem_effects.gd`（2,479 行），其次是 `attack_pipeline.gd`（983 行）和 `status_rules.gd`（790 行）。
-- 数据/校验侧的主要候选是 `data_registry.gd`（1,853 行）、`balance_config_validator.gd`（1,518 行）和 `adventure_config_validator.gd`（1,008 行）。
-- 发现一对内容完全相同的大图：`assets/ui/main_title.png` 与 `assets/demo/doodle-rpg/ALL SPRITES/UI/title.png`，SHA-256 相同，各 537.2 KB。
-- `tmp/` 下有 75 个文件、约 2.72 MB，且其中 32 个文件已被 Git 跟踪；它们应在资源拆分前明确“评审产物”还是“正式资源”。
+- 四个核心巨石已完成结构拆分：入口 `battle_scene.gd`、`isometric_board.gd`、`gem_effects.gd`、`data_registry.gd` 当前分别为 915、456、988、657 行；最大拆分层为 1,189 行。
+- 生产脚本统一采用 600 行审查线和不可豁免的 1,300 行硬上限；超过 600 行必须登记职责与百行档预算，至少保留 50 行余量，回落后必须删除登记。
+- 当前下一批结构候选是 `balance_config_validator.gd`、`battle_editor_cli.gd` 和 `battle_hud_presenter.gd`，但都已处于硬上限内，不再以单纯减少行数为目标。
+- 盘点发现的两张相同旧标题图已于 2026-08-09 删除；主菜单只保留实际使用的 `assets/ui/main_title_v2.png`。
+- `tmp/` 当前有 152 个文件、约 18.6 MB，且其中 37 个文件已被 Git 跟踪；它们仍需明确“评审产物”还是“正式资源”。
 
 ## 已执行
 
@@ -27,8 +27,27 @@
 - 已从 `BalanceConfigValidator` 抽取 `scripts/services/gem_def_validator.gd`：宝石字段、稀有度、组合与能力档案校验集中在单一纯静态模块，原验证器保留兼容入口。
 - 已从 `BattleQueryService` 抽取 `scripts/ui/battle_overlay_presenter.gd`：兼容 overlay/route schema、去重、元数据与敌方意图表现投影由纯 presenter 负责，查询服务降至 576 行。
 - `IsometricBoard` 已删除旧 `set_highlights()`、散字段 fallback 与重复描边路径，统一由 `set_overlays()` 接收 presenter/map specs。
-- `BattleScene` 当前为 3,248 行，`IsometricBoard` 当前为 3,380 行；组件测试持续固化奖励、战斗特效和 overlay 输入/渲染契约。
+- `BattleScene` 已按流程基类、编辑器适配和场景入口拆为 1,170 / 717 / 915 行；奖励、编辑器、槽位面板、重绘节奏、战斗特效和 overlay 契约继续由原测试固化。
 - 菜单音乐已收口到 `AudioService` 的 OGG 播放入口，移除重复场景播放器和未引用 WAV。
+- `IsometricBoard` 已抽取后景覆盖层和动画状态容器；高亮、路线、地表后景以 30 Hz 独立更新，单位、前景遮挡和 HUD 顺序保持不变。
+- 战斗场景与棋盘的可选资源缓存已分别抽取为 `battle_scene_lazy_resources.gd` 和 `battle_board_resources.gd`；编辑器/结算脚本、实体贴图和战斗着色器不再无条件进入普通战斗冷加载路径。
+- 已从 `BattleScene` 抽取并按需加载 `battle_reward_view.gd`：宝石、掉落物、槽位嵌入和遗物视图构建不再进入普通战斗冷加载路径，公开构建入口保持转发兼容。
+- 水层节点顺序保持稳定，水面材质、生成图、上下水面纹理和浅水遮罩改为首次出现相应水体时加载；浅水层以状态 revision 和棋盘变换作为扫描缓存键。
+- 棋盘固定底图的非白内容区域改为预计算常量，移除每次入场约 39 万次像素检查；渲染契约测试会重新扫描源 PNG，确保常量与实际素材同步。
+- 敌人意图规划增加可采纳路径下界：通用近战与裂变史莱姆跳过不可能更优的 A*，石弓守卫复用开火锚点并用无权 BFS 下界筛选原加权 A*；候选顺序、完整 footprint 和评分规则保持不变。
+- 单位意图柔光由原生径向渐变替代逐像素脚本生成；主菜单按每帧一个图标预热 22 个意图资源并在完成后自我释放，降低首战单位 UI 的同步加载尖峰。
+- 棋盘的槽位范围规则改由控制器回调注入，毒雾表现改用轻量视觉几何模块，不再显式加载 `GemRules`/`BoardUtils`；普通控制器按需加载编辑器服务，暂停菜单与离场确认框首次使用时创建。
+- 主菜单在正式渲染客户端后台预取战斗场景，普通、精英和 Boss 房间统一通过线程转场进入战斗；架构守卫禁止重新引入同步战斗切场。
+- 战斗编辑器的面板/检查器构建、放置预览、摘要、宝石/遗物列表和状态按钮已抽取为 526 行的 `battle_editor_view.gd`，仅在编辑器战斗中动态加载；`BattleScene` 因此减少 385 行。
+- 宝石插入/拔出槽位面板的绘制、命中和 hover 状态已抽取为 278 行的 `battle_unit_slot_panel_renderer.gd`；普通战斗保持不加载，首次进入插入或拔出动作时才通过棋盘资源表创建。
+- 光束、投射物、粒子、Shader 池、预热器和特效纹理从棋盘急切预载改为首帧后四阶段准备；对应播放入口可独立即时加载，棋盘显式预载闭包进一步降至 28 文件、6,636 行。
+- 玩家与史莱姆待机动画改为仅在实际贴图帧变化时重绘；行动光环以 30 Hz 采样，静止教学战的整板重绘由原 60 Hz 降至实测约 29–31 Hz，移动和战斗动画仍保留 60 Hz。
+- 两张未被运行时引用的旧标题图已删除，共减少约 1.05 MB；当前标题 `main_title_v2.png` 保留。
+- `IsometricBoard` 已按 FX 基础、移动动画、单位渲染、地表渲染和生命周期入口拆为 856 / 519 / 830 / 769 / 456 行，原场景脚本路径不变。
+- `GemEffects` 已按共享运行时原语、效果结算和触发门面拆为 105 / 1,189 / 988 行；为避免规则依赖环，爆炸、冲击、攻击管线与位移模块保持调用时或最终门面加载。
+- `DataRegistry` 已按稳定查询 API 与运行时加载/恢复实现拆为 1,179 / 657 行，autoload 路径和公开方法保持不变。
+- 文件体积守卫已升级为统一硬上限并加入自检；源码编码守卫同时拒绝替换字符和常见 UTF-8/GBK 乱码特征。
+- 本轮不处理美术资源压缩、字体裁剪或 `tmp/` 评审图归档；当前资源可用性优先。
 
 ## 体积大于等于 100 KB 的全部文件
 
@@ -42,8 +61,6 @@
 | 1.57 MB | `assets/ui/main_menu_bg.png` |
 | 748.6 KB | `assets/tiles/mew_water_bottom.png` |
 | 728.8 KB | `assets/tiles/mew_water_top.png` |
-| 537.2 KB | `assets/ui/main_title.png` |
-| 537.2 KB | `assets/demo/doodle-rpg/ALL SPRITES/UI/title.png` |
 | 430.5 KB | `assets/demo/doodle-rpg/ALL SPRITES/Sheet Grassy.png` |
 | 391.8 KB | `assets/demo/doodle-rpg/ALL SPRITES/Sheet.png` |
 | 365.1 KB | `assets/demo/doodle-rpg/ALL SPRITES/Knight/Random.PNG` |
@@ -62,9 +79,9 @@
 | 171.8 KB | `tmp/map_icon_review/start_candidate2_alpha.png` |
 | 161.4 KB | `assets/demo/doodle-rpg/ALL SPRITES/Knight/Sword Swing/Frames2.PNG` |
 | 142.2 KB | `assets/overlays/vegetation/overlay_grass_tall.png` |
-| 140.6 KB | `scripts/ui/battle_scene.gd` |
-| 137.3 KB | `scripts/ui/isometric_board.gd` |
+| 122.4 KB | `scripts/ui/isometric_board.gd` |
 | 123.5 KB | `assets/units/female-adventurer/frame dimensions.png` |
+| 106.9 KB | `scripts/ui/battle_scene.gd` |
 | 110.6 KB | `assets/demo/doodle-rpg/ALL SPRITES/Extras.png` |
 | 105.5 KB | `assets/demo/doodle-rpg/ALL SPRITES/Knight/Sword Swing/Frames3.PNG` |
 | 105.5 KB | `assets/demo/doodle-rpg/ALL SPRITES/Knight/Sword Swing/Frames1.PNG` |
@@ -76,10 +93,10 @@
 
 | 行数 | 文件 | 初步判断 |
 | ---: | --- | --- |
-| 3,687 | `scripts/ui/battle_scene.gd` | P0：战斗页面、输入、编辑器、奖励结算、结果页、动画接线集中在一个 Control |
-| 3,660 | `scripts/ui/isometric_board.gd` | P0：棋盘绘制、单位/覆盖物、槽位、宝石、移动动画、战斗特效集中在一个 Control |
+| 3,390 | `scripts/ui/isometric_board.gd` | P0：棋盘绘制、单位/覆盖物、宝石、移动动画和战斗特效编排仍集中在一个 Control |
+| 2,892 | `scripts/ui/battle_scene.gd` | P0：战斗页面、输入、流程、结果页和动画接线仍集中在一个 Control |
 | 2,479 | `scripts/rules/gem_effects.gd` | P0：宝石触发、伤害/位移、死亡链、光束/导电、毒/分裂等规则集中 |
-| 1,853 | `scripts/services/data_registry.gd` | P0：数据加载、解析、查询、随机池、奖励、运行时实例化、存档恢复集中 |
+| 1,829 | `scripts/services/data_registry.gd` | P0：数据加载、解析、查询、随机池、奖励、运行时实例化、存档恢复集中 |
 | 1,518 | `scripts/services/balance_config_validator.gd` | P1：多个配置域共用一个校验器，适合按配置域拆分 |
 | 1,241 | `scripts/ui/battle_hud_presenter.gd` | P1：状态检查、槽位提示、时间线、遗物栏、布局适配集中 |
 | 1,226 | `scripts/debug/battle_editor_cli.gd` | P1：命令分发、参数解析、对象变更、导入导出、格式化集中 |
@@ -87,18 +104,18 @@
 | 983 | `scripts/rules/attack_pipeline.gd` | P1：攻击阶段与大量宝石/遗物特例混在同一管线 |
 | 911 | `scripts/tests/balance_config_test.gd` | P2：测试数据/断言量大，先保持边界清晰再拆 |
 | 839 | `scripts/services/run_service.gd` | P1：运行状态、路线、奖励、恢复与持久化边界需确认 |
-| 832 | `scripts/main/main_root.gd` | P1：主菜单、设置、页面构建、粒子、音乐、元控制台集中 |
+| 823 | `scripts/main/main_root.gd` | P1：主菜单、设置、页面构建、粒子、音乐、元控制台集中 |
 | 790 | `scripts/rules/status_rules.gd` | P1：状态增减、触发与派生效果集中 |
 | 788 | `scripts/map/tile_renderer.gd` | P1：地图瓦片、房间路线、覆盖物和绘制逻辑集中 |
 | 781 | `scripts/debug/battle_editor_service.gd` | P1：编辑器操作与运行时状态变更集中 |
 | 758 | `scripts/rules/board_utils.gd` | P1：棋盘查询、路径、占用和规则辅助集中 |
 | 713 | `scripts/tests/fission_slime_test.gd` | P2：单敌人场景测试较大，确认是否可按行为拆分 |
-| 670 | `scripts/rules/enemy_ai.gd` | P1：敌人意图、评分、执行前后处理集中 |
 | 634 | `scripts/battle/battle_query_service.gd` | P1：战斗查询接口边界较宽 |
 | 583 | `scripts/services/relic_effect_registry.gd` | P1：遗物效果注册/执行可按触发时机或主题拆分 |
 | 582 | `scripts/rules/overload_rules.gd` | P1：过载计算与效果触发集中 |
 | 561 | `scripts/ui/battle_event_player.gd` | P1：事件解释、动画调度和表现层状态推进集中 |
 | 548 | `scripts/ui/rich_tooltip.gd` | P2：可按内容模型、布局和主题拆分 |
+| 526 | `scripts/ui/battle_editor_view.gd` | P2：编辑器专用视图组件，保持按需加载且不再扩张 BattleScene |
 | 508 | `scripts/tests/blue_black_combo_test.gd` | P2：组合场景测试较大 |
 
 ## 建议的拆分顺序

@@ -202,6 +202,14 @@ static func _find_best_approach(
 	for anchor in reachable:
 		if not _anchor_passable_for_plan(state, unit, anchor, cell_blockers):
 			continue
+		# 每移动一格，完整 footprint 到玩家锚点的曼哈顿距离至多缩短一格。
+		# 下界无法优于当前候选时，保持原遍历顺序并跳过昂贵的完整寻路。
+		var distance_lower_bound := maxi(
+			0,
+			BoardUtils.distance_between_unit_at_and_cell(unit, anchor, player.pos) - 1
+		)
+		if distance_lower_bound >= best_dist:
+			continue
 		var dist := BoardUtils.path_distance_to_cell(
 			state, anchor, player.pos, unit.uid, cell_blockers, unit
 		)

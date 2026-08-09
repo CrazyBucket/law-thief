@@ -17,7 +17,7 @@ func prewarm(shader: Shader, count: int) -> void:
 	_pools[shader_key] = pool
 
 
-func warm_rendering(shaders: Array) -> void:
+func begin_render_warmup(shaders: Array) -> Array[Dictionary]:
 	var warming: Array[Dictionary] = []
 	for shader in shaders:
 		var rect := acquire(shader as Shader)
@@ -28,7 +28,10 @@ func warm_rendering(shaders: Array) -> void:
 		material.set_shader_parameter("progress", 0.5)
 		rect.visible = true
 		warming.append({"key": key_for(shader as Shader), "rect": rect})
-	RenderingServer.force_draw(false)
+	return warming
+
+
+func finish_render_warmup(warming: Array[Dictionary]) -> void:
 	for item in warming:
 		var rect: ColorRect = item.rect
 		if not is_instance_valid(rect):

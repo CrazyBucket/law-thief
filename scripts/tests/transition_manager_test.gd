@@ -17,6 +17,7 @@ func _run() -> void:
 	_overlay = _manager.get_node("TransitionLayer/Overlay") as ColorRect
 	_connect_signal_trace()
 	_test_initial_contract()
+	await _test_scene_prefetch_contract()
 	await _test_checkerboard_cover_reveal()
 	await _test_silhouette_contract()
 	await _test_scene_change_contracts()
@@ -37,6 +38,17 @@ func _test_initial_contract() -> void:
 	assert(not invalid_style and not _manager.is_transitioning(), "unknown styles must fail without changing state")
 	var idle_reveal: bool = await _manager.reveal(0.0)
 	assert(not idle_reveal, "reveal should reject an uncovered idle manager")
+
+
+func _test_scene_prefetch_contract() -> void:
+	assert(_manager.prefetch_scene(TARGET_SCENE) == OK, "existing scenes should accept background prefetch")
+	while ResourceLoader.load_threaded_get_status(TARGET_SCENE) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await process_frame
+	assert(
+		ResourceLoader.load_threaded_get_status(TARGET_SCENE) == ResourceLoader.THREAD_LOAD_LOADED,
+		"prefetched scene should remain ready for the later transition"
+	)
+	assert(_manager.prefetch_scene(TARGET_SCENE) == OK, "prefetching an already loaded request should be idempotent")
 
 
 func _test_checkerboard_cover_reveal() -> void:

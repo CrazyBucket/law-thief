@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FIXTURE="$(mktemp -d)"
+trap 'rm -rf "$FIXTURE"' EXIT
+mkdir -p "$FIXTURE/scripts/core" "$FIXTURE/docs"
+
+write_lines() {
+  local path="$1"
+  local count="$2"
+  awk -v count="$count" 'BEGIN { for (i = 1; i <= count; i++) print "pass" }' >"$path"
+}
+
+write_register() {
+  local budget="$1"
+  cat >"$FIXTURE/docs/file-size-boundaries.md" <<EOF
+| File | Line budget | Current responsibility boundary | Next extraction direction |
+| --- | ---: | --- | --- |
+| \`scripts/core/sample.gd\` | $budget | Fixture | Fixture |
+EOF
+}
+
+write_lines "$FIXTURE/scripts/core/sample.gd" 601
+printf '%s\n' '| File | Line budget | Current responsibility boundary | Next extraction direction |' >"$FIXTURE/docs/file-size-boundaries.md"
+if FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null 2>&1; then
+  echo "FILE_SIZE_GUARD_SELF_TEST_FAIL unregistered review file passed" >&2
+  exit 1
+fi
+
+write_register 700
+FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null
+
+write_register 701
+if FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null 2>&1; then
+  echo "FILE_SIZE_GUARD_SELF_TEST_FAIL unrounded budget passed" >&2
+  exit 1
+fi
+
+write_lines "$FIXTURE/scripts/core/sample.gd" 651
+write_register 700
+if FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null 2>&1; then
+  echo "FILE_SIZE_GUARD_SELF_TEST_FAIL insufficient headroom passed" >&2
+  exit 1
+fi
+
+write_lines "$FIXTURE/scripts/core/sample.gd" 1301
+write_register 1300
+if FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null 2>&1; then
+  echo "FILE_SIZE_GUARD_SELF_TEST_FAIL hard maximum passed" >&2
+  exit 1
+fi
+
+write_register 1400
+if FILE_SIZE_GUARD_ROOT="$FIXTURE" "$ROOT/tools/file_size_guard" >/dev/null 2>&1; then
+  echo "FILE_SIZE_GUARD_SELF_TEST_FAIL oversized budget passed" >&2
+  exit 1
+fi
+
+echo "FILE_SIZE_GUARD_SELF_TEST_PASS"

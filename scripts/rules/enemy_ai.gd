@@ -340,6 +340,12 @@ static func _evaluate_move_only(
 			continue
 		if _is_blocked_destination(state, pos, enemy, cell_blockers):
 			continue
+		# 1x1 单位只需走到目标相邻格；该曼哈顿下界不可能低于真实寻路距离。
+		# 连下界都无法优于当前候选时跳过完整 A*，同时保留原有的选点与平局顺序。
+		if enemy.footprint_size == Vector2i.ONE and player.footprint_size == Vector2i.ONE:
+			var distance_lower_bound := maxi(0, BoardUtils.manhattan(pos, player.pos) - 1)
+			if distance_lower_bound >= best_dist:
+				continue
 		var dist := BoardUtils.path_distance_to_cell(
 			state, pos, player.pos, enemy.uid, cell_blockers, enemy
 		)

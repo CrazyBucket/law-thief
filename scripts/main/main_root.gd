@@ -4,6 +4,7 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const GameConfirmDialog = preload("res://scripts/ui/game_confirm_dialog.gd")
 const EditorConsoleScene = preload("res://scenes/ui/editor_console.tscn")
 const MetaConsoleCli = preload("res://scripts/debug/meta_console_cli.gd")
+const BattleUiResourceWarmupScript = preload("res://scripts/ui/battle_ui_resource_warmup.gd")
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const MENU_ACCENT := Color("#4ce58d")
 const ANIMATION_SPEED_OPTIONS := [0.75, 1.0, 1.5, 2.0]
@@ -61,6 +62,7 @@ func _ready() -> void:
 	_refresh_all()
 	_title_base_y = _title_art.position.y
 	_play_intro_animation()
+	add_child(BattleUiResourceWarmupScript.new())
 
 
 func _process(delta: float) -> void:

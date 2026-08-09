@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RULE_PATHS=("$ROOT/scripts/rules" "$ROOT/scripts/battle")
+CONTROLLER="$ROOT/scripts/battle/battle_controller.gd"
 POSITION_PATHS=("${RULE_PATHS[@]}")
 for file in "$ROOT"/scripts/ui/battle*.gd "$ROOT/scripts/ui/presentation_state_applier.gd"; do
   if [[ -f "$file" ]]; then
@@ -34,7 +35,7 @@ violations=0
 # UnitState position writes in live battle code must go through GameState/CombatTransaction.
 # The split clone assignment initializes a detached clone before UnitSpawnService registers it.
 position_writes="$(collect_matches '\.pos[[:space:]]*=[[:space:]]*[^=]' "${POSITION_PATHS[@]}")"
-position_writes="$(grep -Ev '^scripts/rules/gem_effects\.gd:[0-9]+:[[:space:]]*clone\.pos[[:space:]]*=[[:space:]]*spawn_pos[[:space:]]*$' <<<"$position_writes" || true)"
+position_writes="$(grep -Ev '^scripts/rules/gem_effects(_resolution)?\.gd:[0-9]+:[[:space:]]*clone\.pos[[:space:]]*=[[:space:]]*spawn_pos[[:space:]]*$' <<<"$position_writes" || true)"
 report_violations "DIRECT_POSITION_WRITE" "$position_writes"
 
 # Event dictionaries are centralized so identity and shape cannot silently drift.
@@ -62,9 +63,13 @@ unit_dictionary="$(collect_matches '\.units\[[^]]+\][[:space:]]*=' "${RULE_PATHS
 unit_dictionary="$(grep -Ev '^scripts/battle/battle_state_factory\.gd:' <<<"$unit_dictionary" || true)"
 report_violations "DIRECT_UNIT_DICTIONARY_WRITE" "$unit_dictionary"
 
+# Debug/editor services must not enter the normal battle controller's cold dependency graph.
+editor_preloads="$(grep -n -E 'preload\("res://scripts/debug/battle_editor_(cli|service)\.gd"\)' "$CONTROLLER" 2>/dev/null || true)"
+report_violations "EAGER_EDITOR_PRELOAD" "$editor_preloads"
+
 if (( violations > 0 )); then
   echo "COMBAT_ARCHITECTURE_GUARD_FAIL categories=$violations" >&2
   exit 1
 fi
 
-echo "COMBAT_ARCHITECTURE_GUARD_PASS categories=6"
+echo "COMBAT_ARCHITECTURE_GUARD_PASS categories=7"

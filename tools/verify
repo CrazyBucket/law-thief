@@ -72,6 +72,13 @@ if ! "$ROOT/tools/file_size_guard" >"$FILE_SIZE_LOG" 2>&1; then
   exit 1
 fi
 
+FILE_SIZE_SELF_TEST_LOG="$REPORT_DIR/file_size_guard_self_test.log"
+if ! "$ROOT/tools/file_size_guard_self_test" >"$FILE_SIZE_SELF_TEST_LOG" 2>&1; then
+  echo "VERIFY_FAIL file_size_guard_self_test (see artifacts/verify/file_size_guard_self_test.log)"
+  cat "$FILE_SIZE_SELF_TEST_LOG"
+  exit 1
+fi
+
 VERIFY_SELECTION_LOG="$REPORT_DIR/verify_selection_guard.log"
 if ! bash "$ROOT/tools/verify_selection_guard" >"$VERIFY_SELECTION_LOG" 2>&1; then
   echo "VERIFY_FAIL verify_selection_guard (see artifacts/verify/verify_selection_guard.log)"

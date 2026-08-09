@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MAX_LINES=600
+ROOT="${FILE_SIZE_GUARD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+REVIEW_LINES=600
+HARD_MAX_LINES=1300
+MIN_HEADROOM=50
 BOUNDARY_DOC="$ROOT/docs/file-size-boundaries.md"
 
 if [[ ! -f "$BOUNDARY_DOC" ]]; then
@@ -14,34 +16,52 @@ checked=0
 documented=0
 missing=0
 over_budget=0
+stale=0
 while IFS= read -r file; do
   rel="${file#"$ROOT/"}"
   lines="$(wc -l < "$file")"
-  if (( lines <= MAX_LINES )); then
+  row="$(grep -F "| \`$rel\` |" "$BOUNDARY_DOC" | head -1 || true)"
+  if (( lines <= REVIEW_LINES )); then
+    if [[ -n "$row" ]]; then
+      echo "FILE_SIZE_GUARD_STALE_BOUNDARY lines=$lines file=$rel" >&2
+      stale=$((stale + 1))
+    fi
     continue
   fi
   checked=$((checked + 1))
-  row="$(grep -F "| \`$rel\` |" "$BOUNDARY_DOC" | head -1 || true)"
   if [[ -n "$row" ]]; then
     documented=$((documented + 1))
     budget="$(awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3}' <<<"$row")"
     if [[ ! "$budget" =~ ^[0-9]+$ ]]; then
       echo "FILE_SIZE_GUARD_INVALID_BUDGET file=$rel budget=$budget" >&2
       over_budget=$((over_budget + 1))
+    elif (( budget % 100 != 0 )); then
+      echo "FILE_SIZE_GUARD_UNROUNDED_BUDGET file=$rel budget=$budget" >&2
+      over_budget=$((over_budget + 1))
+    elif (( budget > HARD_MAX_LINES )); then
+      echo "FILE_SIZE_GUARD_BUDGET_ABOVE_HARD_MAX hard_max=$HARD_MAX_LINES budget=$budget file=$rel" >&2
+      over_budget=$((over_budget + 1))
     elif (( lines > budget )); then
       echo "FILE_SIZE_GUARD_OVER_BUDGET lines=$lines budget=$budget file=$rel" >&2
       over_budget=$((over_budget + 1))
+	elif (( budget - lines < MIN_HEADROOM )); then
+		echo "FILE_SIZE_GUARD_INSUFFICIENT_HEADROOM lines=$lines budget=$budget min_headroom=$MIN_HEADROOM file=$rel" >&2
+		over_budget=$((over_budget + 1))
     fi
   else
     echo "FILE_SIZE_GUARD_MISSING lines=$lines file=$rel" >&2
-    missing=$((missing + 1))
+      missing=$((missing + 1))
+  fi
+  if (( lines > HARD_MAX_LINES )); then
+    echo "FILE_SIZE_GUARD_HARD_MAX lines=$lines hard_max=$HARD_MAX_LINES file=$rel" >&2
+    over_budget=$((over_budget + 1))
   fi
 done < <(find "$ROOT/scripts" -type f -name '*.gd' \
   ! -path "$ROOT/scripts/tests/*" \
   ! -path "$ROOT/scripts/tools/*" | sort)
 
-if (( missing > 0 || over_budget > 0 )); then
-  echo "FILE_SIZE_GUARD_FAIL checked=$checked documented=$documented missing=$missing over_budget=$over_budget max_lines=$MAX_LINES" >&2
+if (( missing > 0 || over_budget > 0 || stale > 0 )); then
+  echo "FILE_SIZE_GUARD_FAIL checked=$checked documented=$documented missing=$missing over_budget=$over_budget stale=$stale review_lines=$REVIEW_LINES hard_max=$HARD_MAX_LINES min_headroom=$MIN_HEADROOM" >&2
   exit 1
 fi
-echo "FILE_SIZE_GUARD_PASS checked=$checked documented=$documented over_budget=$over_budget max_lines=$MAX_LINES"
+echo "FILE_SIZE_GUARD_PASS checked=$checked documented=$documented over_budget=$over_budget stale=$stale review_lines=$REVIEW_LINES hard_max=$HARD_MAX_LINES min_headroom=$MIN_HEADROOM"

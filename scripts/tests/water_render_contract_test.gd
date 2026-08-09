@@ -30,20 +30,31 @@ func _run() -> void:
 	_require(edge.get_index() > shallow.get_index(), "shore must render over all water fills")
 	_require(not board.has_node("WaterBackEdgeLayer"), "legacy split shore layer must be removed")
 	_require(not board.has_node("WaterFrontEdgeLayer"), "legacy front shore layer must be removed")
-	_require(fill.material is ShaderMaterial, "water fill must have a shader")
-	_require(shallow.material is ShaderMaterial, "shallow water must have a shader")
+	var state: GameState = board.state
+	_require(fill.material == null, "water-free encounters must defer the base-water shader")
+	_require(shallow.material == null, "water-free encounters must defer shallow-water resources")
+	shallow.call("_sync_cells")
+	var initial_scan_count := int(shallow.get("sync_scan_count"))
+	shallow.call("_sync_cells")
+	_require(int(shallow.get("sync_scan_count")) == initial_scan_count, "unchanged state must not rescan shallow-water cells")
+	state.get_tile(Vector2i(0, 0)).add_modifier(Constants.TILE_MOD_SHALLOW_WATER, 2)
+	state.bump_revision()
+	await process_frame
+	await process_frame
+	var shallow_cells: Array = shallow.get("cells")
+	_require(shallow_cells.size() == 1, "shallow water layer must track modifier cells")
+	_require(shallow.material is ShaderMaterial, "shallow water must load its shader on first use")
+	state.get_tile(Vector2i(1, 0)).tile_id = Constants.TILE_WATER
+	state.bump_revision()
+	board.call("_sync_water_visuals")
+	await process_frame
+	_require(fill.material is ShaderMaterial, "water fill must load its shader on first use")
 	var fill_material := fill.material as ShaderMaterial
 	var shallow_material := shallow.material as ShaderMaterial
 	_require(shallow_material.shader == fill_material.shader, "shallow water must reuse the water-tile shader")
 	var fill_color: Color = fill_material.get_shader_parameter("base_color")
 	var shallow_color: Color = shallow_material.get_shader_parameter("base_color")
 	_require(shallow_color.is_equal_approx(Color(fill_color.r, fill_color.g, fill_color.b, 0.76)), "shallow water must reuse the water-tile RGB palette")
-	var state: GameState = board.state
-	state.get_tile(Vector2i(0, 0)).add_modifier(Constants.TILE_MOD_SHALLOW_WATER, 2)
-	await process_frame
-	await process_frame
-	var shallow_cells: Array = shallow.get("cells")
-	_require(shallow_cells.size() == 1, "shallow water layer must track modifier cells")
 	var selected_variants := {}
 	for y in range(5):
 		for x in range(5):
@@ -52,10 +63,10 @@ func _run() -> void:
 			_require(variant == ShallowWaterLayerClass.variant_index(pos), "shallow-water selection must stay stable per cell")
 			selected_variants[variant] = true
 	_require(selected_variants.size() == 5, "shallow-water coordinate selection must expose all five variants")
-	var source := FileAccess.get_file_as_string("res://scripts/ui/isometric_board.gd")
-	var entities_at := source.find("\t\t_draw_entity_at_grid(grid, drawn_entities)")
-	var unit_body_at := source.find("\t\t\t_draw_unit_body(unit)")
-	var unit_ui_at := source.find("\t\t\t_draw_unit_ui(unit)")
+	var source := FileAccess.get_file_as_string("res://scripts/ui/isometric_board_surface_renderer.gd")
+	var entities_at := source.find("_draw_entity_at_grid(grid, drawn_entities)")
+	var unit_body_at := source.find("_draw_unit_body(unit,")
+	var unit_ui_at := source.find("_draw_unit_ui(unit,")
 	_require(entities_at >= 0 and unit_body_at >= 0 and unit_ui_at >= 0, "failed to locate entity/unit draw commands")
 	_require(entities_at < unit_body_at, "entities must draw before unit bodies")
 	_require(unit_body_at < unit_ui_at, "unit UI must draw above unit bodies")

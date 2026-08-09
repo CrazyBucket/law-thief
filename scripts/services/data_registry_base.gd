@@ -1,0 +1,1179 @@
+extends Node
+const BoardMapGenerator = preload("res://scripts/map/board_map_generator.gd")
+const AdventureConfigValidator = preload("res://scripts/services/adventure_config_validator.gd")
+const BalanceConfigValidator = preload("res://scripts/services/balance_config_validator.gd")
+const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
+const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const AIProfiles = preload("res://scripts/rules/ai_profiles.gd")
+const AdventureProgressionConfig = preload("res://scripts/core/adventure_progression_config.gd")
+const NumericTextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
+const EncounterEnemyResolver = preload("res://scripts/services/encounter_enemy_resolver.gd")
+const EncounterCatalogLoader = preload("res://scripts/services/encounter_catalog_loader.gd")
+const ProceduralEncounterGenerator = preload("res://scripts/services/procedural_encounter_generator.gd")
+const BattleStateFactory = preload("res://scripts/battle/battle_state_factory.gd")
+const EncounterContentDiagnostics = preload("res://scripts/debug/encounter_content_diagnostics.gd")
+const OldMageEncounterSetup = preload("res://scripts/services/old_mage_encounter_setup.gd")
+const TideRules = preload("res://scripts/rules/tide_rules.gd")
+const ABILITY_UNIT_RED_ACTIVE := "unit_red_active"
+const ABILITY_ENEMY_RED_ACTION := "enemy_red_action"
+const ABILITY_BLUE_TURN_START := "blue_turn_start"
+const ABILITY_BLUE_DAMAGED := "blue_damaged"
+const ABILITY_BLUE_MOVE_THROUGH := "blue_move_through"
+const ABILITY_BLACK_DEATH := "black_death"
+const ABILITY_ATTACK_BONUS := "attack_bonus"
+const ABILITY_ARMOR_BONUS := "armor_bonus"
+const _GEM_EFFECT_LEVEL_PERCENT_FIELDS := {
+	"deflect_chance": true,
+	"rebound_chance": true,
+	"damage_ratio": true,
+	"center_damage_ratio": true,
+	"splash_base_attack_ratio": true,
+	"reflect_damage_ratio": true,
+	"stat_ratio": true,
+	"followup_ratio": true,
+	"redirect_ratio": true,
+	"temp_clone_stat_ratio": true,
+}
+var _gem_effect_profiles: Dictionary = {}
+var _gem_effect_levels: Dictionary = {}
+var _gem_defs: Dictionary = {}
+var _gem_pools: Dictionary = {}
+var _gem_teaching_boosts: Dictionary = {}
+var _relic_numeric_refs: Dictionary = {}
+var _relic_source_weights: Dictionary = {}
+var _reward_offer_config: Dictionary = {}
+var _battle_reward_ui_config: Dictionary = {}
+var _enemy_slot_curves: Dictionary = {}
+var _unit_defs: Dictionary = {}
+var _encounters: Dictionary = {}
+var _relic_defs: Dictionary = {}
+var _uid_counter: int = 0
+var _startup_load_duration_usec: int = 0
+
+func get_startup_load_duration_ms() -> float:
+	return float(_startup_load_duration_usec) / 1000.0
+
+
+func get_encounter_ids(include_hidden: bool = false) -> Array:
+	var ids: Array[String] = []
+	for encounter_id in _encounters.keys():
+		var encounter: Dictionary = _encounters[encounter_id]
+		if include_hidden or bool(encounter.get("catalog_visible", true)):
+			ids.append(str(encounter_id))
+	ids.sort()
+	return ids
+## Resolve fixed, grouped, and random-slot enemies inside the combat RNG context.
+func _resolve_encounter_enemies(encounter: Dictionary, encounter_id: String) -> Array[Dictionary]:
+	return EncounterEnemyResolver.resolve(encounter, encounter_id, Callable(RngService, "weighted_pick"))
+func next_runtime_uid(prefix: String) -> String:
+	return _next_uid(prefix)
+func has_unit_def(unit_def_id: String) -> bool:
+	return _unit_defs.has(unit_def_id)
+
+func get_unit_def(unit_def_id: String) -> Dictionary:
+	return _unit_defs.get(unit_def_id, {}).duplicate(true)
+
+func get_unit_balance_value(unit_def_id: String, key: String, fallback: Variant = null) -> Variant:
+	var def: Dictionary = _unit_defs.get(unit_def_id, {})
+	if def.is_empty():
+		return fallback
+	var balance: Variant = def.get("balance", {})
+	if not balance is Dictionary:
+		return fallback
+	return (balance as Dictionary).get(key, fallback)
+
+
+func get_unit_def_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for unit_def_id in _unit_defs.keys():
+		ids.append(str(unit_def_id))
+	ids.sort()
+	return ids
+
+
+func has_gem_def(gem_id: String) -> bool:
+	return _gem_defs.has(gem_id)
+
+
+func get_gem_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for gem_id in _gem_defs.keys():
+		ids.append(str(gem_id))
+	ids.sort()
+	return ids
+
+
+func get_tile_ids() -> Array[String]:
+	return [
+		Constants.TILE_FLOOR,
+		Constants.TILE_WATER,
+		Constants.TILE_ICE,
+		Constants.TILE_GRASS,
+		Constants.TILE_BUSH,
+	]
+
+
+func has_tile_id(tile_id: String) -> bool:
+	return tile_id in get_tile_ids()
+
+
+func get_unit_display_name(unit_def_id: String) -> String:
+	var def: Dictionary = _unit_defs.get(unit_def_id, {})
+	return _translate_key(str(def.get("display_name_key", "")), {}, unit_def_id)
+
+
+func get_tile_display_name(tile_id: String) -> String:
+	return _translate_key(_tile_display_name_key(tile_id), {}, tile_id)
+
+
+func get_entity_ids() -> Array[String]:
+	return [
+		Constants.ENTITY_ROCK,
+		Constants.ENTITY_PROP,
+		Constants.ENTITY_SPIKE,
+		Constants.ENTITY_BARREL,
+	]
+
+
+func has_entity_id(entity_id: String) -> bool:
+	return entity_id in get_entity_ids()
+
+
+func get_entity_display_name(entity_id: String) -> String:
+	match entity_id:
+		Constants.ENTITY_ROCK:
+			return "Rock"
+		Constants.ENTITY_PROP:
+			return "Prop"
+		Constants.ENTITY_SPIKE:
+			return "Spike"
+		Constants.ENTITY_BARREL:
+			return "Barrel"
+	return entity_id
+
+
+func get_overlay_ids() -> Array[String]:
+	return [
+		Constants.TILE_MOD_POISON_FOG,
+		Constants.TILE_MOD_FIRE,
+		Constants.TILE_MOD_TOXIC_SMOKE,
+		Constants.TILE_MOD_POISON_PUDDLE,
+		Constants.TILE_MOD_SHALLOW_WATER,
+	]
+
+
+func get_surface_overlay_ids() -> Array[String]:
+	return [
+		"tile_grass_sprouts",
+		"tile_grass_patch",
+		"tile_grass_tall",
+		"tile_grass_thicket",
+		"tile_bush_tall",
+		"tile_bush_thicket",
+	]
+
+
+func get_surface_overlay_catalog() -> Array[Dictionary]:
+	return [
+		{"id": "tile_grass_sprouts", "tile_id": Constants.TILE_GRASS, "surface_variant": "sprouts", "label": "Grass Sprouts"},
+		{"id": "tile_grass_patch", "tile_id": Constants.TILE_GRASS, "surface_variant": "patch", "label": "Grass Patch"},
+		{"id": "tile_grass_tall", "tile_id": Constants.TILE_GRASS, "surface_variant": "tall", "label": "Tall Grass"},
+		{"id": "tile_grass_thicket", "tile_id": Constants.TILE_GRASS, "surface_variant": "thicket", "label": "Grass Thicket"},
+		{"id": "tile_bush_tall", "tile_id": Constants.TILE_BUSH, "surface_variant": "tall", "label": "Bush Tall"},
+		{"id": "tile_bush_thicket", "tile_id": Constants.TILE_BUSH, "surface_variant": "thicket", "label": "Bush Thicket"},
+	]
+
+
+func has_overlay_id(overlay_id: String) -> bool:
+	return overlay_id in get_overlay_ids()
+
+
+func has_surface_overlay_id(surface_overlay_id: String) -> bool:
+	return surface_overlay_id in get_surface_overlay_ids()
+
+
+func get_overlay_display_name(overlay_id: String) -> String:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			return "Poison Fog"
+		Constants.TILE_MOD_FIRE:
+			return "Fire"
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			return "Toxic Smoke"
+		Constants.TILE_MOD_POISON_PUDDLE:
+			return "Poison Puddle"
+		Constants.TILE_MOD_SHALLOW_WATER:
+			return "Shallow Water"
+	return overlay_id
+
+
+func get_surface_overlay_display_name(surface_overlay_id: String) -> String:
+	for entry in get_surface_overlay_catalog():
+		if str(entry.get("id", "")) == surface_overlay_id:
+			return str(entry.get("label", surface_overlay_id))
+	return get_tile_display_name(surface_overlay_id)
+
+
+func get_overlay_default_duration(overlay_id: String) -> int:
+	match overlay_id:
+		Constants.TILE_MOD_POISON_FOG:
+			return CombatConfig.poison_fog_duration()
+		Constants.TILE_MOD_FIRE:
+			return CombatConfig.fire_duration()
+		Constants.TILE_MOD_TOXIC_SMOKE:
+			return CombatConfig.toxic_smoke_duration()
+		Constants.TILE_MOD_POISON_PUDDLE:
+			return CombatConfig.poison_puddle_duration()
+		Constants.TILE_MOD_SHALLOW_WATER:
+			return 2
+	return 0
+
+
+func get_gem_def(gem_ref: Variant) -> Dictionary:
+	return _resolve_gem_def(gem_ref).duplicate(true)
+
+
+func get_gem_display_name(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	var fallback: String = str(def.get("symbol", _gem_id_from_ref(gem_ref)))
+	return _translate_key(str(def.get("display_name_key", "")), {}, fallback)
+
+
+func get_gem_symbol(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	return _translate_key(str(def.get("symbol_key", "")), {}, str(def.get("symbol", "◆")))
+
+
+func get_gem_color(gem_ref: Variant) -> Color:
+	return _resolve_gem_def(gem_ref).get("color", Color.WHITE)
+
+
+func get_gem_rarity(gem_ref: Variant) -> String:
+	return str(_resolve_gem_def(gem_ref).get("rarity", "common"))
+
+
+func get_gem_tag(gem_ref: Variant) -> String:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	var tag := str(def.get("tag", ""))
+	if not tag.is_empty():
+		return tag
+	var profile := get_gem_ability_profile(gem_ref, ABILITY_UNIT_RED_ACTIVE)
+	if not profile.is_empty():
+		return profile
+	return _gem_id_from_ref(gem_ref)
+
+
+func get_gem_element(gem_ref: Variant) -> String:
+	var element := str(_resolve_gem_def(gem_ref).get("element", ""))
+	return element if not element.is_empty() else get_gem_tag(gem_ref)
+
+
+func get_gem_pool_tier(gem_ref: Variant) -> int:
+	return int(_resolve_gem_def(gem_ref)["pool_tier"])
+
+
+func get_gem_max_stack_level(gem_ref: Variant) -> int:
+	return int(_resolve_gem_def(gem_ref)["max_stack_level"])
+
+
+func get_gem_combo_tags(gem_ref: Variant) -> Array[String]:
+	var results: Array[String] = []
+	for raw in _resolve_gem_def(gem_ref).get("combos", []):
+		var tag := str(raw)
+		if not tag.is_empty() and not tag in results:
+			results.append(tag)
+	return results
+
+
+func get_gem_effect_level_def(tag: String, slot_type: String, level: int) -> Dictionary:
+	if tag.is_empty() or slot_type.is_empty():
+		return {}
+	var slot_defs: Dictionary = _gem_effect_levels.get(slot_type, {})
+	if slot_defs.is_empty():
+		return {}
+	var tag_defs: Dictionary = slot_defs.get(tag, {})
+	if tag_defs.is_empty():
+		return {}
+	var current_level := maxi(1, level)
+	while current_level >= 1:
+		var entry: Variant = tag_defs.get(str(current_level), null)
+		if entry is Dictionary:
+			return (entry as Dictionary).duplicate(true)
+		current_level -= 1
+	return {}
+
+
+func get_gem_effect_level_summary(tag: String, slot_type: String, level: int) -> String:
+	if tag.is_empty() or slot_type.is_empty():
+		return ""
+	var slot_defs: Dictionary = _gem_effect_levels.get(slot_type, {})
+	var tag_defs: Dictionary = slot_defs.get(tag, {})
+	if tag_defs.is_empty():
+		return ""
+	var resolved_level := maxi(1, level)
+	var level_def: Dictionary = {}
+	while resolved_level >= 1:
+		var entry: Variant = tag_defs.get(str(resolved_level), null)
+		if entry is Dictionary:
+			level_def = entry as Dictionary
+			break
+		resolved_level -= 1
+	if level_def.is_empty():
+		return ""
+	return _translate_key(
+		"gem.level.%s.%s" % [slot_type, tag],
+		_gem_effect_level_summary_params(level_def, resolved_level),
+		""
+	)
+
+
+func get_gem_rarity_label(gem_ref: Variant) -> String:
+	var rarity: String = get_gem_rarity(gem_ref)
+	return _translate_key("gem.rarity.%s" % rarity, {}, rarity.capitalize())
+
+
+func get_gem_spawn_weight(gem_ref: Variant) -> float:
+	var def: Dictionary = _resolve_gem_def(gem_ref)
+	if def.has("spawn_weight"):
+		return float(def.get("spawn_weight", 0.0))
+	var global_pool := get_gem_pool_def("global")
+	var rarity_weights: Dictionary = global_pool.get("rarity_weights", {})
+	return float(rarity_weights.get(get_gem_rarity(gem_ref), 0.0))
+
+
+func get_spawnable_gem_ids(allowed_rarities: Array = []) -> Array[String]:
+	return get_spawnable_gem_ids_for_source("global", 99, allowed_rarities)
+
+
+func get_gem_pool_def(source: String) -> Dictionary:
+	if _gem_pools.has(source):
+		return _gem_pools[source].duplicate(true)
+	return {}
+
+
+func has_gem_pool_source(source: String) -> bool:
+	return _gem_pools.has(source)
+
+
+func get_gem_pool_source_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for source_id in _gem_pools.keys():
+		ids.append(str(source_id))
+	ids.sort()
+	return ids
+
+
+func get_gem_pool_source_tier(source: String) -> int:
+	var pool := get_gem_pool_def(source)
+	return int(pool.get("source_tier", 0))
+
+
+func get_relic_source_weights(source: String) -> Dictionary:
+	if _relic_source_weights.has(source):
+		return (_relic_source_weights[source] as Dictionary).duplicate(true)
+	return {}
+
+
+func has_relic_source(source: String) -> bool:
+	return _relic_source_weights.has(source)
+
+
+func get_relic_source_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for source_id in _relic_source_weights.keys():
+		ids.append(str(source_id))
+	ids.sort()
+	return ids
+
+
+func get_battle_reward_offer_config(room_type: String) -> Dictionary:
+	var rewards: Dictionary = _reward_offer_config.get("battle_rewards", {})
+	var key := room_type.to_upper()
+	var raw_entry: Variant = rewards.get(key, rewards.get("default", {}))
+	return (raw_entry as Dictionary).duplicate(true) if raw_entry is Dictionary else {}
+
+
+func get_battle_relic_offer_source(room_type: String) -> String:
+	return str(get_battle_reward_offer_config(room_type).get("relic_source", ""))
+
+
+func get_battle_relic_offer_count(room_type: String) -> int:
+	return maxi(0, int(get_battle_reward_offer_config(room_type).get("relic_offer_count", 0)))
+
+
+func get_battle_reward_ui_layout(section: String) -> Dictionary:
+	var section_value: Variant = _battle_reward_ui_config.get(section, {})
+	return section_value if section_value is Dictionary else {}
+
+
+func get_battle_reward_ui_number(section: String, key: String) -> float:
+	return float(get_battle_reward_ui_layout(section).get(key, 0))
+
+
+func get_battle_reward_card_layout(card_kind: String) -> Dictionary:
+	var card_value: Variant = get_battle_reward_ui_layout("cards").get(card_kind, {})
+	return card_value if card_value is Dictionary else {}
+
+
+func get_enemy_total_slot_weights(room_type: String, chapter: int) -> Array[float]:
+	var normalized_room_type := room_type.to_upper()
+	var curve_key := normalized_room_type
+	if curve_key in ["BOSS", "END"]:
+		curve_key = "BOSS_COMBAT"
+	elif curve_key.is_empty():
+		curve_key = "NORMAL_COMBAT"
+	var curve: Dictionary = _enemy_slot_curves.get(curve_key, {})
+	if curve.is_empty():
+		push_error("DataRegistry: enemy slot curve missing: %s" % curve_key)
+		return []
+	var chapter_key := str(maxi(1, chapter))
+	var raw_weights: Variant = curve.get(chapter_key, curve.get("default", []))
+	var weights: Array[float] = []
+	if raw_weights is Array:
+		for raw in raw_weights:
+			weights.append(float(raw))
+	return weights
+
+
+func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, allowed_rarities: Array = []) -> Array[String]:
+	var results: Array[String] = []
+	if not has_gem_pool_source(source):
+		return results
+	var pool_def := get_gem_pool_def(source)
+	var source_tier := int(pool_def["source_tier"])
+	var max_tier := mini(source_tier, maxi(1, chapter_tier))
+	for gem_id in _gem_defs.keys():
+		var def: Dictionary = _gem_defs[gem_id]
+		if not def.get("allow_random_pool", true):
+			continue
+		if get_gem_pool_tier(gem_id) > max_tier:
+			continue
+		var rarity := str(def.get("rarity", "common"))
+		if not allowed_rarities.is_empty() and not rarity in allowed_rarities:
+			continue
+		results.append(gem_id)
+	results.sort()
+	return results
+
+
+func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = [], source: String = "global", chapter_tier: int = 99) -> String:
+	if not has_gem_pool_source(source):
+		return ""
+	var pool_def := get_gem_pool_def(source)
+	var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
+	var allowed: Array = allowed_rarities.duplicate()
+	if allowed.is_empty() and not rarity_weights.is_empty():
+		for rarity in rarity_weights.keys():
+			if float(rarity_weights[rarity]) > 0.0:
+				allowed.append(str(rarity))
+	var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
+	if candidates.is_empty():
+		return ""
+	var total_weight := 0.0
+	var weighted: Array[Dictionary] = []
+	var tag_weights: Dictionary = pool_def.get("tag_weights", {}).duplicate(true)
+	_apply_teaching_boosts(tag_weights, chapter_tier)
+	for gem_id in candidates:
+		var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
+		if weight <= 0.0:
+			continue
+		total_weight += weight
+		weighted.append({"gem_id": gem_id, "limit": total_weight})
+	if weighted.is_empty():
+		return ""
+	var roll := (float(RngService.roll_int(domain, 0, 1000000)) / 1000000.0) * total_weight
+	for entry in weighted:
+		if roll < float(entry.get("limit", 0.0)):
+			return str(entry.get("gem_id", ""))
+	return str(weighted.back().get("gem_id", ""))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 遗物定义查询
+# ═══════════════════════════════════════════════════════════════════════════
+
+func get_relic_def(relic_id: String) -> Dictionary:
+	var raw_def: Variant = _relic_defs.get(relic_id, {})
+	return (raw_def as Dictionary).duplicate(true) if raw_def is Dictionary else {}
+
+
+func get_relic_rarity(relic_id: String) -> String:
+	var def: Dictionary = _relic_defs.get(relic_id, {})
+	return str(def["rarity"]) if not def.is_empty() else ""
+
+
+func has_relic_def(relic_id: String) -> bool:
+	return _relic_defs.has(relic_id)
+
+
+func get_relic_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for k in _relic_defs.keys():
+		ids.append(str(k))
+	return ids
+
+
+func has_relic_numeric_ref(ref_id: String) -> bool:
+	return _relic_numeric_refs.has(ref_id)
+
+
+func get_relic_numeric_ref(ref_id: String, fallback: float = 0.0) -> float:
+	if not _relic_numeric_refs.has(ref_id):
+		return fallback
+	return _numeric_ref_value(_relic_numeric_refs.get(ref_id), fallback)
+
+
+func get_relic_numeric_ref_def(ref_id: String) -> Dictionary:
+	if not _relic_numeric_refs.has(ref_id):
+		return {}
+	var raw_ref: Variant = _relic_numeric_refs.get(ref_id)
+	if raw_ref is Dictionary:
+		var ref_def := (raw_ref as Dictionary).duplicate(true)
+		ref_def["value"] = _numeric_ref_value(raw_ref)
+		return ref_def
+	return {
+		"value": _numeric_ref_value(raw_ref),
+		"kind": "legacy",
+		"unit": "",
+	}
+
+
+func get_relic_numeric_refs() -> Dictionary:
+	return _relic_numeric_refs.duplicate(true)
+
+
+
+
+func get_relic_unlock_condition_ids() -> Array[String]:
+	var seen: Dictionary = {}
+	var result: Array[String] = []
+	for relic_id in _relic_defs.keys():
+		var cond := str(_relic_defs[relic_id].get("unlock_condition", ""))
+		if cond.is_empty() or seen.has(cond):
+			continue
+		seen[cond] = true
+		result.append(cond)
+	result.sort()
+	return result
+
+
+## 计算单个遗物在当前上下文下的最终权重
+## weight_ctx 字段（均可选，缺省视为空/0）：
+##   owned_gems    Array[String]  当前持有宝石 gem_id 列表
+##   owned_relics  Array[String]  当前持有遗物 relic_id 列表
+##   gem_colors    Array[String]  当前持有宝石颜色集合（"red"/"blue"/"black"）
+##   total_slots   int            总槽位数
+##   empty_slots   int            空置槽位数
+##
+## weight_rules 支持的 type：
+##   has_gem            value=gem_id       持有指定宝石时乘 multiplier
+##   has_gem_color      value="red/blue/black"  持有该颜色任意宝石时乘
+##   has_relic          value=relic_id     持有指定遗物时乘
+##   slot_count_gte     value=int          总槽位数 >= value 时乘
+##   empty_slot_count_gte value=int        空置槽位数 >= value 时乘
+func compute_relic_weight(relic_id: String, weight_ctx: Dictionary = {}) -> float:
+	var def: Dictionary = _relic_defs.get(relic_id, {})
+	if def.is_empty():
+		return 0.0
+	var weight := float(def["base_weight"])
+	var rules: Array = def.get("weight_rules", [])
+	if rules.is_empty() or weight_ctx.is_empty():
+		return weight
+	var owned_gems: Array = weight_ctx.get("owned_gems", [])
+	var owned_relics: Array = weight_ctx.get("owned_relics", [])
+	var gem_colors: Array = weight_ctx.get("gem_colors", [])
+	var total_slots: int = int(weight_ctx.get("total_slots", 0))
+	var empty_slots: int = int(weight_ctx.get("empty_slots", 0))
+	for rule in rules:
+		var rule_type := str(rule.get("type", ""))
+		var multiplier := maxf(0.0, _resolve_relic_numeric_field(rule, "multiplier", 1.0))
+		var matched := false
+		match rule_type:
+			"has_gem":
+				matched = str(rule.get("value", "")) in owned_gems
+			"has_gem_color":
+				matched = str(rule.get("value", "")) in gem_colors
+			"has_relic":
+				matched = str(rule.get("value", "")) in owned_relics
+			"slot_count_gte":
+				matched = total_slots >= int(_resolve_relic_numeric_field(rule, "value", 0.0))
+			"empty_slot_count_gte":
+				matched = empty_slots >= int(_resolve_relic_numeric_field(rule, "value", 0.0))
+		if matched:
+			weight *= multiplier
+	return weight
+
+
+## 返回满足筛选条件的遗物 id 列表
+## source: 来源标识（"normal_chest" / "elite_combat" / "large_chest" / "shop"）
+## owned_ids: 当前局内已持有的遗物 id 集合（用于过滤 unique 遗物重复）
+## unlock_flags: 当前已解锁的 flag 集合（String 数组）
+func _relic_matches_source(def: Dictionary, source: String, source_weights: Dictionary) -> bool:
+	var pool_types: Array = def["pool_types"]
+	var allows_boss := source_weights.has("boss") and float(source_weights.get("boss", 0.0)) > 0.0
+	if "global" in pool_types:
+		match source:
+			"shop":
+				return true
+			"normal_chest", "elite_combat", "large_chest":
+				return true
+			_:
+				return true
+	if source == "shop" and "shop_only" in pool_types:
+		return true
+	if allows_boss and "boss_drop" in pool_types:
+		return true
+	return false
+
+
+func get_relic_pool(source: String, owned_ids: Array = [], unlock_flags: Array = []) -> Array[String]:
+	var results: Array[String] = []
+	var source_weights := get_relic_source_weights(source)
+	if source_weights.is_empty():
+		return results
+	for relic_id in _relic_defs.keys():
+		var def: Dictionary = _relic_defs[relic_id]
+		if not _relic_matches_source(def, source, source_weights):
+			continue
+		# boss 遗物只在 source_weights 允许时出现
+		var rarity := str(def["rarity"])
+		if rarity == "boss" and not source_weights.has("boss"):
+			continue
+		if rarity == "boss" and float(source_weights.get("boss", 0.0)) <= 0.0:
+			continue
+		# 每局每种遗物只能拥有一次
+		if relic_id in owned_ids:
+			continue
+		# 解锁条件检查
+		var unlock_cond: String = str(def.get("unlock_condition", ""))
+		if not unlock_cond.is_empty() and not unlock_cond in unlock_flags:
+			continue
+		results.append(relic_id)
+	results.sort()
+	return results
+
+
+## 按来源概率表抽一个遗物 id；返回空串表示无可用候选
+## owned_ids / unlock_flags 同 get_relic_pool
+## weight_ctx: 动态权重上下文，传入空 Dict 则退化为等权，见 compute_relic_weight 注释
+func roll_relic_for_source(
+	domain: String,
+	source: String,
+	owned_ids: Array = [],
+	unlock_flags: Array = [],
+	weight_ctx: Dictionary = {}
+) -> String:
+	var source_rarity_weights := get_relic_source_weights(source)
+	# 阶段一：按来源权重 roll 出稀有度
+	var rarity_order: Array[String] = []
+	var rarity_ws: Array[float] = []
+	for rarity in source_rarity_weights.keys():
+		var w := float(source_rarity_weights[rarity])
+		if w > 0.0:
+			rarity_order.append(str(rarity))
+			rarity_ws.append(w)
+	if rarity_order.is_empty():
+		return ""
+	var rolled_rarity: String = str(
+		RngService.weighted_pick(domain + "_rarity", rarity_order, rarity_ws)
+	)
+	# 阶段二：从该稀有度的候选池里按动态权重选一个
+	var pool := get_relic_pool(source, owned_ids, unlock_flags)
+	var candidates: Array[String] = []
+	var candidate_weights: Array[float] = []
+	for rid in pool:
+		if get_relic_rarity(rid) == rolled_rarity:
+			candidates.append(rid)
+			candidate_weights.append(compute_relic_weight(rid, weight_ctx))
+	if candidates.is_empty():
+		# 指定稀有度无货，降级到整个候选池按动态权重选
+		if pool.is_empty():
+			return ""
+		var fallback_weights: Array[float] = []
+		for rid in pool:
+			fallback_weights.append(compute_relic_weight(rid, weight_ctx))
+		return str(RngService.weighted_pick(domain + "_fallback", pool, fallback_weights))
+	return str(RngService.weighted_pick(domain + "_pick", candidates, candidate_weights))
+
+
+## 一次生成 count 个不重复的遗物 id（三选一 UI 用）
+## 可用遗物不足时，剩余位置填充占位遗物；全部为占位时上层 UI 应给出提示
+## weight_ctx 同 roll_relic_for_source
+func roll_relic_offer(
+	domain: String,
+	source: String,
+	count: int,
+	owned_ids: Array = [],
+	unlock_flags: Array = [],
+	weight_ctx: Dictionary = {}
+) -> Array[String]:
+	var result: Array[String] = []
+	var excluded: Array = owned_ids.duplicate()
+	for i in range(count):
+		var picked := roll_relic_for_source(
+			domain + "_%d" % i, source, excluded, unlock_flags, weight_ctx
+		)
+		if picked.is_empty():
+			result.append("relic_placeholder")
+		else:
+			result.append(picked)
+			excluded.append(picked)
+	return result
+
+
+## 从指定来源 pool 抽出 count 个不重复的宝石 id（三选一奖励 UI 使用）
+## source:        pool key，例如 "normal_chest" / "elite_combat" / "boss_reward"
+## chapter_tier:  当前章节，用于过滤 pool_tier 上限
+## exclude_ids:   本次排除的 gem_id（不重复约束）
+## 返回 gem_id 数组；不足时以 "" 填充
+func roll_gem_offer(
+	domain: String,
+	source: String,
+	count: int,
+	chapter_tier: int = 99,
+	exclude_ids: Array = []
+) -> Array[String]:
+	var result: Array[String] = []
+	if not has_gem_pool_source(source):
+		for i in range(count):
+			result.append("")
+		return result
+	var used_ids: Array = exclude_ids.duplicate()
+	for i in range(count):
+		var pool_def := get_gem_pool_def(source)
+		var rarity_weights: Dictionary = pool_def.get("rarity_weights", {})
+		var tag_weights: Dictionary = pool_def.get("tag_weights", {}).duplicate(true)
+		_apply_teaching_boosts(tag_weights, chapter_tier)
+		var allowed: Array = []
+		if not rarity_weights.is_empty():
+			for rarity in rarity_weights.keys():
+				if float(rarity_weights[rarity]) > 0.0:
+					allowed.append(str(rarity))
+		var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
+		var filtered: Array[String] = []
+		for gem_id in candidates:
+			if not gem_id in used_ids:
+				filtered.append(gem_id)
+		if filtered.is_empty():
+			result.append("")
+			continue
+		var total_weight := 0.0
+		var weighted: Array[Dictionary] = []
+		for gem_id in filtered:
+			var weight := _gem_pool_weight(gem_id, rarity_weights, tag_weights)
+			if weight <= 0.0:
+				continue
+			total_weight += weight
+			weighted.append({"gem_id": gem_id, "limit": total_weight})
+		if weighted.is_empty():
+			result.append("")
+			continue
+		var roll := (float(RngService.roll_int("%s_%d" % [domain, i], 0, 1000000)) / 1000000.0) * total_weight
+		var picked := str(weighted.back().get("gem_id", ""))
+		for entry in weighted:
+			if roll < float(entry.get("limit", 0.0)):
+				picked = str(entry.get("gem_id", ""))
+				break
+		result.append(picked)
+		if not picked.is_empty():
+			used_ids.append(picked)
+	return result
+
+
+func create_gem_instance(uid: String, gem_id: String, gem_overrides: Dictionary = {}) -> GemState:
+	return GemState.create(uid, gem_id, gem_overrides.duplicate(true))
+
+
+func get_gem_ability_profile(gem_ref: Variant, ability_slot: String) -> String:
+	var ability_profiles: Dictionary = _resolve_gem_def(gem_ref).get("ability_profiles", {})
+	return str(ability_profiles.get(ability_slot, ""))
+
+
+func get_gem_effect_description(gem_ref: Variant, slot_type: String, context: String) -> String:
+	var parts: Array[String] = []
+	for ability_slot in _ability_slots_for_display(slot_type, context):
+		var profile_id := get_gem_ability_profile(gem_ref, ability_slot)
+		if profile_id.is_empty():
+			continue
+		var text := _translate_ability_description(profile_id, ability_slot)
+		if text.is_empty() or text in parts:
+			continue
+		parts.append(text)
+	return "；".join(parts)
+
+
+func get_enemy_red_intent_meta(gem_ref: Variant, damage: int) -> Dictionary:
+	var profile: Dictionary = _effect_profile(get_gem_ability_profile(gem_ref, ABILITY_ENEMY_RED_ACTION))
+	if profile.is_empty():
+		return {"type": "wait", "preview": _translate_key("intent.wait", {}, "等待"), "damage": 0}
+	var intent: Dictionary = profile.get("enemy_intent", {})
+	if intent.is_empty():
+		return {"type": "wait", "preview": _translate_key("intent.wait", {}, "等待"), "damage": 0}
+	var params: Dictionary = intent.get("params", {}).duplicate(true)
+	if not params.has("hits"):
+		params["hits"] = 1
+	var resolved_damage := int(intent.get("damage", 0))
+	match str(intent.get("damage_mode", "fixed")):
+		"base_attack":
+			resolved_damage = damage
+			params["damage"] = damage
+		"cross_burst":
+			resolved_damage = damage + maxi(1, roundi(float(damage) * 0.2))
+			params["damage"] = resolved_damage
+		_:
+			if resolved_damage != 0 and not params.has("damage"):
+				params["damage"] = resolved_damage
+	if not params.has("damage") and resolved_damage != 0:
+		params["damage"] = resolved_damage
+	return {
+		"type": str(intent.get("type", "wait")),
+		"preview": _translate_key(str(intent.get("preview_key", "")), params, "等待"),
+		"damage": resolved_damage,
+	}
+
+
+func _gem_pool_weight(gem_id: String, rarity_weights: Dictionary, tag_weights: Dictionary) -> float:
+	var rarity := get_gem_rarity(gem_id)
+	var weight := get_gem_spawn_weight(gem_id)
+	if not rarity_weights.is_empty():
+		weight = float(rarity_weights.get(rarity, 0.0))
+	if weight <= 0.0:
+		return 0.0
+	var tag := get_gem_tag(gem_id)
+	if tag_weights.has(tag):
+		weight *= maxf(0.0, float(tag_weights.get(tag, 1.0)))
+	return weight
+
+
+func _next_uid(prefix: String) -> String:
+	_uid_counter += 1
+	return "%s_%d" % [prefix, _uid_counter]
+
+
+func _apply_unit_spawn_variants(unit: UnitState, def: Dictionary) -> void:
+	if not def.has("hp_roll_max"):
+		return
+	var bonus := RngService.roll_int("unit_spawn_hp_%s" % unit.unit_def_id, 0, int(def.get("hp_roll_max", 0)))
+	unit.hp = int(def["max_hp"]) + bonus
+	unit.max_hp = unit.hp
+
+
+func _register_gem_effect_profiles() -> void:
+	_gem_effect_profiles = {
+		"explosion": {
+			"enemy_intent": {
+				"type": "explosion_attack",
+				"preview_key": "gem.intent.explosion_attack",
+				"damage_mode": "cross_burst",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+					ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.explosion.unit_red_active"},
+					ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.explosion.enemy_red_action"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.explosion.black_death"},
+			},
+		},
+		"poison": {
+			"enemy_intent": {
+				"type": "poison_attack",
+				"damage_mode": "base_attack",
+				"preview_key": "gem.intent.poison_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.poison.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.poison.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.poison.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.poison.black_death"},
+			},
+		},
+		"gravity": {
+			"enemy_intent": {
+				"type": "pull",
+				"preview_key": "gem.intent.pull",
+				"params": {"damage": CombatConfig.gravity_collision_damage()},
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.gravity.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.gravity.enemy_red_action", "params": {"damage": CombatConfig.gravity_collision_damage()}},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.gravity.black_death"},
+			},
+		},
+		"impact": {"enemy_intent": {"type": "impact_attack", "preview_key": "gem.intent.impact_attack", "damage_mode": "base_attack", "damage": 0}, "ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.impact.unit_red_active"}, ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.impact.enemy_red_action"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.impact.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.impact.black_death"}}},
+		"arc": {
+			"enemy_intent": {
+				"type": "arc_attack",
+				"preview_key": "gem.intent.arc_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.arc.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.arc.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.arc.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.arc.black_death"},
+			},
+		},
+		"fire_gem": {
+			"enemy_intent": {
+				"type": "fire_attack",
+				"preview_key": "gem.intent.fire_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.fire_gem.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.fire_gem.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.fire_gem.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.fire_gem.black_death"},
+			},
+		},
+		"ice": {
+			"enemy_intent": {
+				"type": "ice_attack",
+				"preview_key": "gem.intent.ice_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.ice.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.ice.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.ice.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.ice.black_death"},
+			},
+		},
+		"split": {
+			"enemy_intent": {
+				"type": "split_attack",
+				"preview_key": "gem.intent.split_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.split.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.split.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.split.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.split.black_death"},
+			},
+		},
+		"light": {
+			"enemy_intent": {
+				"type": "light_beam",
+				"preview_key": "gem.intent.light_beam",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.light.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.light.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.light.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.light.black_death"},
+			},
+		},
+		"counter": {
+			"enemy_intent": {
+				"type": "counter_attack",
+				"preview_key": "gem.intent.counter_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.counter.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.counter.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.counter.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.counter.black_death"},
+			},
+		},
+		"echo": {
+			"enemy_intent": {
+				"type": "echo_attack",
+				"preview_key": "gem.intent.echo_attack",
+				"damage_mode": "base_attack",
+				"damage": 0,
+			},
+			"ability_descriptions": {
+				ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.echo.unit_red_active"},
+				ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.echo.enemy_red_action"},
+				ABILITY_BLUE_DAMAGED: {"key": "gem.effect.echo.blue_damaged"},
+				ABILITY_BLACK_DEATH: {"key": "gem.effect.echo.black_death"},
+			},
+		},
+		"flurry": {"ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.flurry.unit_red_active"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.flurry.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.flurry.black_death"}}},
+		"tide": {"ability_descriptions": {ABILITY_UNIT_RED_ACTIVE: {"key": "gem.effect.tide.unit_red_active"}, ABILITY_ENEMY_RED_ACTION: {"key": "gem.effect.tide.enemy_red_action"}, ABILITY_BLUE_DAMAGED: {"key": "gem.effect.tide.blue_damaged"}, ABILITY_BLACK_DEATH: {"key": "gem.effect.tide.black_death"}}},
+	}
+
+func _resolve_gem_def(gem_ref: Variant) -> Dictionary:
+	var gem_id := _gem_id_from_ref(gem_ref)
+	var base: Dictionary = _gem_defs.get(gem_id, {})
+	if gem_ref is GemState:
+		var gem := gem_ref as GemState
+		if not gem.def_overrides.is_empty():
+			return _deep_merge_dict(base, gem.def_overrides)
+	return base
+func _effect_profile(profile_id: String) -> Dictionary:
+	return _gem_effect_profiles.get(profile_id, {})
+
+func _translate_ability_description(profile_id: String, ability_slot: String) -> String:
+	var profile: Dictionary = _effect_profile(profile_id)
+	if profile.is_empty():
+		return ""
+	var descriptions: Dictionary = profile.get("ability_descriptions", {})
+	var entry: Variant = descriptions.get(ability_slot, {})
+	if entry is Dictionary:
+		var payload := entry as Dictionary
+		return _translate_key(str(payload.get("key", "")), payload.get("params", {}), "")
+	if entry is String:
+		return _translate_key(str(entry), {}, "")
+	return ""
+
+
+func _ability_slots_for_display(slot_type: String, context: String) -> Array[String]:
+	match slot_type:
+		Constants.SLOT_RED:
+			match context:
+				"player_trigger":
+					return [ABILITY_UNIT_RED_ACTIVE]
+				"enemy_active":
+					return [ABILITY_ENEMY_RED_ACTION]
+		Constants.SLOT_BLUE:
+			match context:
+				"unit_blue":
+					return [
+						ABILITY_BLUE_TURN_START,
+						ABILITY_BLUE_DAMAGED,
+						ABILITY_BLUE_MOVE_THROUGH,
+						ABILITY_ATTACK_BONUS,
+						ABILITY_ARMOR_BONUS,
+					]
+		Constants.SLOT_BLACK:
+			return [ABILITY_BLACK_DEATH]
+	return []
+
+
+func _rarity_rank(rarity: String) -> int:
+	match rarity:
+		"common":
+			return 0
+		"uncommon":
+			return 1
+		"rare":
+			return 2
+		"epic":
+			return 3
+		"legendary":
+			return 4
+	return -1
+
+
+func _tile_display_name_key(tile_id: String) -> String:
+	match tile_id:
+		Constants.TILE_WATER:
+			return "tile.water.name"
+		Constants.TILE_ICE:
+			return "tile.ice.name"
+		Constants.TILE_GRASS:
+			return "tile.grass.name"
+		Constants.TILE_BUSH:
+			return "tile.bush.name"
+		_:
+			return "tile.floor.name"
+
+
+func _translate_key(key: String, params: Dictionary = {}, fallback: String = "") -> String:
+	if key.is_empty():
+		return fallback
+	var translated := I18nService.tr_key(key, params)
+	if translated == key:
+		return fallback
+	return translated
+
+
+func _gem_effect_level_summary_params(level_def: Dictionary, level: int) -> Dictionary:
+	var params: Dictionary = {"level": level}
+	for raw_field_id in level_def.keys():
+		var field_id := str(raw_field_id)
+		params[field_id] = _format_gem_effect_level_summary_value(field_id, level_def[raw_field_id])
+	var offsets: Variant = level_def.get("light_direction_offsets", [])
+	if offsets is Array:
+		params["shot_count"] = (offsets as Array).size()
+	if bool(level_def.get("strike_all_targets", false)):
+		params["strike_targets"] = _translate_key("gem.level.target.all", {}, "all")
+	elif level_def.has("strike_count"):
+		params["strike_targets"] = _format_gem_effect_level_summary_value("strike_count", level_def["strike_count"])
+	TideRules.add_level_summary_params(params, level_def, Callable(self, "_translate_key"))
+	return params
+
+
+func _format_gem_effect_level_summary_value(field_id: String, value: Variant) -> String:
+	if value is bool:
+		return _translate_key("gem.level.bool.%s" % ("true" if value else "false"), {}, "yes" if value else "no")
+	if field_id == "blast_pattern" or field_id == "fog_pattern":
+		return _translate_key("gem.level.pattern.%s" % str(value), {}, str(value))
+	if field_id == "redirect_mode":
+		return _translate_key("gem.level.split.redirect.%s" % str(value), {}, str(value))
+	if _GEM_EFFECT_LEVEL_PERCENT_FIELDS.has(field_id):
+		return "%s%%" % _format_gem_effect_level_number(float(value) * 100.0)
+	if value is int or value is float:
+		return _format_gem_effect_level_number(float(value))
+	return str(value)
+
+
+func _format_gem_effect_level_number(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return str(int(roundf(value)))
+	return "%.2f" % value
+
+
+func _gem_id_from_ref(gem_ref: Variant) -> String:
+	if gem_ref is GemState:
+		return (gem_ref as GemState).gem_id
+	return str(gem_ref)
+
+
+func _deep_merge_dict(base: Dictionary, overrides: Dictionary) -> Dictionary:
+	var merged := base.duplicate(true)
+	for key in overrides.keys():
+		var override_value: Variant = overrides[key]
+		var base_value: Variant = merged.get(key, null)
+		if base_value is Dictionary and override_value is Dictionary:
+			merged[key] = _deep_merge_dict(base_value as Dictionary, override_value as Dictionary)
+		elif override_value is Dictionary:
+			merged[key] = (override_value as Dictionary).duplicate(true)
+		elif override_value is Array:
+			merged[key] = (override_value as Array).duplicate(true)
+		else:
+			merged[key] = override_value
+	return merged
+
+
+# ─── JSON 外部数据加载 ────────────────────────────────────────────────────────
+
+func _numeric_ref_value(raw_ref: Variant, fallback: float = 0.0) -> float:
+	if raw_ref is int or raw_ref is float:
+		return float(raw_ref)
+	if raw_ref is Dictionary:
+		return float((raw_ref as Dictionary).get("value", fallback))
+	return fallback
+
+
+func _resolve_relic_numeric_field(payload: Dictionary, field_id: String, fallback: float = 0.0) -> float:
+	var ref_key := "%s_ref" % field_id
+	if payload.has(ref_key):
+		return get_relic_numeric_ref(str(payload.get(ref_key, "")), fallback)
+	return float(payload.get(field_id, fallback))
+
+
+## 将教学加权叠加到已有 tag_weights（就地修改）
+func _apply_teaching_boosts(tag_weights: Dictionary, chapter_tier: int) -> void:
+	if _gem_teaching_boosts.is_empty():
+		return
+	var chapter := clampi(chapter_tier, 1, 3)
+	var boost_key := "chapter_%d" % chapter
+	var boosts: Dictionary = _gem_teaching_boosts.get(boost_key, {})
+	for tag in boosts.keys():
+		var multiplier := maxf(0.0, float(boosts[tag]))
+		if tag_weights.has(tag):
+			tag_weights[tag] = float(tag_weights[tag]) * multiplier
+		else:
+			tag_weights[tag] = multiplier

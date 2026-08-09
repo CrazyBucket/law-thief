@@ -5,9 +5,25 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 QUERY="$ROOT/scripts/battle/battle_query_service.gd"
 PRESENTER="$ROOT/scripts/ui/battle_overlay_presenter.gd"
 BOARD="$ROOT/scripts/ui/isometric_board.gd"
+BATTLE_BOARD_RESOURCES="$ROOT/scripts/ui/battle_board_resources.gd"
+BATTLE_SCENE="$ROOT/scripts/ui/battle_scene.gd"
+BATTLE_SCENE_LAZY_RESOURCES="$ROOT/scripts/ui/battle_scene_lazy_resources.gd"
+ADVENTURE_SERVICE="$ROOT/scripts/services/adventure_service.gd"
 OVERLAY_CALLERS=(
-  "$ROOT/scripts/ui/battle_scene.gd"
+  "$ROOT/scripts/ui/battle_scene_flow_base.gd"
   "$ROOT/scripts/ui/adventure_map_scene.gd"
+)
+BOARD_LAYERS=(
+  "$ROOT/scripts/ui/isometric_board.gd"
+  "$ROOT/scripts/ui/isometric_board_fx_base.gd"
+  "$ROOT/scripts/ui/isometric_board_motion.gd"
+  "$ROOT/scripts/ui/isometric_board_unit_renderer.gd"
+  "$ROOT/scripts/ui/isometric_board_surface_renderer.gd"
+)
+BATTLE_SCENE_LAYERS=(
+  "$ROOT/scripts/ui/battle_scene.gd"
+  "$ROOT/scripts/ui/battle_scene_flow_base.gd"
+  "$ROOT/scripts/ui/battle_scene_editor_adapter.gd"
 )
 
 violations=0
@@ -40,12 +56,48 @@ fi
 report_match "QUERY_OWNS_OVERLAY_SCHEMA" '"(overlays|routes)"[[:space:]]*:' "$QUERY"
 report_match "QUERY_OWNS_OVERLAY_BUILDER" 'func[[:space:]]+_append_(overlay|route)' "$QUERY"
 
-if ! grep -q 'func set_overlays' "$BOARD" || ! grep -q 'func clear_overlays' "$BOARD"; then
+if ! grep -q 'func set_overlays' "${BOARD_LAYERS[@]}" || ! grep -q 'func clear_overlays' "${BOARD_LAYERS[@]}"; then
   echo "UI_ARCHITECTURE_GUARD_MISSING_BOARD_OVERLAY_API scripts/ui/isometric_board.gd" >&2
   violations=$((violations + 1))
 fi
 
-report_match "BOARD_RETAINS_LEGACY_HIGHLIGHTS" '(set_highlights|var[[:space:]]+highlights|_draw_(move_)?highlight_outlines|_has_unified_overlays)' "$BOARD"
+for board_layer in "${BOARD_LAYERS[@]}"; do
+  report_match "BOARD_RETAINS_LEGACY_HIGHLIGHTS" '(set_highlights|var[[:space:]]+highlights|_draw_(move_)?highlight_outlines|_has_unified_overlays)' "$board_layer"
+  report_match "BOARD_IMPORTS_COMBAT_RULE_GRAPH" 'preload\("res://scripts/rules/(gem_rules|board_utils)\.gd"\)' "$board_layer"
+  report_match "EAGER_UNIT_SLOT_PANEL_RENDERER" 'preload\("res://scripts/ui/battle_unit_slot_panel_renderer\.gd"\)' "$board_layer"
+  report_match "EAGER_COMBAT_FX_MODULE" 'preload\("res://scripts/ui/(board_fx_textures|battle_(light_beam|projectile|particle)_fx|battle_shader_fx_(pool|warmup))\.gd"\)' "$board_layer"
+done
+for battle_scene_layer in "${BATTLE_SCENE_LAYERS[@]}"; do
+  report_match "EAGER_BATTLE_EDITOR_VIEW" 'preload\("res://scripts/ui/battle_editor_view\.gd"\)' "$battle_scene_layer"
+  report_match "LEGACY_HIGHLIGHT_CALL" '\.set_highlights[[:space:]]*\(' "$battle_scene_layer"
+done
+report_match "SYNC_BATTLE_SCENE_NAVIGATION" 'change_scene_to_file[[:space:]]*\([[:space:]]*BATTLE_SCENE[[:space:]]*\)' "$ADVENTURE_SERVICE"
+
+if ! grep -q 'BATTLE_EDITOR_VIEW_SCRIPT_PATH' "$BATTLE_SCENE_LAZY_RESOURCES" || ! grep -q 'func editor_view_script' "$BATTLE_SCENE_LAZY_RESOURCES"; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING_LAZY_EDITOR_VIEW scripts/ui/battle_scene_lazy_resources.gd" >&2
+  violations=$((violations + 1))
+fi
+
+if ! grep -q 'UNIT_SLOT_PANEL_RENDERER_SCRIPT_PATH' "$BATTLE_BOARD_RESOURCES" || ! grep -q 'func unit_slot_panel_renderer_script' "$BATTLE_BOARD_RESOURCES"; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING_LAZY_SLOT_PANEL scripts/ui/battle_board_resources.gd" >&2
+  violations=$((violations + 1))
+fi
+
+if ! grep -q 'func _active_aura_redraw_due' "${BOARD_LAYERS[@]}" || ! grep -q 'func _advance_unit_idle_phase' "${BOARD_LAYERS[@]}"; then
+  echo "UI_ARCHITECTURE_GUARD_MISSING_IDLE_REDRAW_CADENCE scripts/ui/isometric_board.gd" >&2
+  violations=$((violations + 1))
+fi
+
+missing_fx_factory=false
+for factory in board_fx_textures light_beam_fx projectile_fx particle_fx shader_fx_pool shader_fx_warmup; do
+  if ! grep -q "func ${factory}_script" "$BATTLE_BOARD_RESOURCES"; then
+    echo "UI_ARCHITECTURE_GUARD_MISSING_LAZY_FX_FACTORY scripts/ui/battle_board_resources.gd:${factory}" >&2
+    missing_fx_factory=true
+  fi
+done
+if [[ "$missing_fx_factory" == true ]]; then
+  violations=$((violations + 1))
+fi
 
 for caller in "${OVERLAY_CALLERS[@]}"; do
   report_match "LEGACY_HIGHLIGHT_CALL" '\.set_highlights[[:space:]]*\(' "$caller"
@@ -60,4 +112,4 @@ if (( violations > 0 )); then
   exit 1
 fi
 
-echo "UI_ARCHITECTURE_GUARD_PASS categories=6"
+echo "UI_ARCHITECTURE_GUARD_PASS categories=12"

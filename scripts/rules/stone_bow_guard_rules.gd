@@ -178,6 +178,13 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		candidate.description = "%s后射击(%d格)" % [label, dist]
 		candidates.append(candidate)
 
+	var open_shot_anchors: Array[Vector2i] = []
+	var nearest_open_shot_from_start := -1
+	if not can_shoot_here:
+		open_shot_anchors = _open_shot_anchors(state, enemy, player, cell_blockers)
+		nearest_open_shot_from_start = _nearest_open_shot_path_distance(
+			state, enemy, turn_start, open_shot_anchors, cell_blockers
+		)
 	for move_pos in reachable:
 		if move_pos == turn_start:
 			continue
@@ -198,7 +205,13 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			candidate.score = _score_kite_reposition(enemy.unit_def_id, current_dist, new_dist)
 		if not can_shoot_here:
 			candidate.score += _score_reposition_for_line(
-				state, enemy, turn_start, move_pos, player, reachable, cell_blockers
+				state,
+				enemy,
+				turn_start,
+				move_pos,
+				nearest_open_shot_from_start,
+				open_shot_anchors,
+				cell_blockers
 			)
 		candidate.description = "风筝走位" if current_dist <= max_shoot_range else "逼近射程"
 		candidates.append(candidate)
@@ -299,13 +312,14 @@ static func _score_reposition_for_line(
 	enemy: UnitState,
 	turn_start: Vector2i,
 	move_pos: Vector2i,
-	player: UnitState,
-	reachable: Array[Vector2i],
+	best_current: int,
+	open_shot_anchors: Array[Vector2i],
 	cell_blockers: Dictionary
 ) -> float:
 	var unit_def_id := enemy.unit_def_id
-	var best_current := _nearest_open_shot_path_distance(state, enemy, turn_start, player, reachable, cell_blockers)
-	var best_next := _nearest_open_shot_path_distance(state, enemy, move_pos, player, reachable, cell_blockers)
+	var best_next := _nearest_open_shot_path_distance(
+		state, enemy, move_pos, open_shot_anchors, cell_blockers
+	)
 	if best_next < 0:
 		return _score_float(unit_def_id, "line_unreachable_penalty")
 	if best_current < 0:
@@ -319,12 +333,22 @@ static func _nearest_open_shot_path_distance(
 	state: GameState,
 	enemy: UnitState,
 	from_pos: Vector2i,
-	player: UnitState,
-	reachable: Array[Vector2i],
+	open_shot_anchors: Array[Vector2i],
 	cell_blockers: Dictionary
 ) -> int:
 	var best := 999999
-	for anchor in _open_shot_anchors(state, enemy, player, cell_blockers):
+	var path_lower_bounds := _unweighted_path_distances(state, enemy, from_pos, cell_blockers)
+	var ordered_anchors: Array[Vector2i] = []
+	for anchor in open_shot_anchors:
+		if path_lower_bounds.has(anchor):
+			ordered_anchors.append(anchor)
+	ordered_anchors.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return int(path_lower_bounds[a]) < int(path_lower_bounds[b])
+	)
+	for anchor in ordered_anchors:
+		# 忽略地形代价的 BFS 步数不大于最终加权路径；不能刷新最短值时无需启动 A*。
+		if int(path_lower_bounds[anchor]) >= best:
+			continue
 		var dist := 0
 		if anchor != from_pos:
 			var path := BoardUtils.path_toward(state, from_pos, anchor, state.board_size.x * state.board_size.y, enemy.uid, {}, cell_blockers)
@@ -336,6 +360,28 @@ static func _nearest_open_shot_path_distance(
 	if best == 999999:
 		return -1
 	return best
+
+
+static func _unweighted_path_distances(
+	state: GameState,
+	enemy: UnitState,
+	start: Vector2i,
+	cell_blockers: Dictionary
+) -> Dictionary:
+	var distances: Dictionary = {start: 0}
+	var frontier: Array[Vector2i] = [start]
+	var read_index := 0
+	while read_index < frontier.size():
+		var current: Vector2i = frontier[read_index]
+		read_index += 1
+		for neighbor in BoardUtils.neighbors4(current):
+			if distances.has(neighbor):
+				continue
+			if not BoardUtils.is_passable(state, neighbor, enemy.uid, cell_blockers):
+				continue
+			distances[neighbor] = int(distances[current]) + 1
+			frontier.append(neighbor)
+	return distances
 
 
 static func _open_shot_anchors(

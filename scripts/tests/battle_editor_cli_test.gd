@@ -21,8 +21,10 @@ func _run_tests() -> void:
 func _test_editor_console_spawns_and_edits_unit() -> void:
 	var ctrl := BattleController.new()
 	ctrl.start_encounter("tutorial_001", 42)
+	assert(ctrl.get("_editor_cli") == null and ctrl.get("_editor_svc") == null, "normal battle startup should not instantiate editor services")
 	var spawn_result := ctrl.run_editor_command("spawn unit_bomb_rat 0,0 --team enemy")
 	assert(spawn_result.get("ok", false), "editor console should spawn unit")
+	assert(ctrl.get("_editor_cli") != null and ctrl.get("_editor_svc") != null, "the first editor command should load its services on demand")
 	var spawned := ctrl.state.get_unit_at(Vector2i(0, 0))
 	assert(spawned != null and spawned.unit_def_id == "unit_bomb_rat", "spawned unit should match the requested definition")
 	var edit_result := ctrl.run_editor_command("set stat 0,0 hp 9")

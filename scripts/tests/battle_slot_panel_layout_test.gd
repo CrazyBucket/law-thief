@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Layout = preload("res://scripts/ui/battle_slot_panel_layout.gd")
+const Renderer = preload("res://scripts/ui/battle_unit_slot_panel_renderer.gd")
 
 
 func _initialize() -> void:
@@ -21,5 +22,20 @@ func _initialize() -> void:
 	var hit := Vector2(100, 100) + Vector2(cos(middle_angle), sin(middle_angle)) * 35.0
 	assert(Layout.contains_point(hit, first), "a point in the sector should be selectable")
 	assert(not Layout.contains_point(Vector2(100, 100), first), "the panel center should not be selectable")
+
+	var state := GameState.new()
+	state.units[unit.uid] = unit
+	var renderer := Renderer.new()
+	renderer.configure(
+		Constants.ACTION_EXTRACT,
+		func(_uid: String, _index: int) -> Dictionary: return {"ok": true},
+		func(_uid: String) -> bool: return true
+	)
+	var anchor := func(_unit: UnitState) -> Vector2: return Vector2(100, 100)
+	var renderer_hit := renderer.pick(hit, state, anchor)
+	assert(str(renderer_hit.get("unit_uid", "")) == unit.uid, "lazy renderer should preserve unit hit testing")
+	assert(int(renderer_hit.get("slot_index", -1)) == 0, "lazy renderer should preserve slot hit testing")
+	assert(renderer.set_hover(hit, state, anchor), "first renderer hover should report a visual change")
+	assert(not renderer.set_hover(hit, state, anchor), "stable renderer hover should avoid redundant redraw")
 	print("BATTLE_SLOT_PANEL_LAYOUT_TEST_PASS")
 	quit()
