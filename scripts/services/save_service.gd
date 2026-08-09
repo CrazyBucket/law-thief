@@ -147,6 +147,9 @@ func set_active_slot(slot_id: int) -> void:
 	var resolved_slot_id := _sanitize_slot_id(slot_id)
 	if resolved_slot_id == _active_slot_id:
 		return
+	var profile_service = get_node_or_null("/root/ProfileService")
+	if profile_service != null and profile_service.has_method("flush_profile"):
+		profile_service.flush_profile()
 	_active_slot_id = resolved_slot_id
 	_save_manager()
 	_reload_slot_services()

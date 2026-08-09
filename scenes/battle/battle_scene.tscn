@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://c2o6gixvb7ktb" path="res://assets/ui/tiles.png" id="4_o3k7m"]
 [ext_resource type="Texture2D" uid="uid://crkkjqn85j8r8" path="res://assets/ui/background.png" id="5_o3k7m"]
 [ext_resource type="Script" uid="uid://b68wtoaip2jfl" path="res://scripts/ui/combined_hp_bar.gd" id="6_hpbar"]
+[ext_resource type="Texture2D" path="res://assets/ui/system_menu_gear.png" id="7_system_menu"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_lbt8a"]
 shader = ExtResource("3_ugm31")
@@ -249,9 +250,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -268.0
-offset_top = 8.0
+offset_top = 62.0
 offset_right = -8.0
-offset_bottom = 118.0
+offset_bottom = 172.0
 grow_horizontal = 0
 mouse_filter = 2
 
@@ -274,6 +275,35 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.72, 0.74, 0.82, 1)
 theme_override_font_sizes/font_size = 11
 text = "当前: -"
+
+[node name="SystemMenuHud" type="CanvasLayer" parent="."]
+layer = 210
+
+[node name="Root" type="Control" parent="SystemMenuHud"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MenuBtn" type="Button" parent="SystemMenuHud/Root" unique_id=1049951023]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -54.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 54.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+icon = ExtResource("7_system_menu")
+flat = true
+expand_icon = true
+icon_max_width = 40
 
 [node name="TogglePanelBtn" type="Button" parent="HudLayer" unique_id=361228295]
 layout_mode = 0
@@ -409,7 +439,7 @@ text = "嵌入"
 layout_mode = 2
 
 [node name="TurnGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=1170894654]
-custom_minimum_size = Vector2(192, 0)
+custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/TurnGroup" unique_id=1616188092]
@@ -431,15 +461,10 @@ custom_minimum_size = Vector2(104, 44)
 layout_mode = 2
 text = "结束回合"
 
-[node name="BackBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row" unique_id=1049951023]
-custom_minimum_size = Vector2(60, 44)
-layout_mode = 2
-text = "返回"
-
 [connection signal="pressed" from="HudLayer/TogglePanelBtn" to="." method="_on_toggle_panel"]
+[connection signal="pressed" from="SystemMenuHud/Root/MenuBtn" to="." method="_on_menu_pressed"]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/MoveGroup/VBox/Row/MoveBtn" to="." method="_on_action_pressed" binds= ["move"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn" to="." method="_on_end_turn_pressed"]
-[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/BackBtn" to="." method="_on_back_pressed"]

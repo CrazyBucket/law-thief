@@ -260,18 +260,17 @@ static func draw_pixel_bar(canvas: CanvasItem, rect: Rect2, ratio: float, fill: 
 
 
 static func draw_combined_hp_bar(canvas: CanvasItem, rect: Rect2, hp: int, max_hp: int, shield: int) -> void:
-	var safe_max_hp := maxi(max_hp, 1)
-	var safe_hp := clampi(hp, 0, safe_max_hp)
-	var safe_shield := maxi(shield, 0)
-	var bar_total := safe_max_hp + safe_shield if safe_shield > 0 else safe_max_hp
 	canvas.draw_rect(rect.grow(1), UiPalette.EDGE_DARK, true)
 	canvas.draw_rect(rect, UiPalette.BG_INSET, true)
 	var inner := rect.grow(-1)
 	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
 		return
-	var hp_w := inner.size.x * float(safe_hp) / float(bar_total)
-	var shield_w := inner.size.x * float(safe_shield) / float(bar_total)
+	var segments := combined_hp_bar_ratios(hp, max_hp, shield)
+	var hp_w := inner.size.x * segments.x
+	var shield_w := inner.size.x * segments.y
 	if hp_w > 0.0:
+		var safe_max_hp := maxi(max_hp, 1)
+		var safe_hp := clampi(hp, 0, safe_max_hp)
 		var hp_color := hp_fill_color(float(safe_hp) / float(safe_max_hp))
 		_draw_pixel_bar_fill(canvas, Rect2(inner.position.x, inner.position.y, hp_w, inner.size.y), hp_color)
 	if shield_w > 0.0:
@@ -280,6 +279,18 @@ static func draw_combined_hp_bar(canvas: CanvasItem, rect: Rect2, hp: int, max_h
 			Rect2(inner.position.x + hp_w, inner.position.y, shield_w, inner.size.y),
 			SHIELD_FILL
 		)
+
+
+## 缺失生命仍按 max_hp 留空；只有有效生命（当前生命 + 护盾）溢出上限时才扩展比例尺。
+static func combined_hp_bar_ratios(hp: int, max_hp: int, shield: int) -> Vector2:
+	var safe_max_hp := maxi(max_hp, 1)
+	var safe_hp := clampi(hp, 0, safe_max_hp)
+	var safe_shield := maxi(shield, 0)
+	var bar_total := maxi(safe_max_hp, safe_hp + safe_shield)
+	return Vector2(
+		float(safe_hp) / float(bar_total),
+		float(safe_shield) / float(bar_total)
+	)
 
 
 static func _draw_pixel_bar_fill(canvas: CanvasItem, rect: Rect2, fill: Color) -> void:

@@ -6,7 +6,7 @@
 
 ## 结论
 
-- 体积最大的运行时资源是 `assets/audio/menu_bgm_lawthief.wav`，18.13 MB；同一音乐的 `.ogg` 版本为 1.69 MB。
+- 盘点时体积最大的运行时资源是 `assets/audio/menu_bgm_lawthief.wav`，18.13 MB；该冗余 WAV 已于 2026-08-09 移除，菜单统一使用 1.69 MB OGG。
 - 代码侧最需要优先拆分的是 `battle_scene.gd`（3,687 行）和 `isometric_board.gd`（3,660 行）；两者同时混合了 UI、输入、战斗流程、编辑器、奖励结算、绘制和动画。
 - 规则侧的首要候选是 `gem_effects.gd`（2,479 行），其次是 `attack_pipeline.gd`（983 行）和 `status_rules.gd`（790 行）。
 - 数据/校验侧的主要候选是 `data_registry.gd`（1,853 行）、`balance_config_validator.gd`（1,518 行）和 `adventure_config_validator.gd`（1,008 行）。
@@ -28,12 +28,12 @@
 - 已从 `BattleQueryService` 抽取 `scripts/ui/battle_overlay_presenter.gd`：兼容 overlay/route schema、去重、元数据与敌方意图表现投影由纯 presenter 负责，查询服务降至 576 行。
 - `IsometricBoard` 已删除旧 `set_highlights()`、散字段 fallback 与重复描边路径，统一由 `set_overlays()` 接收 presenter/map specs。
 - `BattleScene` 当前为 3,248 行，`IsometricBoard` 当前为 3,380 行；组件测试持续固化奖励、战斗特效和 overlay 输入/渲染契约。
+- 菜单音乐已收口到 `AudioService` 的 OGG 播放入口，移除重复场景播放器和未引用 WAV。
 
 ## 体积大于等于 100 KB 的全部文件
 
 | 大小 | 文件 |
 | ---: | --- |
-| 18.13 MB | `assets/audio/menu_bgm_lawthief.wav` |
 | 6.69 MB | `assets/ui/fusion-pixel-12px-zh_hans.ttf` |
 | 2.12 MB | `assets/ui/adventure_map_sky_ruins.png` |
 | 1.98 MB | `assets/ui/background.png` |

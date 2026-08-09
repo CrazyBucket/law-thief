@@ -126,6 +126,14 @@ static func _check_damage(ev: Dictionary, index: int, out: Array[String]) -> voi
 	var damage = ev.get("damage")
 	if damage is int and damage < 0:
 		out.append("[%d] 'damage' event has negative damage value: %d" % [index, damage])
+	var shield_damage = ev.get("shield_damage", 0)
+	if not shield_damage is int or shield_damage < 0:
+		out.append("[%d] 'damage' event has invalid shield_damage value: %s" % [index, str(shield_damage)])
+	var remaining_shield = ev.get("remaining_shield", 0)
+	if not remaining_shield is int or remaining_shield < 0:
+		out.append("[%d] 'damage' event has invalid remaining_shield value: %s" % [index, str(remaining_shield)])
+	if damage is int and damage == 0 and shield_damage == 0:
+		out.append("[%d] 'damage' event must reduce hp or shield" % index)
 	var is_crit = ev.get("is_crit")
 	if is_crit != null and not is_crit is bool:
 		out.append("[%d] 'damage' event 'is_crit' must be bool, got: %s" % [index, str(is_crit)])

@@ -68,17 +68,19 @@ func damage_unit(unit: UnitState, amount: int, source_uid: String, reason: Strin
 	if not had_event_sink:
 		state.bind_combat_events(events)
 	var damage_context := DamageContext.from_options(source_uid, reason, opts)
+	var shield_before := StatusRules.get_shield(unit)
 	var dealt := CombatRules.apply_damage(state, unit, amount, source_uid, reason, damage_context)
+	var shield_damage := maxi(0, shield_before - StatusRules.get_shield(unit))
 	if not had_event_sink:
 		state.unbind_combat_events()
-	if dealt <= 0:
+	if dealt <= 0 and shield_damage <= 0:
 		return 0
-	if bool(opts.get("active_attack", false)) and not source_uid.is_empty():
+	if dealt > 0 and bool(opts.get("active_attack", false)) and not source_uid.is_empty():
 		state.battle_temp_flags["last_active_attacker:%s" % unit.uid] = source_uid
 		state.battle_temp_flags["last_active_attack_turn:%s" % unit.uid] = state.turn_index
 		state.battle_temp_flags["last_active_attack_ranged:%s" % unit.uid] = reason == "ranged_attack" or reason == "light_beam"
 	state.bump_revision()
-	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context)
+	var event_opts := _damage_event_opts(unit, source_uid, reason, opts, damage_context, shield_damage)
 	events.insert(event_start, _EventBuilder.damage(unit, dealt, event_opts))
 	_record_damage("damage_unit", unit, dealt, source_uid, reason, event_opts)
 	return dealt
@@ -230,7 +232,8 @@ func _damage_event_opts(
 	source_uid: String,
 	reason: String,
 	opts: Dictionary,
-	damage_context: Dictionary
+	damage_context: Dictionary,
+	shield_damage: int = 0
 ) -> Dictionary:
 	var event_opts := opts.duplicate(true)
 	event_opts["attacker_uid"] = source_uid
@@ -238,6 +241,8 @@ func _damage_event_opts(
 	event_opts["reason"] = reason
 	event_opts["lethal"] = not unit.alive
 	event_opts["remaining_hp"] = unit.hp
+	event_opts["shield_damage"] = maxi(0, shield_damage)
+	event_opts["remaining_shield"] = StatusRules.get_shield(unit)
 	event_opts["damage_tags"] = DamageContext.tags(damage_context)
 	return event_opts
 
@@ -257,5 +262,7 @@ func _record_damage(
 		"reason": reason,
 		"lethal": bool(event_opts.get("lethal", false)),
 		"remaining_hp": int(event_opts.get("remaining_hp", unit.hp)),
+		"shield_damage": int(event_opts.get("shield_damage", 0)),
+		"remaining_shield": int(event_opts.get("remaining_shield", StatusRules.get_shield(unit))),
 		"damage_tags": event_opts.get("damage_tags", []).duplicate(),
 	})

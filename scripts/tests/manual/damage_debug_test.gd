@@ -26,7 +26,7 @@ func _test_bomb_rat_adjacent_suicide() -> void:
 	var rat := _find(state, "unit_bomb_rat")
 	var player := state.get_player()
 	_force_gem(state, rat, Constants.SLOT_BLACK, Constants.GEM_EXPLOSION)
-	rat.pos = player.pos + Vector2i(1, 0)
+	state.move_unit(rat, player.pos + Vector2i(1, 0))
 	IntentSystem.refresh_all_intents(state)
 	assert(rat.intent.type == "black_suicide", "expected black_suicide, got %s" % rat.intent.type)
 	var hp_before := player.hp
@@ -42,7 +42,7 @@ func _test_explosion_diagonal() -> void:
 	var state := ctrl.state
 	var rat := _find(state, "unit_bomb_rat")
 	var player := state.get_player()
-	rat.pos = player.pos + Vector2i(1, 1)
+	state.move_unit(rat, player.pos + Vector2i(1, 1))
 	assert(BoardUtils.manhattan(rat.pos, player.pos) == 2, "setup diagonal adjacency")
 	assert(BoardUtils.chebyshev(rat.pos, player.pos) == 1, "player should be in blast radius")
 	var hp_before := player.hp
@@ -57,7 +57,7 @@ func _test_armor_blocks_explosion() -> void:
 	var state := ctrl.state
 	var rat := _find(state, "unit_bomb_rat")
 	var player := state.get_player()
-	rat.pos = player.pos + Vector2i(1, 1)
+	state.move_unit(rat, player.pos + Vector2i(1, 1))
 	StatusRules.apply_armor(state, player, CombatConfig.explosion_damage(), 1)
 	var hp_before := player.hp
 	GemEffects.explode_at(state, player.pos, CombatConfig.explosion_damage(), rat.uid)
@@ -76,7 +76,7 @@ func _test_melee_attack() -> void:
 	var state := ctrl.state
 	var guard := _find(state, "unit_patrol_guard")
 	var player := state.get_player()
-	guard.pos = player.pos + Vector2i(1, 0)
+	state.move_unit(guard, player.pos + Vector2i(1, 0))
 	IntentSystem.refresh_all_intents(state)
 	var hp_before := player.hp
 	IntentSystem.execute_intent(state, guard)
@@ -90,9 +90,8 @@ func _test_player_ranged_attack_penetrates_obstacle() -> void:
 	var state := ctrl.state
 	var player := state.get_player()
 	var guard := _find(state, "unit_patrol_guard")
-	player.pos = Vector2i(3, 2)
-	guard.pos = Vector2i(5, 2)
-	state.rebuild_occupancy()
+	state.move_unit(player, Vector2i(3, 2))
+	state.move_unit(guard, Vector2i(5, 2))
 	var prop := EntityState.create("block_prop", Constants.ENTITY_PROP, Vector2i(4, 2))
 	state.add_entity(prop)
 	var hp_before := guard.hp
@@ -107,8 +106,7 @@ func _test_player_ranged_attack_keeps_empty_aim_behind_obstacle() -> void:
 	ctrl.start_encounter("tutorial_001")
 	var state := ctrl.state
 	var player := state.get_player()
-	player.pos = Vector2i(3, 2)
-	state.rebuild_occupancy()
+	state.move_unit(player, Vector2i(3, 2))
 	_force_gem(state, player, Constants.SLOT_RED, Constants.GEM_FIRE)
 	var prop := EntityState.create("block_prop_empty_aim", Constants.ENTITY_PROP, Vector2i(4, 2))
 	state.add_entity(prop)

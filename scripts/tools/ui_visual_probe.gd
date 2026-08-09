@@ -139,14 +139,14 @@ func _prepare_scenario(scenario_id: String) -> void:
 	if transition_manager != null and transition_manager.has_method("reset_immediately"):
 		transition_manager.call("reset_immediately")
 	match scenario_id:
-		"battle_overlays":
+		"battle_overlays", "battle_menu":
 			root.get_node("SettingsService").call("set_value", "show_tutorial", false)
 			var adventure_service := root.get_node("AdventureService")
 			adventure_service.set("pending_room_type", "NORMAL_COMBAT")
 			adventure_service.set("pending_room_label", "")
 			root.get_node("GameService").set("pending_room_id", "")
 			root.get_node("GameService").call("start_battle", "tutorial_001")
-		"map_route":
+		"map_route", "map_menu":
 			root.get_node("AdventureService").call("start_new_run", 12345)
 		"event_room":
 			var adventure_service := root.get_node("AdventureService")
@@ -175,11 +175,15 @@ func _configure_scenario(node: Node, scenario_id: String) -> void:
 	match scenario_id:
 		"battle_overlays":
 			_configure_battle_overlays(node)
+		"battle_menu":
+			node.call("_on_menu_pressed")
 		"map_route":
 			var adventure_service := root.get_node("AdventureService")
 			var reachable: Array = adventure_service.call("get_reachable_cells")
 			if not reachable.is_empty():
 				node.call("_on_cell_hovered", reachable[0], true)
+		"map_menu":
+			node.call("_on_menu_pressed")
 	await process_frame
 	await process_frame
 

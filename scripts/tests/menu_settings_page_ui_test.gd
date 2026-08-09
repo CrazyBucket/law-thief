@@ -70,15 +70,6 @@ func _run_tests() -> void:
 		settings_service.call("set_value", str(key), original_settings[key])
 	_check(settings_service.call("get_all") == original_settings, "test should restore the original persisted settings")
 
-	var menu_music := main_root.get_node_or_null("MenuMusic") as AudioStreamPlayer
-	if menu_music != null:
-		menu_music.stop()
-		await process_frame
-		await create_timer(0.1).timeout
-		menu_music.stream = null
-		await process_frame
-		menu_music.free()
-	menu_music = null
 	main_root.free()
 	await process_frame
 	await create_timer(0.1).timeout

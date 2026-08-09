@@ -8,7 +8,7 @@ func texture_at(res_path: String) -> Texture2D:
 	if cached_variant is Texture2D:
 		return cached_variant as Texture2D
 	if ResourceLoader.exists(res_path, "Texture2D"):
-		var loaded: Resource = ResourceLoader.load(res_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+		var loaded: Resource = ResourceLoader.load(res_path, "", ResourceLoader.CACHE_MODE_REUSE)
 		if loaded is Texture2D:
 			var tex2d := loaded as Texture2D
 			_texture_cache[res_path] = tex2d

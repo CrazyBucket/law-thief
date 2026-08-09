@@ -51,6 +51,15 @@ func _run_tests() -> void:
 	assert(BattleSettlementService.acquire_run_relic("relic_phase_wrench", scenario.state), "settlement relic claim should succeed")
 	assert(player.slots.size() == slots_before + 1, "slot relic must affect the current reward-state player immediately")
 	assert(run_service.get_run().player_slot_gems.size() == player.slots.size(), "new slot must be captured before the next reward is shown")
+	StatusRules.apply_shield(scenario.state, player, 9, 0)
+	run_service.capture_player_battle_state(scenario.state)
+	var next_battle: GameState = root.get_node("DataRegistry").create_battle_state(
+		"tutorial_001",
+		20260805,
+		"shield_lifecycle_next_battle",
+		true
+	)
+	assert(StatusRules.get_shield(next_battle.get_player()) == 0, "remaining shield must not cross battle boundaries")
 	game_service.set("pending_room_id", "")
 	adventure_service.pending_room_type = ""
 	run_service.end_run()

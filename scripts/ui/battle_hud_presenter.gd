@@ -5,6 +5,7 @@ const IntentIcons = preload("res://scripts/ui/intent_icons.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
+const BattleHudDynamicLists = preload("res://scripts/ui/battle_hud_dynamic_lists.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
 const OldMageHudPanel = preload("res://scripts/ui/old_mage_hud_panel.gd")
 const _STATUS_PANEL_WIDTH := 320.0
@@ -63,6 +64,8 @@ var _intent_icon_wrap: Control = null
 var _intent_icon: TextureRect = null
 var _intent_label: Label = null
 var _overload_detail_label: Label = null
+var _inspect_slots_signature: String = ""
+var _timeline_signature: String = ""
 
 
 func _data_registry() -> Node:
@@ -471,9 +474,8 @@ func _status_panel_content_margins() -> Vector2:
 
 
 func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vector2i) -> void:
-	for child in _slot_box.get_children():
-		child.queue_free()
 	if inspect_uid.is_empty():
+		_clear_inspect_slots("cell:%s" % str(inspect_cell))
 		if _is_valid_inspect_cell(inspect_cell):
 			_refresh_cell_inspect(state, inspect_cell)
 			return
@@ -482,6 +484,7 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 		return
 	var unit: UnitState = state.units.get(inspect_uid, null)
 	if unit == null or not unit.alive:
+		_clear_inspect_slots("dead:%s" % inspect_uid)
 		_clear_inspect_header("已阵亡")
 		_inspect_stats.text = ""
 		return
@@ -490,7 +493,6 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	_portrait.self_modulate = _unit_sprite_modulate(unit.team, unit.unit_def_id)
 	_inspect_name.text = unit_name
 	_refresh_inspect_hp_bar(state, unit)
-	_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
 	StatusUi.populate_status_row(_inspect_status_row, unit, true, [Constants.STATUS_ARMOR], _tooltip)
 	var attack_value := CombatRules.attack_damage(state, unit)
 	_inspect_stats.tooltip_text = OldMageHudPanel.phase_summary(state, unit) if unit.behavior_id == "old_mage" else ""
@@ -502,12 +504,28 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	if unit.behavior_id == "old_mage":
 		_inspect_stats.text += "\n" + OldMageHudPanel.phase_summary(state, unit)
 	_refresh_intent_row(unit)
+	_refresh_inspect_slots(state, unit)
+
+
+func _refresh_inspect_slots(state: GameState, unit: UnitState) -> void:
+	var signature := BattleHudDynamicLists.inspect_slot_signature(state, unit)
+	if unit.behavior_id != "old_mage" and signature == _inspect_slots_signature:
+		return
+	BattleHudDynamicLists.clear(_slot_box)
+	_inspect_slots_signature = signature
 	if unit.behavior_id == "old_mage":
 		_slot_box.add_child(OldMageHudPanel.create_pool_chip(_unit_looks()))
 	var detail_lines_by_slot_index := _slot_chip_detail_lines_by_index(state, unit)
 	for slot_index in range(unit.slots.size()):
 		var detail_lines: Array = detail_lines_by_slot_index.get(slot_index, [])
 		_slot_box.add_child(_create_slot_chip(state, unit, unit.slots[slot_index], slot_index, detail_lines))
+
+
+func _clear_inspect_slots(signature: String) -> void:
+	if signature == _inspect_slots_signature:
+		return
+	BattleHudDynamicLists.clear(_slot_box)
+	_inspect_slots_signature = signature
 
 
 func _refresh_cell_inspect(state: GameState, cell: Vector2i) -> void:
@@ -630,6 +648,7 @@ func _refresh_inspect_hp_bar(state: GameState, unit: UnitState) -> void:
 	_shield_icon.visible = shield_value > 0
 	_combined_hp_bar.set_values(unit.hp, unit.max_hp, shield_value)
 	if shield_value > 0:
+		_hp_text.text = "%d / %d  +%d" % [unit.hp, unit.max_hp, shield_value]
 		_set_tooltip(_hp_bar_row, "生命 %d / %d · 护盾 %d" % [unit.hp, unit.max_hp, shield_value], {
 			"title": "生命与护盾",
 			"subtitle": "当前状态",
@@ -646,6 +665,7 @@ func _refresh_inspect_hp_bar(state: GameState, unit: UnitState) -> void:
 			],
 		})
 	else:
+		_hp_text.text = "%d / %d" % [unit.hp, unit.max_hp]
 		_set_tooltip(_hp_bar_row, "生命 %d / %d" % [unit.hp, unit.max_hp], {
 			"title": "生命",
 			"subtitle": "当前状态",
@@ -901,12 +921,10 @@ func _refresh_action_buttons(enemy_phase_running: bool) -> void:
 	_attack_btn.text = "射击"
 	_extract_btn.text = "拔取"
 	_insert_btn.text = "嵌入"
-	_end_turn_btn.text = "结束回合"
+	_end_turn_btn.text = TranslationServer.translate("battle.command.end_turn_e")
 
 
 func _refresh_turn_queue(state: GameState, active_uid: String, timeline_hover_uid: String, enemy_phase_running: bool) -> void:
-	for child in _queue_row.get_children():
-		child.queue_free()
 	var focus_uid := timeline_hover_uid if not timeline_hover_uid.is_empty() else active_uid
 	var active_unit: UnitState = state.units.get(active_uid, null)
 	if active_unit != null:
@@ -914,7 +932,13 @@ func _refresh_turn_queue(state: GameState, active_uid: String, timeline_hover_ui
 		_queue_hint.text = "当前 %s · 速 %d" % [active_name, active_unit.speed]
 	else:
 		_queue_hint.text = "当前 —"
-	for uid in _build_turn_timeline_uids(state, active_uid, enemy_phase_running, 8):
+	var timeline_uids := _build_turn_timeline_uids(state, active_uid, enemy_phase_running, 8)
+	var signature := BattleHudDynamicLists.timeline_signature(state, timeline_uids, active_uid, focus_uid)
+	if signature == _timeline_signature:
+		return
+	BattleHudDynamicLists.clear(_queue_row)
+	_timeline_signature = signature
+	for uid in timeline_uids:
 		var unit: UnitState = state.units.get(uid, null)
 		if unit != null and unit.alive:
 			_queue_row.add_child(_create_timeline_avatar(unit, uid == active_uid, uid == focus_uid))

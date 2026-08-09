@@ -5,6 +5,7 @@ const PROFILE_VERSION := 1
 
 var _flags: Dictionary = {}
 var _dirty: bool = false
+var _save_scheduled: bool = false
 
 
 func _ready() -> void:
@@ -12,12 +13,18 @@ func _ready() -> void:
 
 
 func unlock_flag(flag: String) -> void:
-	if _flags.has(flag):
-		return
-	_flags[flag] = true
-	_dirty = true
-	DebugService.log_info("ProfileService: unlock_flag %s" % flag)
-	save_profile()
+	if _mark_flag_unlocked(flag):
+		_schedule_save()
+
+
+func unlock_flags(flags: Array[String]) -> int:
+	var added := 0
+	for flag in flags:
+		if _mark_flag_unlocked(flag):
+			added += 1
+	if added > 0:
+		_schedule_save()
+	return added
 
 
 func unlock_all_for_active_slot() -> Dictionary:
@@ -138,10 +145,18 @@ func get_summary() -> Dictionary:
 
 
 func reload_for_active_slot() -> void:
+	_save_scheduled = false
 	load_profile()
 
 
+func flush_profile() -> void:
+	_save_scheduled = false
+	if _dirty:
+		save_profile()
+
+
 func save_profile() -> void:
+	_save_scheduled = false
 	var slot_dir := ProjectSettings.globalize_path(SaveService.get_slot_dir())
 	DirAccess.make_dir_recursive_absolute(slot_dir)
 	var data := {
@@ -164,6 +179,8 @@ func save_profile() -> void:
 
 
 func load_profile() -> void:
+	_save_scheduled = false
+	_dirty = false
 	_flags.clear()
 	var path := SaveService.slot_file_path(PROFILE_FILE_NAME)
 	if not FileAccess.file_exists(path):
@@ -186,6 +203,32 @@ func load_profile() -> void:
 		for flag in raw_flags:
 			_flags[str(flag)] = true
 	DebugService.log_info("ProfileService: loaded %d flags" % _flags.size())
+
+
+func _exit_tree() -> void:
+	flush_profile()
+
+
+func _mark_flag_unlocked(flag: String) -> bool:
+	if flag.is_empty() or _flags.has(flag):
+		return false
+	_flags[flag] = true
+	_dirty = true
+	DebugService.log_info("ProfileService: unlock_flag %s" % flag)
+	return true
+
+
+func _schedule_save() -> void:
+	if _save_scheduled:
+		return
+	_save_scheduled = true
+	call_deferred("_flush_scheduled_save")
+
+
+func _flush_scheduled_save() -> void:
+	_save_scheduled = false
+	if _dirty:
+		save_profile()
 
 
 func _strip_prefix(flags: Array[String], prefix: String) -> Array[String]:

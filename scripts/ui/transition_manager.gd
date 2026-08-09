@@ -72,12 +72,21 @@ func change_scene(
 ) -> int:
 	if _transitioning:
 		return ERR_BUSY
+	if direction != Direction.IN and direction != Direction.OUT:
+		return ERR_INVALID_PARAMETER
 	if not ResourceLoader.exists(scene_path, "PackedScene"):
 		return ERR_FILE_NOT_FOUND
+	var request_error := ResourceLoader.load_threaded_request(scene_path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
+	if request_error != OK and request_error != ERR_BUSY:
+		return request_error
 	if direction == Direction.IN:
 		if not _hold_fully_covered(style, options):
 			return ERR_INVALID_PARAMETER
-		var in_error := get_tree().change_scene_to_file(scene_path)
+		var in_scene := await _await_threaded_scene(scene_path)
+		if in_scene == null:
+			reset_immediately()
+			return ERR_CANT_OPEN
+		var in_error := get_tree().change_scene_to_packed(in_scene)
 		if in_error != OK:
 			reset_immediately()
 			return in_error
@@ -85,11 +94,13 @@ func change_scene(
 		transition_midpoint.emit(style)
 		await reveal(duration)
 		return OK
-	if direction != Direction.OUT:
-		return ERR_INVALID_PARAMETER
 	if not await cover(style, duration, options):
 		return ERR_INVALID_PARAMETER
-	var out_error := get_tree().change_scene_to_file(scene_path)
+	var out_scene := await _await_threaded_scene(scene_path)
+	if out_scene == null:
+		reset_immediately()
+		return ERR_CANT_OPEN
+	var out_error := get_tree().change_scene_to_packed(out_scene)
 	if out_error != OK:
 		reset_immediately()
 		return out_error
@@ -98,6 +109,18 @@ func change_scene(
 	_reset_overlay()
 	transition_finished.emit(finished_style)
 	return OK
+
+
+func _await_threaded_scene(scene_path: String) -> PackedScene:
+	while true:
+		match ResourceLoader.load_threaded_get_status(scene_path):
+			ResourceLoader.THREAD_LOAD_LOADED:
+				return ResourceLoader.load_threaded_get(scene_path) as PackedScene
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				await get_tree().process_frame
+			ResourceLoader.THREAD_LOAD_FAILED, ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+				return null
+	return null
 
 
 func cover(

@@ -12,6 +12,26 @@ battle.leave.confirm.body,当前战斗会保存，下次继续时回到这里。
 battle.leave.confirm.ok,保存并返回,Save and Return
 battle.leave.confirm.cancel,继续战斗,Keep Fighting
 battle.leave.busy,演出结束后再离开。,Leave after the action finishes.
+battle.menu.resume,继续战斗,Keep Fighting
+map.menu.resume,继续冒险,Continue Journey
+system.menu.settings,设置,Settings
+system.menu.save_exit,保存并返回,Save and Return
+system.settings.title,设置,Settings
+system.settings.back,返回,Back
+battle.command.end_turn_e,结束回合 [E],End Turn [E]
+settings.section.common,常用,General
+settings.section.audio,声音,Audio
+settings.fullscreen,全屏显示,Fullscreen
+settings.tutorial,教学提示,Tutorial Hints
+settings.animation_speed,战斗动画速度,Battle Animation Speed
+settings.music,音乐,Music
+settings.master_volume,主音量,Master Volume
+settings.music_volume,音乐音量,Music Volume
+settings.sfx,音效,Sound Effects
+settings.sfx_volume,音效音量,SFX Volume
+settings.reset,恢复默认设置,Restore Defaults
+settings.on,开启,On
+settings.off,关闭,Off
 app.title,Law Thief,Law Thief
 app.subtitle,窃律者 MVP,Law Thief MVP
 tile.floor.name,地面,Floor

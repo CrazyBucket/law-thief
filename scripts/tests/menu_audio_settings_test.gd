@@ -27,17 +27,18 @@ func _run_tests() -> void:
 	var main_scene := load(MAIN_SCENE_PATH) as PackedScene
 	assert(main_scene != null, "main scene should load")
 	var main_root := main_scene.instantiate()
-	var menu_music := main_root.get_node_or_null("MenuMusic") as AudioStreamPlayer
-	assert(menu_music != null, "main scene should include menu music player")
-	assert(menu_music.bus == "Music", "menu music should route to music bus")
-	assert(menu_music.autoplay, "menu music should autoplay on main menu")
-	menu_music = null
+	assert(main_root.get_node_or_null("MenuMusic") == null, "main scene should delegate menu music to AudioService")
 	main_root.free()
 	main_root = null
 	main_scene = null
 
 	var audio: Node = root.get_node("AudioService")
 	audio.play_menu_music()
+	var service_player := audio.get_node_or_null("MenuMusicPlayer") as AudioStreamPlayer
+	assert(service_player != null, "audio service should own the menu music player")
+	assert(service_player.bus == "Music", "menu music should route to music bus")
+	assert(service_player.stream is AudioStreamOggVorbis, "menu music should use the compressed OGG asset")
+	assert((service_player.stream as AudioStreamOggVorbis).loop, "menu music should loop")
 	assert(settings.get_track_volume_percent("music") >= 0, "music volume should be readable")
 
 	settings.set_track_volume_percent("music", 37)
@@ -56,7 +57,6 @@ func _run_tests() -> void:
 	assert(not AudioServer.is_bus_mute(music_bus), "re-enabling music should unmute music bus")
 
 	audio.stop_menu_music()
-	var service_player := audio.get_node_or_null("MenuMusicPlayer") as AudioStreamPlayer
 	if service_player != null:
 		service_player.stop()
 		await process_frame

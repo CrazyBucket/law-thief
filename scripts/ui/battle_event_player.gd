@@ -373,10 +373,13 @@ func _play_damage_feedback(ev: Dictionary) -> void:
 		_board.play_unit_hit(victim_uid)
 	var damage_pos: Vector2i = ev.get("pos", Vector2i.ZERO)
 	var damage_value: int = int(ev.get("damage", 1))
-	var is_crit: bool = bool(ev.get("is_crit", false))
-	_board.play_damage_effect(damage_pos, damage_value, is_crit)
+	var shield_damage := int(ev.get("shield_damage", 0))
+	var shield_only := damage_value <= 0 and shield_damage > 0
+	var feedback_value := shield_damage if shield_only else damage_value
+	var is_crit: bool = bool(ev.get("is_crit", false)) and not shield_only
+	_board.play_damage_effect(damage_pos, feedback_value, is_crit)
 	if _spawn_damage_text.is_valid():
-		_spawn_damage_text.call(damage_pos, damage_value, is_crit, ev.get("reason", ""))
+		_spawn_damage_text.call(damage_pos, feedback_value, is_crit, ev.get("reason", ""), shield_only)
 
 
 func _play_move_path_batch(batch: Array) -> void:

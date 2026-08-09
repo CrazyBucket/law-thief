@@ -7,6 +7,7 @@ const MetaConsoleCli = preload("res://scripts/debug/meta_console_cli.gd")
 const MAP_SCENE := "res://scenes/map/adventure_map.tscn"
 const MENU_ACCENT := Color("#4ce58d")
 const ANIMATION_SPEED_OPTIONS := [0.75, 1.0, 1.5, 2.0]
+const MENU_FRAME_INTERVAL := 1.0 / 60.0
 
 @onready var _content_margin: MarginContainer = $ContentMargin
 @onready var _particle_canvas: Control = $ParticleCanvas
@@ -25,7 +26,6 @@ const ANIMATION_SPEED_OPTIONS := [0.75, 1.0, 1.5, 2.0]
 @onready var _exit_btn: Button = $ContentMargin/CenterWrap/MainStack/MenuPanel/VBox/Buttons/ExitBtn
 @onready var _footer_hint: Label = $HiddenMeta/FooterHint
 @onready var _bottom_info: Label = $BottomInfo
-@onready var _menu_music: AudioStreamPlayer = $MenuMusic
 @onready var _page_layer: Control = $PageLayer
 @onready var _page_panel: PanelContainer = $PageLayer/PageMargin/PageFrame
 @onready var _page_title: Label = $PageLayer/PageMargin/PageFrame/VBox/Header/HeaderText/Title
@@ -35,6 +35,7 @@ const ANIMATION_SPEED_OPTIONS := [0.75, 1.0, 1.5, 2.0]
 
 var _particles: Array[Dictionary] = []
 var _time: float = 0.0
+var _menu_frame_accumulator: float = 0.0
 var _title_base_y: float = 0.0
 var _navigating: bool = false
 var _console_layer: CanvasLayer = null
@@ -51,7 +52,7 @@ func _ready() -> void:
 	_wire_actions()
 	_apply_theme()
 	_create_exit_confirm_dialog()
-	_configure_menu_music()
+	AudioService.play_menu_music()
 	_page_layer.visible = false
 	_content_margin.visible = true
 	if not SaveService.slot_changed.is_connected(_on_slot_changed):
@@ -63,12 +64,21 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_time += delta
+	_menu_frame_accumulator += delta
+	if _menu_frame_accumulator < MENU_FRAME_INTERVAL:
+		return
+	var frame_delta := _menu_frame_accumulator
+	_menu_frame_accumulator = fmod(_menu_frame_accumulator, MENU_FRAME_INTERVAL)
+	_time += frame_delta
 	var title_float := sin(_time * 0.82)
 	_title_art.rotation = sin(_time * 0.43) * 0.004
 	_title_art.position.y = _title_base_y + title_float * 3.0
-	_update_particles(delta)
+	_update_particles(frame_delta)
 	_particle_canvas.queue_redraw()
+
+
+func _exit_tree() -> void:
+	AudioService.stop_menu_music()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -609,7 +619,6 @@ func _set_animation_speed(speed_scale: float) -> void:
 
 func _reset_settings() -> void:
 	SettingsService.reset_to_defaults()
-	_configure_menu_music()
 	_refresh_all()
 	_show_settings_page()
 
@@ -679,26 +688,6 @@ func _confirm_exit_game() -> void:
 
 func _on_slot_changed(_slot_id: int) -> void:
 	_refresh_all()
-
-
-func _configure_menu_music() -> void:
-	if _menu_music == null or _menu_music.stream == null:
-		return
-	if _menu_music.stream is AudioStreamWAV:
-		(_menu_music.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-	elif _menu_music.stream is AudioStreamOggVorbis:
-		(_menu_music.stream as AudioStreamOggVorbis).loop = true
-	if not _menu_music.finished.is_connected(_on_menu_music_finished):
-		_menu_music.finished.connect(_on_menu_music_finished)
-	if bool(SettingsService.get_value("music_enabled")) and not _menu_music.playing:
-		_menu_music.play()
-
-
-func _on_menu_music_finished() -> void:
-	if _menu_music == null:
-		return
-	if bool(SettingsService.get_value("music_enabled")):
-		_menu_music.play()
 
 
 func _transition_to_scene(scene_path: String) -> void:

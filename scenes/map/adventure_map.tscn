@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3 uid="uid://c8lawthiefmap01"]
+[gd_scene load_steps=7 format=3 uid="uid://c8lawthiefmap01"]
 
 [ext_resource type="Script" path="res://scripts/ui/adventure_map_scene.gd" id="1_map"]
 [ext_resource type="Script" path="res://scripts/ui/isometric_board.gd" id="2_board"]
 [ext_resource type="Shader" path="res://scenes/battle/battle_scene.gdshader" id="3_grid_shader"]
 [ext_resource type="Texture2D" path="res://assets/ui/tiles.png" id="4_grid_texture"]
+[ext_resource type="Texture2D" path="res://assets/ui/system_menu_gear.png" id="5_system_menu"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_map_grid"]
 shader = ExtResource("3_grid_shader")
@@ -82,6 +83,35 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+
+[node name="SystemMenuHud" type="CanvasLayer" parent="."]
+layer = 210
+
+[node name="Root" type="Control" parent="SystemMenuHud"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MenuBtn" type="Button" parent="SystemMenuHud/Root"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -54.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 54.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+icon = ExtResource("5_system_menu")
+flat = true
+expand_icon = true
+icon_max_width = 40
 
 [node name="TopBar" type="PanelContainer" parent="HudLayer"]
 visible = false
@@ -173,6 +203,7 @@ layout_mode = 2
 text = "重掷"
 
 [node name="BackBtn" type="Button" parent="HudLayer/ActionPanel/ActionRow"]
+visible = false
 custom_minimum_size = Vector2(82, 34)
 layout_mode = 2
 text = "主菜单"
@@ -246,3 +277,4 @@ visible = false
 
 [connection signal="pressed" from="HudLayer/ActionPanel/ActionRow/BackBtn" to="." method="_on_back_pressed"]
 [connection signal="pressed" from="HudLayer/ActionPanel/ActionRow/RegenBtn" to="." method="_on_regen_pressed"]
+[connection signal="pressed" from="SystemMenuHud/Root/MenuBtn" to="." method="_on_menu_pressed"]

@@ -6,6 +6,7 @@ const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display
 const _AdventureMapCopyPresenter := preload("res://scripts/ui/adventure_map_copy_presenter.gd")
 const _IsometricBoard := preload("res://scripts/ui/isometric_board.gd")
 const BoardInputAdapterScript = preload("res://scripts/ui/board_input_adapter.gd")
+const SystemPauseMenuScript = preload("res://scripts/ui/system_pause_menu.gd")
 const INVALID_CELL := Vector2i(-999, -999)
 const BACKDROP_PATH := "res://assets/ui/adventure_map_sky_ruins.png"
 
@@ -28,13 +29,16 @@ const BACKDROP_PATH := "res://assets/ui/adventure_map_sky_ruins.png"
 @onready var _outlook_body: RichTextLabel = $HudLayer/PreviewPanel/VBox/OutlookBody
 @onready var _legend_title: Label = $HudLayer/PreviewPanel/VBox/LegendTitle
 @onready var _legend_body: RichTextLabel = $HudLayer/PreviewPanel/VBox/LegendBody
-@onready var _back_btn: Button = $HudLayer/ActionPanel/ActionRow/BackBtn
+@onready var _action_panel: PanelContainer = $HudLayer/ActionPanel
+@onready var _menu_btn: Button = $SystemMenuHud/Root/MenuBtn
 @onready var _regen_btn: Button = $HudLayer/ActionPanel/ActionRow/RegenBtn
 
 var _map_state: GameState = null
 var _board_input = BoardInputAdapterScript.new()
 var _hover_cell: Vector2i = INVALID_CELL
 var _leave_confirm_dialog: GameConfirmDialog = null
+var _system_menu = null
+var _return_to_menu_after_leave_cancel := false
 
 
 func _ready() -> void:
@@ -50,6 +54,7 @@ func _ready() -> void:
 	_refresh_hud()
 	_refresh_preview()
 	_create_leave_confirm_dialog()
+	_create_system_menu()
 
 
 func _apply_theme() -> void:
@@ -58,10 +63,12 @@ func _apply_theme() -> void:
 	_preview_panel.add_theme_stylebox_override("panel", BattleUiTheme.panel_style(BattleUiTheme.BORDER_ACCENT))
 	_backdrop.texture = _load_backdrop_texture()
 	_backdrop.modulate = Color(1, 1, 1, 0.92)
-	BattleUiTheme.apply_button(_back_btn, "ghost")
+	_menu_btn.flat = true
 	BattleUiTheme.apply_button(_regen_btn, "ghost")
-	_regen_btn.visible = OS.is_debug_build()
-	_seed_label.visible = OS.is_debug_build()
+	var show_debug_actions := OS.is_debug_build()
+	_action_panel.visible = show_debug_actions
+	_regen_btn.visible = show_debug_actions
+	_seed_label.visible = show_debug_actions
 	_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_hint.add_theme_color_override("font_color", BattleUiTheme.TEXT_HINT)
 	_route_state.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
@@ -142,6 +149,29 @@ func _on_back_pressed() -> void:
 	_leave_confirm_dialog.popup_centered(Vector2i(420, 180))
 
 
+func _on_menu_pressed() -> void:
+	if _system_menu == null:
+		return
+	_system_menu.open_menu()
+
+
+func _create_system_menu() -> void:
+	if _system_menu != null:
+		return
+	_system_menu = SystemPauseMenuScript.new()
+	_system_menu.name = "SystemPauseMenu"
+	_system_menu.configure_context("map.menu.resume", "继续冒险")
+	_system_menu.save_and_exit_requested.connect(_on_system_menu_save_and_exit_requested)
+	add_child(_system_menu)
+
+
+func _on_system_menu_save_and_exit_requested() -> void:
+	if _system_menu != null:
+		_system_menu.close_menu()
+	_return_to_menu_after_leave_cancel = true
+	_on_back_pressed()
+
+
 func _create_leave_confirm_dialog() -> void:
 	if _leave_confirm_dialog != null:
 		return
@@ -153,11 +183,35 @@ func _create_leave_confirm_dialog() -> void:
 		tr("map.leave.confirm.cancel")
 	)
 	_leave_confirm_dialog.confirmed.connect(_confirm_leave_map)
+	_leave_confirm_dialog.cancelled.connect(_on_leave_confirm_cancelled)
 	add_child(_leave_confirm_dialog)
 
 
+func _on_leave_confirm_cancelled() -> void:
+	if not _return_to_menu_after_leave_cancel:
+		return
+	_return_to_menu_after_leave_cancel = false
+	if _system_menu != null:
+		_system_menu.open_menu()
+
+
 func _confirm_leave_map() -> void:
+	_return_to_menu_after_leave_cancel = false
 	AdventureService.save_and_return_to_main()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.echo:
+		return
+	if not event.is_action_pressed("pause_menu"):
+		return
+	if _leave_confirm_dialog != null and _leave_confirm_dialog.visible:
+		return
+	if _system_menu != null and _system_menu.is_open():
+		_system_menu.handle_cancel()
+	else:
+		_on_menu_pressed()
+	get_viewport().set_input_as_handled()
 
 
 func _on_regen_pressed() -> void:

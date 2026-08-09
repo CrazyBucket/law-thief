@@ -18,6 +18,7 @@ const BattleRewardCardFactory = preload("res://scripts/ui/battle_reward_card_fac
 const BattleSettlementService = preload("res://scripts/battle/battle_settlement_service.gd")
 const BattlePreviewPanel = preload("res://scripts/ui/battle_preview_panel.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
+const SystemPauseMenuScript = preload("res://scripts/ui/system_pause_menu.gd")
 const CoinIconTexture = preload("res://assets/ui/coin_gold.png")
 const _EDITOR_DOCK_TOP := 220.0
 const _EDITOR_INSPECTOR_GAP := 8.0
@@ -66,6 +67,7 @@ var _dmg_text: Node = null
 @onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn
 @onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn
 @onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn
+@onready var _menu_btn: Button = $SystemMenuHud/Root/MenuBtn
 
 var _controller: BattleController = BattleController.new()
 var _event_player = BattleEventPlayerScript.new()
@@ -108,6 +110,7 @@ var _settlement_gold_chip_label: Label = null
 var _settlement_gold_displayed: int = 0
 var _settlement_gold_claimed: bool = false
 var _run_result_overlay: Node = null
+var _tutorial_overlay: Control = null
 var _held_gem_icon: TextureRect = null
 var _overload_chip: Label = null
 var _relic_bar_root: Control = null
@@ -145,6 +148,8 @@ var _editor_inspector_toggle_btn: Button = null
 var _editor_inspector_body: VBoxContainer = null
 var _editor_panel_user_positioned: bool = false
 var _leave_confirm_dialog: GameConfirmDialog = null
+var _battle_menu = null
+var _return_to_menu_after_leave_cancel: bool = false
 
 const _EDITOR_KIND_LABELS := {
 	"unit": "怪物",
@@ -252,6 +257,7 @@ func _ready() -> void:
 	})
 	_apply_animation_speed()
 	_create_leave_confirm_dialog()
+	_create_battle_menu()
 	_start_battle(GameService.pending_encounter_id)
 	call_deferred("_restore_battle_reward_if_needed")
 
@@ -276,6 +282,7 @@ func _apply_ui_theme() -> void:
 	_queue_title.add_theme_color_override("font_color", BattleUiTheme.TEXT)
 	_shield_icon.texture = StatusIcons.get_icon(Constants.STATUS_ARMOR)
 	BattleUiTheme.apply_button(_toggle_panel_btn, "ghost")
+	_menu_btn.flat = true
 
 func _apply_command_group_theme() -> void:
 	_style_command_group(_move_group, "move")
@@ -951,6 +958,32 @@ func _on_back_pressed() -> void:
 	_leave_confirm_dialog.popup_centered(Vector2i(420, 180))
 
 
+func _on_menu_pressed() -> void:
+	if _battle_menu == null:
+		return
+	_dismiss_popup()
+	_hide_preview_panel(true)
+	_battle_menu.open_menu()
+
+
+func _create_battle_menu() -> void:
+	if _battle_menu != null:
+		return
+	_battle_menu = SystemPauseMenuScript.new()
+	_battle_menu.name = "SystemPauseMenu"
+	_battle_menu.configure_context("battle.menu.resume", "继续战斗")
+	_battle_menu.save_and_exit_requested.connect(_on_battle_menu_save_and_exit_requested)
+	_battle_menu.animation_speed_changed.connect(_apply_animation_speed)
+	add_child(_battle_menu)
+
+
+func _on_battle_menu_save_and_exit_requested() -> void:
+	if _battle_menu != null:
+		_battle_menu.close_menu()
+	_return_to_menu_after_leave_cancel = true
+	_on_back_pressed()
+
+
 func _create_leave_confirm_dialog() -> void:
 	if _leave_confirm_dialog != null:
 		return
@@ -962,13 +995,26 @@ func _create_leave_confirm_dialog() -> void:
 		tr("battle.leave.confirm.cancel")
 	)
 	_leave_confirm_dialog.confirmed.connect(_confirm_leave_battle)
+	_leave_confirm_dialog.cancelled.connect(_on_leave_confirm_cancelled)
 	add_child(_leave_confirm_dialog)
+
+
+func _on_leave_confirm_cancelled() -> void:
+	if not _return_to_menu_after_leave_cancel:
+		return
+	_return_to_menu_after_leave_cancel = false
+	if _battle_menu != null:
+		_battle_menu.open_menu()
 
 
 func _confirm_leave_battle() -> void:
 	if _player_animating or _enemy_phase_running or _event_player.is_playing():
 		_message_label.text = tr("battle.leave.busy")
+		if _return_to_menu_after_leave_cancel and _battle_menu != null:
+			_return_to_menu_after_leave_cancel = false
+			_battle_menu.open_menu()
 		return
+	_return_to_menu_after_leave_cancel = false
 	_dismiss_popup()
 	var editor_battle := GameService.pending_battle_mode == "editor"
 	GameService.pending_battle_mode = "normal"
@@ -2962,6 +3008,21 @@ func _input(event: InputEvent) -> void:
 			_dismiss_relic_detail_popup()
 			get_viewport().set_input_as_handled()
 			return
+	if event is InputEventKey and event.echo:
+		return
+	if event.is_action_pressed("pause_menu"):
+		if _leave_confirm_dialog != null and _leave_confirm_dialog.visible:
+			return
+		if _slot_popup != null and _slot_popup.is_showing():
+			_dismiss_popup()
+			get_viewport().set_input_as_handled()
+			return
+		if _battle_menu != null and _battle_menu.is_open():
+			_battle_menu.handle_cancel()
+		else:
+			_on_menu_pressed()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if _relic_detail_overlay != null:
 			_dismiss_relic_detail_popup()
@@ -2970,6 +3031,33 @@ func _input(event: InputEvent) -> void:
 		if _slot_popup != null and _slot_popup.is_showing():
 			_dismiss_popup()
 			get_viewport().set_input_as_handled()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.echo:
+		return
+	if not event.is_action_pressed("end_turn"):
+		return
+	if _battle_menu != null and _battle_menu.is_open():
+		return
+	if _leave_confirm_dialog != null and _leave_confirm_dialog.visible:
+		return
+	if _console != null and _console.is_open():
+		return
+	if _slot_popup != null and _slot_popup.is_showing():
+		return
+	if _relic_detail_overlay != null or _battle_end_applied:
+		return
+	if _tutorial_overlay != null and is_instance_valid(_tutorial_overlay):
+		return
+	if _player_animating or _enemy_phase_running or _event_player.is_playing():
+		return
+	if _end_turn_btn == null or _end_turn_btn.disabled:
+		return
+	if _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER:
+		return
+	_on_end_turn_pressed()
+	get_viewport().set_input_as_handled()
 
 
 func _on_anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i) -> void:
@@ -2984,14 +3072,16 @@ func _on_anim_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	_board.play_gem_flash(grid, gem_color)
 
 
-func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: String) -> void:
+func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: String, shield_only: bool = false) -> void:
 	if _dmg_text == null or value <= 0:
 		return
 	var board_global: Vector2 = _board.global_position
 	var cell_screen: Vector2 = _board.grid_to_screen(grid)
 	var world_pos: Vector2 = board_global + cell_screen + Vector2(0, -24)
 	var dmg_type: String
-	if is_crit:
+	if shield_only:
+		dmg_type = DamageTextManagerScript.DMG_ARMOR
+	elif is_crit:
 		dmg_type = DamageTextManagerScript.DMG_CRIT
 	elif reason == "spike" or reason == "spike_enter" or reason == "spike_collision":
 		dmg_type = DamageTextManagerScript.DMG_FIRE
@@ -3056,7 +3146,10 @@ func _translate_or(key: String, fallback: String) -> String:
 
 
 func _show_tutorial_overlay(title_text: String, body_text: String, button_text: String) -> void:
+	if _tutorial_overlay != null and is_instance_valid(_tutorial_overlay):
+		_tutorial_overlay.queue_free()
 	var overlay := ColorRect.new()
+	_tutorial_overlay = overlay
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.color = Color(0.02, 0.02, 0.05, 0.82)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -3090,10 +3183,18 @@ func _show_tutorial_overlay(title_text: String, body_text: String, button_text: 
 	btn.custom_minimum_size = Vector2(180, 44)
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	BattleUiTheme.apply_button(btn, "end")
-	btn.pressed.connect(func(): overlay.queue_free())
+	btn.pressed.connect(_dismiss_tutorial_overlay)
 	vbox.add_child(btn)
 	overlay.modulate.a = 0.0
 	create_tween().tween_property(overlay, "modulate:a", 1.0, 0.28)
+
+
+func _dismiss_tutorial_overlay() -> void:
+	if _tutorial_overlay == null or not is_instance_valid(_tutorial_overlay):
+		_tutorial_overlay = null
+		return
+	_tutorial_overlay.queue_free()
+	_tutorial_overlay = null
 
 
 func set_animation_speed_scale(speed_scale: float) -> void:
@@ -3131,7 +3232,7 @@ func _refresh_relic_bar_after_resize() -> void:
 
 
 func _wire_hover_interactions() -> void:
-	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _toggle_panel_btn]:
+	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _menu_btn, _toggle_panel_btn]:
 		if button == null:
 			continue
 		button.focus_mode = Control.FOCUS_NONE

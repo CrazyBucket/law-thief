@@ -35,9 +35,9 @@ const _STYLES: Dictionary = {
 		"bold":    false,
 	},
 	DMG_ARMOR: {
-		"color":   UiPalette.WET_BLUE,
+		"color":   UiPalette.SHIELD_FILL,
 		"scale":   1.0,
-		"size":    14,
+		"size":    16,
 		"bold":    false,
 	},
 	DMG_POISON: {

@@ -3,7 +3,7 @@ extends Node
 const BUS_MASTER := "Master"
 const BUS_MUSIC := "Music"
 const BUS_SFX := "Sfx"
-const MENU_MUSIC_PATH := "res://assets/audio/menu_bgm_lawthief.wav"
+const MENU_MUSIC_PATH := "res://assets/audio/menu_bgm_lawthief.ogg"
 const BUS_LAYOUT := [
 	{"name": BUS_MUSIC, "send": BUS_MASTER},
 	{"name": BUS_SFX, "send": BUS_MASTER},
@@ -106,8 +106,8 @@ func _ensure_menu_music_player() -> void:
 	add_child(_menu_music_player)
 	if ResourceLoader.exists(MENU_MUSIC_PATH):
 		var stream := load(MENU_MUSIC_PATH)
-		if stream is AudioStreamWAV:
-			(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+		if stream is AudioStreamOggVorbis:
+			(stream as AudioStreamOggVorbis).loop = true
 		_menu_music_player.stream = stream
 
 

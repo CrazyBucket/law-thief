@@ -12,6 +12,7 @@ FAST_TESTS=(
   board_overlay_api_test
   battle_query_cache_test
   persistence_isolation_test
+  profile_service_batch_test
   encounter_content_diagnostics_test
   battle_presentation_planner_test
   battle_event_player_cluster_test
@@ -56,6 +57,7 @@ CORE_TESTS=(
   board_overlay_api_test
   battle_query_cache_test
   persistence_isolation_test
+  profile_service_batch_test
   encounter_content_diagnostics_test
   presentation_state_applier_test
   smoke_test
@@ -161,6 +163,7 @@ ADVENTURE_TESTS=(
 
 PERSISTENCE_TESTS=(
   persistence_isolation_test
+  profile_service_batch_test
   run_history_service_test
   run_recovery_route_test
   run_save_compat_test
@@ -174,6 +177,7 @@ UI_TESTS=(
   battle_editor_ui_test
   battle_light_beam_fx_test
   battle_overlay_presenter_test
+  battle_pause_menu_ui_test
   battle_particle_fx_test
   battle_projectile_fx_test
   battle_reward_card_factory_test

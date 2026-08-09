@@ -63,7 +63,7 @@ static func damage(unit: UnitState, amount: int, opts: Dictionary = {}) -> Dicti
 		"damage": amount,
 		"is_crit": bool(opts.get("is_crit", false)),
 	}
-	_copy_optional(ev, opts, ["attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
+	_copy_optional(ev, opts, ["attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "shield_damage", "remaining_shield", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
 	return ev
 
 
@@ -74,7 +74,7 @@ static func damage_at(pos: Vector2i, amount: int, opts: Dictionary = {}) -> Dict
 		"damage": amount,
 		"is_crit": bool(opts.get("is_crit", false)),
 	}
-	_copy_optional(ev, opts, ["uid", "victim_uid", "attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
+	_copy_optional(ev, opts, ["uid", "victim_uid", "attacker_uid", "source_uid", "reason", "lethal", "remaining_hp", "shield_damage", "remaining_shield", "keep_facing", "damage_tags", "attack_event_id", "segment_index", "segment_count"])
 	if ev.has("uid") and not ev.has("victim_uid"):
 		ev["victim_uid"] = ev["uid"]
 	elif ev.has("victim_uid") and not ev.has("uid"):

@@ -18,11 +18,25 @@ const SCENARIOS := [
 		],
 	},
 	{
+		"id": "battle_menu",
+		"scene": "res://scenes/battle/battle_scene.tscn",
+		"critical_controls": [
+			"SystemMenuHud/Root/MenuBtn",
+		],
+	},
+	{
 		"id": "map_route",
 		"scene": "res://scenes/map/adventure_map.tscn",
 		"critical_controls": [
-			"HudLayer/ActionPanel",
+			"SystemMenuHud/Root/MenuBtn",
 			"HudLayer/PreviewPanel",
+		],
+	},
+	{
+		"id": "map_menu",
+		"scene": "res://scenes/map/adventure_map.tscn",
+		"critical_controls": [
+			"SystemMenuHud/Root/MenuBtn",
 		],
 	},
 	{

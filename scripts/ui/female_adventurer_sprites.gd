@@ -113,7 +113,7 @@ func _content_bbox(strip: Texture2D, frame_idx: int) -> Rect2:
 func _ensure_strip(abs_path: String) -> Texture2D:
 	if _strip_cache.has(abs_path):
 		return _strip_cache[abs_path] as Texture2D
-	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_REUSE)
 	if rl != null and rl is Texture2D:
 		_strip_cache[abs_path] = rl
 		return rl as Texture2D

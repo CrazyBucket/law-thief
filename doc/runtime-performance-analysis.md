@@ -275,3 +275,16 @@ GEM_LOAD_PERF slots=50 state_gems=52 refresh_avg_ms=31.328 refresh_p95_ms=33.651
 - `tools/verify manual`：`battle_editor_overlay_catalog_test`、`battle_stress_test`、`gem_load_performance_test` 通过，后者输出上述数据。
 - `manual/damage_debug_test` 仍因既有的单位占位不变量错误失败（`unit_bomb_rat_2` 的位移路径）；该错误不涉及 HUD 或宝石标签解析。
 - `attack_tag_combo_test` 当前也会失败，因为工作区已有的冰宝石规则改动移除了“攻击者自身缓速”，而测试仍断言旧行为；本轮未改动该规则。
+
+## 11. 第二批运行时与 I/O 优化（2026-08-09）
+
+本轮继续处理第 5 节第二阶段中不涉及玩法语义的热点：
+
+1. 菜单音乐改由 `AudioService` 单一持有并使用 OGG，移除场景内重复播放器和未引用的 19 MB WAV。
+2. `ProfileService` 将同一帧内的图鉴、成就和解锁标记合并为一次延迟写盘；切换存档槽和退出前强制刷新脏数据。
+3. 转场开始时提交 threaded scene load，让场景读取与遮罩动画重叠；加载失败仍恢复转场状态并返回明确错误。
+4. 单位、宝石、道具和棋盘特效纹理由 `CACHE_MODE_IGNORE` 改为共享资源缓存，避免每次进入战斗绕过 Godot 缓存。
+5. HUD 槽位和行动顺序增加内容签名：内容未变化时保留现有节点，只更新生命、状态等轻量字段。
+6. 主菜单背景更新封顶 60 Hz；像素按钮只在 hover、按压或残留粒子动画期间启用 `_process()`。
+
+聚焦验证覆盖 Profile 批量持久化、菜单音频/设置页、转场生命周期、宝石 HUD 上下文和 UI 编译。`verify manual` 同机复测中，50 槽强制 HUD 刷新平均耗时从上一轮的 **31.328 ms** 降到 **1.711 ms**，P95 从 **33.651 ms** 降到 **2.205 ms**；平均耗时再降低约 **94.5%**。5 / 20 / 50 槽平均值分别为 1.575 / 1.491 / 1.711 ms，说明未变化的槽位节点已不再随每次 HUD 刷新重复构造。冷启动耗时仍需后续独立探针量化。

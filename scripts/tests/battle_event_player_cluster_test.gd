@@ -86,7 +86,16 @@ func _run_test() -> void:
 	var board := DummyBoard.new()
 	var player := BattleEventPlayer.new()
 	var requested_anim_delays: Array[float] = []
-	player.setup(host, board, null, Callable(), func(seconds: float) -> float:
+	var damage_texts: Array[Dictionary] = []
+	var spawn_damage_text := func(pos: Vector2i, value: int, is_crit: bool, reason: String, shield_only: bool) -> void:
+		damage_texts.append({
+			"pos": pos,
+			"value": value,
+			"is_crit": is_crit,
+			"reason": reason,
+			"shield_only": shield_only,
+		})
+	player.setup(host, board, null, spawn_damage_text, func(seconds: float) -> float:
 		requested_anim_delays.append(seconds)
 		return 0.0
 	)
@@ -166,6 +175,22 @@ func _run_test() -> void:
 	assert(board.light_beam_batches[0].size() == 2, "light volley should contain every beam")
 	assert(board.damage_effects.size() == 2, "light volley damage should present at impact")
 	assert(requested_anim_delays.is_empty(), "damage, flashes, and visual tails must not add cosmetic settlement delays")
+	board.damage_effects.clear()
+	damage_texts.clear()
+	await player.play_events([{
+		"type": "damage",
+		"pos": Vector2i(4, 4),
+		"damage": 0,
+		"shield_damage": 3,
+		"remaining_shield": 2,
+		"uid": "shield_target",
+		"victim_uid": "shield_target",
+		"is_crit": true,
+		"reason": "shield_test",
+	}])
+	assert(board.damage_effects.size() == 1 and int(board.damage_effects[0].get("damage", 0)) == 3, "shield-only feedback should use absorbed damage")
+	assert(damage_texts.size() == 1 and bool(damage_texts[0].get("shield_only", false)), "shield-only feedback should request gray text")
+	assert(not bool(damage_texts[0].get("is_crit", true)), "a fully absorbed crit should keep shield-gray feedback")
 	host.queue_free()
 	print("BATTLE_EVENT_PLAYER_CLUSTER_TEST_PASS")
 	quit()

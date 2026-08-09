@@ -46,7 +46,7 @@ func _ensure_texture(abs_path: String) -> Texture2D:
 	var cached_variant: Variant = _texture_cache.get(abs_path, null)
 	if cached_variant is Texture2D:
 		return cached_variant as Texture2D
-	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_REUSE)
 	if rl != null and rl is Texture2D:
 		var from_import: Texture2D = rl as Texture2D
 		_texture_cache[abs_path] = from_import

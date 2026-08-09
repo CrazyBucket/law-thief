@@ -30,6 +30,7 @@ func _ready() -> void:
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button_down.connect(_on_button_down)
 	button_up.connect(_on_button_up)
+	mouse_entered.connect(_wake_animation)
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
 		add_theme_stylebox_override(state, StyleBoxEmpty.new())
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_disabled_color"]:
@@ -37,7 +38,7 @@ func _ready() -> void:
 	_glow_material = ShaderMaterial.new()
 	_glow_material.shader = GlowShader
 	material = _glow_material
-	set_process(true)
+	set_process(false)
 
 
 func _process(delta: float) -> void:
@@ -54,6 +55,8 @@ func _process(delta: float) -> void:
 		_step_animation()
 	_update_particles(delta)
 	queue_redraw()
+	if _hover_progress <= 0.0 and _particles.is_empty() and _press_step <= 0 and _flash_frames <= 0:
+		set_process(false)
 
 
 func _step_animation() -> void:
@@ -173,6 +176,7 @@ func _draw_particles() -> void:
 
 
 func _on_button_down() -> void:
+	_wake_animation()
 	_press_step = 2
 	_flash_frames = 3
 	for i in 4:
@@ -181,5 +185,10 @@ func _on_button_down() -> void:
 
 
 func _on_button_up() -> void:
+	_wake_animation()
 	_press_step = 1
 	queue_redraw()
+
+
+func _wake_animation() -> void:
+	set_process(true)

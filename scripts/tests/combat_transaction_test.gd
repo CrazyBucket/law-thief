@@ -8,6 +8,7 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	print("=== Combat Transaction Test ===")
 	_test_damage_unit_event_shape()
+	_test_shield_damage_event_shape()
 	_test_true_damage_unit_lethal_event_shape()
 	_test_damage_unit_preserves_existing_event_sink()
 	_test_begin_from_state_reuses_existing_event_sink()
@@ -44,6 +45,37 @@ func _test_damage_unit_event_shape() -> void:
 	assert(BattleInvariantChecker.assert_valid(state, "damage_unit_event_shape"))
 	tx.finish("combat_transaction_test.damage_unit")
 	print("  [OK] damage_unit event shape")
+
+
+func _test_shield_damage_event_shape() -> void:
+	var state := _make_state()
+	var attacker := _make_unit(state, "shield_attacker", Constants.TEAM_PLAYER, Vector2i(1, 1), 10)
+	var victim := _make_unit(state, "shield_victim", Constants.TEAM_ENEMY, Vector2i(2, 1), 10)
+	StatusRules.apply_shield(state, victim, 5, 0)
+	var events: Array[Dictionary] = []
+	var tx := CombatTransaction.begin(state, events)
+	var fully_blocked := tx.damage_unit(victim, 3, attacker.uid, "shield_test")
+	assert(fully_blocked == 0, "fully blocked damage must still report zero hp damage")
+	assert(victim.hp == 10 and StatusRules.get_shield(victim) == 2, "shield should absorb the full hit")
+	assert(events.size() == 1, "a shield-only hit still needs one presentation event")
+	var blocked_event := events[0]
+	assert(int(blocked_event.get("damage", -1)) == 0, "shield-only event must not reduce display hp")
+	assert(int(blocked_event.get("shield_damage", -1)) == 3, "event should expose absorbed damage")
+	assert(int(blocked_event.get("remaining_shield", -1)) == 2, "event should expose remaining shield")
+	assert(int(blocked_event.get("remaining_hp", -1)) == 10, "shield-only hit should preserve remaining hp")
+
+	var overflow := tx.damage_unit(victim, 4, attacker.uid, "shield_overflow_test")
+	assert(overflow == 2, "overflow should return the amount that reaches hp")
+	assert(victim.hp == 8 and StatusRules.get_shield(victim) == 0, "overflow should deplete shield before hp")
+	assert(events.size() == 2, "overflow should append its own presentation event")
+	var overflow_event := events[1]
+	assert(int(overflow_event.get("damage", -1)) == 2, "overflow event should expose hp damage")
+	assert(int(overflow_event.get("shield_damage", -1)) == 2, "overflow event should expose shield damage")
+	assert(int(overflow_event.get("remaining_shield", -1)) == 0, "depleted shield should report zero")
+	_assert_events_valid(events, "shield_damage_event_shape")
+	assert(BattleInvariantChecker.assert_valid(state, "shield_damage_event_shape"))
+	tx.finish("combat_transaction_test.shield_damage")
+	print("  [OK] shield damage event shape")
 
 
 func _test_true_damage_unit_lethal_event_shape() -> void:

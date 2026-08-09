@@ -49,12 +49,14 @@ func notify_battle_win(encounter_id: String) -> void:
 
 
 func refresh_progress_flags() -> void:
-	_sync_progress_flag("first_clear", RunHistoryService.get_total_wins(), 1)
-	_sync_progress_flag("tutorial_master", RunHistoryService.get_encounter_win_count("tutorial_001"), 1)
-	_sync_progress_flag("route_runner", RunHistoryService.get_total_wins(), 3)
-	_sync_progress_flag("monster_manual", ProfileService.get_seen_enemy_ids().size(), 4)
-	_sync_progress_flag("relic_appraiser", ProfileService.get_seen_relic_ids().size(), 5)
-	_sync_progress_flag("active_collector", RunService.get_owned_relics().size(), 3)
+	var unlocked_flags: Array[String] = []
+	_append_progress_flag(unlocked_flags, "first_clear", RunHistoryService.get_total_wins(), 1)
+	_append_progress_flag(unlocked_flags, "tutorial_master", RunHistoryService.get_encounter_win_count("tutorial_001"), 1)
+	_append_progress_flag(unlocked_flags, "route_runner", RunHistoryService.get_total_wins(), 3)
+	_append_progress_flag(unlocked_flags, "monster_manual", ProfileService.get_seen_enemy_ids().size(), 4)
+	_append_progress_flag(unlocked_flags, "relic_appraiser", ProfileService.get_seen_relic_ids().size(), 5)
+	_append_progress_flag(unlocked_flags, "active_collector", RunService.get_owned_relics().size(), 3)
+	ProfileService.unlock_flags(unlocked_flags)
 
 
 func get_achievement_entries() -> Array[Dictionary]:
@@ -115,9 +117,9 @@ func _record(achievement_id: String) -> void:
 	DebugService.log_info("AchievementService: %s" % achievement_id)
 
 
-func _sync_progress_flag(achievement_id: String, progress: int, target: int) -> void:
+func _append_progress_flag(flags: Array[String], achievement_id: String, progress: int, target: int) -> void:
 	if progress >= target:
-		ProfileService.unlock_flag(_achievement_flag(achievement_id))
+		flags.append(_achievement_flag(achievement_id))
 
 
 func _progress_value(achievement_id: String) -> int:

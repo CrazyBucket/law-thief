@@ -2,6 +2,7 @@ class_name PresentationStateApplier
 extends RefCounted
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const StatusRules = preload("res://scripts/rules/status_rules.gd")
 
 var _display_state: GameState = null
 var _runtime_state: GameState = null
@@ -66,6 +67,15 @@ func _apply_damage(event: Dictionary) -> void:
 		victim = _display_state.get_unit_at(pos)
 	if victim == null:
 		return
+	if event.has("remaining_shield"):
+		var remaining_shield := maxi(0, int(event.get("remaining_shield", 0)))
+		var shield: StatusInstance = victim.get_status(Constants.STATUS_ARMOR)
+		if remaining_shield <= 0:
+			victim.remove_status(Constants.STATUS_ARMOR)
+		elif shield != null:
+			shield.value = remaining_shield
+		else:
+			StatusRules.apply_shield(_display_state, victim, remaining_shield, 0)
 	victim.hp = maxi(0, victim.hp - int(event.get("damage", 0)))
 	_display_state.bump_revision()
 	# Lethal victims remain visible through the hit beat; the die event removes occupancy.

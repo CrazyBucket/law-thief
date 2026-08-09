@@ -101,7 +101,7 @@ func _ensure_sheet() -> Texture2D:
 	var abs_path := _sheet_path()
 	if _sheet_cache.has(abs_path):
 		return _sheet_cache[abs_path] as Texture2D
-	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var rl: Resource = ResourceLoader.load(abs_path, "", ResourceLoader.CACHE_MODE_REUSE)
 	if rl != null and rl is Texture2D:
 		_sheet_cache[abs_path] = rl
 		return rl as Texture2D
