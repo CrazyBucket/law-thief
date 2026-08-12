@@ -5,6 +5,10 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemEffects = preload("res://scripts/rules/gem_effects.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
+const CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
+const ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
+const FightTicketRules = preload("res://scripts/rules/fight_ticket_rules.gd")
 const BehaviorRegistry = preload("res://scripts/services/behavior_registry.gd")
 const _StatusRegistry = preload("res://scripts/rules/status_registry.gd")
 const _StatusActionRules = preload("res://scripts/rules/status_action_rules.gd")
@@ -40,10 +44,13 @@ func begin_enemy_phase() -> Dictionary:
 		return {"events": [] as Array[Dictionary], "presentation_state": null}
 	var ending_player: UnitState = ctrl.state.get_player()
 	StatusRules.consume_disarm(ending_player)
+	RelicBattleRules.finish_movement_window(ctrl.state, ending_player.uid if ending_player != null else "")
 	ctrl.state.clear_split_move()
 	# 若队列中还有待操控单位，切换后继续玩家回合
 	if _try_activate_next_controllable(ctrl):
+		RelicBattleRules.begin_next_controllable(ctrl.state)
 		return {"events": [] as Array[Dictionary], "presentation_state": null}
+	ScavengerHookRules.expire_at_player_turn_end(ctrl.state)
 	var presentation_state: GameState = ctrl.state.clone()
 	var events: Array[Dictionary] = []
 	var player: UnitState = ctrl.state.get_player()
@@ -52,6 +59,7 @@ func begin_enemy_phase() -> Dictionary:
 	if not player_skip_status.is_empty():
 		ctrl.state.log("%s 因%s跳过回合" % [player.uid, _StatusRegistry.display_name(player_skip_status)])
 	ctrl.state.on_turn_end.emit(ctrl.state.turn_index)
+	RelicBattleRules.clear_temp_move(ctrl.state)
 	ctrl._check_battle_end()
 	if ctrl.state.phase == Constants.PHASE_ENDED:
 		ctrl._emit_changed()
@@ -84,6 +92,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	var presentation_state: GameState = ctrl.state.clone()
 	var events: Array[Dictionary] = []
 	if not enemy.alive:
+		CounterfeitRules.remove_for_unit_death(ctrl.state, enemy)
 		return {
 			"events": events,
 			"presentation_state": presentation_state,
@@ -93,6 +102,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	var enemy_skip_status := _StatusActionRules.consume_turn_skip_status(enemy)
 	if not enemy_skip_status.is_empty():
 		ctrl.state.log("%s 因%s跳过回合" % [enemy.uid, _StatusRegistry.display_name(enemy_skip_status)])
+		CounterfeitRules.break_after_action(ctrl.state, enemy)
 		ctrl._check_battle_end()
 		ctrl._emit_changed()
 		return {
@@ -104,7 +114,14 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 		if not first_action and not StatusRules.consume_extra_attack(enemy):
 			break
 		IntentSystem.refresh_unit_intent(ctrl.state, enemy)
+		var executed_intent: IntentState = enemy.intent
 		events.append_array(IntentSystem.execute_intent(ctrl.state, enemy))
+		FightTicketRules.consume_after_intent(
+			ctrl.state,
+			enemy,
+			executed_intent,
+			executed_intent != null and IntentSystem.is_attack_intent(executed_intent.type)
+		)
 		ctrl._check_battle_end()
 		if ctrl.state.phase == Constants.PHASE_ENDED or not enemy.alive:
 			break
@@ -114,6 +131,7 @@ func execute_single_enemy(enemy: UnitState) -> Dictionary:
 	StatusRules.consume_disarm(enemy)
 	if enemy.alive and ctrl.state.phase != Constants.PHASE_ENDED:
 		GemEffects.run_blue_poison_turn_end_spreads(ctrl.state, enemy.uid)
+	CounterfeitRules.break_after_action(ctrl.state, enemy)
 	ctrl._emit_changed()
 	return {
 		"events": events,
@@ -156,6 +174,7 @@ func finish_enemy_phase() -> Dictionary:
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)
+	RelicBattleRules.begin_player_turn(ctrl.state)
 	ctrl._check_battle_end()
 	var auto_enemy_execution: Dictionary = {}
 	var player: UnitState = ctrl.state.get_player()

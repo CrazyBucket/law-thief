@@ -165,7 +165,8 @@ static func charge_explode(state: GameState, enemy: UnitState, from_pos: Vector2
 
 static func pull(state: GameState, enemy: UnitState, from_pos: Vector2i, player: UnitState, profile: Dictionary, action_type: int) -> Array:
 	# Red gravity augments a normal attack; it is not a separate long-range pull.
-	var max_range := GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
+	# Candidate generation and execution must share the enemy gravity range contract.
+	var max_range := GemEffects.gravity_pull_range(state, enemy)
 	var distance := BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
 	if distance > max_range:
 		return []

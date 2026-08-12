@@ -1,6 +1,8 @@
 class_name GameState
 extends RefCounted
 
+const _RelicBattleState = preload("res://scripts/data/relic_battle_state.gd")
+
 # ─── 战斗生命周期信号 ─────────────────────────────────────────────────────────
 signal on_battle_start
 signal on_battle_end(result: String)
@@ -13,9 +15,11 @@ signal on_attack_hit(attacker_uid: String, target_uid: String, damage: int)
 
 # ─── 单位状态信号 ─────────────────────────────────────────────────────────────
 signal on_damage_taken(unit_uid: String, amount: int, reason: String)
+signal on_damage_resolved(victim_uid: String, source_uid: String, amount: int, reason: String)
 signal on_unit_die(unit_uid: String, killer_uid: String, reason: String)
 signal on_unit_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
 signal on_forced_displacement(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i, source_uid: String)
+signal on_gem_hooked(gem_uid: String, from_pos: Vector2i)
 
 var version: int = 1
 ## Runtime-only monotonic mutation version used by read-model caches.
@@ -58,6 +62,8 @@ var overload_echo_gems: Dictionary = {}
 ## 单场战斗临时 flags，战斗结束即丢弃，不参与 clone/序列化
 ## key: String（如 "first_hit_absorbed"）→ Variant
 var battle_temp_flags: Dictionary = {}
+## Cloneable, combat-only accounting used by relic rules and presentation snapshots.
+var relic_battle = _RelicBattleState.new()
 ## 战斗事件收集绑定点；bind 期间蓝槽 reactive 伤害效果写入此数组
 var _combat_event_sink: Variant = null
 # O(1) 占格索引：tile_key → UnitState；单位移动/生成/死亡时通过封装方法同步
@@ -392,6 +398,7 @@ func clone() -> GameState:
 	snapshot.overload_last_insert_turn = overload_last_insert_turn
 	snapshot.overload_active_mutations = overload_active_mutations.duplicate()
 	snapshot.overload_echo_gems = overload_echo_gems.duplicate(true)
+	snapshot.relic_battle = relic_battle.clone()
 	for uid in units.keys():
 		snapshot.units[uid] = units[uid].clone()
 	for uid in gems.keys():

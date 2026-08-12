@@ -11,6 +11,7 @@ const PreviewEffect = preload("res://scripts/data/intent_preview_effect.gd")
 const PIPELINE_ATTACK_TYPES: Array[String] = [
 	"melee_attack",
 	"ranged_attack",
+	"pull",
 	"explosion_attack",
 	"poison_attack",
 	"arc_attack",
@@ -75,15 +76,6 @@ static func populate_damage(state: GameState, unit: UnitState, intent: IntentSta
 				cells
 			)])
 			intent.affected_cells = cells
-		"pull":
-			intent.set_damage_components([IntentDamageComponentType.create(
-				"collision",
-				intent.damage,
-				1,
-				[intent.target_uid],
-				intent.affected_cells,
-				IntentDamageComponentType.CERTAINTY_CONDITIONAL
-			)])
 		_:
 			if intent.damage > 0 and not intent.target_uid.is_empty():
 				intent.set_damage_components([IntentDamageComponentType.create(

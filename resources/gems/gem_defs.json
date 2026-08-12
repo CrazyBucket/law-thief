@@ -242,5 +242,19 @@
       "blue_damaged": "tide",
       "black_death": "tide"
     }
+  },
+  "gem_counterfeit": {
+    "display_name_key": "gem.counterfeit.name",
+    "symbol_key": "gem.counterfeit.symbol",
+    "symbol": "赝",
+    "color": [0.58, 0.58, 0.62, 1.0],
+    "tag": "counterfeit",
+    "element": "counterfeit",
+    "pool_tier": 1,
+    "max_stack_level": 1,
+    "combos": [],
+    "rarity": "rare",
+    "allow_random_pool": false,
+    "ability_profiles": {}
   }
 }

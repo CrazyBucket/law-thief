@@ -1,5 +1,8 @@
 extends Node
-
+const _SimpleRelicEffects = preload("res://scripts/rules/simple_relic_effects.gd")
+const _CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
+const _ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
+const _FightTicketRules = preload("res://scripts/rules/fight_ticket_rules.gd")
 ## 遗物事件系统与 Modifier 查询层
 ##
 ## 事件词表（fire_event 的 event_id）：
@@ -9,7 +12,7 @@ extends Node
 ##   before_attack        攻击前（payload: attacker_uid, target_uid）
 ##   after_attack_hit     命中后（payload: attacker_uid, target_uid, damage）
 ##   before_damage_taken  受伤前（payload: unit_uid, amount, reason）
-##   after_damage_taken   受伤后（payload: unit_uid, amount, reason）
+##   after_damage_taken   受伤结算后（payload: unit_uid, source_uid, amount, reason；amount 为实际生命损失）
 ##   unit_die             击杀后（payload: unit_uid, killer_uid, reason, kill_reason）
 ##   after_extract        拔出宝石后（payload: unit_uid, gem_id, slot_type, from_uid）
 ##   after_insert         嵌入宝石后（payload: unit_uid, gem_id, slot_type, from_uid, actor_uid）
@@ -62,13 +65,10 @@ var _event_handlers: Dictionary = {}
 ## _modifier_handlers[modifier_id] → Array[Callable]（返回 Variant）
 var _modifier_handlers: Dictionary = {}
 
-
 func _ready() -> void:
 	_register_builtin_actions()
 
-
 # ─── 对外接口 ─────────────────────────────────────────────────────────────────
-
 ## 对当前局持有的所有遗物触发事件
 func fire_event(event_id: String, state: GameState, payload: Dictionary = {}) -> void:
 	var owned := RunService.get_owned_relics()
@@ -84,7 +84,6 @@ func fire_event(event_id: String, state: GameState, payload: Dictionary = {}) ->
 				continue
 			_dispatch_action(relic_id, effect, state, payload)
 
-
 ## Applies only the newly acquired relic's immediate effects. This is used by
 ## battle settlement so slot-granting relics are available to the next reward.
 func apply_acquired_relic(relic_id: String, event_id: String, state: GameState) -> void:
@@ -97,7 +96,6 @@ func apply_acquired_relic(relic_id: String, event_id: String, state: GameState) 
 	for effect in effects:
 		if effect is Dictionary and str((effect as Dictionary).get("on", "")) == event_id:
 			_dispatch_action(relic_id, effect as Dictionary, state, {})
-
 
 ## 查询 modifier：对当前局持有的所有遗物累计查询
 func query_modifier(modifier_id: String, state: GameState, ctx: Dictionary = {}) -> Variant:
@@ -198,14 +196,25 @@ func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, pa
 			_action_apply_weak_on_insert_target(relic_id, effect, state, payload)
 		"random_gem_transform_one":
 			_action_random_gem_transform_one(relic_id, state)
+		"grant_shield_if_adjacent_after_move":
+			_SimpleRelicEffects.grant_shield_if_adjacent_after_move(relic_id, effect, state, payload)
+		"store_unused_move":
+			_SimpleRelicEffects.store_unused_move(relic_id, state)
+		"clear_flywheel_on_manual_shot":
+			_SimpleRelicEffects.clear_flywheel_on_manual_shot(relic_id, state, payload)
+		"leave_counterfeit_once_per_turn": _CounterfeitRules.try_leave_once(relic_id, effect, state, payload)
+		"hook_enemy_drop_once": _ScavengerHookRules.try_hook_enemy_drop(relic_id, effect, state, payload)
+		"return_hooked_gem": _ScavengerHookRules.return_before_settlement(relic_id, effect, state, payload)
+		"mark_enemy_retaliation_once": _FightTicketRules.try_mark_retaliation(relic_id, effect, state, payload)
+		"clear_invalid_retaliation": _FightTicketRules.clear_for_death(state, str(payload.get("unit_uid", "")))
 		_:
 			DebugService.log_info("RelicEffectRegistry: unknown action '%s' for %s" % [action, relic_id])
 
 
 # ─── 内置 actions ──────────────────────────────────────────────────────────────
 
-func _action_add_shield(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
-	var unit := _resolve_target(effect, state)
+func _action_add_shield(_relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
+	var unit := _resolve_target(effect, state, payload)
 	if unit == null:
 		return
 	var amount := _resolve_amount(effect, 1)
@@ -232,7 +241,6 @@ func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payloa
 	unit.hp = mini(unit.hp + amount, max_hp)
 	state.log("[Relic] %s -> +%d hp for %s" % [relic_id, amount, unit.uid])
 
-
 func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var amount := _resolve_amount(effect, 1)
 	var player := state.get_player()
@@ -244,18 +252,7 @@ func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _
 ## 临时移动力：加 1 点，但只能用于移动一次后重置
 ## 通过 battle_temp_flags 标记是否已消耗
 func _action_add_temp_move(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
-	var condition: String = str(effect.get("condition", ""))
-	if condition == "actor_is_player":
-		var actor_uid: String = str(payload.get("actor_uid", ""))
-		if actor_uid != state.player_uid:
-			return
-	var amount := _resolve_amount(effect, 1)
-	var player := state.get_player()
-	if player == null:
-		return
-	player.move_points += amount
-	state.battle_temp_flags["pressure_valve_temp_move"] = amount
-	state.log("[Relic] %s -> 蓝槽触发，临时 +%d 移动力" % [relic_id, amount])
+	_SimpleRelicEffects.add_temp_move(relic_id, effect, state, payload)
 
 
 func _action_mark_flag(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
@@ -468,6 +465,8 @@ func _action_random_gem_transform_one(relic_id: String, state: GameState) -> voi
 
 func _eval_modifier_entry(relic_id: String, effect: Dictionary, state: GameState, ctx: Dictionary) -> Variant:
 	var modifier_id: String = str(effect.get("modifier", ""))
+	if modifier_id == "manual_shot_damage_bonus":
+		return _SimpleRelicEffects.manual_shot_damage_bonus(effect, state, ctx)
 
 	# 首次伤害吸收
 	if modifier_id == "first_damage_absorb":
@@ -575,11 +574,13 @@ func _check_black_gem_kill(state: GameState, payload: Dictionary) -> bool:
 
 # ─── 工具 ────────────────────────────────────────────────────────────────────
 
-func _resolve_target(effect: Dictionary, state: GameState) -> UnitState:
+func _resolve_target(effect: Dictionary, state: GameState, payload: Dictionary = {}) -> UnitState:
 	var target: String = str(effect.get("target", "player"))
 	match target:
 		"player":
 			return state.get_player()
+		"payload_from_uid":
+			return state.units.get(str(payload.get("from_uid", "")), null)
 		_:
 			return state.units.get(target, null)
 

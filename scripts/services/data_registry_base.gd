@@ -891,7 +891,7 @@ func _register_gem_effect_profiles() -> void:
 			"enemy_intent": {
 				"type": "pull",
 				"preview_key": "gem.intent.pull",
-				"params": {"damage": CombatConfig.gravity_collision_damage()},
+				"damage_mode": "base_attack",
 				"damage": 0,
 			},
 			"ability_descriptions": {

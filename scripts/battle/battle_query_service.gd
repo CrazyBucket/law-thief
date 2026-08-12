@@ -19,18 +19,15 @@ var _attack_range_cache: Array = []
 var _attack_range_cache_key: Array = []
 var _overlay_presenter := _BattleOverlayPresenter.new()
 
-
 func setup(controller: BattleController) -> void:
 	_ctrl_ref = weakref(controller)
 	invalidate_highlight_cache()
-
 
 func invalidate_highlight_cache() -> void:
 	_reachable_cache.clear()
 	_reachable_cache_key.clear()
 	_attack_range_cache.clear()
 	_attack_range_cache_key.clear()
-
 
 func _c() -> BattleController:
 	return _ctrl
@@ -99,7 +96,8 @@ func get_highlights(hover_cell: Vector2i = Vector2i(-1, -1)) -> Dictionary:
 	elif action == Constants.ACTION_EXTRACT and ctrl.can_use_action(Constants.ACTION_EXTRACT):
 		var targets := _gem_target_cells(ctrl, state, player)
 		result["targets"] = targets
-	elif action == Constants.ACTION_INSERT and ctrl.can_use_action(Constants.ACTION_INSERT):
+	elif action in [Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED] \
+		and ctrl.can_use_action(action):
 		var targets := _gem_target_cells(ctrl, state, player)
 		result["targets"] = targets
 	var selected_uid: String = ctrl.selected_unit_uid
@@ -219,13 +217,14 @@ func get_cell_preview(cell: Vector2i) -> Dictionary:
 				var valid := _valid_slot_indices(ctrl, unit)
 				if not valid.is_empty():
 					lines.append("可拔出：%s（免费）" % ", ".join(valid))
-		Constants.ACTION_INSERT:
-			if unit != null and ctrl.can_use_action(Constants.ACTION_INSERT):
+		Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED:
+			if unit != null and ctrl.can_use_action(ctrl.selected_action):
 				var insert_valid := _valid_slot_indices(ctrl, unit)
 				if not insert_valid.is_empty():
 					lines.append("可嵌入：%s（免费）" % ", ".join(insert_valid))
-				var held: GemState = state.gems.get(state.held_gem_uid, null)
-				if unit.behavior_id == "old_mage" and held != null and not held.gem_id in ["gem_explosion", "gem_conductive", "gem_fire", "gem_ice", "gem_poison", "gem_light", "gem_impact"]:
+				var insert_gem: GemState = ctrl.get_hooked_gem() \
+					if ctrl.selected_action == Constants.ACTION_INSERT_HOOKED else ctrl.get_held_gem()
+				if unit.behavior_id == "old_mage" and insert_gem != null and not insert_gem.gem_id in ["gem_explosion", "gem_conductive", "gem_fire", "gem_ice", "gem_poison", "gem_light", "gem_impact"]:
 					lines.append("无法解读：宝石将永久销毁，Boss 下回合停止行动")
 	return {"title": lines[0] if not lines.is_empty() else "", "body": "\n".join(lines)}
 
@@ -270,6 +269,12 @@ func get_action_hint() -> String:
 				and ctrl.state.overload_last_insert_turn == ctrl.state.turn_index:
 				return "嵌入待命 · 再次嵌入将过载"
 			return "嵌入宝石"
+		Constants.ACTION_INSERT_HOOKED:
+			if ctrl.state != null \
+				and ctrl.state.overload_last_action == Constants.ACTION_INSERT \
+				and ctrl.state.overload_last_insert_turn == ctrl.state.turn_index:
+				return TranslationServer.translate("battle.gem.hook_overload_hint")
+			return TranslationServer.translate("battle.gem.hook_hint")
 	return "选择指令"
 
 
@@ -331,7 +336,7 @@ func _is_viewable_gem_slot(state: GameState, player: UnitState, unit: UnitState,
 		return false
 	var max_range := CombatConfig.extract_range()
 	match action:
-		Constants.ACTION_INSERT:
+		Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED:
 			max_range = CombatConfig.insert_range()
 	return BoardUtils.distance_between_units(player, unit) <= max_range
 

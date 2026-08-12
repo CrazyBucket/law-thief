@@ -4,6 +4,8 @@ extends RefCounted
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
+const ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 
 var _ctrl_ref: WeakRef
@@ -80,11 +82,6 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 			break
 	if player.alive:
 		TileRules.finish_voluntary_move(state, player, previous)
-	# 旧式压力阀临时移动力：移动一次后重置剩余临时点数
-	if state.battle_temp_flags.has("pressure_valve_temp_move"):
-		var temp_move: int = int(state.battle_temp_flags["pressure_valve_temp_move"])
-		state.battle_temp_flags.erase("pressure_valve_temp_move")
-		player.move_points = maxi(0, player.move_points - temp_move)
 	if not unlimited:
 		if consume_bonus_move:
 			StatusRules.consume_extra_move(player)
@@ -97,6 +94,13 @@ func try_move(target_pos: Vector2i) -> Dictionary:
 			state.store_split_move(player.uid, move_budget, spent_move)
 			state.reconcile_split_move(player.uid, StatusRules.effective_move_points(player, player.move_points))
 		OverloadRules.record_non_insert_action(state, Constants.ACTION_MOVE)
+	RelicBattleRules.record_voluntary_move(
+		state,
+		player.uid,
+		previous,
+		spent_move,
+		state.split_move_remaining <= 0
+	)
 	state.log("玩家移动到 %s" % target_pos)
 	ctrl._check_battle_end()
 	if state.phase != Constants.PHASE_ENDED:
@@ -174,6 +178,7 @@ func try_attack_cell(target_pos: Vector2i) -> Dictionary:
 		CombatConfig.attack_range(),
 		{
 			"aim_cell": target_pos,
+			"manual_player_shot": true,
 			"ignore_attack_block": unlimited,
 			# Player manual attacks should honor the chosen aim cell even if a static entity sits in front.
 			# This keeps gem ground effects and target selection aligned with the tactical preview.
@@ -222,8 +227,12 @@ func try_extract(target_uid: String, slot_index: int) -> Dictionary:
 	var slot: SlotState = target.get_slot_by_index(slot_index)
 	if slot == null:
 		return _fail("槽位无效")
+	var intent_before := RelicBattleRules.enemy_intent_snapshot(ctrl.state)
 	var result := GemRules.extract(ctrl.state, player, target, slot)
 	if result.get("ok", false):
+		RelicBattleRules.fire_gem_operation_result(
+			ctrl.state, player.uid, Constants.ACTION_EXTRACT, intent_before
+		)
 		OverloadRules.record_non_insert_action(ctrl.state, Constants.ACTION_EXTRACT)
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl.anim_gem_flash.emit(target.pos, Color(1.0, 0.85, 0.3))
@@ -274,8 +283,43 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 	var slot: SlotState = target.get_slot_by_index(slot_index)
 	if slot == null:
 		return _fail("槽位无效")
+	var intent_before := RelicBattleRules.enemy_intent_snapshot(ctrl.state)
 	var result := GemRules.insert(ctrl.state, player, target, slot)
 	if result.get("ok", false):
+		if not bool(result.get("overload_armed", false)):
+			RelicBattleRules.fire_gem_operation_result(
+				ctrl.state, player.uid, Constants.ACTION_INSERT, intent_before
+			)
+		OverloadRules.record_insert(ctrl.state, bool(result.get("overload_forced", false)))
+		OverloadRules.apply_gem_operation_backlash(ctrl.state)
+		ctrl._check_battle_end()
+		ctrl._emit_changed()
+	return result
+
+
+func try_insert_hooked(target_uid: String, slot_index: int) -> Dictionary:
+	var ctrl = _c()
+	if ctrl == null or ctrl.state == null:
+		return _fail("战斗未开始")
+	if not ctrl.editor_unlimited_actions_enabled() and OverloadRules.blocks_player_manual_actions(ctrl.state):
+		return _fail("AI 已接管本回合")
+	var player: UnitState = ctrl.state.get_player()
+	var blocked_reason := _player_action_block_reason(ctrl, player)
+	if not blocked_reason.is_empty():
+		return _fail(blocked_reason)
+	var target: UnitState = ctrl.state.units.get(target_uid, null)
+	if target == null:
+		return _fail("目标无效")
+	var slot: SlotState = target.get_slot_by_index(slot_index)
+	if slot == null:
+		return _fail("槽位无效")
+	var intent_before := RelicBattleRules.enemy_intent_snapshot(ctrl.state)
+	var result := ScavengerHookRules.insert_hooked(ctrl.state, player, target, slot)
+	if result.get("ok", false):
+		if not bool(result.get("overload_armed", false)):
+			RelicBattleRules.fire_gem_operation_result(
+				ctrl.state, player.uid, Constants.ACTION_INSERT, intent_before
+			)
 		OverloadRules.record_insert(ctrl.state, bool(result.get("overload_forced", false)))
 		OverloadRules.apply_gem_operation_backlash(ctrl.state)
 		ctrl._check_battle_end()

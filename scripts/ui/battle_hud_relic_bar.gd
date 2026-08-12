@@ -14,6 +14,7 @@ var _grid: Container = null
 var _owned_relics_cb: Callable = Callable()
 var _texture_for_relic_cb: Callable = Callable()
 var _show_detail_cb: Callable = Callable()
+var _badge_state_cb: Callable = Callable()
 var _ids: Array[String] = []
 var _layout_key := ""
 var _texture_cache: Dictionary = {}
@@ -26,6 +27,7 @@ func setup(deps: Dictionary) -> void:
 	_owned_relics_cb = deps.get("owned_relics_cb", Callable())
 	_texture_for_relic_cb = deps.get("texture_for_relic_cb", Callable())
 	_show_detail_cb = deps.get("show_detail_cb", Callable())
+	_badge_state_cb = deps.get("badge_state_cb", Callable())
 
 
 func refresh(available_height: float = 320.0) -> void:
@@ -64,6 +66,7 @@ func refresh(available_height: float = 320.0) -> void:
 	_scroll.custom_minimum_size = viewport_size
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if allow_scroll else ScrollContainer.SCROLL_MODE_DISABLED
+	_refresh_badge_states()
 
 
 static func layout_for(count: int, available_height: float = 320.0) -> Dictionary:
@@ -126,6 +129,7 @@ func _clear_grid() -> void:
 func create_badge(relic_id: String, icon_size: float) -> Control:
 	var item_size := Vector2(icon_size + _ICON_PAD * 2.0, icon_size + _ICON_PAD * 2.0)
 	var root := Control.new()
+	root.set_meta("relic_id", relic_id)
 	root.custom_minimum_size = item_size
 	root.mouse_filter = Control.MOUSE_FILTER_PASS
 	root.clip_contents = false
@@ -168,7 +172,36 @@ func create_badge(relic_id: String, icon_size: float) -> Control:
 	if _show_detail_cb.is_valid():
 		button.pressed.connect(_show_detail_cb.bind(relic_id))
 	root.add_child(button)
+	var state_badge := Label.new()
+	state_badge.name = "StateBadge"
+	state_badge.visible = false
+	state_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	state_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	state_badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	state_badge.add_theme_font_size_override("font_size", 9)
+	state_badge.add_theme_color_override("font_color", Color(1.0, 0.9, 0.36))
+	state_badge.add_theme_color_override("font_outline_color", Color(0.08, 0.07, 0.06, 1.0))
+	state_badge.add_theme_constant_override("outline_size", 3)
+	state_badge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(state_badge)
 	return root
+
+
+func _refresh_badge_states() -> void:
+	if _grid == null:
+		return
+	for child in _grid.get_children():
+		if not child is Control:
+			continue
+		var state_badge := (child as Control).get_node_or_null("StateBadge") as Label
+		if state_badge == null:
+			continue
+		var relic_id := str((child as Control).get_meta("relic_id", ""))
+		var text_value := ""
+		if _badge_state_cb.is_valid():
+			text_value = str(_badge_state_cb.call(relic_id))
+		state_badge.text = text_value
+		state_badge.visible = not text_value.is_empty()
 
 
 func _set_badge_hover(root: Control, hovered: bool) -> void:

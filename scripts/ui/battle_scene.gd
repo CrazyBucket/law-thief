@@ -8,6 +8,7 @@ func _ready() -> void:
 	_controller.anim_move.connect(_on_anim_move)
 	_controller.anim_damage.connect(_on_anim_damage)
 	_controller.anim_gem_flash.connect(_on_anim_gem_flash)
+	_controller.anim_gem_hooked.connect(_on_anim_gem_hooked)
 	_board_input.setup(_board)
 	_board.cell_clicked.connect(_on_cell_clicked)
 	_board.cell_hovered.connect(_on_cell_hovered)
@@ -68,6 +69,7 @@ func _ready() -> void:
 		"attack_btn": _attack_btn,
 		"extract_btn": _extract_btn,
 		"insert_btn": _insert_btn,
+		"hook_insert_btn": _hook_insert_btn,
 		"end_turn_btn": _end_turn_btn,
 		"toggle_panel_btn": _toggle_panel_btn,
 		"turn_chips": _turn_chips,
@@ -276,7 +278,7 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			else:
 				_player_animating = false
 				_set_inspect_target(cell)
-		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT:
+		Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED:
 			var targets: Array = _controller.get_highlights().get("targets", [])
 			if cell in targets:
 				var extractable_ground: Array[String] = []
@@ -331,6 +333,8 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 			result = _controller.try_extract(unit_uid, slot_index)
 		Constants.ACTION_INSERT:
 			result = _controller.try_insert(unit_uid, slot_index)
+		Constants.ACTION_INSERT_HOOKED:
+			result = _controller.try_insert_hooked(unit_uid, slot_index)
 		_:
 			return
 	_dismiss_popup()
@@ -353,6 +357,17 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 					_message_label.text = "无法解读：宝石将销毁，老法师下回合停止行动"
 				else:
 					_message_label.text = "已嵌入" if str(result.get("swapped_gem_uid", "")).is_empty() else "已替换，原宝石回到手中"
+			Constants.ACTION_INSERT_HOOKED:
+				if not bool(result.get("overload_armed", false)):
+					var hook_target: UnitState = _controller.state.units.get(unit_uid, null)
+					if hook_target != null:
+						_begin_hooked_gem_insert(hook_target.pos, result)
+				if bool(result.get("overload_armed", false)):
+					_message_label.text = TranslationServer.translate("battle.gem.hook_overload_armed")
+				elif bool(result.get("overload_forced", false)):
+					_message_label.text = TranslationServer.translate("battle.gem.hook_overload_done")
+				else:
+					_message_label.text = TranslationServer.translate("battle.gem.hook_inserted")
 	_refresh()
 	_sync_unit_slot_panels()
 
@@ -380,6 +395,14 @@ func _begin_held_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
 	if swapped_gem == null:
 		return
 	_schedule_swapped_gem_extract(target_grid, swapped_gem)
+
+func _begin_hooked_gem_insert(target_grid: Vector2i, result: Dictionary) -> void:
+	var gem_uid := str(result.get("gem_uid", ""))
+	if gem_uid.is_empty() or _controller.state == null:
+		return
+	var gem: GemState = _controller.state.gems.get(gem_uid, null)
+	if gem != null:
+		_board.start_hooked_gem_insert(target_grid, gem)
 
 func _schedule_swapped_gem_extract(target_grid: Vector2i, gem: GemState) -> void:
 	var duration: float = 0.38
@@ -825,6 +848,13 @@ func _on_anim_damage(grid: Vector2i, damage: int, is_crit: bool) -> void:
 func _on_anim_gem_flash(grid: Vector2i, gem_color: Color) -> void:
 	_board.play_gem_flash(grid, gem_color)
 
+func _on_anim_gem_hooked(gem_uid: String, from_pos: Vector2i) -> void:
+	if _controller.state == null:
+		return
+	var gem: GemState = _controller.state.gems.get(gem_uid, null)
+	if gem != null:
+		_board.start_hooked_gem_extract(from_pos, gem)
+
 func _spawn_damage_text(grid: Vector2i, value: int, is_crit: bool, reason: String, shield_only: bool = false) -> void:
 	if _dmg_text == null or value <= 0:
 		return
@@ -875,7 +905,7 @@ func _refresh_relic_bar_after_resize() -> void:
 	_layout_editor_ui()
 
 func _wire_hover_interactions() -> void:
-	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _end_turn_btn, _menu_btn, _toggle_panel_btn]:
+	for button in [_move_btn, _attack_btn, _extract_btn, _insert_btn, _hook_insert_btn, _end_turn_btn, _menu_btn, _toggle_panel_btn]:
 		if button == null:
 			continue
 		button.focus_mode = Control.FOCUS_NONE

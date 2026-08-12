@@ -3,6 +3,7 @@ extends "res://scripts/rules/gem_effects_resolution.gd"
 
 const AttackPipeline = preload("res://scripts/rules/attack_pipeline.gd")
 const _Displacement = preload("res://scripts/rules/displacement.gd")
+const _CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
 
 static func run_unit_hooks(state: GameState, unit: UnitState, slot_type: String, timing: String, ctx: Dictionary = {}) -> void:
 	# The old mage's blue slots are telegraphed spell material, not generic reactive gems.
@@ -165,6 +166,7 @@ static func on_unit_death(
 	out_events: Array[Dictionary] = [],
 	ctx: Dictionary = {}
 ) -> void:
+	_CounterfeitRules.remove_for_unit_death(state, unit)
 	_behavior_for(unit).on_unit_death(state, unit)
 	if bool(ctx.get("black_death_already_triggered", false)):
 		return

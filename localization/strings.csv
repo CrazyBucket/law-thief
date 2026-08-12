@@ -19,6 +19,18 @@ system.menu.save_exit,保存并返回,Save and Return
 system.settings.title,设置,Settings
 system.settings.back,返回,Back
 battle.command.end_turn_e,结束回合 [E],End Turn [E]
+battle.command.hook_insert,钩入,Hook In
+battle.gem.hooked,钩挂 %s,Hooked %s
+battle.gem.held_and_hooked,手持 %s · 钩挂 %s,Held %s · Hooked %s
+battle.intent.retaliation,报复 · %s,Retaliate · %s
+battle.status.retaliation_target,报复：%s,Retaliation: %s
+battle.gem.banner_both,手持 %s · 钩挂 %s — 选择嵌入方式,Held %s · Hooked %s — choose an insert
+battle.gem.banner_hooked,钩挂 %s — 点击“钩入”后选择槽位,Hooked %s — choose Hook In then a slot
+battle.gem.hook_hint,嵌入钩挂宝石,Insert hooked gem
+battle.gem.hook_overload_hint,钩入待命 · 再次嵌入将过载,Hook ready · another insert will overload
+battle.gem.hook_overload_armed,钩入待命：再次嵌入将触发过载,Hook ready: insert again to overload
+battle.gem.hook_overload_done,过载钩入：已压入槽位,Overload hook inserted
+battle.gem.hook_inserted,拾荒钩已嵌入,Scavenger Hook inserted
 settings.section.common,常用,General
 settings.section.audio,声音,Audio
 settings.fullscreen,全屏显示,Fullscreen
@@ -136,6 +148,8 @@ gem.ice.name,寒冰,Ice
 gem.ice.symbol,冰,Ice
 gem.tide.name,潮汐,Tide
 gem.tide.symbol,潮,Tide
+gem.counterfeit.name,赝品,Counterfeit
+gem.counterfeit.symbol,赝,Fake
 unit.player.name,窃律者,Law Thief
 unit.bomb_rat.name,炸弹鼠,Bomb Rat
 unit.patrol_guard.name,巡路甲兵,Patrol Guard
@@ -158,7 +172,7 @@ unit.training_dummy.name,训练稻草人,Training Dummy
 gem.intent.explosion_attack,爆炸攻击 ({damage}),Explosion Strike ({damage})
 gem.intent.charge_explode,冲刺爆炸 ({damage}),Charge Explosion ({damage})
 gem.intent.poison_attack,毒攻击 ({damage}+毒),Poison Strike ({damage}+Poison)
-gem.intent.pull,引力拉近+碰撞({damage}),Gravity Pull + Collision ({damage})
+gem.intent.pull,引力攻击+拉近（{damage}）,Gravity Attack + Pull ({damage})
 gem.intent.arc_attack,电击 ({damage}),Arc Attack ({damage})
 gem.intent.fire_attack,烈焰攻击 ({damage}),Fire Attack ({damage})
 gem.intent.ice_attack,寒冰攻击 ({damage}),Ice Attack ({damage})
@@ -173,7 +187,7 @@ gem.effect.poison.blue_damaged,被动：接触施加 1 层毒；2 级回合结�
 gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害,Gravity: pull the target toward you and deal {damage} collision damage
 gem.effect.gravity.unit_red_active,触发：普通攻击范围随等级 +0/+1/+2；命中后将周围 2 格单位拉扯 1/2/3 步,Trigger: basic attack range gains +0/+1/+2; on hit pull units within 2 tiles by 1/2/3 steps
-gem.effect.gravity.enemy_red_action,引力拉近+碰撞({damage}),Pull and collide for {damage}
+gem.effect.gravity.enemy_red_action,引力攻击：普通攻击命中后拉近目标,Gravity Attack: pull the target closer after a normal attack
 gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
 gem.effect.heavy_armor.player_skill,重甲：给自己加 3 点护甲（2 回合）,Heavy Armor: gain 3 armor for 2 turns
 gem.effect.heavy_armor.unit_red_active,触发：获得 2 点护甲（1 回合）,Trigger: gain 2 armor for 1 turn

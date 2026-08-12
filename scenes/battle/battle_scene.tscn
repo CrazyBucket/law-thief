@@ -408,7 +408,7 @@ text = "射击"
 layout_mode = 2
 
 [node name="GemGroup" type="PanelContainer" parent="HudLayer/BottomDock/BottomBar" unique_id=848915569]
-custom_minimum_size = Vector2(194, 0)
+custom_minimum_size = Vector2(286, 0)
 layout_mode = 2
 
 [node name="VBox" type="VBoxContainer" parent="HudLayer/BottomDock/BottomBar/GemGroup" unique_id=259044824]
@@ -434,6 +434,12 @@ text = "拔取"
 custom_minimum_size = Vector2(86, 44)
 layout_mode = 2
 text = "嵌入"
+
+[node name="HookInsertBtn" type="Button" parent="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row"]
+visible = false
+custom_minimum_size = Vector2(86, 44)
+layout_mode = 2
+text = ""
 
 [node name="Sep3" type="VSeparator" parent="HudLayer/BottomDock/BottomBar" unique_id=1050004594]
 layout_mode = 2
@@ -467,4 +473,5 @@ text = "结束回合"
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row/AttackBtn" to="." method="_on_action_pressed" binds= ["attack"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn" to="." method="_on_action_pressed" binds= ["extract"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn" to="." method="_on_action_pressed" binds= ["insert"]]
+[connection signal="pressed" from="HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/HookInsertBtn" to="." method="_on_action_pressed" binds= ["insert_hooked"]]
 [connection signal="pressed" from="HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn" to="." method="_on_end_turn_pressed"]

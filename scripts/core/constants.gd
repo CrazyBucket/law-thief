@@ -29,6 +29,7 @@ const GEM_ECHO := "gem_echo"
 const GEM_FLURRY := "gem_flurry"
 const GEM_IMPACT := "gem_impact"
 const GEM_TIDE := "gem_tide"
+const GEM_COUNTERFEIT := "gem_counterfeit"
 
 const TILE_FLOOR := "tile_floor"
 const TILE_WATER := "tile_water"
@@ -48,11 +49,13 @@ const ROOM_TILE_IDS: Array[String] = [
 
 const LOCK_ARMOR := "armor_lock"
 const LOCK_SPLIT_DISABLED := "split_disabled"
+const LOCK_COUNTERFEIT := "counterfeit"
 
 const ACTION_MOVE := "move"
 const ACTION_ATTACK := "attack"
 const ACTION_EXTRACT := "extract"
 const ACTION_INSERT := "insert"
+const ACTION_INSERT_HOOKED := "insert_hooked"
 const ACTION_TRIGGER := "trigger"
 const ACTION_END_TURN := "end_turn"
 const ACTION_NONE := ""

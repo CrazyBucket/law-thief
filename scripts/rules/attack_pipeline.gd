@@ -17,6 +17,7 @@ const AttackSegmentRules = preload("res://scripts/rules/attack_segment_rules.gd"
 const ImpactRules = preload("res://scripts/rules/impact_rules.gd")
 const TideRules = preload("res://scripts/rules/tide_rules.gd")
 const WetReactionRules = preload("res://scripts/rules/wet_reaction_rules.gd")
+const _SimpleRelicEffects = preload("res://scripts/rules/simple_relic_effects.gd")
 static func _relic_effect_registry() -> Node: return Engine.get_main_loop().root.get_node_or_null("RelicEffectRegistry")
 static func _rng_service() -> Node: return Engine.get_main_loop().root.get_node_or_null("RngService")
 # ─── 攻击标签集合 ────────────────────────────────────────────────────────────
@@ -165,6 +166,7 @@ static func _phase_damage_calculate(ctx: AttackContext) -> void:
 		"base_attack": ctx.attacker.base_attack,
 		"result": ctx.base_damage,
 	})
+	_SimpleRelicEffects.apply_flywheel_damage(ctx)
 	var charge_bonus: int = int(ctx.payload.get("charge_bonus", 0))
 	if charge_bonus > 0:
 		ctx.base_damage += charge_bonus
@@ -269,6 +271,7 @@ static func _apply_tags_at_cell(
 	var dealt := 0
 	if target != null and target.alive:
 		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell, "active_attack": true, "attack_event_id": ctx.payload.get("current_attack_event_id", ""), "segment_index": ctx.payload.get("attack_segment_index", 0), "segment_count": ctx.payload.get("attack_segment_count", 1)})
+		_SimpleRelicEffects.fire_direct_hit(ctx, target, dealt)
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			_apply_direct_hit_extras(ctx, target)
@@ -567,6 +570,7 @@ static func _apply_single_light_beam(
 			"gem_tag_context": traveled_ctx,
 			"active_attack": true,
 		})
+		_SimpleRelicEffects.fire_direct_hit(ctx, target, dealt)
 		if dealt > 0:
 			ctx.state.on_attack_hit.emit(ctx.attacker.uid, target.uid, dealt)
 			StatusRules.apply_light_exposed(ctx.state, target, exposed_stacks, ctx.attacker.uid)

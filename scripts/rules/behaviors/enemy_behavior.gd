@@ -27,6 +27,16 @@ static func build_normal_intent(state: GameState, unit: UnitState, cell_blockers
 	return IntentSystem.enemy_intent_from_decision(state, unit, decision, cell_blockers)
 
 
+static func build_priority_target_intent(
+	state: GameState,
+	unit: UnitState,
+	target: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
+	var decision := _EnemyAI.decide_against_target(state, unit, target, cell_blockers)
+	return IntentSystem.enemy_intent_from_decision(state, unit, decision, cell_blockers)
+
+
 static func build_lawless_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
 	var gem: GemState = state.gems.get(StatusRules.get_lawless_gem_uid(unit), null)
 	var target_pos := unit.pos
@@ -374,8 +384,16 @@ static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: 
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
 	# The shared attack pipeline applies the gravity pull after the normal hit,
-	# preserving both the unit's base damage and the authored range bonus.
-	var result := CombatRules.ranged_attack(state, unit, target.pos, CombatConfig.enemy_gravity_pull_range())
+	# preserving both the unit's base damage and the authored range bonus. Enemy
+	# gravity is target-locked like the player's normal attack, so scenery cannot
+	# replace the intended victim during projectile presentation.
+	var result := CombatRules.ranged_attack(
+		state,
+		unit,
+		target.pos,
+		CombatConfig.enemy_gravity_pull_range(),
+		{"ignore_projectile_blockers": true}
+	)
 	if not bool(result.get("ok", false)):
 		return [] as Array[Dictionary]
 	var events: Array[Dictionary] = []

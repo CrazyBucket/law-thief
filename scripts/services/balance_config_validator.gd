@@ -471,7 +471,7 @@ const RELIC_ACTION_AMOUNT_UNITS := {
 	"add_armor": "shield",
 	"heal": "hp",
 	"add_move": "move_points",
-	"add_temp_move": "move_points",
+	"add_temp_move": "move_points", "grant_shield_if_adjacent_after_move": "shield",
 }
 
 const RELIC_ACTION_RATIO_UNITS := {
@@ -491,7 +491,7 @@ const RELIC_MODIFIER_VALUE_UNITS := {
 	"insert_range_bonus": {"kind": "flat", "unit": "range"},
 	"arc_damage_bonus": {"kind": "flat", "unit": "damage"},
 	"attack_miss_chance": {"kind": "ratio", "unit": "chance"},
-	"attack_damage_bonus": {"kind": "flat", "unit": "damage"},
+	"attack_damage_bonus": {"kind": "flat", "unit": "damage"}, "manual_shot_damage_bonus": {"kind": "flat", "unit": "damage"},
 	"first_damage_cap": {"kind": "flat", "unit": "damage"},
 }
 

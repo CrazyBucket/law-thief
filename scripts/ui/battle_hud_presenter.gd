@@ -46,6 +46,7 @@ var _move_btn: Button = null
 var _attack_btn: Button = null
 var _extract_btn: Button = null
 var _insert_btn: Button = null
+var _hook_insert_btn: Button = null
 var _end_turn_btn: Button = null
 var _toggle_panel_btn: Button = null
 var _relic_bar_scroll: ScrollContainer = null
@@ -66,6 +67,7 @@ var _intent_label: Label = null
 var _overload_detail_label: Label = null
 var _inspect_slots_signature: String = ""
 var _timeline_signature: String = ""
+var _current_state: GameState = null
 
 
 func _data_registry() -> Node:
@@ -172,6 +174,7 @@ func setup(deps: Dictionary) -> void:
 	_attack_btn = deps.get("attack_btn", null)
 	_extract_btn = deps.get("extract_btn", null)
 	_insert_btn = deps.get("insert_btn", null)
+	_hook_insert_btn = deps.get("hook_insert_btn", null)
 	_end_turn_btn = deps.get("end_turn_btn", null)
 	_toggle_panel_btn = deps.get("toggle_panel_btn", null)
 	_relic_bar_scroll = deps.get("relic_bar_scroll", null)
@@ -190,11 +193,13 @@ func setup(deps: Dictionary) -> void:
 		"owned_relics_cb": Callable(self, "_owned_relics"),
 		"texture_for_relic_cb": Callable(self, "_relic_texture"),
 		"show_detail_cb": _show_relic_detail_cb,
+		"badge_state_cb": Callable(self, "_relic_badge_state_text"),
 	})
 
 
 func refresh(context: Dictionary) -> Dictionary:
 	var state: GameState = context.get("state", null)
+	_current_state = state
 	var inspect_uid: String = str(context.get("inspect_uid", ""))
 	var inspect_cell: Vector2i = context.get("inspect_cell", Vector2i(-1, -1))
 	var tracked_player_uid: String = str(context.get("tracked_player_uid", ""))
@@ -244,15 +249,21 @@ func refresh(context: Dictionary) -> Dictionary:
 	_phase_badge.add_theme_color_override("font_color", phase_color)
 
 	var held := _controller.get_held_gem()
-	if held != null:
-		var gem_name: String = _gem_display_name(held)
+	var hooked := _controller.get_hooked_gem()
+	var shown_gem: GemState = held if held != null else hooked
+	if shown_gem != null:
 		if _held_gem_icon != null:
-			_held_gem_icon.texture = _gem_texture(held)
-			_held_gem_icon.self_modulate = _gem_sprite_modulate(held)
-			GemEchoVisuals.apply_icon_material(_held_gem_icon, _controller.state, held.uid)
+			_held_gem_icon.texture = _gem_texture(shown_gem)
+			_held_gem_icon.self_modulate = _gem_sprite_modulate(shown_gem)
+			GemEchoVisuals.apply_icon_material(_held_gem_icon, _controller.state, shown_gem.uid)
 			_held_gem_icon.visible = true
-		_held_label.text = "手持 %s" % gem_name
-		_held_label.add_theme_color_override("font_color", _gem_color(held).lightened(0.15))
+		if held != null and hooked != null:
+			_held_label.text = TranslationServer.translate("battle.gem.held_and_hooked") % [_gem_display_name(held), _gem_display_name(hooked)]
+		elif held != null:
+			_held_label.text = "手持 %s" % _gem_display_name(held)
+		else:
+			_held_label.text = TranslationServer.translate("battle.gem.hooked") % _gem_display_name(hooked)
+		_held_label.add_theme_color_override("font_color", _gem_color(shown_gem).lightened(0.15))
 	else:
 		if _held_gem_icon != null:
 			GemEchoVisuals.apply_icon_material(_held_gem_icon, _controller.state, "")
@@ -500,6 +511,11 @@ func _refresh_inspect(state: GameState, inspect_uid: String, inspect_cell: Vecto
 	var stack_lines := _status_stack_lines(unit)
 	if not stack_lines.is_empty():
 		stat_parts.append("层数：%s" % " · ".join(stack_lines))
+	var retaliation_uid := str(state.relic_battle.retaliation_targets.get(unit.uid, ""))
+	var retaliation_target: UnitState = state.units.get(retaliation_uid, null)
+	if retaliation_target != null and retaliation_target.alive:
+		var retaliation_format := TranslationServer.translate("battle.status.retaliation_target")
+		stat_parts.append(retaliation_format % _unit_display_name(retaliation_target.unit_def_id))
 	_inspect_stats.text = "\n".join(stat_parts)
 	if unit.behavior_id == "old_mage":
 		_inspect_stats.text += "\n" + OldMageHudPanel.phase_summary(state, unit)
@@ -911,16 +927,20 @@ func _refresh_action_buttons(enemy_phase_running: bool) -> void:
 	_attack_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_ATTACK)
 	_extract_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_EXTRACT)
 	_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT)
+	_hook_insert_btn.visible = _controller.get_hooked_gem() != null
+	_hook_insert_btn.disabled = not can_act or not _controller.can_use_action(Constants.ACTION_INSERT_HOOKED)
 	_end_turn_btn.disabled = not can_act or _controller.state == null or _controller.state.phase != Constants.PHASE_PLAYER
 	BattleUiTheme.apply_button(_move_btn, "move", current == Constants.ACTION_MOVE)
 	BattleUiTheme.apply_button(_attack_btn, "combat", current == Constants.ACTION_ATTACK)
 	BattleUiTheme.apply_button(_extract_btn, "gem", current == Constants.ACTION_EXTRACT)
 	BattleUiTheme.apply_button(_insert_btn, "gem", current == Constants.ACTION_INSERT)
+	BattleUiTheme.apply_button(_hook_insert_btn, "gem", current == Constants.ACTION_INSERT_HOOKED)
 	BattleUiTheme.apply_button(_end_turn_btn, "end", false)
 	_move_btn.text = "机动"
 	_attack_btn.text = "射击"
 	_extract_btn.text = "拔取"
 	_insert_btn.text = "嵌入"
+	_hook_insert_btn.text = TranslationServer.translate("battle.command.hook_insert")
 	_end_turn_btn.text = TranslationServer.translate("battle.command.end_turn_e")
 
 
@@ -1059,6 +1079,17 @@ func _owned_relics() -> Array[String]:
 	if run_service == null or not run_service.is_run_active():
 		return []
 	return _string_array_from(run_service.get_owned_relics())
+
+
+func _relic_badge_state_text(relic_id: String) -> String:
+	if relic_id != "relic_flywheel" or _current_state == null:
+		return ""
+	var layers: int = int(_current_state.relic_battle.flywheel_layers)
+	var registry := _data_registry()
+	var damage_per_layer := 0
+	if registry != null:
+		damage_per_layer = int(registry.get_relic_numeric_ref("relic_flywheel_damage_per_layer", 0))
+	return "%d/+%d" % [layers, layers * damage_per_layer]
 
 
 func _relic_bar_layout(count: int, available_height: float = _RELIC_BAR_FALLBACK_H) -> Dictionary:

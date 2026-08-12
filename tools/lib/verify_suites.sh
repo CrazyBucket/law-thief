@@ -259,8 +259,12 @@ MAP_TESTS=(
 )
 
 RELIC_TESTS=(
+  counterfeit_relic_test
+  fight_ticket_relic_test
   crowbar_relic_test
   prop_entity_test
+  scavenger_hook_relic_test
+  simple_relics_test
   vernier_caliper_relic_test
 )
 

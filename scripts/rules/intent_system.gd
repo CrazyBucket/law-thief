@@ -9,6 +9,7 @@ const _EnemyAI := preload("res://scripts/rules/enemy_ai.gd")
 const _CombatTransaction = preload("res://scripts/rules/combat_transaction.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _FightTicketRules = preload("res://scripts/rules/fight_ticket_rules.gd")
 ## 意图系统 —— 基于 Utility AI 的敌人决策
 ## 每回合开始时为所有敌人计算最优行动，生成 IntentState 供 UI 预览
 
@@ -116,8 +117,13 @@ static func _compute_intent_from_ai(
 	cell_blockers: Dictionary = {}
 ) -> IntentState:
 	var behavior: GDScript = _behavior_for(unit)
-	var intent: IntentState = behavior.compute_intent(state, unit, cell_blockers)
-	if intent != null and not StatusRules.can_attack(unit) and _is_attack_intent(intent.type):
+	var retaliation_target: UnitState = _FightTicketRules.retaliation_target(state, unit)
+	var intent: IntentState = null
+	if retaliation_target != null:
+		intent = behavior.build_priority_target_intent(state, unit, retaliation_target, cell_blockers)
+	else:
+		intent = behavior.compute_intent(state, unit, cell_blockers)
+	if intent != null and not StatusRules.can_attack(unit) and is_attack_intent(intent.type):
 		intent = _movement_only_intent(unit, intent)
 	if intent != null:
 		if not intent.target_uid.is_empty():
@@ -126,11 +132,13 @@ static func _compute_intent_from_ai(
 			elif state.gems.has(intent.target_uid):
 				intent.plan_metadata["target_kind"] = "gem"
 		IntentPreviewRules.populate(state, unit, intent)
+		if retaliation_target != null:
+			_FightTicketRules.tag_intent(intent, retaliation_target)
 		intent.finalize_action_plan(state.turn_index, unit.pos)
 	return intent
 
 
-static func _is_attack_intent(intent_type: String) -> bool:
+static func is_attack_intent(intent_type: String) -> bool:
 	return intent_type in ATTACK_INTENT_TYPES
 
 
@@ -200,9 +208,7 @@ static func enemy_intent_from_decision(
 			intent.type = "move"
 			intent.target_pos = action.move_target
 			intent.preview_text = "移动"
-			var player := state.get_player()
-			if player != null:
-				intent.target_uid = player.uid
+			intent.target_uid = action.action_target_uid
 
 		_EnemyAI.ActionType.WAIT:
 			return IntentState.wait(unit.uid)
@@ -268,7 +274,7 @@ static func execute_intent(state: GameState, unit: UnitState) -> Array[Dictionar
 	if StatusRules.can_move(unit) and not intent.path.is_empty():
 		var move_events := _execute_move(state, unit, intent)
 		anim_events.append_array(move_events)
-	if _is_attack_intent(intent.type) and not StatusRules.can_attack(unit):
+	if is_attack_intent(intent.type) and not StatusRules.can_attack(unit):
 		return _validated_events(anim_events, "IntentSystem.execute_intent:%s" % intent.type)
 
 	var custom_result: Dictionary = _behavior_for(unit).execute_custom_intent(state, unit, intent, move_start_pos)

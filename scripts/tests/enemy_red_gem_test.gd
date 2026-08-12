@@ -2,6 +2,9 @@ extends SceneTree
 ## 敌人红槽宝石：射程、AI 接入、伤害事件
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
+const Builder = preload("res://scripts/testkit/scenario_builder.gd")
+const EventValidator = preload("res://scripts/debug/event_validator.gd")
+const BattleInvariantChecker = preload("res://scripts/debug/battle_invariant_checker.gd")
 
 
 func _initialize() -> void:
@@ -19,6 +22,7 @@ func _run_tests() -> void:
 	_test_enemy_red_damage_includes_attacker_uid()
 	_test_pull_execute_respects_range()
 	_test_pull_range_scales_with_gravity_level()
+	_test_pull_keeps_normal_attack_through_scenery()
 	_test_custom_intent_keeps_move_events()
 	print("ENEMY_RED_GEM_TEST_PASS")
 	quit()
@@ -224,6 +228,44 @@ func _test_pull_range_scales_with_gravity_level() -> void:
 	var events := IntentSystem.execute_intent(state, guard)
 	assert(not events.is_empty(), "gravity level 2 pull should execute within extended range")
 	print("  [OK] pull execution range scales with gravity level")
+
+
+func _test_pull_keeps_normal_attack_through_scenery() -> void:
+	var builder = Builder.new("fission_slime_test", 4201, true)
+	var player := builder.player()
+	builder.move(player, Vector2i(1, 3)).clear_slots(player)
+	var guard := builder.add_unit(
+		"gravity_blocker_guard",
+		"unit_patrol_guard",
+		Constants.TEAM_ENEMY,
+		Vector2i(6, 3),
+		{"move_points": 0}
+	)
+	builder.clear_slots(guard).mount_gems(guard, Constants.SLOT_RED, [Constants.GEM_GRAVITY])
+	var prop := EntityState.create("gravity_projectile_blocker", Constants.ENTITY_PROP, Vector2i(4, 3))
+	builder.state.add_entity(prop)
+	var state := builder.finish()
+	assert(BoardUtils.distance_between_units(guard, player) == GemEffects.gravity_pull_range(state, guard))
+	assert(BoardUtils.projectile_blocked_before_aim(state, guard.pos, player.pos), "setup needs blocking scenery")
+
+	IntentSystem.refresh_unit_intent(state, guard)
+	assert(guard.intent.type == "pull", "gravity AI should attack at its executable max range")
+	assert(
+		guard.intent.predicted_raw_damage_to(player.uid) == CombatRules.attack_damage(state, guard),
+		"gravity intent should preview the normal attack damage"
+	)
+	var player_hp_before := player.hp
+	var player_pos_before := player.pos
+	var events := IntentSystem.execute_intent(state, guard)
+	assert(player_hp_before - player.hp == CombatRules.attack_damage(state, guard), "scenery must not replace the gravity attack target")
+	assert(player.pos == player_pos_before + Vector2i(1, 0), "gravity hit should pull the player one cell toward the monster")
+	assert(
+		events.any(func(event): return str(event.get("type", "")) == "projectile" and event.get("to", Vector2i.ZERO) == player_pos_before),
+		"gravity projectile presentation should reach the locked target"
+	)
+	assert(EventValidator.assert_valid(events, "enemy_red_gem.gravity_scenery"))
+	assert(BattleInvariantChecker.assert_valid(state, "enemy_red_gem.gravity_scenery"))
+	print("  [OK] gravity keeps normal attack through scenery")
 
 
 func _test_custom_intent_keeps_move_events() -> void:

@@ -44,10 +44,21 @@ static func _t(profile: Dictionary, key: String) -> float:
 
 # ─── 主入口：为一个敌人生成最优行动 ─────────────────────────────────────────
 static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary = {}) -> Dictionary:
+	return decide_against_target(state, enemy, state.get_player(), cell_blockers)
+
+
+static func decide_against_target(
+	state: GameState,
+	enemy: UnitState,
+	target: UnitState,
+	cell_blockers: Dictionary = {}
+) -> Dictionary:
+	if target == null or not target.alive or target.uid == enemy.uid:
+		return {"move_path": [] as Array[Vector2i], "action": null}
 	## 返回 { "move_path": Array[Vector2i], "action": ActionCandidate }
 	var profile: Dictionary = AIProfiles.get_profile(enemy.ai_profile_id)
 	var path_profile: Dictionary = _build_path_cost_profile(profile)
-	var candidates: Array = _generate_all_candidates(state, enemy, profile, cell_blockers)
+	var candidates: Array = _generate_all_candidates(state, enemy, target, profile, cell_blockers)
 
 	if candidates.is_empty():
 		return {"move_path": [] as Array[Vector2i], "action": null}
@@ -89,6 +100,7 @@ static func _is_blocked_destination(
 static func _generate_all_candidates(
 	state: GameState,
 	enemy: UnitState,
+	target: UnitState,
 	profile: Dictionary,
 	cell_blockers: Dictionary = {}
 ) -> Array:
@@ -114,18 +126,18 @@ static func _generate_all_candidates(
 		if bool(profile["ranged_only"]):
 			pass
 		else:
-			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, move_pos, profile)
+			var attack_candidates: Array = _evaluate_attacks_from(state, enemy, target, move_pos, profile)
 			candidates.append_array(attack_candidates)
 		if bool(profile["can_ranged_attack"]) and not GemEffects.unit_has_red_split(state, enemy):
-			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, move_pos, profile)
+			var ranged_candidates: Array = _evaluate_ranged_attacks_from(state, enemy, target, move_pos, profile)
 			candidates.append_array(ranged_candidates)
 
 		# 2. 红槽技能（如果有红宝石）
-		var skill_candidates: Array = _evaluate_red_skill_from(state, enemy, move_pos, profile)
+		var skill_candidates: Array = _evaluate_red_skill_from(state, enemy, target, move_pos, profile)
 		candidates.append_array(skill_candidates)
 
 	# 3. 纯移动（不攻击，只靠近目标）
-	var move_only: Array = _evaluate_move_only(state, enemy, reachable, profile, cell_blockers)
+	var move_only: Array = _evaluate_move_only(state, enemy, target, reachable, profile, cell_blockers)
 	candidates.append_array(move_only)
 
 	# 4. 原地等待（兜底）
@@ -140,28 +152,33 @@ static func _generate_all_candidates(
 
 
 # ─── 评估近战攻击 ─────────────────────────────────────────────────────────
-static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos: Vector2i, profile: Dictionary) -> Array:
+static func _evaluate_attacks_from(
+	state: GameState,
+	enemy: UnitState,
+	target: UnitState,
+	from_pos: Vector2i,
+	profile: Dictionary
+) -> Array:
 	var results: Array = []
-	var player: UnitState = state.get_player()
-	if player == null or not player.alive:
+	if target == null or not target.alive:
 		return results
 
 	# 检查从 from_pos 能否攻击到玩家
-	var can_attack := BoardUtils.are_units_adjacent_at(enemy, from_pos, player)
+	var can_attack := BoardUtils.are_units_adjacent_at(enemy, from_pos, target)
 	if not can_attack:
 		return results
 
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.ATTACK
 	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
+	candidate.action_target_uid = target.uid
 
 	# 打分
-	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, player)
+	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, target)
 	var score: float = float(damage_dealt) * _w(profile, "w_damage")
 
 	# 击杀加分
-	if player.hp <= damage_dealt:
+	if target.hp <= damage_dealt:
 		score += _w(profile, "w_kill_player")
 
 	# 距离惩罚（移动越远扣分越少，鼓励靠近攻击）
@@ -180,27 +197,27 @@ static func _evaluate_attacks_from(state: GameState, enemy: UnitState, from_pos:
 static func _evaluate_ranged_attacks_from(
 	state: GameState,
 	enemy: UnitState,
+	target: UnitState,
 	from_pos: Vector2i,
 	profile: Dictionary
 ) -> Array:
 	var results: Array = []
-	var player: UnitState = state.get_player()
-	if player == null or not player.alive:
+	if target == null or not target.alive:
 		return results
 	var max_range: int = GemEffects.red_attack_range(state, enemy, CombatConfig.attack_range())
-	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, player, max_range)
-	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, player)
-	var from_cell := BoardUtils.projectile_origin_cell_at(enemy, from_pos, player.pos)
-	var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, player.pos)
+	var in_range := BoardUtils.can_unit_reach_unit_at(enemy, from_pos, target, max_range)
+	var dist: int = BoardUtils.distance_between_unit_at_and_unit(enemy, from_pos, target)
+	var from_cell := BoardUtils.projectile_origin_cell_at(enemy, from_pos, target.pos)
+	var blocked := BoardUtils.projectile_blocked_before_aim(state, from_cell, target.pos)
 	if not in_range or blocked:
 		return results
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.RANGED_ATTACK
 	candidate.move_target = from_pos
-	candidate.action_target_uid = player.uid
-	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, player)
+	candidate.action_target_uid = target.uid
+	var damage_dealt := _previewed_red_damage_to(state, enemy, from_pos, target)
 	var score: float = float(damage_dealt) * _w(profile, "w_damage")
-	if player.hp <= damage_dealt:
+	if target.hp <= damage_dealt:
 		score += _w(profile, "w_kill_player")
 	var move_dist: int = BoardUtils.manhattan(enemy.pos, from_pos)
 	score -= float(move_dist) * _w(profile, "w_move_cost")
@@ -215,7 +232,13 @@ static func _evaluate_ranged_attacks_from(
 
 
 # ─── 评估红槽技能 ─────────────────────────────────────────────────────────
-static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_pos: Vector2i, profile: Dictionary) -> Array:
+static func _evaluate_red_skill_from(
+	state: GameState,
+	enemy: UnitState,
+	target: UnitState,
+	from_pos: Vector2i,
+	profile: Dictionary
+) -> Array:
 	var results: Array = []
 	var red_slot: SlotState = enemy.get_slot(Constants.SLOT_RED)
 	if red_slot == null or red_slot.gem_uid.is_empty():
@@ -225,35 +248,34 @@ static func _evaluate_red_skill_from(state: GameState, enemy: UnitState, from_po
 	if gem == null:
 		return results
 
-	var player: UnitState = state.get_player()
-	if player == null or not player.alive:
+	if target == null or not target.alive:
 		return results
 
 	match str(GemEffects.get_enemy_red_intent_meta(gem, CombatRules.attack_damage(state, enemy)).get("type", "wait")):
 		"explosion_attack":
-			results.append_array(AiRedSkillScorer.explosion_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.explosion_attack(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"charge_explode":
-			results.append_array(AiRedSkillScorer.charge_explode(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.charge_explode(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"pull":
-			results.append_array(AiRedSkillScorer.pull(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.pull(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"poison_attack":
-			results.append_array(AiRedSkillScorer.poison(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.poison(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"arc_attack":
-			results.append_array(AiRedSkillScorer.arc(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.arc(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"fire_attack":
-			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "烈焰攻击"))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, target, profile, ActionType.SKILL_RED, "烈焰攻击"))
 		"ice_attack":
-			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "寒冰攻击"))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, target, profile, ActionType.SKILL_RED, "寒冰攻击"))
 		"split_attack":
-			results.append_array(AiRedSkillScorer.split(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.split(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"light_beam":
-			results.append_array(AiRedSkillScorer.light(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.light(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"counter_attack":
-			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, player, profile, ActionType.SKILL_RED, "反击"))
+			results.append_array(AiRedSkillScorer.status_attack(state, enemy, from_pos, target, profile, ActionType.SKILL_RED, "反击"))
 		"echo_attack":
-			results.append_array(AiRedSkillScorer.echo(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.echo(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 		"impact_attack":
-			results.append_array(AiRedSkillScorer.impact(state, enemy, from_pos, player, profile, ActionType.SKILL_RED))
+			results.append_array(AiRedSkillScorer.impact(state, enemy, from_pos, target, profile, ActionType.SKILL_RED))
 	return results
 
 
@@ -261,9 +283,11 @@ static func evaluate_red_skill_candidates(
 	state: GameState,
 	enemy: UnitState,
 	from_pos: Vector2i,
-	profile: Dictionary
+	profile: Dictionary,
+	target: UnitState = null
 ) -> Array:
-	return _evaluate_red_skill_from(state, enemy, from_pos, profile)
+	var resolved_target := target if target != null else state.get_player()
+	return _evaluate_red_skill_from(state, enemy, resolved_target, from_pos, profile)
 
 
 # ─── 爆炸宝石：近战十字溅射（与玩家红槽攻击同源，不自爆）────────────────────
@@ -283,20 +307,20 @@ static func _previewed_red_damage_to(
 static func _evaluate_move_only(
 	state: GameState,
 	enemy: UnitState,
+	target: UnitState,
 	reachable: Array[Vector2i],
 	profile: Dictionary,
 	cell_blockers: Dictionary = {}
 ) -> Array:
 	var results: Array = []
-	var player: UnitState = state.get_player()
-	if player == null:
+	if target == null:
 		return results
 
 	if bool(profile["prefer_distance"]):
-		return _evaluate_move_kiting(state, enemy, reachable, profile, cell_blockers)
+		return _evaluate_move_kiting(state, enemy, target, reachable, profile, cell_blockers)
 
 	var current_dist := BoardUtils.path_distance_to_cell(
-		state, enemy.pos, player.pos, enemy.uid, cell_blockers, enemy
+		state, enemy.pos, target.pos, enemy.uid, cell_blockers, enemy
 	)
 	if current_dist < 0:
 		return results
@@ -306,7 +330,7 @@ static func _evaluate_move_only(
 	var planned_path := BoardUtils.path_toward(
 		state,
 		enemy.pos,
-		player.pos,
+		target.pos,
 		enemy.move_points,
 		enemy.uid,
 		path_profile,
@@ -317,12 +341,13 @@ static func _evaluate_move_only(
 		var planned_pos: Vector2i = planned_path[planned_path.size() - 1]
 		if planned_pos != enemy.pos and not _is_blocked_destination(state, planned_pos, enemy, cell_blockers):
 			var planned_dist := BoardUtils.path_distance_to_cell(
-				state, planned_pos, player.pos, enemy.uid, cell_blockers, enemy
+				state, planned_pos, target.pos, enemy.uid, cell_blockers, enemy
 			)
 			if planned_dist >= 0:
 				var candidate := ActionCandidate.new()
 				candidate.type = ActionType.MOVE
 				candidate.move_target = planned_pos
+				candidate.action_target_uid = target.uid
 				var progress := maxf(_t(profile, "approach_progress_floor"), float(current_dist - planned_dist))
 				var score := progress * _w(profile, "w_approach")
 				score += _evaluate_tile_safety(state, planned_pos, profile)
@@ -342,12 +367,12 @@ static func _evaluate_move_only(
 			continue
 		# 1x1 单位只需走到目标相邻格；该曼哈顿下界不可能低于真实寻路距离。
 		# 连下界都无法优于当前候选时跳过完整 A*，同时保留原有的选点与平局顺序。
-		if enemy.footprint_size == Vector2i.ONE and player.footprint_size == Vector2i.ONE:
-			var distance_lower_bound := maxi(0, BoardUtils.manhattan(pos, player.pos) - 1)
+		if enemy.footprint_size == Vector2i.ONE and target.footprint_size == Vector2i.ONE:
+			var distance_lower_bound := maxi(0, BoardUtils.manhattan(pos, target.pos) - 1)
 			if distance_lower_bound >= best_dist:
 				continue
 		var dist := BoardUtils.path_distance_to_cell(
-			state, pos, player.pos, enemy.uid, cell_blockers, enemy
+			state, pos, target.pos, enemy.uid, cell_blockers, enemy
 		)
 		if dist < 0 or dist >= best_dist:
 			continue
@@ -360,6 +385,7 @@ static func _evaluate_move_only(
 	var candidate := ActionCandidate.new()
 	candidate.type = ActionType.MOVE
 	candidate.move_target = best_pos
+	candidate.action_target_uid = target.uid
 	var score := float(current_dist - best_dist) * _w(profile, "w_approach")
 	score += _evaluate_tile_safety(state, best_pos, profile)
 	candidate.score = score
@@ -371,13 +397,13 @@ static func _evaluate_move_only(
 static func _evaluate_move_kiting(
 	state: GameState,
 	enemy: UnitState,
+	target: UnitState,
 	reachable: Array[Vector2i],
 	profile: Dictionary,
 	cell_blockers: Dictionary = {}
 ) -> Array:
 	var results: Array = []
-	var player: UnitState = state.get_player()
-	if player == null:
+	if target == null:
 		return results
 	for pos in reachable:
 		if pos == enemy.pos:
@@ -387,8 +413,9 @@ static func _evaluate_move_kiting(
 		var candidate := ActionCandidate.new()
 		candidate.type = ActionType.MOVE
 		candidate.move_target = pos
-		var dist_to_player: int = BoardUtils.manhattan(pos, player.pos)
-		var current_dist: int = BoardUtils.manhattan(enemy.pos, player.pos)
+		candidate.action_target_uid = target.uid
+		var dist_to_player: int = BoardUtils.manhattan(pos, target.pos)
+		var current_dist: int = BoardUtils.manhattan(enemy.pos, target.pos)
 		var score: float = float(current_dist - dist_to_player) * _w(profile, "w_approach")
 		score += float(dist_to_player) * _w(profile, "w_keep_distance")
 		score += _evaluate_tile_safety(state, pos, profile)

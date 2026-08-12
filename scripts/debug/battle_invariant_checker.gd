@@ -166,6 +166,10 @@ static func _check_gem_location_consistency(state: GameState, out: Array[String]
 	if not state.held_gem_uid.is_empty():
 		_record_gem_location(state, state.held_gem_uid, "hand", counts, out)
 		expected[state.held_gem_uid] = _GemLocation.hand(state.player_uid)
+	if not state.relic_battle.hooked_gem_uid.is_empty():
+		var hooked_uid: String = state.relic_battle.hooked_gem_uid
+		_record_gem_location(state, hooked_uid, "hooked", counts, out)
+		expected[hooked_uid] = _GemLocation.hooked(state.player_uid)
 	for raw_uid in state.dropped_gems.keys():
 		var gem_uid := str(raw_uid)
 		_record_gem_location(state, gem_uid, "ground", counts, out)

@@ -234,6 +234,9 @@ func clear_gem_visuals() -> void:
 func has_active_held_gem_visual() -> bool:
 	return not _anim.held_gem_visual.is_empty()
 
+func has_active_hooked_gem_visual() -> bool:
+	return not _anim.hooked_gem_visual.is_empty()
+
 func gem_insert_anim_duration() -> float:
 	return _scaled_duration(_GEM_INSERT_DURATION)
 
@@ -264,6 +267,40 @@ func show_held_gem_orbit(gem: GemState) -> void:
 	_anim.held_gem_visual = visual
 	queue_redraw()
 
+func start_hooked_gem_extract(source_grid: Vector2i, gem: GemState) -> void:
+	if gem == null:
+		return
+	var source_pos := _gem_grid_anchor(source_grid)
+	_anim.hooked_gem_visual = _make_gem_visual(gem, source_pos)
+	_anim.hooked_gem_visual.merge({
+		"phase": "extract",
+		"from_pos": source_pos,
+		"current_pos": source_pos,
+		"elapsed": 0.0,
+		"duration": _scaled_duration(_GEM_LIFT_DURATION),
+		"arc_height": IsoCoordinates.visual(62.0),
+		"orbit_angle": _orbit_angle_from_position(source_pos),
+		"bob_time": randf() * TAU,
+		"radius_scale": 1.25,
+		"speed_scale": -0.85,
+	}, true)
+	queue_redraw()
+
+func show_hooked_gem_orbit(gem: GemState) -> void:
+	if gem == null:
+		return
+	var seed_visual := {
+		"orbit_angle": PI,
+		"bob_time": 0.0,
+		"radius_scale": 1.25,
+	}
+	var visual := _make_gem_visual(gem, _current_player_orbit_position(seed_visual))
+	visual.merge(seed_visual, true)
+	visual["phase"] = "orbit"
+	visual["speed_scale"] = -0.85
+	_anim.hooked_gem_visual = visual
+	queue_redraw()
+
 func start_held_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
 	var visual: Dictionary = {}
 	if not _anim.held_gem_visual.is_empty():
@@ -289,6 +326,42 @@ func start_held_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
 	if not gem_uid.is_empty():
 		_anim.masked_embedded_gems[gem_uid] = true
 	_anim.inserting_gem_visuals.append(visual)
+	queue_redraw()
+
+func start_hooked_gem_insert(target_grid: Vector2i, gem: GemState) -> void:
+	var visual: Dictionary = {}
+	if not _anim.hooked_gem_visual.is_empty():
+		visual = _anim.hooked_gem_visual.duplicate(true)
+		_anim.hooked_gem_visual.clear()
+	elif gem != null:
+		var fallback := {
+			"orbit_angle": PI,
+			"bob_time": _anim.pulse_time * _GEM_BOB_SPEED,
+			"radius_scale": 1.25,
+		}
+		visual = _make_gem_visual(gem, _current_player_orbit_position(fallback))
+	if visual.is_empty():
+		return
+	var start_pos: Vector2 = visual.get("current_pos", _gem_grid_anchor(target_grid))
+	visual.merge({
+		"phase": "insert",
+		"from_pos": start_pos,
+		"current_pos": start_pos,
+		"target_grid": target_grid,
+		"elapsed": 0.0,
+		"duration": _scaled_duration(_GEM_INSERT_DURATION),
+		"arc_height": IsoCoordinates.visual(42.0),
+	}, true)
+	var gem_uid := str(visual.get("uid", ""))
+	if not gem_uid.is_empty():
+		_anim.masked_embedded_gems[gem_uid] = true
+	_anim.inserting_gem_visuals.append(visual)
+	queue_redraw()
+
+func clear_hooked_gem_visual() -> void:
+	if _anim.hooked_gem_visual.is_empty():
+		return
+	_anim.hooked_gem_visual.clear()
 	queue_redraw()
 
 func set_animation_speed_scale(speed_scale: float) -> void:
@@ -371,7 +444,9 @@ func _on_move_anim_done(uid: String, _final_offset: Vector2, emit_finished: bool
 func _update_gem_visuals(scaled_dt: float) -> bool:
 	var dirty := false
 	if not _anim.held_gem_visual.is_empty():
-		dirty = _update_held_gem_visual(scaled_dt) or dirty
+		dirty = _update_carried_gem_visual(_anim.held_gem_visual, scaled_dt) or dirty
+	if not _anim.hooked_gem_visual.is_empty():
+		dirty = _update_carried_gem_visual(_anim.hooked_gem_visual, scaled_dt) or dirty
 	if not _anim.inserting_gem_visuals.is_empty():
 		var idx := _anim.inserting_gem_visuals.size() - 1
 		while idx >= 0:
@@ -389,25 +464,26 @@ func _update_gem_visuals(scaled_dt: float) -> bool:
 			idx -= 1
 	return dirty
 
-func _update_held_gem_visual(scaled_dt: float) -> bool:
-	var phase := str(_anim.held_gem_visual.get("phase", "orbit"))
+func _update_carried_gem_visual(visual: Dictionary, scaled_dt: float) -> bool:
+	var phase := str(visual.get("phase", "orbit"))
 	if phase == "extract":
-		var duration := maxf(float(_anim.held_gem_visual.get("duration", 0.01)), 0.01)
-		var elapsed := minf(float(_anim.held_gem_visual.get("elapsed", 0.0)) + scaled_dt, duration)
-		_anim.held_gem_visual["elapsed"] = elapsed
-		_anim.held_gem_visual["bob_time"] = float(_anim.held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
-		var from_pos: Vector2 = _anim.held_gem_visual.get("from_pos", _anim.held_gem_visual.get("current_pos", Vector2.ZERO))
-		var to_pos := _current_player_orbit_position(_anim.held_gem_visual)
-		var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(_anim.held_gem_visual.get("arc_height", IsoCoordinates.visual(54.0))))
+		var duration := maxf(float(visual.get("duration", 0.01)), 0.01)
+		var elapsed := minf(float(visual.get("elapsed", 0.0)) + scaled_dt, duration)
+		visual["elapsed"] = elapsed
+		visual["bob_time"] = float(visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		var from_pos: Vector2 = visual.get("from_pos", visual.get("current_pos", Vector2.ZERO))
+		var to_pos := _current_player_orbit_position(visual)
+		var ctrl := (from_pos + to_pos) * 0.5 + Vector2(0.0, -float(visual.get("arc_height", IsoCoordinates.visual(54.0))))
 		var pos := _quadratic_bezier(from_pos, ctrl, to_pos, _ease_out_cubic(elapsed / duration))
-		_anim.held_gem_visual["current_pos"] = pos
+		visual["current_pos"] = pos
 		if elapsed >= duration:
-			_anim.held_gem_visual["phase"] = "orbit"
-			_anim.held_gem_visual["orbit_angle"] = _orbit_angle_from_position(pos)
+			visual["phase"] = "orbit"
+			visual["orbit_angle"] = _orbit_angle_from_position(pos)
 	else:
-		_anim.held_gem_visual["orbit_angle"] = float(_anim.held_gem_visual.get("orbit_angle", 0.0)) + scaled_dt * _GEM_ORBIT_SPEED
-		_anim.held_gem_visual["bob_time"] = float(_anim.held_gem_visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
-		_anim.held_gem_visual["current_pos"] = _current_player_orbit_position(_anim.held_gem_visual)
+		visual["orbit_angle"] = float(visual.get("orbit_angle", 0.0)) \
+			+ scaled_dt * _GEM_ORBIT_SPEED * float(visual.get("speed_scale", 1.0))
+		visual["bob_time"] = float(visual.get("bob_time", 0.0)) + scaled_dt * _GEM_BOB_SPEED
+		visual["current_pos"] = _current_player_orbit_position(visual)
 	return true
 
 func _step_inserting_gem_visual(visual: Dictionary, scaled_dt: float) -> bool:
@@ -467,8 +543,9 @@ func _current_player_orbit_position(visual: Dictionary) -> Vector2:
 		return visual.get("current_pos", Vector2.ZERO)
 	var angle := float(visual.get("orbit_angle", 0.0))
 	var bob_time := float(visual.get("bob_time", 0.0))
-	var radius_x := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_X)
-	var radius_y := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_Y)
+	var radius_scale := float(visual.get("radius_scale", 1.0))
+	var radius_x := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_X) * radius_scale
+	var radius_y := IsoCoordinates.visual(_GEM_ORBIT_RADIUS_Y) * radius_scale
 	return anchor + Vector2(
 		cos(angle) * radius_x,
 		sin(angle) * radius_y + sin(bob_time) * IsoCoordinates.visual(_GEM_BOB_AMPLITUDE)
@@ -514,6 +591,5 @@ func _push_sprite_sequence(cfg: Dictionary) -> bool:
 
 
 ## 播放伤害/爆炸特效
-
 
 

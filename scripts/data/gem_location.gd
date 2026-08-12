@@ -3,6 +3,7 @@ extends RefCounted
 
 const DETACHED := "detached"
 const HAND := "hand"
+const HOOKED := "hooked"
 const UNIT_SLOT := "unit_slot"
 const GROUND := "ground"
 
@@ -19,6 +20,13 @@ static func detached():
 static func hand(holder_uid: String):
 	var value = load("res://scripts/data/gem_location.gd").new()
 	value.kind = HAND
+	value.owner_uid = holder_uid
+	return value
+
+
+static func hooked(holder_uid: String):
+	var value = load("res://scripts/data/gem_location.gd").new()
+	value.kind = HOOKED
 	value.owner_uid = holder_uid
 	return value
 
@@ -74,7 +82,7 @@ func is_valid() -> bool:
 	match kind:
 		DETACHED:
 			return owner_uid.is_empty() and slot_index == -1 and pos == Vector2i(-1, -1)
-		HAND:
+		HAND, HOOKED:
 			return not owner_uid.is_empty() and slot_index == -1 and pos == Vector2i(-1, -1)
 		UNIT_SLOT:
 			return not owner_uid.is_empty() and slot_index >= 0 and pos == Vector2i(-1, -1)
@@ -87,6 +95,8 @@ func describe() -> String:
 	match kind:
 		HAND:
 			return "hand:%s" % owner_uid
+		HOOKED:
+			return "hooked:%s" % owner_uid
 		UNIT_SLOT:
 			return "unit:%s:%d" % [owner_uid, slot_index]
 		GROUND:

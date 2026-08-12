@@ -11,6 +11,7 @@ var walk_phase: Dictionary = {}
 var idle_phase: Dictionary = {}
 var parallel_move_remaining: int = 0
 var held_gem_visual: Dictionary = {}
+var hooked_gem_visual: Dictionary = {}
 var inserting_gem_visuals: Array[Dictionary] = []
 var masked_embedded_gems: Dictionary = {}
 
@@ -27,5 +28,6 @@ func clear_state_runtime() -> void:
 
 func clear_gem_visuals() -> void:
 	held_gem_visual.clear()
+	hooked_gem_visual.clear()
 	inserting_gem_visuals.clear()
 	masked_embedded_gems.clear()

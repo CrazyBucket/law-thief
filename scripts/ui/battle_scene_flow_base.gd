@@ -59,6 +59,7 @@ var _dmg_text: Node = null
 @onready var _attack_btn: Button = $HudLayer/BottomDock/BottomBar/CombatGroup/VBox/Row/AttackBtn
 @onready var _extract_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/ExtractBtn
 @onready var _insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/InsertBtn
+@onready var _hook_insert_btn: Button = $HudLayer/BottomDock/BottomBar/GemGroup/VBox/Row/HookInsertBtn
 @onready var _end_turn_btn: Button = $HudLayer/BottomDock/BottomBar/TurnGroup/VBox/Row/EndTurnBtn
 @onready var _menu_btn: Button = $SystemMenuHud/Root/MenuBtn
 
@@ -187,7 +188,7 @@ func _sync_unit_slot_panels() -> void:
 	if _controller == null or _board == null:
 		return
 	var action := _controller.selected_action
-	if action in [Constants.ACTION_EXTRACT, Constants.ACTION_INSERT]:
+	if action in [Constants.ACTION_EXTRACT, Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED]:
 		_board.configure_unit_slot_panels(
 			action,
 			_controller.check_slot_action,
@@ -1044,11 +1045,19 @@ func _refresh() -> void:
 			BattleOverlayPresenter.apply_to_board(_board, _controller.get_highlights(_hover_cell))
 		_board.clear_editor_preview()
 	_sync_unit_slot_panels()
+	_sync_hooked_gem_visual()
 	_update_held_banner()
 	_board.queue_redraw()
 	call_deferred("_fit_status_panel")
 	call_deferred("_fit_status_panel_height")
 	call_deferred("_layout_editor_ui")
+
+func _sync_hooked_gem_visual() -> void:
+	var hooked := _controller.get_hooked_gem()
+	if hooked == null:
+		_board.clear_hooked_gem_visual()
+	elif not _board.has_active_hooked_gem_visual():
+		_board.show_hooked_gem_orbit(hooked)
 
 func _relic_bar_available_height() -> float:
 	var top := 8.0
@@ -1130,19 +1139,27 @@ func _layout_editor_ui() -> void:
 ## 容易被忽略，这里在屏幕顶部常驻提示，直到宝石被嵌入。
 func _update_held_banner() -> void:
 	var held := _controller.get_held_gem()
-	if held == null:
+	var hooked := _controller.get_hooked_gem()
+	if held == null and hooked == null:
 		if _held_banner != null:
 			_held_banner.visible = false
 		return
 	if _held_banner == null:
 		_create_held_banner()
-	_held_banner_icon.texture = UnitLooks.get_gem_texture(held)
-	_held_banner_icon.self_modulate = UnitLooks.gem_sprite_modulate(held)
-	GemEchoVisuals.apply_icon_material(_held_banner_icon, _controller.state, held.uid)
+	var shown_gem: GemState = held if held != null else hooked
+	_held_banner_icon.texture = UnitLooks.get_gem_texture(shown_gem)
+	_held_banner_icon.self_modulate = UnitLooks.gem_sprite_modulate(shown_gem)
+	GemEchoVisuals.apply_icon_material(_held_banner_icon, _controller.state, shown_gem.uid)
 	_held_banner_icon.visible = _held_banner_icon.texture != null
-	var gem_name: String = DataRegistry.get_gem_display_name(held)
-	_held_banner_label.text = "手持 %s — 点击发光槽位嵌入" % gem_name
-	_held_banner_label.add_theme_color_override("font_color", UnitLooks.gem_color(held).lightened(0.25))
+	if held != null and hooked != null:
+		_held_banner_label.text = TranslationServer.translate("battle.gem.banner_both") % [
+			DataRegistry.get_gem_display_name(held), DataRegistry.get_gem_display_name(hooked)
+		]
+	elif held != null:
+		_held_banner_label.text = "手持 %s — 点击发光槽位嵌入" % DataRegistry.get_gem_display_name(held)
+	else:
+		_held_banner_label.text = TranslationServer.translate("battle.gem.banner_hooked") % DataRegistry.get_gem_display_name(hooked)
+	_held_banner_label.add_theme_color_override("font_color", UnitLooks.gem_color(shown_gem).lightened(0.25))
 	_held_banner.visible = true
 
 func _create_held_banner() -> void:
@@ -1167,4 +1184,3 @@ func _create_held_banner() -> void:
 	row.add_child(_held_banner_label)
 	_held_banner.add_child(row)
 	$HudLayer.add_child(_held_banner)
-

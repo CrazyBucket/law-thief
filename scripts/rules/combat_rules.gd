@@ -83,6 +83,8 @@ static func apply_damage(
 		_GemEffects.run_blue_split_after_damage(state, unit, reason, actual_hp_loss)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
+	if actual_hp_loss > 0:
+		state.on_damage_resolved.emit(unit.uid, source_uid, actual_hp_loss, reason)
 	return final_amount
 
 
@@ -121,6 +123,8 @@ static func apply_true_damage(
 		BehaviorRegistry.get_behavior(unit.behavior_id).on_damage_taken(state, unit, actual_hp_loss, source_uid)
 	if unit.hp <= 0:
 		_kill_unit(state, unit, source_uid, reason, actual_hp_loss, resolved_damage_context)
+	if actual_hp_loss > 0:
+		state.on_damage_resolved.emit(unit.uid, source_uid, actual_hp_loss, reason)
 	return amount
 
 

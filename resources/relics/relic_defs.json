@@ -302,6 +302,90 @@
       {"modifier": "move_bonus", "value_ref": "relic_iron_boots_move_penalty"}
     ]
   },
+  "relic_bandage": {
+    "name": "创可贴",
+    "desc": "从单位身上拔出宝石后，该单位获得 {relic_numeric_ref:relic_bandage_shield} 点护盾。",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "after_extract", "action": "add_shield", "target": "payload_from_uid",
+       "amount_ref": "relic_bandage_shield"}
+    ]
+  },
+  "relic_knee_pad": {
+    "name": "护膝",
+    "desc": "完成移动后，若与敌人相邻，获得 {relic_numeric_ref:relic_knee_pad_shield} 点护盾。",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "voluntary_move_finished", "action": "grant_shield_if_adjacent_after_move",
+       "amount_ref": "relic_knee_pad_shield"}
+    ]
+  },
+  "relic_exit_whistle": {
+    "name": "退场哨",
+    "desc": "每回合第一次通过拔出或嵌入改变敌人意图后，获得 {relic_numeric_signed:relic_exit_whistle_temp_move} 点临时移动力。",
+    "rarity": "common",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "after_gem_operation", "action": "add_temp_move",
+       "amount_ref": "relic_exit_whistle_temp_move", "condition": "intent_changed_once_per_turn"}
+    ]
+  },
+  "relic_flywheel": {
+    "name": "飞轮",
+    "desc": "回合结束时，未消耗的每点移动力积蓄一层；下一次普通射击每层伤害 {relic_numeric_signed:relic_flywheel_damage_per_layer}，命中后清空。",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "turn_end", "action": "store_unused_move"},
+      {"modifier": "manual_shot_damage_bonus", "value_ref": "relic_flywheel_damage_per_layer"},
+      {"on": "after_attack_hit", "action": "clear_flywheel_on_manual_shot"}
+    ]
+  },
+  "relic_counterfeit": {
+    "name": "赝品",
+    "desc": "每回合第一次从敌人身上拔出宝石时，在原槽留下锁定的赝品；该敌人行动后赝品破碎并触发失律。",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "before_extract_behavior", "action": "leave_counterfeit_once_per_turn"}
+    ]
+  },
+  "relic_scavenger_hook": {
+    "name": "拾荒钩",
+    "desc": "每场战斗第一次有敌人掉落宝石时，随机钩住其中一颗；该宝石可额外嵌入一次，未使用则在玩家回合结束时归还原处。",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "unit_die", "action": "hook_enemy_drop_once"},
+      {"on": "battle_win", "action": "return_hooked_gem"}
+    ]
+  },
+  "relic_beast_ticket": {
+    "name": "斗兽票",
+    "desc": "每场战斗第一次一名敌人受到另一名敌人造成的生命伤害时，该敌人的下一次主动攻击优先报复伤害来源。",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "after_damage_taken", "action": "mark_enemy_retaliation_once"},
+      {"on": "unit_die", "action": "clear_invalid_retaliation"}
+    ]
+  },
   "relic_placeholder": {
     "name": "破碎遗物",
     "desc": "已残损，毫无用处。",

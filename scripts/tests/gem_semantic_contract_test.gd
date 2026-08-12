@@ -112,8 +112,22 @@ func _run_case(contract: Dictionary) -> void:
 	var result: Dictionary = {"ok": true}
 	var events: Array[Dictionary] = []
 	if not bool(contract.get("skip_initial_attack", false)):
-		result = AttackPipeline.execute_aimed(state, player, aim_cell, action_tags)
-		events.assign(result.get("events", []))
+		var action: Dictionary = contract.get("action", {})
+		if str(action.get("type", "")) == "enemy_intent":
+			var source: UnitState = tracked_units.get(str(action.get("source", "contract_target")), null)
+			var action_target: UnitState = tracked_units.get(str(action.get("target", "player")), null)
+			_check(source != null, str(contract.get("id", "unnamed")), "missing enemy intent source")
+			_check(action_target != null, str(contract.get("id", "unnamed")), "missing enemy intent target")
+			if source != null and action_target != null:
+				source.intent = IntentState.new()
+				source.intent.type = str(action.get("intent_type", "wait"))
+				source.intent.source_uid = source.uid
+				source.intent.target_uid = action_target.uid
+				source.intent.target_pos = action_target.pos
+				events.assign(IntentSystem.execute_intent(state, source))
+		else:
+			result = AttackPipeline.execute_aimed(state, player, aim_cell, action_tags)
+			events.assign(result.get("events", []))
 	for raw_step in contract.get("post_steps", []):
 		_run_post_step(state, tracked_units, events, raw_step)
 	var expect: Dictionary = contract.get("expect", {})

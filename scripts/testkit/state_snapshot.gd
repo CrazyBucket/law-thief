@@ -15,6 +15,7 @@ static func capture(state: GameState, events: Array = [], include_log: bool = tr
 		"board_size": _vec(state.board_size),
 		"player_uid": state.player_uid,
 		"held_gem_uid": state.held_gem_uid,
+		"hooked_gem_uid": state.relic_battle.hooked_gem_uid,
 		"player_moved": state.player_moved,
 		"player_acted": state.player_acted,
 		"split_move": {

@@ -39,6 +39,10 @@ func mark_held(holder_uid: String) -> void:
 	location = _GemLocation.hand(holder_uid)
 
 
+func mark_hooked(holder_uid: String) -> void:
+	location = _GemLocation.hooked(holder_uid)
+
+
 func mark_slotted(slot_owner_uid: String, index: int) -> void:
 	location = _GemLocation.unit_slot(slot_owner_uid, index) if not slot_owner_uid.is_empty() \
 		else _GemLocation.detached()

@@ -546,6 +546,8 @@ func _draw_gem_visuals(front_layer: bool) -> void:
 			_draw_single_gem_visual(visual)
 	if not _anim.held_gem_visual.is_empty() and _gem_visual_draws_in_front(_anim.held_gem_visual) == front_layer:
 		_draw_single_gem_visual(_anim.held_gem_visual)
+	if not _anim.hooked_gem_visual.is_empty() and _gem_visual_draws_in_front(_anim.hooked_gem_visual) == front_layer:
+		_draw_single_gem_visual(_anim.hooked_gem_visual)
 
 func _gem_visual_draws_in_front(visual: Dictionary) -> bool:
 	var anchor := _player_gem_anchor()
@@ -825,6 +827,5 @@ func pick_cell(screen_pos: Vector2) -> Vector2i:
 # ═══════════════════════════════════════════════════════════════════════════
 
 ## 近战劈砍：Knight 三段挥剑sprite，与粒子伤害并行播放
-
 
 

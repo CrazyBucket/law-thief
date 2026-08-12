@@ -59,7 +59,13 @@ static func validate(defs: Dictionary, known_profiles: Dictionary = {}) -> Array
 		if gem_def.has("allow_random_pool") and not gem_def["allow_random_pool"] is bool:
 			errors.append("%s.allow_random_pool should be bool" % prefix)
 		_validate_combos(errors, prefix, gem_def.get("combos", null), known_tags)
-		_validate_profiles(errors, prefix, gem_def.get("ability_profiles", null), known_profiles)
+		_validate_profiles(
+			errors,
+			prefix,
+			gem_def.get("ability_profiles", null),
+			known_profiles,
+			not bool(gem_def.get("allow_random_pool", true))
+		)
 	return errors
 
 
@@ -79,9 +85,19 @@ static func _validate_combos(errors: Array[String], prefix: String, combos: Vari
 		seen[combo_id] = true
 
 
-static func _validate_profiles(errors: Array[String], prefix: String, profiles: Variant, known_profiles: Dictionary) -> void:
-	if not profiles is Dictionary or (profiles as Dictionary).is_empty():
+static func _validate_profiles(
+	errors: Array[String],
+	prefix: String,
+	profiles: Variant,
+	known_profiles: Dictionary,
+	allow_empty: bool = false
+) -> void:
+	if not profiles is Dictionary:
 		errors.append("%s.ability_profiles should be a non-empty object" % prefix)
+		return
+	if (profiles as Dictionary).is_empty():
+		if not allow_empty:
+			errors.append("%s.ability_profiles should be a non-empty object" % prefix)
 		return
 	for ability_slot in (profiles as Dictionary).keys():
 		var slot_id := str(ability_slot)

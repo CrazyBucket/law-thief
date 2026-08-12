@@ -2,7 +2,7 @@ class_name GemTransfer
 extends RefCounted
 
 
-## 宝石位置是一个跨对象不变量：任一时刻只能位于手持、单位槽、地面或脱离状态中的一处。
+## 宝石位置是一个跨对象不变量：任一时刻只能位于手持、钩挂、单位槽、地面或脱离状态中的一处。
 ## 调用方描述目标位置，本类同步所有容器引用和 GemState 的所有权镜像。
 static func to_hand(state: GameState, gem: GemState, holder_uid: String) -> bool:
 	if not _is_registered(state, gem):
@@ -12,6 +12,18 @@ static func to_hand(state: GameState, gem: GemState, holder_uid: String) -> bool
 	_detach_references(state, gem.uid)
 	state.held_gem_uid = gem.uid
 	gem.mark_held(holder_uid)
+	return true
+
+
+static func to_hooked(state: GameState, gem: GemState, holder_uid: String) -> bool:
+	if not _is_registered(state, gem):
+		return false
+	if not state.relic_battle.hooked_gem_uid.is_empty() \
+		and state.relic_battle.hooked_gem_uid != gem.uid:
+		return false
+	_detach_references(state, gem.uid)
+	state.relic_battle.hooked_gem_uid = gem.uid
+	gem.mark_hooked(holder_uid)
 	return true
 
 
@@ -92,6 +104,8 @@ static func location_count(state: GameState, gem_uid: String) -> int:
 	if state == null or gem_uid.is_empty():
 		return 0
 	var count := 1 if state.held_gem_uid == gem_uid else 0
+	if state.relic_battle.hooked_gem_uid == gem_uid:
+		count += 1
 	if state.dropped_gems.has(gem_uid):
 		count += 1
 	for unit: UnitState in state.units.values():
@@ -108,6 +122,8 @@ static func _is_registered(state: GameState, gem: GemState) -> bool:
 static func _detach_references(state: GameState, gem_uid: String) -> void:
 	if state.held_gem_uid == gem_uid:
 		state.held_gem_uid = ""
+	if state.relic_battle.hooked_gem_uid == gem_uid:
+		state.relic_battle.clear_hooked_gem()
 	state.dropped_gems.erase(gem_uid)
 	for unit: UnitState in state.units.values():
 		for slot: SlotState in unit.slots:

@@ -6,6 +6,7 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const _OldMageBehavior = preload("res://scripts/rules/behaviors/behavior_old_mage.gd")
+const _CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
 
 
 static func _relic_effect_registry() -> Node:
@@ -28,7 +29,7 @@ static func operation_range_for_action(state: GameState, action: String) -> int:
 	match action:
 		Constants.ACTION_EXTRACT:
 			return _effective_extract_range(state)
-		Constants.ACTION_INSERT:
+		Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED:
 			return _effective_insert_range(state)
 	return -1
 
@@ -117,9 +118,22 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 		_remove_unit_slot(state, target_unit, slot)
 	else:
 		OverloadRules.leave_extract_echo(state, slot, gem, target_unit.uid, echo_active)
-	_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot_type, gem.uid)
-	OverloadRules.on_enemy_gem_extracted(state, target_unit, slot_type, gem.uid, lawless_active)
 	var registry := _relic_effect_registry()
+	if registry != null:
+		registry.fire_event("before_extract_behavior", state, {
+			"actor_uid": actor.uid,
+			"from_uid": extracted_from_uid,
+			"gem_uid": gem.uid,
+			"gem_id": gem.gem_id,
+			"slot_type": slot_type,
+			"slot_index": target_unit.slots.find(slot),
+			"was_overload_slot": was_overload_slot,
+			"lawless_overload_active": lawless_active,
+		})
+	var extraction_deferred := _CounterfeitRules.is_counterfeit_slot(state, slot)
+	if not extraction_deferred:
+		_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot_type, gem.uid)
+		OverloadRules.on_enemy_gem_extracted(state, target_unit, slot_type, gem.uid, lawless_active)
 	if registry != null:
 		registry.fire_event("after_extract", state, {
 			"unit_uid": actor.uid,
@@ -136,11 +150,23 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 static func can_insert(state: GameState, actor: UnitState, target_unit: UnitState, slot: SlotState) -> Dictionary:
 	if state.held_gem_uid.is_empty():
 		return _fail("手中没有宝石")
+	var gem: GemState = state.gems.get(state.held_gem_uid, null)
+	return can_insert_gem(state, actor, target_unit, slot, gem)
+
+
+static func can_insert_gem(
+	state: GameState,
+	actor: UnitState,
+	target_unit: UnitState,
+	slot: SlotState,
+	gem: GemState
+) -> Dictionary:
+	if gem == null:
+		return _fail("宝石不存在")
 	if target_unit == null or not target_unit.alive:
 		return _fail("目标无效")
 	if BoardUtils.distance_between_units(actor, target_unit) > _effective_insert_range(state):
 		return _fail("超出范围")
-	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	# 分裂锁只禁用原槽效果与普通操作；过载会新建同色槽，不改写被锁槽。
 	if not slot.is_operable(state.turn_index):
 		if slot.is_split_disabled() and gem != null:
@@ -163,12 +189,28 @@ static func insert(
 	slot: SlotState,
 	force_overload: bool = false
 ) -> Dictionary:
-	var check := can_insert(state, actor, target_unit, slot)
-	if not check.get("ok", false):
-		return check
 	var gem: GemState = state.gems.get(state.held_gem_uid, null)
 	if gem == null:
 		return _fail("宝石不存在")
+	var source_uid := str(state.battle_temp_flags.get("held_gem_source_uid", ""))
+	var result := insert_gem(state, actor, target_unit, slot, gem, source_uid, force_overload)
+	if result.get("ok", false) and not bool(result.get("overload_armed", false)):
+		state.battle_temp_flags.erase("held_gem_source_uid")
+	return result
+
+
+static func insert_gem(
+	state: GameState,
+	actor: UnitState,
+	target_unit: UnitState,
+	slot: SlotState,
+	gem: GemState,
+	source_uid: String = "",
+	force_overload: bool = false
+) -> Dictionary:
+	var check := can_insert_gem(state, actor, target_unit, slot, gem)
+	if not check.get("ok", false):
+		return check
 	var requires_overload := bool(check.get("requires_overload", false))
 	if requires_overload and not force_overload and not OverloadRules.can_force_insert(state):
 		state.log("过载预兆：再次嵌入可强行压入当前槽位")
@@ -178,7 +220,6 @@ static func insert(
 			"overload_armed": true,
 			"overload_forced": false,
 		})
-	var source_uid := str(state.battle_temp_flags.get("held_gem_source_uid", ""))
 	var overload_forced := false
 	var should_create_overload_slot := force_overload or OverloadRules.can_force_insert(state)
 	if should_create_overload_slot:
@@ -193,7 +234,6 @@ static func insert(
 		])
 	if not _GemTransfer.to_unit_slot(state, gem, target_unit, slot):
 		return _fail("无法嵌入宝石")
-	state.battle_temp_flags.erase("held_gem_source_uid")
 	state.log("%s 将 %s 嵌入 %s 的 %s 槽" % [actor.uid, _data_registry().get_gem_display_name(gem), target_unit.uid, slot.slot_type])
 	_behavior_for(target_unit).on_gem_inserted(state, target_unit, gem.uid)
 	var registry := _relic_effect_registry()

@@ -32,5 +32,9 @@
   "relic_reinforced_base_slot_threshold": {"value": 3, "kind": "flat", "unit": "slot_count"},
   "relic_reinforced_base_slot_weight_mult": {"value": 2.0, "kind": "multiplier", "unit": "selection_weight"},
   "relic_silver_cable_conductive_weight_mult": {"value": 2.5, "kind": "multiplier", "unit": "selection_weight"},
-  "relic_silver_cable_copper_wire_weight_mult": {"value": 2.0, "kind": "multiplier", "unit": "selection_weight"}
+  "relic_silver_cable_copper_wire_weight_mult": {"value": 2.0, "kind": "multiplier", "unit": "selection_weight"},
+  "relic_bandage_shield": {"value": 2, "kind": "flat", "unit": "shield"},
+  "relic_knee_pad_shield": {"value": 3, "kind": "flat", "unit": "shield"},
+  "relic_exit_whistle_temp_move": {"value": 1, "kind": "flat", "unit": "move_points"},
+  "relic_flywheel_damage_per_layer": {"value": 2, "kind": "flat", "unit": "damage"}
 }

@@ -5,6 +5,8 @@ const _BattleActionService = preload("res://scripts/battle/battle_action_service
 const _BattleTurnService = preload("res://scripts/battle/battle_turn_service.gd")
 const _BattleQueryService = preload("res://scripts/battle/battle_query_service.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
+const ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
 const _BATTLE_EDITOR_CLI_PATH := "res://scripts/debug/battle_editor_cli.gd"
 const _BATTLE_EDITOR_SERVICE_PATH := "res://scripts/debug/battle_editor_service.gd"
 
@@ -13,6 +15,7 @@ signal battle_ended(result: String)
 signal anim_move(unit_uid: String, from_pos: Vector2i, to_pos: Vector2i)
 signal anim_damage(grid: Vector2i, damage: int, is_crit: bool)
 signal anim_gem_flash(grid: Vector2i, gem_color: Color)
+signal anim_gem_hooked(gem_uid: String, from_pos: Vector2i)
 
 var state: GameState = null
 var selected_action: String = ""
@@ -99,6 +102,7 @@ func start_encounter(
 	state.battle_temp_flags["editor_invincible_player"] = editor_player_invincible_enabled()
 	_connect_relic_signals(state)
 	state.on_battle_start.emit()
+	RelicBattleRules.begin_player_turn(state)
 	_emit_changed()
 
 
@@ -122,12 +126,24 @@ func _connect_relic_signals(s: GameState) -> void:
 		if controller != null and controller.state != null:
 			controller._fire_relic_event("turn_end", controller.state, {"turn_index": turn_index})
 	)
+	s.on_damage_resolved.connect(func(victim_uid: String, source_uid: String, amount: int, reason: String) -> void:
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null and controller.state != null:
+			controller._fire_relic_event("after_damage_taken", controller.state, {
+				"unit_uid": victim_uid, "source_uid": source_uid, "amount": amount, "reason": reason
+			})
+	)
 	s.on_unit_die.connect(func(unit_uid: String, killer_uid: String, reason: String) -> void:
 		var controller: BattleController = controller_ref.get_ref() as BattleController
 		if controller != null and controller.state != null:
 			controller._fire_relic_event("unit_die", controller.state, {
 				"unit_uid": unit_uid, "killer_uid": killer_uid, "reason": reason
 			})
+	)
+	s.on_gem_hooked.connect(func(gem_uid: String, from_pos: Vector2i) -> void:
+		var controller: BattleController = controller_ref.get_ref() as BattleController
+		if controller != null:
+			controller.anim_gem_hooked.emit(gem_uid, from_pos)
 	)
 	s.on_battle_end.connect(func(result: String) -> void:
 		var controller: BattleController = controller_ref.get_ref() as BattleController
@@ -177,6 +193,11 @@ func try_insert(target_uid: String, slot_index: int) -> Dictionary:
 	return _action_svc.try_insert(target_uid, slot_index)
 
 
+func try_insert_hooked(target_uid: String, slot_index: int) -> Dictionary:
+	_ensure_services()
+	return _action_svc.try_insert_hooked(target_uid, slot_index)
+
+
 func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	_ensure_services()
 	return _action_svc.try_trigger(target_uid, slot_index)
@@ -197,6 +218,8 @@ func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 			return GemRules.can_extract(state, player, target, slot)
 		Constants.ACTION_INSERT:
 			return GemRules.can_insert(state, player, target, slot)
+		Constants.ACTION_INSERT_HOOKED:
+			return ScavengerHookRules.can_insert_hooked(state, player, target, slot)
 	return _fail("当前操作不支持槽位")
 
 
@@ -244,6 +267,8 @@ func can_use_action(action: String) -> bool:
 			return state.held_gem_uid.is_empty()
 		Constants.ACTION_INSERT:
 			return not state.held_gem_uid.is_empty()
+		Constants.ACTION_INSERT_HOOKED:
+			return ScavengerHookRules.get_hooked_gem(state) != null
 		Constants.ACTION_END_TURN:
 			return true
 	return false
@@ -253,6 +278,10 @@ func get_held_gem() -> GemState:
 	if state == null or state.held_gem_uid.is_empty():
 		return null
 	return state.gems.get(state.held_gem_uid, null)
+
+
+func get_hooked_gem() -> GemState:
+	return ScavengerHookRules.get_hooked_gem(state)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
