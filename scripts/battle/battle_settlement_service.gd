@@ -91,6 +91,14 @@ static func skip_dropped_gem_reward(state: GameState) -> void:
 static func grant_combat_gold(room_id: String, room_type: String, enabled: bool = true) -> Dictionary:
 	if not enabled or room_id.is_empty():
 		return {"ok": false, "amount": 0, "reason": "not_applicable"}
+	var run_service := _service("RunService")
+	if run_service != null and bool(run_service.call("consume_combat_gold_withholding", room_id)):
+		return {
+			"ok": true,
+			"amount": 0,
+			"reason": "combat_gold_withheld",
+			"withheld": true,
+		}
 	var economy := _service("EconomyService")
 	if economy == null:
 		return {"ok": false, "amount": 0, "reason": "economy_unavailable"}

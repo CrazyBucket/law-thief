@@ -45,7 +45,7 @@ static func should_show(slot: SlotState, action: String) -> bool:
 	match action:
 		Constants.ACTION_EXTRACT:
 			return not slot.gem_uid.is_empty()
-		Constants.ACTION_INSERT:
+		Constants.ACTION_INSERT, Constants.ACTION_INSERT_HOOKED:
 			return true
 	return false
 

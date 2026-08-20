@@ -17,22 +17,32 @@ static func embed_options(run: RunState) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
 	if run == null or run.carried_gem.is_empty():
 		return options
+	return reward_embed_options(run, str(run.carried_gem.get("gem_id", "")))
+
+
+## Builds placement options for an event reward without requiring the carried-gem
+## slot to be empty. The reward is not written to the run until the player picks
+## a destination, so an existing carried gem remains untouched.
+static func reward_embed_options(run: RunState, gem_id: String) -> Array[Dictionary]:
+	var options: Array[Dictionary] = []
+	if run == null or gem_id.is_empty():
+		return options
 	var slots := slot_snapshots(run)
 	for index in range(slots.size()):
 		var raw_slot: Variant = slots[index]
 		if not raw_slot is Dictionary:
 			continue
 		var slot := raw_slot as Dictionary
-		var gem_id := str(slot.get("gem_id", ""))
+		var existing_gem_id := str(slot.get("gem_id", ""))
 		var lock_type := str(slot.get("lock_type", ""))
-		if gem_id.is_empty() and not lock_type.is_empty():
+		if existing_gem_id.is_empty() and not lock_type.is_empty():
 			continue
 		if lock_type == Constants.LOCK_SPLIT_DISABLED:
 			continue
 		options.append({
 			"index": index,
 			"slot": slot.duplicate(true),
-			"overload": not gem_id.is_empty(),
+			"overload": not existing_gem_id.is_empty(),
 		})
 	return options
 
@@ -76,6 +86,50 @@ static func embed_carried_gem(run: RunState, slot_index: int, force_overload: bo
 		"slot_index": run.player_slot_gems.size() - 1 if occupied else slot_index,
 		"source_slot_index": slot_index,
 		"gem_id": str(embedded.get("gem_id", "")),
+		"overload_forced": occupied,
+	}
+
+
+static func embed_reward_gem(run: RunState, gem_id: String, slot_index: int, force_overload: bool = false) -> Dictionary:
+	if run == null:
+		return {"ok": false, "error": "no_active_run"}
+	if gem_id.is_empty():
+		return {"ok": false, "error": "empty_gem_id"}
+	_ensure_slot_snapshots(run)
+	if slot_index < 0 or slot_index >= run.player_slot_gems.size():
+		return {"ok": false, "error": "slot_not_found"}
+	var target: Variant = run.player_slot_gems[slot_index]
+	if not target is Dictionary:
+		return {"ok": false, "error": "slot_not_found"}
+	var slot_snapshot := (target as Dictionary).duplicate(true)
+	var occupied := not str(slot_snapshot.get("gem_id", "")).is_empty()
+	var lock_type := str(slot_snapshot.get("lock_type", ""))
+	if lock_type == Constants.LOCK_SPLIT_DISABLED:
+		return {"ok": false, "error": "slot_unavailable"}
+	if occupied and not force_overload:
+		return {"ok": false, "error": "overload_required"}
+	if not occupied and not lock_type.is_empty():
+		return {"ok": false, "error": "slot_unavailable"}
+	var embedded := {
+		"gem_id": gem_id,
+		"slot_type": str(slot_snapshot.get("slot_type", "")),
+		"dual_type": str(slot_snapshot.get("dual_type", "")),
+	}
+	if occupied:
+		embedded["lock_type"] = Constants.LOCK_OVERLOAD_SLOT
+		embedded["overload_slot"] = true
+		run.player_slot_gems.append(embedded)
+	else:
+		embedded["lock_type"] = lock_type
+		embedded["overload_slot"] = bool(
+			slot_snapshot.get("overload_slot", lock_type == Constants.LOCK_OVERLOAD_SLOT)
+		)
+		run.player_slot_gems[slot_index] = embedded
+	return {
+		"ok": true,
+		"slot_index": run.player_slot_gems.size() - 1 if occupied else slot_index,
+		"source_slot_index": slot_index,
+		"gem_id": gem_id,
 		"overload_forced": occupied,
 	}
 

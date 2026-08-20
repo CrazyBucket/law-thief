@@ -4,6 +4,8 @@ const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 const IntentIcons = preload("res://scripts/ui/intent_icons.gd")
 const StatusUi = preload("res://scripts/ui/status_ui.gd")
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
+const FuseRules = preload("res://scripts/rules/fuse_rules.gd")
+const SwapRules = preload("res://scripts/rules/swap_rules.gd")
 const BattleHudRelicBar = preload("res://scripts/ui/battle_hud_relic_bar.gd")
 const BattleHudDynamicLists = preload("res://scripts/ui/battle_hud_dynamic_lists.gd")
 const GemEchoVisuals = preload("res://scripts/ui/gem_echo_visuals.gd")
@@ -53,6 +55,7 @@ var _relic_bar_scroll: ScrollContainer = null
 var _relic_bar_vbox: Container = null
 var _relic_bar_root: Control = null
 var _show_relic_detail_cb: Callable = Callable()
+var _relic_pressed_cb: Callable = Callable()
 var _tooltip: Control = null
 
 var _select_unit_cb: Callable = Callable()
@@ -181,6 +184,7 @@ func setup(deps: Dictionary) -> void:
 	_relic_bar_vbox = deps.get("relic_bar_vbox", null)
 	_relic_bar_root = deps.get("relic_bar_root", null)
 	_show_relic_detail_cb = deps.get("show_relic_detail_cb", Callable())
+	_relic_pressed_cb = deps.get("relic_pressed_cb", Callable())
 	_tooltip = deps.get("tooltip", null)
 	_select_unit_cb = deps.get("select_unit_cb", Callable())
 	_set_timeline_hover_cb = deps.get("set_timeline_hover_cb", Callable())
@@ -193,7 +197,9 @@ func setup(deps: Dictionary) -> void:
 		"owned_relics_cb": Callable(self, "_owned_relics"),
 		"texture_for_relic_cb": Callable(self, "_relic_texture"),
 		"show_detail_cb": _show_relic_detail_cb,
+		"pressed_cb": _relic_pressed_cb,
 		"badge_state_cb": Callable(self, "_relic_badge_state_text"),
+		"badge_enabled_cb": Callable(self, "_relic_badge_enabled"),
 	})
 
 
@@ -301,10 +307,14 @@ func refresh_economy_chips(state: GameState) -> void:
 		return
 	_move_chip.text = "移动 %s" % ("✓" if state.player_moved else "○")
 	_act_chip.text = "行动 %s" % ("✓" if state.player_acted else "○")
-	var active_count: int = OverloadRules.overload_gem_count(state)
-	var pending_count: int = 1 if state.overload_pending else 0
+	OverloadRules.sync_active_mutations_to_overload_slots(state, false)
+	var overload_count: int = OverloadRules.overload_gem_count(state)
+	var active_count: int = state.overload_active_mutations.size()
+	var deferred_count: int = FuseRules.deferred_mutation_count(state)
+	var pending_count: int = 1 if state.overload_pending \
+		and active_count < maxi(0, overload_count - deferred_count) else 0
 	if _overload_chip != null:
-		_overload_chip.text = "过载 %d+%d" % [active_count, pending_count] if pending_count > 0 else "过载 %d" % active_count
+		_overload_chip.text = "过载 %d+%d" % [overload_count, pending_count] if pending_count > 0 else "过载 %d" % overload_count
 		_style_chip(_overload_chip, state.overload_pending, BattleUiTheme.TEXT_GOLD)
 	_set_tooltip(_move_chip, "本回合还能否移动", {
 		"title": "移动",
@@ -321,20 +331,23 @@ func refresh_economy_chips(state: GameState) -> void:
 	if _overload_chip != null:
 		var detail_lines := OverloadRules.panel_detail_lines(state)
 		var overload_tip := "过载槽宝石 %d 颗%s" % [
-			active_count,
+			overload_count,
 			"，含 1 层待生效" if pending_count > 0 else "",
 		]
 		var tip_sections: Array = [{"title": "概览", "body": overload_tip}]
 		if not detail_lines.is_empty():
 			tip_sections.append({"title": "当前效果", "body": "\n".join(detail_lines)})
+		var overload_stats: Array = [
+			{"label": "已生效", "value": str(active_count)},
+			{"label": "待生效", "value": str(pending_count)},
+		]
+		if deferred_count > 0:
+			overload_stats.append({"label": "已熔断", "value": str(deferred_count)})
 		_set_tooltip(_overload_chip, overload_tip, {
 			"title": "过载",
 			"subtitle": "战场状态",
 			"accent": BattleUiTheme.TEXT_GOLD,
-			"stats": [
-				{"label": "已生效", "value": str(active_count)},
-				{"label": "待生效", "value": str(pending_count)},
-			],
+			"stats": overload_stats,
 			"sections": tip_sections,
 		})
 	_style_chip(_move_chip, not state.player_moved and state.phase == Constants.PHASE_PLAYER, BattleUiTheme.PHASE_PLAYER)
@@ -1082,7 +1095,18 @@ func _owned_relics() -> Array[String]:
 
 
 func _relic_badge_state_text(relic_id: String) -> String:
-	if relic_id != "relic_flywheel" or _current_state == null:
+	if _current_state == null:
+		return ""
+	if relic_id == "relic_fuse":
+		if FuseRules.has_deferred_mutation(_current_state):
+			return "待"
+		return "断" if _current_state.relic_battle.fuse_triggered else "1"
+	if relic_id == "relic_swap":
+		return TranslationServer.translate(
+			"battle.relic.swap.badge_used" if SwapRules.was_used_this_turn(_current_state) \
+			else "battle.relic.swap.badge_ready"
+		)
+	if relic_id != "relic_flywheel":
 		return ""
 	var layers: int = int(_current_state.relic_battle.flywheel_layers)
 	var registry := _data_registry()
@@ -1090,6 +1114,12 @@ func _relic_badge_state_text(relic_id: String) -> String:
 	if registry != null:
 		damage_per_layer = int(registry.get_relic_numeric_ref("relic_flywheel_damage_per_layer", 0))
 	return "%d/+%d" % [layers, layers * damage_per_layer]
+
+
+func _relic_badge_enabled(relic_id: String) -> bool:
+	if relic_id != "relic_swap":
+		return true
+	return _controller != null and _controller.can_use_action(Constants.ACTION_RELIC_SWAP)
 
 
 func _relic_bar_layout(count: int, available_height: float = _RELIC_BAR_FALLBACK_H) -> Dictionary:

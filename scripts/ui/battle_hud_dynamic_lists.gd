@@ -9,7 +9,7 @@ static func inspect_slot_signature(state: GameState, unit: UnitState) -> String:
 		if slot == null:
 			parts.append("null")
 			continue
-		parts.append("%s:%s:%s:%s:%s:%d:%s" % [
+		parts.append("%s:%s:%s:%s:%s:%d:%s:%s" % [
 			slot.slot_type,
 			slot.dual_type,
 			slot.gem_uid,
@@ -17,6 +17,7 @@ static func inspect_slot_signature(state: GameState, unit: UnitState) -> String:
 			slot.lock_type,
 			slot.unlock_until_turn,
 			str(slot.overload_slot),
+			str(slot.overload_mutation_deferred),
 		])
 		var gem: GemState = state.gems.get(slot.gem_uid, null)
 		if gem != null:

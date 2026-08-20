@@ -78,6 +78,7 @@ func _ready() -> void:
 		"relic_bar_vbox": _relic_bar_vbox,
 		"tooltip": _rich_tooltip,
 		"show_relic_detail_cb": Callable(self , "_show_relic_detail_popup"),
+		"relic_pressed_cb": Callable(self , "_on_relic_badge_pressed"),
 		"select_unit_cb": Callable(self , "_select_unit"),
 		"set_timeline_hover_cb": Callable(self , "_set_timeline_hover"),
 		"clear_timeline_hover_cb": Callable(self , "_clear_timeline_hover"),
@@ -203,6 +204,24 @@ func _on_action_pressed(action: String) -> void:
 		_controller.select_action(action)
 		_message_label.text = _controller.get_action_hint()
 
+
+func _on_relic_badge_pressed(relic_id: String) -> void:
+	if relic_id != "relic_swap":
+		_show_relic_detail_popup(relic_id)
+		return
+	if _enemy_phase_running or _controller.state == null:
+		return
+	_dismiss_popup()
+	if _controller.selected_action == Constants.ACTION_RELIC_SWAP:
+		_controller.select_action(Constants.ACTION_NONE)
+		_message_label.text = TranslationServer.translate("battle.relic.swap.cancelled")
+	elif _controller.can_use_action(Constants.ACTION_RELIC_SWAP):
+		_controller.select_action(Constants.ACTION_RELIC_SWAP)
+		_message_label.text = TranslationServer.translate("battle.relic.swap.choose_first")
+	else:
+		_message_label.text = TranslationServer.translate("battle.relic.swap.unavailable")
+	_refresh()
+
 func _on_cell_clicked(cell: Vector2i) -> void:
 	if _editor_available():
 		_editor_action_cell = cell
@@ -224,6 +243,27 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		return
 	if _enemy_phase_running or state.phase != Constants.PHASE_PLAYER:
 		_set_inspect_target(cell)
+		_refresh()
+		return
+	if action == Constants.ACTION_RELIC_SWAP:
+		if unit == null or not unit.alive:
+			_dismiss_popup()
+			_controller.select_action(Constants.ACTION_NONE)
+			_message_label.text = TranslationServer.translate("battle.relic.swap.cancelled")
+			_set_inspect_target(cell)
+			_refresh()
+			return
+		_set_inspect_target(cell)
+		var title_key := "battle.relic.swap.choose_second" \
+			if _controller.has_swap_source() else "battle.relic.swap.choose_first"
+		_slot_popup.show_for_unit(
+			unit,
+			state,
+			action,
+			get_viewport().get_mouse_position(),
+			_controller.check_slot_action,
+			TranslationServer.translate(title_key)
+		)
 		_refresh()
 		return
 	match action:
@@ -335,11 +375,25 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 			result = _controller.try_insert(unit_uid, slot_index)
 		Constants.ACTION_INSERT_HOOKED:
 			result = _controller.try_insert_hooked(unit_uid, slot_index)
+		Constants.ACTION_RELIC_SWAP:
+			result = _controller.try_select_swap_slot(unit_uid, slot_index)
 		_:
 			return
 	_dismiss_popup()
 	_show_result(result)
 	if result.get("ok", false):
+		if action == Constants.ACTION_RELIC_SWAP:
+			if str(result.get("stage", "")) == "source":
+				var first: Dictionary = result.get("first", {})
+				_message_label.text = TranslationServer.translate("battle.relic.swap.source_selected") \
+					% str(first.get("gem_name", "宝石"))
+			else:
+				var first: Dictionary = result.get("first", {})
+				var second: Dictionary = result.get("second", {})
+				_message_label.text = TranslationServer.translate("battle.relic.swap.complete") \
+					% [str(first.get("gem_name", "宝石")), str(second.get("gem_name", "宝石"))]
+			_refresh()
+			return
 		match action:
 			Constants.ACTION_EXTRACT:
 				var extract_target: UnitState = _controller.state.units.get(unit_uid, null)
@@ -351,7 +405,9 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 				var insert_target: UnitState = _controller.state.units.get(unit_uid, null)
 				if insert_target != null:
 					_begin_held_gem_insert(insert_target.pos, result)
-				if bool(result.get("overload_forced", false)):
+				if bool(result.get("mutation_deferred", false)):
+					_message_label.text = TranslationServer.translate("battle.gem.fuse_deferred")
+				elif bool(result.get("overload_forced", false)):
 					_message_label.text = "过载嵌入：已压入槽位，结束回合后异变生效"
 				elif bool(result.get("old_mage_decoy", false)):
 					_message_label.text = "无法解读：宝石将销毁，老法师下回合停止行动"
@@ -364,6 +420,8 @@ func _on_popup_slot_selected(unit_uid: String, slot_index: int) -> void:
 						_begin_hooked_gem_insert(hook_target.pos, result)
 				if bool(result.get("overload_armed", false)):
 					_message_label.text = TranslationServer.translate("battle.gem.hook_overload_armed")
+				elif bool(result.get("mutation_deferred", false)):
+					_message_label.text = TranslationServer.translate("battle.gem.fuse_deferred")
 				elif bool(result.get("overload_forced", false)):
 					_message_label.text = TranslationServer.translate("battle.gem.hook_overload_done")
 				else:

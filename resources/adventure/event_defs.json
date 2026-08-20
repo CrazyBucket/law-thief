@@ -215,5 +215,50 @@
         ]
       }
     }
+  },
+  "event_misaccounting_scribe": {
+    "title": "错账抄写员",
+    "body": "抄写员愿意替你改动查封账册。",
+    "options": []
+  },
+  "event_sealed_gem_furnace": {
+    "title": "被查封的嵌炉",
+    "body": "炉内三颗宝石依次等待取出。",
+    "options": []
+  },
+  "event_injury_appraisal": {
+    "title": "伤势估价所",
+    "body": "这里收购血样，也按价处理伤口。",
+    "options": []
+  },
+  "event_counterfeit_auction": {
+    "title": "赝品拍卖会",
+    "body": "两件蒙布拍品真假难辨。",
+    "options": []
+  },
+  "event_preliminary_execution_order": {
+    "title": "先予执行令",
+    "body": "现在领钱，之后两场战斗的赏金归执行官。",
+    "options": []
+  },
+  "event_slag_refiner": {
+    "title": "熔渣提纯机",
+    "body": "普通宝石可以在这里提纯为高阶结晶。",
+    "options": []
+  },
+  "event_unlicensed_reforge": {
+    "title": "无证重铸台",
+    "body": "投入一件遗物，重铸成同稀有度的新遗物。",
+    "options": []
+  },
+  "event_alley_anesthetist": {
+    "title": "街巷麻醉师",
+    "body": "两支针剂的结果在进入巷口时已经确定。",
+    "options": []
+  },
+  "event_evidence_cabinet": {
+    "title": "三级证物柜",
+    "body": "灰、蓝、黑三层抽屉对应不同价位与奖池。",
+    "options": []
   }
 }

@@ -236,6 +236,10 @@ static func _build_skill_intent(
 	intent.damage = int(meta.get("damage", 0))
 	if intent.type == "wait":
 		return IntentState.wait(unit.uid)
+	if intent.type == "pull":
+		intent.plan_metadata["normal_attack_base_range"] = GemEffects.enemy_normal_attack_base_range(
+			state, unit, action.move_target
+		)
 	if intent.type == "charge_explode":
 		var target: UnitState = state.units.get(action.action_target_uid, null)
 		if target != null:

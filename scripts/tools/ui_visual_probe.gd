@@ -158,7 +158,7 @@ func _prepare_scenario(scenario_id: String) -> void:
 			if map_node != null:
 				map_node.set("room_type", "EVENT")
 				var properties: Dictionary = map_node.get("properties")
-				properties["event_id"] = "event_field_medic"
+				properties["event_id"] = "event_injury_appraisal"
 				map_node.set("properties", properties)
 		"shop_room":
 			var shop_adventure_service := root.get_node("AdventureService")

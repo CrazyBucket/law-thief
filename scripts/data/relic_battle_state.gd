@@ -17,6 +17,10 @@ var hook_expires_after_turn: int = -1
 var beast_ticket_triggered: bool = false
 ## victim uid -> enemy source uid; at most one entry exists because the relic is once per battle.
 var retaliation_targets: Dictionary = {}
+var fuse_triggered: bool = false
+## The player turn in which Swap was consumed. Comparing against turn_index
+## keeps the once-per-turn rule stable across controllable-unit switches.
+var swap_used_turn: int = -1
 ## Runtime records for locked counterfeit gems. The gem itself owns slot occupancy;
 ## this record only preserves the deferred extraction context needed after it breaks.
 var counterfeits: Dictionary = {}
@@ -39,6 +43,8 @@ func clone():
 	snapshot.hook_expires_after_turn = hook_expires_after_turn
 	snapshot.beast_ticket_triggered = beast_ticket_triggered
 	snapshot.retaliation_targets = retaliation_targets.duplicate(true)
+	snapshot.fuse_triggered = fuse_triggered
+	snapshot.swap_used_turn = swap_used_turn
 	snapshot.counterfeits = counterfeits.duplicate(true)
 	return snapshot
 
@@ -76,6 +82,12 @@ func record_move_segment(origin: Vector2i, spent: int) -> void:
 		movement_action_active = true
 	movement_action_spent += spent
 	move_spent += spent
+
+
+func record_automatic_move_cost(spent: int) -> void:
+	# 自动接管会消耗本回合的移动资源，但不属于玩家主动完成的机动，
+	# 因此只进入剩余移动力账本，不开启护膝等自愿移动事件窗口。
+	move_spent += maxi(0, spent)
 
 
 func finish_movement_action() -> Dictionary:

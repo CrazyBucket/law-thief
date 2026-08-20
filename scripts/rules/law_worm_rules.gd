@@ -63,7 +63,8 @@ static func execute_law_worm_intent(state: GameState, unit: UnitState, intent: I
 static func compute_broodmother_intent(
 	state: GameState,
 	unit: UnitState,
-	_cell_blockers: Dictionary = {}
+	_cell_blockers: Dictionary = {},
+	priority_target: UnitState = null
 ) -> IntentState:
 	var crisis := sync_broodmother_crisis(state, unit)
 	if unit.get_status(Constants.STATUS_BROODMOTHER_CYCLE) == null:
@@ -77,11 +78,11 @@ static func compute_broodmother_intent(
 		split.affected_cells = available_cells.slice(0, mini(BROOD_SIZE, available_cells.size()))
 		split.preview_text = "危机繁殖 · 孵化2只" if crisis else "恶性分裂 · 孵化2只"
 		return split
-	var player := state.get_player()
-	if player == null or not player.alive:
+	var target := priority_target if priority_target != null else state.get_player()
+	if target == null or not target.alive or target.uid == unit.uid:
 		return IntentState.wait(unit.uid)
 	var max_range := GemEffects.red_attack_range(state, unit, BROODMOTHER_ATTACK_RANGE)
-	if not BoardUtils.can_unit_attack_cell(unit, state, player.pos, max_range):
+	if not BoardUtils.can_unit_attack_cell(unit, state, target.pos, max_range):
 		var wait := IntentState.new()
 		wait.type = "broodmother_wait"
 		wait.source_uid = unit.uid
@@ -91,8 +92,8 @@ static func compute_broodmother_intent(
 	var attack := IntentState.new()
 	attack.type = "broodmother_ranged_attack"
 	attack.source_uid = unit.uid
-	attack.target_uid = player.uid
-	attack.target_pos = player.pos
+	attack.target_uid = target.uid
+	attack.target_pos = target.pos
 	attack.base_damage = CombatRules.attack_damage(state, unit)
 	attack.damage = GemEffects.primary_attack_damage_preview(state, unit, attack.base_damage)
 	attack.preview_text = "远程喷吐 (%d)" % attack.damage

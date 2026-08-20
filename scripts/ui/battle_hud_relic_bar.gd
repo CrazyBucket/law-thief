@@ -14,7 +14,9 @@ var _grid: Container = null
 var _owned_relics_cb: Callable = Callable()
 var _texture_for_relic_cb: Callable = Callable()
 var _show_detail_cb: Callable = Callable()
+var _pressed_cb: Callable = Callable()
 var _badge_state_cb: Callable = Callable()
+var _badge_enabled_cb: Callable = Callable()
 var _ids: Array[String] = []
 var _layout_key := ""
 var _texture_cache: Dictionary = {}
@@ -27,7 +29,9 @@ func setup(deps: Dictionary) -> void:
 	_owned_relics_cb = deps.get("owned_relics_cb", Callable())
 	_texture_for_relic_cb = deps.get("texture_for_relic_cb", Callable())
 	_show_detail_cb = deps.get("show_detail_cb", Callable())
+	_pressed_cb = deps.get("pressed_cb", Callable())
 	_badge_state_cb = deps.get("badge_state_cb", Callable())
+	_badge_enabled_cb = deps.get("badge_enabled_cb", Callable())
 
 
 func refresh(available_height: float = 320.0) -> void:
@@ -163,13 +167,16 @@ func create_badge(relic_id: String, icon_size: float) -> Control:
 			icon.visible = true
 		)
 	var button := Button.new()
+	button.name = "RelicButton"
 	button.flat = true
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	button.mouse_entered.connect(func() -> void: _set_badge_hover(root, true))
 	button.mouse_exited.connect(func() -> void: _set_badge_hover(root, false))
-	if _show_detail_cb.is_valid():
+	if _pressed_cb.is_valid():
+		button.pressed.connect(_pressed_cb.bind(relic_id))
+	elif _show_detail_cb.is_valid():
 		button.pressed.connect(_show_detail_cb.bind(relic_id))
 	root.add_child(button)
 	var state_badge := Label.new()
@@ -197,6 +204,13 @@ func _refresh_badge_states() -> void:
 		if state_badge == null:
 			continue
 		var relic_id := str((child as Control).get_meta("relic_id", ""))
+		var enabled := true
+		if _badge_enabled_cb.is_valid():
+			enabled = bool(_badge_enabled_cb.call(relic_id))
+		var button := (child as Control).get_node_or_null("RelicButton") as Button
+		if button != null:
+			button.disabled = not enabled
+		(child as Control).modulate = Color.WHITE if enabled else Color(0.48, 0.48, 0.48, 0.72)
 		var text_value := ""
 		if _badge_state_cb.is_valid():
 			text_value = str(_badge_state_cb.call(relic_id))

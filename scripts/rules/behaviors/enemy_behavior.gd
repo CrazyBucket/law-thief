@@ -37,6 +37,13 @@ static func build_priority_target_intent(
 	return IntentSystem.enemy_intent_from_decision(state, unit, decision, cell_blockers)
 
 
+## Stateful authored behaviors must opt out unless they provide their own
+## priority-target builder. This prevents a relic from replacing their turn
+## cycle with the generic utility-AI attack vocabulary.
+static func supports_priority_target_intent() -> bool:
+	return true
+
+
 static func build_lawless_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary = {}) -> IntentState:
 	var gem: GemState = state.gems.get(StatusRules.get_lawless_gem_uid(unit), null)
 	var target_pos := unit.pos
@@ -147,6 +154,10 @@ static func ranged_attack_context(
 	}
 
 
+static func normal_attack_base_range(_state: GameState, _unit: UnitState, _from_pos: Vector2i) -> int:
+	return 1
+
+
 static func split_clone_ratio(_unit: UnitState) -> float:
 	return 0.0
 
@@ -200,7 +211,7 @@ static func execute_red_action(state: GameState, unit: UnitState, intent: Intent
 				StatusRules.apply_poison(state, poison_target)
 			return poison_events
 		"pull":
-			return _execute_pull_events(state, unit, intent.target_uid)
+			return _execute_pull_events(state, unit, intent)
 		"arc_attack":
 			var arc_target: UnitState = state.units.get(intent.target_uid, null)
 			if arc_target == null or not arc_target.alive:
@@ -379,19 +390,23 @@ static func _find_gem_carrier(state: GameState, gem: GemState) -> UnitState:
 	return null
 
 
-static func _execute_pull_events(state: GameState, unit: UnitState, target_uid: String) -> Array[Dictionary]:
-	var target: UnitState = state.units.get(target_uid, null)
+static func _execute_pull_events(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
+	var target: UnitState = state.units.get(intent.target_uid, null)
 	if target == null or not target.alive:
 		return [] as Array[Dictionary]
 	# The shared attack pipeline applies the gravity pull after the normal hit,
 	# preserving both the unit's base damage and the authored range bonus. Enemy
 	# gravity is target-locked like the player's normal attack, so scenery cannot
 	# replace the intended victim during projectile presentation.
+	var base_range := int(intent.plan_metadata.get(
+		"normal_attack_base_range",
+		GemEffects.enemy_normal_attack_base_range(state, unit, unit.pos)
+	))
 	var result := CombatRules.ranged_attack(
 		state,
 		unit,
 		target.pos,
-		CombatConfig.enemy_gravity_pull_range(),
+		base_range,
 		{"ignore_projectile_blockers": true}
 	)
 	if not bool(result.get("ok", false)):

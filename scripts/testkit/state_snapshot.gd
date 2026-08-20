@@ -91,6 +91,7 @@ static func _unit(unit: UnitState) -> Dictionary:
 			"locked": slot.locked,
 			"lock_type": slot.lock_type,
 			"overload_slot": slot.is_overload_slot(),
+			"overload_mutation_deferred": slot.overload_mutation_deferred,
 			"unlock_until_turn": slot.unlock_until_turn,
 		})
 	var statuses: Array = []

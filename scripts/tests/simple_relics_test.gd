@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_knee_pad_waits_for_completed_move()
 	_test_exit_whistle_requires_real_intent_change_once_per_turn()
 	_test_flywheel_stores_unused_move_and_survives_a_miss()
+	_test_flywheel_deducts_overload_ai_movement()
 	_test_relic_state_clones_without_aliasing()
 	run_service.end_run()
 	if _failed:
@@ -125,6 +126,24 @@ func _test_flywheel_stores_unused_move_and_survives_a_miss() -> void:
 	_expect(state.relic_battle.flywheel_layers == 0, "a direct manual-shot hit should clear flywheel layers")
 	_expect(BattleInvariantChecker.check_all(state).is_empty(), "flywheel should preserve battle invariants")
 	print("  [OK] flywheel stores unused move, buffs the shot, and survives a miss")
+
+
+func _test_flywheel_deducts_overload_ai_movement() -> void:
+	_force_relic("relic_flywheel")
+	var state := _battle_state(16, Vector2i(1, 2), Vector2i(5, 2), false)
+	var player := state.get_player()
+	player.move_points = 3
+	RelicBattleRules.begin_player_turn(state)
+	var events: Array[Dictionary] = []
+	var moved := OverloadRules._move_player_toward_nearest_enemy(state, player, events)
+	_expect(moved, "AI-control flywheel fixture should spend movement")
+	var spent: int = state.relic_battle.move_spent
+	var expected_layers: int = maxi(0, state.relic_battle.move_capacity - spent)
+	_expect(spent > 0, "overload AI movement should enter the shared movement ledger")
+	root.get_node("RelicEffectRegistry").fire_event("turn_end", state, {"turn_index": state.turn_index})
+	_expect(state.relic_battle.flywheel_layers == expected_layers, "flywheel should store only movement left after AI control")
+	_expect(BattleInvariantChecker.check_all(state).is_empty(), "AI movement accounting should preserve battle invariants")
+	print("  [OK] overload AI movement is deducted before flywheel stores remaining movement")
 
 
 func _test_relic_state_clones_without_aliasing() -> void:

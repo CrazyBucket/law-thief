@@ -2,6 +2,9 @@ extends SceneTree
 
 const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
+const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
+const EventValidator = preload("res://scripts/debug/event_validator.gd")
+const BattleInvariantChecker = preload("res://scripts/debug/battle_invariant_checker.gd")
 
 
 func _initialize() -> void:
@@ -32,6 +35,7 @@ func _run_tests() -> void:
 	_test_echo_extract(controller, state, player, guard)
 	_test_echo_extract_does_not_chain(state, player, guard)
 	_test_ai_control_emits_action_events(state, player, guard)
+	_test_ai_control_attack_ignores_scenery()
 	_test_ai_control_blocks_manual_actions(controller, state, player, guard)
 	_test_boss_encounter_blocks_overload_enforcer()
 
@@ -348,6 +352,54 @@ func _test_ai_control_emits_action_events(state: GameState, player: UnitState, g
 		_fail("AI gem operation should emit a visible gem_flash event")
 		return
 	print("  [OK] AI control emits action events")
+
+
+func _test_ai_control_attack_ignores_scenery() -> void:
+	var builder := ScenarioBuilder.new("fission_slime_test", 24681, true)
+	var player := builder.player()
+	builder.move(player, Vector2i(1, 3)).clear_slots(player)
+	var guard := builder.add_unit(
+		"ai_control_attack_target",
+		"unit_patrol_guard",
+		Constants.TEAM_ENEMY,
+		Vector2i(4, 3),
+		{"hp": 100, "max_hp": 100, "move_points": 0}
+	)
+	builder.clear_slots(guard)
+	builder.state.add_entity(EntityState.create(
+		"ai_control_projectile_blocker",
+		Constants.ENTITY_PROP,
+		Vector2i(2, 3)
+	))
+	var state := builder.finish()
+	_force_player_phase(state)
+	state.player_moved = true
+	if not BoardUtils.projectile_blocked_before_aim(state, player.pos, guard.pos):
+		_fail("AI control attack setup should contain blocking scenery")
+		return
+	var target_hp_before := guard.hp
+	var target_pos_before := guard.pos
+	var events: Array[Dictionary] = []
+	var action := OverloadRules._execute_player_ai_control(state, player, events)
+	if action.is_empty() or not state.player_acted:
+		_fail("AI control should attack an in-range target through scenery")
+		return
+	if target_hp_before - guard.hp != CombatRules.attack_damage(state, player):
+		_fail("AI control scenery must not replace the intended attack target")
+		return
+	if not events.any(func(event: Dictionary) -> bool:
+		return str(event.get("type", "")) == "projectile" \
+			and event.get("to", Vector2i.ZERO) == target_pos_before
+	):
+		_fail("AI control projectile presentation should reach the intended target")
+		return
+	if not EventValidator.assert_valid(events, "overload.ai_control_scenery"):
+		_fail("AI control attack should emit valid events")
+		return
+	if not BattleInvariantChecker.assert_valid(state, "overload.ai_control_scenery"):
+		_fail("AI control attack should preserve battle invariants")
+		return
+	print("  [OK] AI control attack ignores blocking scenery")
 
 
 func _reset_slots(state: GameState, player: UnitState, guard: UnitState) -> void:

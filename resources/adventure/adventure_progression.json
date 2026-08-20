@@ -13,7 +13,17 @@
       "SHOP": {"weight": 8, "no_consecutive": true},
       "EVENT": {"weight": 20}
     },
-    "event_pool": ["event_abandoned_cache", "event_field_medic", "event_cracked_forge"]
+    "event_pool": [
+      "event_misaccounting_scribe",
+      "event_sealed_gem_furnace",
+      "event_injury_appraisal",
+      "event_counterfeit_auction",
+      "event_preliminary_execution_order",
+      "event_slag_refiner",
+      "event_unlicensed_reforge",
+      "event_alley_anesthetist",
+      "event_evidence_cabinet"
+    ]
   },
   "combat_encounters": {
     "NORMAL_COMBAT": [

@@ -32,13 +32,21 @@ func _ready() -> void:
 	vbox.add_child(_content)
 
 
-func show_for_unit(unit: UnitState, state: GameState, action: String, screen_pos: Vector2, check_fn: Callable) -> void:
+func show_for_unit(
+	unit: UnitState,
+	state: GameState,
+	action: String,
+	screen_pos: Vector2,
+	check_fn: Callable,
+	title_override: String = ""
+) -> void:
 	if visible and _target_uid == unit.uid and _current_action == action:
 		return
+	visible = false
 	_is_dropped_mode = false
 	_target_uid = unit.uid
 	_current_action = action
-	_title_label.text = _action_title(action)
+	_title_label.text = title_override if not title_override.is_empty() else _action_title(action)
 	_clear_content()
 	_add_unit_row(unit, state, action, func(i: int): return check_fn.call(unit.uid, i), func(i: int): slot_selected.emit(_target_uid, i))
 	_layout_panel(screen_pos)
@@ -116,6 +124,8 @@ func _add_slot_row(title: String, slots: Array, check_fn: Callable, state: GameS
 					btn.text = "%s %s" % [slot_label, gem_text] if not gem_text.is_empty() else "%s 空" % slot_label
 				"insert":
 					btn.text = "%s 嵌入" % slot_label if slot.gem_uid.is_empty() else "%s %s" % [slot_label, gem_text]
+				Constants.ACTION_RELIC_SWAP:
+					btn.text = "%s %s" % [slot_label, gem_text]
 		var is_valid: bool = check.get("ok", false)
 		btn.disabled = not is_valid
 		BattleUiTheme.apply_button(btn, "gem", false)
@@ -137,6 +147,8 @@ func _should_show_slot(slot: SlotState, action: String) -> bool:
 		Constants.ACTION_INSERT:
 			return true
 		Constants.ACTION_EXTRACT:
+			return not slot.gem_uid.is_empty()
+		Constants.ACTION_RELIC_SWAP:
 			return not slot.gem_uid.is_empty()
 	return true
 
@@ -172,6 +184,7 @@ func _action_title(action: String) -> String:
 	match action:
 		"extract": return "选择要拔出的槽位"
 		"insert": return "选择要嵌入的槽位"
+		Constants.ACTION_RELIC_SWAP: return TranslationServer.translate("battle.relic.swap.choose_first")
 	return "选择槽位"
 
 

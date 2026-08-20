@@ -12,6 +12,7 @@ func _run_test() -> void:
 	await _test_old_mage_ui_contract()
 	_test_relic_bar_layout_compacts_before_scroll()
 	await _test_battle_scene_click_inspect()
+	await _test_scavenger_hook_slot_panel_flow()
 	await _test_battle_scene_consumes_queued_battle_end()
 	await _test_rich_tooltip_has_body_height()
 	_test_battle_end_queue_take()
@@ -205,6 +206,47 @@ func _test_battle_scene_click_inspect() -> void:
 	scene.queue_free()
 	await process_frame
 	print("  [OK] battle scene click inspect")
+
+
+func _test_scavenger_hook_slot_panel_flow() -> void:
+	root.get_node("GameService").set("pending_encounter_id", "tutorial_001")
+	var packed := load("res://scenes/battle/battle_scene.tscn") as PackedScene
+	assert(packed != null, "battle scene should load for scavenger hook UI")
+	var scene := packed.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var ctrl: BattleController = scene.get("_controller")
+	var state: GameState = ctrl.state
+	var player := state.get_player()
+	assert(player != null, "player should exist for scavenger hook UI")
+	var target_slot := SlotState.create(Constants.SLOT_RED)
+	player.slots.append(target_slot)
+	var registry: Node = root.get_node("DataRegistry")
+	var held: GemState = registry.create_gem_instance("hook_ui_held", Constants.GEM_POISON, {})
+	var hooked: GemState = registry.create_gem_instance("hook_ui_hooked", Constants.GEM_EXPLOSION, {})
+	state.gems[held.uid] = held
+	state.gems[hooked.uid] = hooked
+	assert(GemTransfer.to_hand(state, held, player.uid), "ordinary hand setup should succeed")
+	assert(GemTransfer.to_hooked(state, hooked, player.uid), "hooked gem setup should coexist with the ordinary hand")
+	ctrl.select_action(Constants.ACTION_INSERT_HOOKED)
+	scene.call("_on_cell_clicked", player.pos)
+	await process_frame
+	var board: Control = scene.get("_board")
+	var renderer: RefCounted = board.get("_slot_panel_renderer")
+	assert(renderer != null, "clicking the unit in hook mode should create the slot panel renderer")
+	var panel: Dictionary = renderer.call("_panel_layout", player, Callable(board, "_unit_panel_anchor"))
+	var target_index := player.slots.find(target_slot)
+	var target_item: Dictionary = panel.get("items", [])[target_index]
+	assert(bool(target_item.get("visible", false)), "hook insert target slot should be visible in the unit panel")
+	assert(bool(target_item.get("enabled", false)), "matching empty slot should be enabled for the hooked gem")
+	scene.call("_on_board_unit_slot_selected", player.uid, target_index)
+	assert(target_slot.gem_uid == hooked.uid, "slot-panel selection should embed the hooked gem")
+	assert(state.relic_battle.hooked_gem_uid.is_empty(), "successful slot-panel insert should clear the hook")
+	assert(state.held_gem_uid == held.uid, "hook insert should preserve the ordinary held gem")
+	scene.queue_free()
+	await process_frame
+	print("  [OK] scavenger hook unit panel embeds while the ordinary hand is occupied")
 
 
 func _test_battle_scene_consumes_queued_battle_end() -> void:

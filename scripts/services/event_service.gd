@@ -5,6 +5,7 @@ const DEFAULT_EVENT_ID := "event_abandoned_cache"
 const LEGACY_NODE_ID := "legacy"
 const _Validator = preload("res://scripts/services/adventure_config_validator.gd")
 const _TextResolver = preload("res://scripts/services/numeric_text_resolver.gd")
+const _EventContentRuntime = preload("res://scripts/services/event_content_runtime.gd")
 
 var _defs: Dictionary = {}
 
@@ -21,6 +22,12 @@ func get_event_view(room_id: String) -> Dictionary:
 	var room_state := RunService.ensure_room_state(room_id, "EVENT")
 	var event_state := _ensure_event_snapshot(room_id)
 	var event_id := str(event_state.get("event_id", ""))
+	if _EventContentRuntime.handles(event_id):
+		var runtime_view := _EventContentRuntime.get_event_view(room_id, event_state)
+		runtime_view["resolved"] = str(room_state.get("status", "")) == "RESOLVED"
+		if bool(runtime_view.get("resolved", false)):
+			runtime_view["options"] = []
+		return runtime_view
 	var event_def := get_event_def(event_id)
 	var node_id := str(event_state.get("node_id", _entry_node_id(event_def)))
 	var event_node := _get_event_node(event_def, node_id)
@@ -78,6 +85,8 @@ func choose_option(room_id: String, option_id: String) -> Dictionary:
 		}
 	var event_state := _ensure_event_snapshot(room_id)
 	var event_id := str(event_state.get("event_id", ""))
+	if _EventContentRuntime.handles(event_id):
+		return _choose_runtime_option(room_id, event_state, option_id)
 	var event_def := get_event_def(event_id)
 	var node_id := str(event_state.get("node_id", _entry_node_id(event_def)))
 	var event_node := _get_event_node(event_def, node_id)
@@ -151,6 +160,36 @@ func get_event_def(event_id: String) -> Dictionary:
 	return (raw as Dictionary).duplicate(true) if raw is Dictionary else {}
 
 
+func _choose_runtime_option(room_id: String, event_state: Dictionary, option_id: String) -> Dictionary:
+	var choice_count := int(event_state.get("choice_count", 0))
+	var phase := str(event_state.get("phase", "start"))
+	var transaction_id := "%s:event:%d:%s:%s" % [room_id, choice_count, phase, option_id]
+	var call_result := _EventContentRuntime.choose_option(room_id, event_state, option_id, transaction_id)
+	if not bool(call_result.get("ok", false)):
+		return call_result
+	var next_state: Dictionary = call_result.get("event_state", {}).duplicate(true)
+	var history: Array = next_state.get("history", []).duplicate(true) if next_state.get("history", []) is Array else []
+	history.append({"node_id": phase, "option_id": option_id})
+	next_state["history"] = history
+	next_state["choice_count"] = choice_count + 1
+	var resolved := bool(call_result.get("resolved", false))
+	_store_event_snapshot(room_id, next_state, "RESOLVED" if resolved else "AWAITING_DECISION")
+	var result := {
+		"room_id": room_id,
+		"room_type": "EVENT",
+		"event_id": str(next_state.get("event_id", "")),
+		"node_id": phase,
+		"option_id": option_id,
+		"next_node_id": str(next_state.get("phase", phase)),
+		"resolved": resolved,
+		"summary": str(call_result.get("summary", "")),
+	}
+	RunService.append_room_transaction(room_id, transaction_id, result)
+	if resolved:
+		RunService.mark_room_resolved(room_id, result)
+	return {"ok": true, "result": result}
+
+
 func _apply_option_calls(option: Dictionary, ctx: Dictionary) -> Dictionary:
 	if option.has("calls"):
 		return RoomEffectExecutor.apply_calls(option.get("calls", []), ctx)
@@ -179,6 +218,7 @@ func _ensure_event_snapshot(room_id: String) -> Dictionary:
 	var event_id := AdventureService.event_id_for_room(room_id)
 	if event_id.is_empty() or get_event_def(event_id).is_empty():
 		event_id = DEFAULT_EVENT_ID
+	event_id = _EventContentRuntime.resolve_event_id(room_id, event_id)
 	var event_def := get_event_def(event_id)
 	event_state = {
 		"event_id": event_id,
@@ -186,7 +226,12 @@ func _ensure_event_snapshot(room_id: String) -> Dictionary:
 		"choice_count": 0,
 		"history": [],
 	}
+	var is_runtime_event := _EventContentRuntime.handles(event_id)
+	if is_runtime_event:
+		event_state = _EventContentRuntime.prepare(room_id, event_state)
 	_store_event_snapshot(room_id, event_state, str(room_state.get("status", "AWAITING_DECISION")))
+	if is_runtime_event:
+		_EventContentRuntime.record_encounter(event_id)
 	return event_state
 
 

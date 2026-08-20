@@ -268,6 +268,9 @@ func _grant_combat_gold_once() -> int:
 	)
 	if not bool(grant_result.get("ok", false)):
 		return 0
+	if bool(grant_result.get("withheld", false)):
+		_message_label.text = TranslationServer.translate("battle.settlement.gold_withheld")
+		return 0
 	var entry: Dictionary = grant_result.get("entry", {})
 	_message_label.text = "战斗结束 — 胜利 · %s" % EconomyService.format_entry(entry)
 	return int(grant_result.get("amount", 0))
@@ -963,7 +966,7 @@ func _restore_battle_reward_if_needed() -> void:
 			if _has_pending_dropped_gem_reward():
 				_settlement_dropped_gems = _dropped_gem_offer()
 			_settlement_gem_pending = not _settlement_dropped_gems.is_empty()
-			_settlement_gold_amount = EconomyService.get_combat_reward(AdventureService.pending_room_type, room_id)
+			_settlement_gold_amount = 0 if RunService.was_combat_gold_withheld(room_id) else EconomyService.get_combat_reward(AdventureService.pending_room_type, room_id)
 			if _settlement_overlay == null:
 				_open_battle_settlement()
 		"dropped_gem":

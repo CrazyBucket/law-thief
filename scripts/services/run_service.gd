@@ -366,6 +366,39 @@ func get_resource_ledger() -> Array:
 	return _run.resource_ledger.duplicate(true)
 
 
+func activate_combat_gold_withholding(battle_count: int) -> void:
+	if _run == null:
+		return
+	_run.run_stats["combat_gold_withheld_remaining"] = maxi(0, battle_count)
+	_run.run_stats["combat_gold_withheld_rooms"] = []
+	save_run()
+
+
+## Returns true for every settlement call belonging to a withheld room, while
+## decrementing the remaining count only on the first call for that room.
+func consume_combat_gold_withholding(room_id: String) -> bool:
+	if _run == null or room_id.is_empty():
+		return false
+	var rooms: Array = _run.run_stats.get("combat_gold_withheld_rooms", []).duplicate(true) if _run.run_stats.get("combat_gold_withheld_rooms", []) is Array else []
+	if room_id in rooms:
+		return true
+	var remaining := int(_run.run_stats.get("combat_gold_withheld_remaining", 0))
+	if remaining <= 0:
+		return false
+	rooms.append(room_id)
+	_run.run_stats["combat_gold_withheld_rooms"] = rooms
+	_run.run_stats["combat_gold_withheld_remaining"] = remaining - 1
+	save_run()
+	return true
+
+
+func was_combat_gold_withheld(room_id: String) -> bool:
+	if _run == null or room_id.is_empty():
+		return false
+	var rooms: Variant = _run.run_stats.get("combat_gold_withheld_rooms", [])
+	return rooms is Array and room_id in (rooms as Array)
+
+
 func append_ledger_entry(entry: Dictionary) -> void:
 	if _run == null:
 		return
@@ -701,7 +734,10 @@ func capture_player_battle_state(state: GameState = null) -> void:
 		if gem == null:
 			_run.player_slot_gems.append(_serialize_empty_slot_snapshot(slot))
 			continue
-		_run.player_slot_gems.append(_serialize_gem_snapshot(gem, slot.slot_type, slot.dual_type, slot.lock_type, slot.is_overload_slot()))
+		_run.player_slot_gems.append(_serialize_gem_snapshot(
+			gem, slot.slot_type, slot.dual_type, slot.lock_type,
+			slot.is_overload_slot(), slot.overload_mutation_deferred
+		))
 	_run.carried_gem = {}
 	if not source_state.held_gem_uid.is_empty():
 		var carried: GemState = source_state.gems.get(source_state.held_gem_uid, null)
@@ -728,7 +764,14 @@ func _collect_weight_ctx_from_state(state: GameState, owned_gem_ids: Array[Strin
 			owned_gem_ids.append(held.gem_id)
 
 
-func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: String = "", lock_type: String = "", overload_slot: bool = false) -> Dictionary:
+func _serialize_gem_snapshot(
+	gem: GemState,
+	slot_type: String = "",
+	dual_type: String = "",
+	lock_type: String = "",
+	overload_slot: bool = false,
+	overload_mutation_deferred: bool = false
+) -> Dictionary:
 	return {
 		"gem_id": gem.gem_id,
 		"def_overrides": gem.def_overrides.duplicate(true),
@@ -736,6 +779,7 @@ func _serialize_gem_snapshot(gem: GemState, slot_type: String = "", dual_type: S
 		"dual_type": dual_type,
 		"lock_type": lock_type,
 		"overload_slot": overload_slot or lock_type == Constants.LOCK_OVERLOAD_SLOT,
+		"overload_mutation_deferred": overload_mutation_deferred,
 	}
 func _serialize_empty_slot_snapshot(slot: SlotState) -> Dictionary:
 	return {
@@ -743,6 +787,7 @@ func _serialize_empty_slot_snapshot(slot: SlotState) -> Dictionary:
 		"dual_type": slot.dual_type,
 		"lock_type": slot.lock_type,
 		"overload_slot": slot.is_overload_slot(),
+		"overload_mutation_deferred": slot.overload_mutation_deferred,
 	}
 func _active_battle_state() -> GameState:
 	var tree := Engine.get_main_loop() as SceneTree

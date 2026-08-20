@@ -573,11 +573,12 @@ func _test_red_gravity_overrides_default_ai() -> void:
 	var slime := _find_slime(state)
 	var player := state.get_player()
 	assert(slime != null and player != null, "slime/player should exist")
-	state.move_unit(slime, Vector2i(4, 2))
+	state.move_unit(slime, Vector2i(2, 2))
 	state.move_unit(player, Vector2i(0, 2))
 	_mount_gem(state, slime, Constants.SLOT_RED, Constants.GEM_GRAVITY)
 	assert(
-		BoardUtils.distance_between_units(slime, player) == CombatConfig.enemy_gravity_pull_range(),
+		BoardUtils.distance_between_units(slime, player)
+		== 1 + 1,
 		"setup should place player exactly at gravity pull range"
 	)
 	assert(not BoardUtils.are_units_adjacent(slime, player), "setup should stay outside slam range")

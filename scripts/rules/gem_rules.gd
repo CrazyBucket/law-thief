@@ -106,6 +106,7 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	if gem == null:
 		return _fail("宝石不存在")
 	var was_overload_slot := slot.is_overload_slot()
+	var was_overload_echo := state.overload_echo_gems.has(gem.uid)
 	var echo_active := OverloadRules.is_active(state, Constants.OVERLOAD_ECHO_EXTRACT)
 	var lawless_active := OverloadRules.is_active(state, Constants.OVERLOAD_LAWLESS_ANY_EXTRACT)
 	var slot_type := slot.slot_type
@@ -116,8 +117,6 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 	state.log("%s 从 %s 的 %s 槽拔出 %s" % [actor.uid, target_unit.uid, slot_type, _data_registry().get_gem_display_name(gem)])
 	if was_overload_slot:
 		_remove_unit_slot(state, target_unit, slot)
-	else:
-		OverloadRules.leave_extract_echo(state, slot, gem, target_unit.uid, echo_active)
 	var registry := _relic_effect_registry()
 	if registry != null:
 		registry.fire_event("before_extract_behavior", state, {
@@ -128,8 +127,13 @@ static func extract(state: GameState, actor: UnitState, target_unit: UnitState, 
 			"slot_type": slot_type,
 			"slot_index": target_unit.slots.find(slot),
 			"was_overload_slot": was_overload_slot,
+			"was_overload_echo": was_overload_echo,
 			"lawless_overload_active": lawless_active,
 		})
+	# 赝品和拔取残响都会占用原槽。赝品先结算；只有槽位仍为空时，
+	# 残响才可生成，避免两个临时占位物互相吞掉触发或留下悬空记录。
+	if not was_overload_slot:
+		OverloadRules.leave_extract_echo(state, slot, gem, target_unit.uid, echo_active)
 	var extraction_deferred := _CounterfeitRules.is_counterfeit_slot(state, slot)
 	if not extraction_deferred:
 		_behavior_for(target_unit).on_gem_extracted(state, target_unit, slot_type, gem.uid)
@@ -238,6 +242,14 @@ static func insert_gem(
 	_behavior_for(target_unit).on_gem_inserted(state, target_unit, gem.uid)
 	var registry := _relic_effect_registry()
 	if registry != null:
+		if overload_forced:
+			registry.fire_event("overload_slot_created", state, {
+				"unit_uid": target_unit.uid,
+				"slot_index": target_unit.slots.find(slot),
+				"gem_uid": gem.uid,
+				"gem_id": gem.gem_id,
+				"slot_type": slot.slot_type,
+			})
 		registry.fire_event("after_insert", state, {
 			"unit_uid": target_unit.uid,
 			"gem_id": gem.gem_id,
@@ -250,6 +262,7 @@ static func insert_gem(
 		"gem_uid": gem.uid,
 		"swapped_gem_uid": "",
 		"overload_forced": overload_forced,
+		"mutation_deferred": slot.overload_mutation_deferred,
 		"old_mage_decoy": bool(check.get("old_mage_decoy", false)),
 	})
 
@@ -295,6 +308,7 @@ static func _make_overload_slot(slot: SlotState) -> SlotState:
 	overflow_slot.lock_type = Constants.LOCK_OVERLOAD_SLOT
 	overflow_slot.unlock_until_turn = -1
 	overflow_slot.overload_slot = true
+	overflow_slot.overload_mutation_deferred = false
 	return overflow_slot
 
 

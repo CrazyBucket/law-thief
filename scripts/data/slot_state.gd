@@ -10,6 +10,9 @@ var lock_type: String = ""
 var unlock_until_turn: int = -1
 ## 过载是槽位来源身份，不是临时锁状态；分裂禁用不得覆盖它。
 var overload_slot: bool = false
+## A Fuse relic placeholder: this occupied overload slot counts as a layer,
+## but its matching mutation is materialized only after battle victory.
+var overload_mutation_deferred: bool = false
 
 
 static func create(slot_type: String, gem_uid: String = "", locked: bool = false, lock_type: String = "") -> SlotState:
@@ -31,6 +34,7 @@ func clone() -> SlotState:
 	slot.lock_type = lock_type
 	slot.unlock_until_turn = unlock_until_turn
 	slot.overload_slot = overload_slot
+	slot.overload_mutation_deferred = overload_mutation_deferred
 	return slot
 
 

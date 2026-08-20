@@ -323,6 +323,12 @@ static func _drop_enemy_gems_to_ground(state: GameState, unit: UnitState) -> voi
 		if gem == null:
 			unit_slot.gem_uid = ""
 			continue
+		# 残响可以在战斗中正常提供槽位效果，但不是可带走的战利品。
+		# 黑槽死亡效果已在进入掉落阶段前结算，此处只阻止临时副本落地。
+		if state.overload_echo_gems.has(gem.uid):
+			_GemTransfer.remove(state, gem.uid)
+			state.log("过载残响消散")
+			continue
 		if not _UnitRewardRules.can_drop_gems(unit):
 			_GemTransfer.remove(state, gem.uid)
 			continue

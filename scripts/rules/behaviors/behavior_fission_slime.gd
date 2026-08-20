@@ -13,6 +13,10 @@ static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dic
 	return FissionSlimeRules.compute_intent(state, unit, cell_blockers)
 
 
+static func supports_priority_target_intent() -> bool:
+	return false
+
+
 static func execute_custom_intent(
 	state: GameState,
 	unit: UnitState,

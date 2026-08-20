@@ -23,6 +23,8 @@ static func try_mark_retaliation(
 	var source: UnitState = state.units.get(source_uid, null)
 	if not _is_living_enemy(victim) or not _is_living_enemy(source):
 		return ""
+	if not _supports_priority_target(victim):
+		return ""
 	state.relic_battle.beast_ticket_triggered = true
 	state.relic_battle.retaliation_targets[victim_uid] = source_uid
 	state.log("[Relic] %s -> %s will retaliate against %s" % [relic_id, victim_uid, source_uid])
@@ -37,7 +39,8 @@ static func retaliation_target(state: GameState, unit: UnitState) -> UnitState:
 	if source_uid.is_empty():
 		return null
 	var source: UnitState = state.units.get(source_uid, null)
-	if not _is_living_enemy(unit) or not _is_living_enemy(source) or source.uid == unit.uid:
+	if not _is_living_enemy(unit) or not _is_living_enemy(source) \
+			or source.uid == unit.uid or not _supports_priority_target(unit):
 		state.relic_battle.retaliation_targets.erase(unit.uid)
 		return null
 	return source
@@ -94,3 +97,9 @@ static func _refresh_intent(state: GameState, victim_uid: String) -> void:
 
 static func _is_living_enemy(unit: UnitState) -> bool:
 	return unit != null and unit.alive and unit.team == Constants.TEAM_ENEMY
+
+
+static func _supports_priority_target(unit: UnitState) -> bool:
+	if unit == null:
+		return false
+	return BehaviorRegistry.get_behavior(unit.behavior_id).supports_priority_target_intent()

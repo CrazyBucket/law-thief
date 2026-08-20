@@ -5,3 +5,7 @@ static func compute_intent(_state: GameState, unit: UnitState, _cell_blockers: D
 	var intent := IntentState.wait(unit.uid)
 	intent.preview_text = "木桩待机"
 	return intent
+
+
+static func supports_priority_target_intent() -> bool:
+	return false

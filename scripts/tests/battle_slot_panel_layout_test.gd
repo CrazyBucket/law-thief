@@ -17,6 +17,8 @@ func _initialize() -> void:
 	assert(not bool(extract_items[1].get("visible", true)), "extract should hide empty slots")
 	var insert := Layout.build(unit, Vector2(100, 100), Constants.ACTION_INSERT, Callable(), 18.0, 52.0)
 	assert(bool(insert.items[0].get("visible", false)) and bool(insert.items[1].get("visible", false)), "insert should expose every slot")
+	var hook_insert := Layout.build(unit, Vector2(100, 100), Constants.ACTION_INSERT_HOOKED, Callable(), 18.0, 52.0)
+	assert(bool(hook_insert.items[0].get("visible", false)) and bool(hook_insert.items[1].get("visible", false)), "hook insert should expose every slot like ordinary insert")
 	var first: Dictionary = extract_items[0]
 	var middle_angle := (float(first.start_angle) + float(first.end_angle)) * 0.5
 	var hit := Vector2(100, 100) + Vector2(cos(middle_angle), sin(middle_angle)) * 35.0

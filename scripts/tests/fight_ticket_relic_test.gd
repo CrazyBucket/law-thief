@@ -23,6 +23,8 @@ func _run() -> void:
 	_test_source_death_restores_normal_intent()
 	_test_non_attack_turn_preserves_retaliation()
 	_test_special_enemy_uses_priority_target_entry()
+	_test_broodmother_preserves_split_cycle_before_retaliating()
+	_test_unsupported_authored_behavior_does_not_consume_ticket()
 	root.get_node("RunService").end_run()
 	if _failed:
 		push_error("FIGHT_TICKET_RELIC_TEST_FAIL")
@@ -124,7 +126,41 @@ func _test_special_enemy_uses_priority_target_entry() -> void:
 	_expect(victim.intent != null, "special enemy should generate a retaliation intent")
 	_expect(victim.intent.target_uid == source.uid, "special enemy retaliation should still point at the source")
 	_expect(bool(victim.intent.plan_metadata.get(FightTicketRules.META_RETALIATION, false)), "special enemy intent should carry retaliation metadata")
-	print("  [OK] special behavior inherits the priority-target entry")
+	_expect(victim.intent.type in ["impact_attack", "rolling_uncontrolled", "move"], "armadillo retaliation must keep its authored rolling vocabulary")
+	print("  [OK] adapted special behavior retaliates with its own authored attack")
+
+
+func _test_unsupported_authored_behavior_does_not_consume_ticket() -> void:
+	var fixture := _battle_fixture(47, "unit_old_mage")
+	var state: GameState = fixture["state"]
+	var victim: UnitState = fixture["victim"]
+	var source: UnitState = fixture["source"]
+	var intent_type_before := victim.intent.type
+	CombatRules.apply_damage(state, victim, 1, source.uid, "enemy_friendly_fire")
+	_expect(not state.relic_battle.beast_ticket_triggered, "an unsupported authored behavior must not consume the once-per-battle ticket")
+	_expect(not state.relic_battle.retaliation_targets.has(victim.uid), "unsupported authored behavior must not retain an impossible retaliation")
+	_expect(victim.intent.type == intent_type_before, "fight ticket must not replace the old mage loop with generic AI")
+	_expect(victim.intent.type in ["mage_staff_attack", "move", "mage_refill", "mage_spell", "mage_destroy_decoy"], "old mage should retain its authored intent vocabulary")
+	print("  [OK] unsupported authored behavior keeps its loop and leaves the ticket available")
+
+
+func _test_broodmother_preserves_split_cycle_before_retaliating() -> void:
+	var fixture := _battle_fixture(48, "unit_broodmother")
+	var state: GameState = fixture["state"]
+	var victim: UnitState = fixture["victim"]
+	var source: UnitState = fixture["source"]
+	CombatRules.apply_damage(state, victim, 1, source.uid, "enemy_friendly_fire")
+	_expect(victim.intent.type == "broodmother_split", "retaliation must not skip the broodmother split turn")
+	fixture["controller"].execute_single_enemy(victim)
+	_expect(state.relic_battle.retaliation_targets.get(victim.uid) == source.uid, "non-attack split should preserve retaliation")
+	IntentSystem.refresh_unit_intent(state, victim)
+	_expect(victim.intent.type == "broodmother_ranged_attack", "broodmother should resume its authored attack half of the cycle")
+	_expect(victim.intent.target_uid == source.uid, "adapted broodmother attack should target the friendly-fire source")
+	var source_hp := source.hp
+	fixture["controller"].execute_single_enemy(victim)
+	_expect(source.hp < source_hp, "broodmother should retaliate with its own ranged spit")
+	_expect(not state.relic_battle.retaliation_targets.has(victim.uid), "authored retaliation attack should consume the pending target")
+	print("  [OK] broodmother keeps split/spit cadence and retaliates on its attack turn")
 
 
 func _battle_fixture(

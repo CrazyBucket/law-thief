@@ -386,6 +386,27 @@
       {"on": "unit_die", "action": "clear_invalid_retaliation"}
     ]
   },
+  "relic_fuse": {
+    "name": "保险丝",
+    "desc": "每场战斗第一次过载产生的异变延迟至战斗结束后生成。",
+    "rarity": "rare",
+    "pool_types": ["global"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": [
+      {"on": "overload_slot_created", "action": "defer_first_overload_mutation"},
+      {"on": "battle_win", "action": "materialize_deferred_mutation"}
+    ]
+  },
+  "relic_swap": {
+    "name": "调包",
+    "desc": "每回合一次，交换场上任意两个未锁定槽位中的宝石，无视距离。",
+    "rarity": "boss",
+    "pool_types": ["boss_drop"],
+    "base_weight": 1.0,
+    "unique": true,
+    "effects": []
+  },
   "relic_placeholder": {
     "name": "破碎遗物",
     "desc": "已残损，毫无用处。",

@@ -3,6 +3,7 @@ extends SceneTree
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 const RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
 const CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
+const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const EventValidator = preload("res://scripts/debug/event_validator.gd")
 
 var _failed := false
@@ -18,8 +19,11 @@ func _run() -> void:
 	root.get_node("AdventureService").pending_room_type = "NORMAL_COMBAT"
 	_test_definition_and_pool_exclusion()
 	_test_counterfeit_delays_lawless_until_enemy_finishes_action()
+	_test_counterfeit_takes_precedence_over_extract_echo()
+	_test_extracting_an_echo_does_not_create_counterfeit()
 	_test_only_first_enemy_extraction_each_turn_is_counterfeited()
 	_test_counterfeit_disappears_before_enemy_death_hooks_and_drops()
+	_test_mini_casino_cannot_transform_counterfeit_or_held_gem()
 	_test_special_lawless_behavior_is_deferred()
 	root.get_node("RunService").end_run()
 	if _failed:
@@ -74,6 +78,43 @@ func _test_counterfeit_delays_lawless_until_enemy_finishes_action() -> void:
 	print("  [OK] real gem is stolen now and lawless is deferred until the enemy action ends")
 
 
+func _test_counterfeit_takes_precedence_over_extract_echo() -> void:
+	_force_relic()
+	var state := _single_enemy_state(15, "unit_patrol_guard", Constants.GEM_EXPLOSION)
+	var player := state.get_player()
+	var enemy := state.units.get("counterfeit_enemy") as UnitState
+	var slot := enemy.get_slot(Constants.SLOT_RED)
+	_add_overload_anchor(state, player)
+	state.overload_active_mutations = [Constants.OVERLOAD_ECHO_EXTRACT]
+	var result := GemRules.extract(state, player, enemy, slot)
+	_expect(bool(result.get("ok", false)), "counterfeit/echo extraction should succeed")
+	var occupant: GemState = state.gems.get(slot.gem_uid, null)
+	_expect(occupant != null and occupant.gem_id == Constants.GEM_COUNTERFEIT, "counterfeit should own the contested original slot")
+	_expect(state.overload_echo_gems.is_empty(), "extract echo must not create a second temporary occupant behind counterfeit")
+	_expect(not StatusRules.is_lawless(enemy), "counterfeit should still defer lawless while echo mutation is active")
+	CounterfeitRules.break_after_action(state, enemy)
+	_expect(StatusRules.is_lawless(enemy), "lawless should resolve when the prioritized counterfeit breaks")
+	_expect(BattleInvariantChecker.check_all(state).is_empty(), "counterfeit/echo precedence should preserve invariants")
+	print("  [OK] counterfeit takes the original slot before extract echo")
+
+
+func _test_extracting_an_echo_does_not_create_counterfeit() -> void:
+	_force_relic()
+	var state := _single_enemy_state(16, "unit_patrol_guard", Constants.GEM_EXPLOSION)
+	var player := state.get_player()
+	var enemy := state.units.get("counterfeit_enemy") as UnitState
+	var slot := enemy.get_slot(Constants.SLOT_RED)
+	var echo_uid := slot.gem_uid
+	state.overload_echo_gems[echo_uid] = state.turn_index + 1
+	var result := GemRules.extract(state, player, enemy, slot)
+	_expect(bool(result.get("ok", false)), "tracked echo extraction should succeed")
+	_expect(slot.gem_uid.is_empty(), "extracting an echo should leave the original slot empty")
+	_expect(state.relic_battle.counterfeits.is_empty(), "a temporary echo must not enter the counterfeit lifecycle")
+	_expect(not bool(state.relic_battle.turn_flags.get("relic_counterfeit_used", false)), "skipped echo extraction must not consume the turn's counterfeit use")
+	_expect(BattleInvariantChecker.check_all(state).is_empty(), "echo extraction without counterfeit should preserve invariants")
+	print("  [OK] extracting an overload echo does not create or consume counterfeit")
+
+
 func _test_only_first_enemy_extraction_each_turn_is_counterfeited() -> void:
 	_force_relic()
 	var builder := ScenarioBuilder.new("template_a", 12, true)
@@ -115,6 +156,34 @@ func _test_counterfeit_disappears_before_enemy_death_hooks_and_drops() -> void:
 	_expect(not StatusRules.is_lawless(enemy), "death cleanup should not resolve delayed lawless")
 	_expect(BattleInvariantChecker.check_all(state).is_empty(), "counterfeit death cleanup should preserve invariants")
 	print("  [OK] dying before action removes the counterfeit without drops or gem death effects")
+
+
+func _test_mini_casino_cannot_transform_counterfeit_or_held_gem() -> void:
+	_force_relics(["relic_counterfeit", "relic_mini_casino"])
+	var state := _single_enemy_state(17, "unit_patrol_guard", Constants.GEM_EXPLOSION)
+	var enemy := state.units.get("counterfeit_enemy") as UnitState
+	var slot := enemy.get_slot(Constants.SLOT_RED)
+	var original_uid := slot.gem_uid
+	_expect(bool(GemRules.extract(state, state.get_player(), enemy, slot).get("ok", false)), "casino compatibility extraction should succeed")
+	var fake_uid := slot.gem_uid
+	var ordinary_slot := SlotState.create(Constants.SLOT_BLUE)
+	state.get_player().slots.append(ordinary_slot)
+	var ordinary: GemState = root.get_node("DataRegistry").create_gem_instance(
+		"casino_ordinary_gem", Constants.GEM_CONDUCTIVE, {}
+	)
+	state.gems[ordinary.uid] = ordinary
+	_expect(GemTransfer.to_unit_slot(state, ordinary, state.get_player(), ordinary_slot), "casino ordinary slot setup should succeed")
+	root.get_node("RelicEffectRegistry").fire_event("turn_start", state, {"turn_index": state.turn_index})
+	var fake: GemState = state.gems.get(fake_uid, null)
+	var held: GemState = state.gems.get(original_uid, null)
+	_expect(fake != null and fake.gem_id == Constants.GEM_COUNTERFEIT, "mini casino must not transform a slotted counterfeit")
+	_expect(held != null and held.gem_id == Constants.GEM_EXPLOSION, "mini casino must not transform a held real gem")
+	_expect(ordinary.gem_id != Constants.GEM_CONDUCTIVE, "mini casino must transform its eligible slot to a different gem type")
+	CounterfeitRules.break_after_action(state, enemy)
+	_expect(slot.gem_uid.is_empty() and not slot.locked, "counterfeit lifecycle should still unlock after casino fires")
+	_expect(StatusRules.is_lawless(enemy), "casino must not suppress deferred lawless resolution")
+	_expect(BattleInvariantChecker.check_all(state).is_empty(), "casino/counterfeit compatibility should preserve invariants")
+	print("  [OK] mini casino only considers ordinary slotted gems")
 
 
 func _test_special_lawless_behavior_is_deferred() -> void:
@@ -159,6 +228,17 @@ func _finish_state(builder: ScenarioBuilder) -> GameState:
 	return state
 
 
+func _add_overload_anchor(state: GameState, unit: UnitState) -> void:
+	var slot := SlotState.create(Constants.SLOT_BLUE)
+	slot.lock_type = Constants.LOCK_OVERLOAD_SLOT
+	unit.slots.append(slot)
+	var gem: GemState = root.get_node("DataRegistry").create_gem_instance(
+		"counterfeit_echo_anchor", Constants.GEM_CONDUCTIVE, {}
+	)
+	state.gems[gem.uid] = gem
+	_expect(GemTransfer.to_unit_slot(state, gem, unit, slot), "overload anchor setup should succeed")
+
+
 func _controller_for(state: GameState) -> BattleController:
 	var controller := BattleController.new()
 	controller.state = state
@@ -167,12 +247,17 @@ func _controller_for(state: GameState) -> BattleController:
 
 
 func _force_relic() -> void:
+	_force_relics(["relic_counterfeit"])
+
+
+func _force_relics(relic_ids: Array[String]) -> void:
 	var run: RunState = root.get_node("RunService").get_run()
 	if run == null:
 		_fail("active run missing for counterfeit relic test")
 		return
 	run.owned_relics.clear()
-	run.owned_relics.append("relic_counterfeit")
+	for relic_id in relic_ids:
+		run.owned_relics.append(relic_id)
 
 
 func _expect(condition: bool, message: String) -> void:

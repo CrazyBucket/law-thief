@@ -7,6 +7,7 @@ const _BattleQueryService = preload("res://scripts/battle/battle_query_service.g
 const OverloadRules = preload("res://scripts/rules/overload_rules.gd")
 const RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
 const ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
+const SwapRules = preload("res://scripts/rules/swap_rules.gd")
 const _BATTLE_EDITOR_CLI_PATH := "res://scripts/debug/battle_editor_cli.gd"
 const _BATTLE_EDITOR_SERVICE_PATH := "res://scripts/debug/battle_editor_service.gd"
 
@@ -20,6 +21,8 @@ signal anim_gem_hooked(gem_uid: String, from_pos: Vector2i)
 var state: GameState = null
 var selected_action: String = ""
 var selected_unit_uid: String = ""
+var swap_source_unit_uid: String = ""
+var swap_source_slot_index: int = -1
 var editor_unlimited_actions: bool = false
 var editor_player_invincible: bool = false
 
@@ -98,6 +101,7 @@ func start_encounter(
 	)
 	selected_action = ""
 	selected_unit_uid = state.player_uid if state != null else ""
+	clear_swap_selection()
 	state.battle_temp_flags.clear()
 	state.battle_temp_flags["editor_invincible_player"] = editor_player_invincible_enabled()
 	_connect_relic_signals(state)
@@ -155,6 +159,8 @@ func _connect_relic_signals(s: GameState) -> void:
 func select_action(action: String) -> void:
 	if state != null and action.is_empty():
 		OverloadRules.record_non_insert_action(state, action)
+	if action != Constants.ACTION_RELIC_SWAP or selected_action != Constants.ACTION_RELIC_SWAP:
+		clear_swap_selection()
 	selected_action = action
 	_emit_changed()
 
@@ -203,6 +209,48 @@ func try_trigger(target_uid: String, slot_index: int) -> Dictionary:
 	return _action_svc.try_trigger(target_uid, slot_index)
 
 
+func try_select_swap_slot(target_uid: String, slot_index: int) -> Dictionary:
+	if selected_action != Constants.ACTION_RELIC_SWAP:
+		return _fail("请先点击【调包】")
+	if not has_swap_source() and not can_use_action(Constants.ACTION_RELIC_SWAP):
+		return _fail("当前无法调包")
+	var target: UnitState = state.units.get(target_uid, null) if state != null else null
+	var target_check := SwapRules.can_select_slot(state, target, slot_index)
+	if not target_check.get("ok", false):
+		return target_check
+	if not has_swap_source():
+		swap_source_unit_uid = target_uid
+		swap_source_slot_index = slot_index
+		_emit_changed()
+		return {
+			"ok": true,
+			"stage": "source",
+			"first": target_check,
+		}
+	var source: UnitState = state.units.get(swap_source_unit_uid, null)
+	var result := SwapRules.try_swap(
+		state,
+		source,
+		swap_source_slot_index,
+		target,
+		slot_index
+	)
+	if result.get("ok", false):
+		clear_swap_selection()
+		selected_action = Constants.ACTION_NONE
+	_emit_changed()
+	return result
+
+
+func has_swap_source() -> bool:
+	return not swap_source_unit_uid.is_empty() and swap_source_slot_index >= 0
+
+
+func clear_swap_selection() -> void:
+	swap_source_unit_uid = ""
+	swap_source_slot_index = -1
+
+
 func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 	if state == null:
 		return _fail("战斗未开始")
@@ -220,6 +268,11 @@ func check_slot_action(target_uid: String, slot_index: int) -> Dictionary:
 			return GemRules.can_insert(state, player, target, slot)
 		Constants.ACTION_INSERT_HOOKED:
 			return ScavengerHookRules.can_insert_hooked(state, player, target, slot)
+		Constants.ACTION_RELIC_SWAP:
+			if has_swap_source() and swap_source_unit_uid == target_uid \
+				and swap_source_slot_index == slot_index:
+				return _fail("请选择另一颗宝石")
+			return SwapRules.can_select_slot(state, target, slot_index)
 	return _fail("当前操作不支持槽位")
 
 
@@ -269,6 +322,11 @@ func can_use_action(action: String) -> bool:
 			return not state.held_gem_uid.is_empty()
 		Constants.ACTION_INSERT_HOOKED:
 			return ScavengerHookRules.get_hooked_gem(state) != null
+		Constants.ACTION_RELIC_SWAP:
+			var run_service: Node = Engine.get_main_loop().root.get_node_or_null("RunService")
+			return run_service != null \
+				and run_service.has_relic("relic_swap") \
+				and SwapRules.can_activate(state).get("ok", false)
 		Constants.ACTION_END_TURN:
 			return true
 	return false

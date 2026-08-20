@@ -456,7 +456,13 @@ func get_spawnable_gem_ids_for_source(source: String, chapter_tier: int = 99, al
 	return results
 
 
-func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array = [], source: String = "global", chapter_tier: int = 99) -> String:
+func roll_spawnable_gem_id(
+	domain: String = "gem_drop",
+	allowed_rarities: Array = [],
+	source: String = "global",
+	chapter_tier: int = 99,
+	excluded_gem_ids: Array = []
+) -> String:
 	if not has_gem_pool_source(source):
 		return ""
 	var pool_def := get_gem_pool_def(source)
@@ -467,6 +473,8 @@ func roll_spawnable_gem_id(domain: String = "gem_drop", allowed_rarities: Array 
 			if float(rarity_weights[rarity]) > 0.0:
 				allowed.append(str(rarity))
 	var candidates := get_spawnable_gem_ids_for_source(source, chapter_tier, allowed)
+	if not excluded_gem_ids.is_empty():
+		candidates = candidates.filter(func(gem_id): return gem_id not in excluded_gem_ids)
 	if candidates.is_empty():
 		return ""
 	var total_weight := 0.0

@@ -90,10 +90,6 @@ static func gravity_collision_damage() -> int:
 	return int_value("gravity_collision_damage")
 
 
-static func enemy_gravity_pull_range() -> int:
-	return int_value("enemy_gravity_pull_range")
-
-
 static func poison_fog_damage() -> int:
 	return int_value("poison_fog_damage")
 

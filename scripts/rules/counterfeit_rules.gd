@@ -20,6 +20,9 @@ static func try_leave_once(
 		return
 	if bool(payload.get("was_overload_slot", false)):
 		return
+	# 残响本身是临时副本，不再进入赝品的延迟失律生命周期。
+	if bool(payload.get("was_overload_echo", false)):
+		return
 	var slot_index := int(payload.get("slot_index", -1))
 	var slot := target.get_slot_by_index(slot_index)
 	if slot == null or slot.locked or not slot.gem_uid.is_empty():

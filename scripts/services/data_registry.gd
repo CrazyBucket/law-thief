@@ -542,6 +542,9 @@ func _restore_run_player_state(state: GameState, player: UnitState) -> void:
 		if not lock_type.is_empty():
 			slot.lock_type = lock_type
 		slot.overload_slot = bool(slot_snapshot.get("overload_slot", lock_type == Constants.LOCK_OVERLOAD_SLOT))
+		slot.overload_mutation_deferred = bool(slot_snapshot.get("overload_mutation_deferred", false))
+		if slot.overload_mutation_deferred:
+			state.relic_battle.fuse_triggered = true
 		if slot.dual_type.is_empty():
 			var dual_type := str(slot_snapshot.get("dual_type", ""))
 			if not dual_type.is_empty():
@@ -570,6 +573,7 @@ func _ensure_player_slots_for_restore(player: UnitState, slot_gems: Array) -> vo
 		var dual_type := ""
 		var lock_type := ""
 		var overload_slot := false
+		var overload_mutation_deferred := false
 		if raw_slot is Dictionary:
 			var snapshot := raw_slot as Dictionary
 			slot_type = str(snapshot.get("slot_type", Constants.SLOT_RED))
@@ -578,12 +582,14 @@ func _ensure_player_slots_for_restore(player: UnitState, slot_gems: Array) -> vo
 			dual_type = str(snapshot.get("dual_type", ""))
 			lock_type = str(snapshot.get("lock_type", ""))
 			overload_slot = bool(snapshot.get("overload_slot", lock_type == Constants.LOCK_OVERLOAD_SLOT))
+			overload_mutation_deferred = bool(snapshot.get("overload_mutation_deferred", false))
 		var slot := SlotState.create(slot_type)
 		if not dual_type.is_empty():
 			slot.dual_type = dual_type
 		if not lock_type.is_empty():
 			slot.lock_type = lock_type
 		slot.overload_slot = overload_slot
+		slot.overload_mutation_deferred = overload_mutation_deferred
 		player.slots.append(slot)
 ## 根据章节和房间类型映射到对应的敌人宝石 pool key
 func _resolve_enemy_pool_source(chapter: int, room_type: String) -> String:

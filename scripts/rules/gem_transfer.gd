@@ -51,6 +51,41 @@ static func to_slot_reference(
 	return false
 
 
+## Atomically exchanges two occupied unit slots without passing either gem
+## through hand, ground, extraction, or insertion semantics.
+static func swap_unit_slots(
+	state: GameState,
+	first_unit: UnitState,
+	first_index: int,
+	second_unit: UnitState,
+	second_index: int
+) -> bool:
+	if state == null or first_unit == null or second_unit == null:
+		return false
+	if state.units.get(first_unit.uid, null) != first_unit \
+		or state.units.get(second_unit.uid, null) != second_unit:
+		return false
+	if first_unit.uid == second_unit.uid and first_index == second_index:
+		return false
+	var first_slot := first_unit.get_slot_by_index(first_index)
+	var second_slot := second_unit.get_slot_by_index(second_index)
+	if first_slot == null or second_slot == null:
+		return false
+	var first_uid := str(first_slot.gem_uid)
+	var second_uid := str(second_slot.gem_uid)
+	if first_uid.is_empty() or second_uid.is_empty() or first_uid == second_uid:
+		return false
+	var first_gem: GemState = state.gems.get(first_uid, null)
+	var second_gem: GemState = state.gems.get(second_uid, null)
+	if not _is_registered(state, first_gem) or not _is_registered(state, second_gem):
+		return false
+	first_slot.gem_uid = second_uid
+	second_slot.gem_uid = first_uid
+	first_gem.mark_unit_slotted(second_unit.uid, second_index)
+	second_gem.mark_unit_slotted(first_unit.uid, first_index)
+	return true
+
+
 static func to_ground(
 	state: GameState,
 	gem: GemState,
@@ -82,6 +117,8 @@ static func remove(state: GameState, gem_uid: String) -> bool:
 		return false
 	var gem: GemState = state.gems.get(gem_uid, null)
 	_detach_references(state, gem_uid)
+	# 过载残响是临时宝石；任何销毁路径都必须同步清掉生命周期索引。
+	state.overload_echo_gems.erase(gem_uid)
 	if gem != null:
 		gem.mark_detached()
 	state.gems.erase(gem_uid)

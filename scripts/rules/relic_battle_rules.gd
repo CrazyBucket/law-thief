@@ -47,6 +47,13 @@ static func record_voluntary_move(
 		finish_movement_window(state, actor_uid)
 
 
+static func record_automatic_move_usage(state: GameState, actor_uid: String, spent_move: int) -> void:
+	if state == null or actor_uid != state.player_uid or spent_move <= 0:
+		return
+	reconcile_move_capacity(state)
+	state.relic_battle.record_automatic_move_cost(spent_move)
+
+
 static func finish_movement_window(state: GameState, actor_uid: String = "") -> void:
 	if state == null:
 		return

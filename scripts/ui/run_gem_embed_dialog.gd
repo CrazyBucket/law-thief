@@ -3,11 +3,16 @@ extends CanvasLayer
 
 signal embed_requested(slot_index: int, force_overload: bool)
 signal postponed
+signal abandoned
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
 
 var _options_box: VBoxContainer = null
+var _options_scroll: ScrollContainer = null
+var _title_label: Label = null
 var _tip_label: Label = null
+var _postpone_button: Button = null
+var _abandon_button: Button = null
 var _request_locked := false
 
 
@@ -17,17 +22,21 @@ func _init() -> void:
 	_build()
 
 
-func configure(options: Array[Dictionary]) -> void:
+func configure(options: Array[Dictionary], title_text: String = "", allow_hold: bool = true, allow_abandon: bool = false) -> void:
 	_request_locked = false
 	for child in _options_box.get_children():
 		_options_box.remove_child(child)
 		child.queue_free()
+	_title_label.text = title_text if not title_text.is_empty() else _t("gem_embed.title")
 	var overload_available := false
 	for option in options:
 		if bool(option.get("overload", false)):
 			overload_available = true
 		_add_option(option)
 	_tip_label.text = _t("gem_embed.tip_overload") if overload_available else _t("gem_embed.tip")
+	_options_scroll.visible = not options.is_empty()
+	_postpone_button.visible = allow_hold
+	_abandon_button.visible = allow_abandon
 
 
 func dismiss() -> void:
@@ -66,12 +75,12 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
 
-	var title := Label.new()
-	title.text = _t("gem_embed.title")
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
-	title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	box.add_child(title)
+	_title_label = Label.new()
+	_title_label.text = _t("gem_embed.title")
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label.add_theme_font_size_override("font_size", BattleUiTheme.FONT_TITLE)
+	_title_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
+	box.add_child(_title_label)
 
 	_tip_label = Label.new()
 	_tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -79,23 +88,37 @@ func _build() -> void:
 	_tip_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
 	box.add_child(_tip_label)
 
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 180)
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(scroll)
+	_options_scroll = ScrollContainer.new()
+	_options_scroll.custom_minimum_size = Vector2(0, 180)
+	_options_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_options_scroll)
 
 	_options_box = VBoxContainer.new()
 	_options_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_options_box.add_theme_constant_override("separation", 8)
-	scroll.add_child(_options_box)
+	_options_scroll.add_child(_options_box)
 
-	var later := Button.new()
-	later.name = "PostponeButton"
-	later.custom_minimum_size = Vector2(0, 42)
-	later.text = _t("gem_embed.later")
-	BattleUiTheme.apply_button(later, "ghost")
-	later.pressed.connect(_on_postponed)
-	box.add_child(later)
+	var action_row := HBoxContainer.new()
+	action_row.add_theme_constant_override("separation", 8)
+	box.add_child(action_row)
+
+	_postpone_button = Button.new()
+	_postpone_button.name = "PostponeButton"
+	_postpone_button.custom_minimum_size = Vector2(0, 42)
+	_postpone_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_postpone_button.text = _t("gem_embed.later")
+	BattleUiTheme.apply_button(_postpone_button, "ghost")
+	_postpone_button.pressed.connect(_on_postponed)
+	action_row.add_child(_postpone_button)
+
+	_abandon_button = Button.new()
+	_abandon_button.name = "AbandonButton"
+	_abandon_button.custom_minimum_size = Vector2(0, 42)
+	_abandon_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_abandon_button.text = _t("gem_embed.abandon")
+	BattleUiTheme.apply_button(_abandon_button, "combat")
+	_abandon_button.pressed.connect(_on_abandoned)
+	action_row.add_child(_abandon_button)
 
 
 func _add_option(option: Dictionary) -> void:
@@ -139,7 +162,16 @@ func _on_postponed() -> void:
 	if _request_locked:
 		return
 	_request_locked = true
+	_set_buttons_disabled(true)
 	postponed.emit()
+
+
+func _on_abandoned() -> void:
+	if _request_locked:
+		return
+	_request_locked = true
+	_set_buttons_disabled(true)
+	abandoned.emit()
 
 
 func _set_buttons_disabled(disabled: bool) -> void:
@@ -147,6 +179,10 @@ func _set_buttons_disabled(disabled: bool) -> void:
 		if child is Button:
 			(child as Button).disabled = disabled
 			BattleUiTheme.apply_button(child as Button, "combat" if bool(child.get_meta("force_overload", false)) else "gem")
+	_postpone_button.disabled = disabled
+	_abandon_button.disabled = disabled
+	BattleUiTheme.apply_button(_postpone_button, "ghost")
+	BattleUiTheme.apply_button(_abandon_button, "combat")
 
 
 func _slot_label(slot_type: String) -> String:

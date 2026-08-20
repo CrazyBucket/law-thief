@@ -3,6 +3,7 @@ extends SceneTree
 const ScenarioBuilder = preload("res://scripts/testkit/scenario_builder.gd")
 const GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
+const FuseRules = preload("res://scripts/rules/fuse_rules.gd")
 
 var _failed := false
 
@@ -17,6 +18,7 @@ func _run() -> void:
 	root.get_node("AdventureService").pending_room_type = "NORMAL_COMBAT"
 	_force_relic()
 	_test_definition()
+	_test_overload_echo_is_discarded_before_drop_and_hook()
 	_test_hook_is_separate_from_normal_hand_and_can_insert()
 	_test_hook_insert_obeys_overload_rules()
 	_test_unused_hook_returns_at_player_turn_end()
@@ -37,6 +39,24 @@ func _test_definition() -> void:
 	_expect(bool(relic_def.get("unique", false)), "scavenger hook should be unique")
 	_expect((relic_def.get("effects", []) as Array).size() == 2, "scavenger hook should own hook and return effects")
 	print("  [OK] definition is rare and unique")
+
+
+func _test_overload_echo_is_discarded_before_drop_and_hook() -> void:
+	var fixture := _battle_fixture(36)
+	var state: GameState = fixture["state"]
+	var source: UnitState = fixture["source"]
+	var controller := _controller_for(state)
+	var echo_uid := source.get_slot(Constants.SLOT_RED).gem_uid
+	var real_uid := source.get_slot(Constants.SLOT_BLUE).gem_uid
+	state.overload_echo_gems[echo_uid] = state.turn_index + 1
+	CombatRules.apply_damage(state, source, source.hp, state.player_uid, "scavenger_hook_echo_drop")
+	_expect(not state.gems.has(echo_uid), "an overload echo should be destroyed when its enemy owner dies")
+	_expect(not state.overload_echo_gems.has(echo_uid), "destroying a death-time echo should clear its lifecycle record")
+	_expect(not state.dropped_gems.has(echo_uid), "an overload echo must never become ground loot")
+	_expect(controller.state == state, "echo/drop fixture should keep its relic signal controller alive")
+	_expect(state.relic_battle.hooked_gem_uid == real_uid, "scavenger hook should choose the remaining real death drop")
+	_expect(BattleInvariantChecker.check_all(state).is_empty(), "echo death cleanup and hook selection should preserve invariants")
+	print("  [OK] overload echoes disappear before death drops and scavenger-hook selection")
 
 
 func _test_hook_is_separate_from_normal_hand_and_can_insert() -> void:
@@ -74,6 +94,8 @@ func _test_hook_is_separate_from_normal_hand_and_can_insert() -> void:
 
 
 func _test_hook_insert_obeys_overload_rules() -> void:
+	var run: RunState = root.get_node("RunService").get_run()
+	run.owned_relics.append("relic_fuse")
 	var fixture := _battle_fixture(35)
 	var state: GameState = fixture["state"]
 	var source: UnitState = fixture["source"]
@@ -91,9 +113,12 @@ func _test_hook_insert_obeys_overload_rules() -> void:
 	_expect(state.relic_battle.hooked_gem_uid == hooked_uid, "overload warning must leave the gem on the hook")
 	var forced := controller.try_insert_hooked(target.uid, slot_index)
 	_expect(bool(forced.get("overload_forced", false)), "second occupied hook insert should force overload")
+	_expect(bool(forced.get("mutation_deferred", false)), "a hooked forced insert should pass through fuse deferral")
 	_expect(state.relic_battle.hooked_gem_uid.is_empty(), "forced hook insert should consume the dedicated hook storage")
+	_expect(state.relic_battle.fuse_triggered and FuseRules.has_deferred_mutation(state), "hook and fuse should share the formal overload lifecycle")
 	_expect(BattleInvariantChecker.check_all(state).is_empty(), "hook overload should preserve invariants")
-	print("  [OK] hook insert reuses ordinary color and overload rules")
+	run.owned_relics.erase("relic_fuse")
+	print("  [OK] hook insert reuses ordinary overload and fuse rules")
 
 
 func _test_unused_hook_returns_at_player_turn_end() -> void:

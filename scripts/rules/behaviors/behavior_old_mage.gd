@@ -34,6 +34,10 @@ static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dic
 	return _cast_or_staff_intent(state, unit, cell_blockers)
 
 
+static func supports_priority_target_intent() -> bool:
+	return false
+
+
 static func on_turn_start(state: GameState, unit: UnitState) -> void:
 	if unit.hp >= 20:
 		_sync_move_points(unit)

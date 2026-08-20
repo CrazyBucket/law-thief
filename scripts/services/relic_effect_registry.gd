@@ -3,6 +3,7 @@ const _SimpleRelicEffects = preload("res://scripts/rules/simple_relic_effects.gd
 const _CounterfeitRules = preload("res://scripts/rules/counterfeit_rules.gd")
 const _ScavengerHookRules = preload("res://scripts/rules/scavenger_hook_rules.gd")
 const _FightTicketRules = preload("res://scripts/rules/fight_ticket_rules.gd")
+const _FuseRules = preload("res://scripts/rules/fuse_rules.gd")
 ## 遗物事件系统与 Modifier 查询层
 ##
 ## 事件词表（fire_event 的 event_id）：
@@ -16,6 +17,7 @@ const _FightTicketRules = preload("res://scripts/rules/fight_ticket_rules.gd")
 ##   unit_die             击杀后（payload: unit_uid, killer_uid, reason, kill_reason）
 ##   after_extract        拔出宝石后（payload: unit_uid, gem_id, slot_type, from_uid）
 ##   after_insert         嵌入宝石后（payload: unit_uid, gem_id, slot_type, from_uid, actor_uid）
+##   overload_slot_created 正式生成过载槽后（payload: unit_uid, slot_index, gem_uid）
 ##   blue_gem_triggered   蓝色宝石效果触发后（payload: actor_uid）
 ##   move_step            走一步（payload: unit_uid, from, to）
 ##   battle_win           战斗胜利（payload: encounter_id）
@@ -207,12 +209,13 @@ func _dispatch_action(relic_id: String, effect: Dictionary, state: GameState, pa
 		"return_hooked_gem": _ScavengerHookRules.return_before_settlement(relic_id, effect, state, payload)
 		"mark_enemy_retaliation_once": _FightTicketRules.try_mark_retaliation(relic_id, effect, state, payload)
 		"clear_invalid_retaliation": _FightTicketRules.clear_for_death(state, str(payload.get("unit_uid", "")))
+		"defer_first_overload_mutation": _FuseRules.try_defer_first_overload(relic_id, effect, state, payload)
+		"materialize_deferred_mutation": _FuseRules.materialize_after_win(relic_id, effect, state, payload)
 		_:
 			DebugService.log_info("RelicEffectRegistry: unknown action '%s' for %s" % [action, relic_id])
 
 
 # ─── 内置 actions ──────────────────────────────────────────────────────────────
-
 func _action_add_shield(_relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
 	var unit := _resolve_target(effect, state, payload)
 	if unit == null:
@@ -240,7 +243,6 @@ func _action_heal(relic_id: String, effect: Dictionary, state: GameState, payloa
 	var max_hp: int = int(def.get("max_hp", unit.max_hp))
 	unit.hp = mini(unit.hp + amount, max_hp)
 	state.log("[Relic] %s -> +%d hp for %s" % [relic_id, amount, unit.uid])
-
 func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var amount := _resolve_amount(effect, 1)
 	var player := state.get_player()
@@ -248,12 +250,10 @@ func _action_add_move(_relic_id: String, effect: Dictionary, state: GameState, _
 		return
 	player.move_points += amount
 
-
 ## 临时移动力：加 1 点，但只能用于移动一次后重置
 ## 通过 battle_temp_flags 标记是否已消耗
 func _action_add_temp_move(relic_id: String, effect: Dictionary, state: GameState, payload: Dictionary) -> void:
 	_SimpleRelicEffects.add_temp_move(relic_id, effect, state, payload)
-
 
 func _action_mark_flag(_relic_id: String, effect: Dictionary, state: GameState, _payload: Dictionary) -> void:
 	var flag: String = str(effect.get("flag", ""))
@@ -440,11 +440,28 @@ func _action_apply_weak_on_insert_target(relic_id: String, effect: Dictionary, s
 	state.log("[Relic] %s -> 嫁祸：对 %s 施加虚弱" % [relic_id, payload.get("unit_uid", "?")])
 
 
-## random_gem_transform_one：每回合开始时随机将场上一颗宝石变为另一颗（包含地块宝石）
+## random_gem_transform_one：每回合开始时随机将场上槽位内的普通宝石变为另一颗。
 func _action_random_gem_transform_one(relic_id: String, state: GameState) -> void:
 	var all_gem_uids: Array[String] = []
-	for gem_uid in state.gems.keys():
-		all_gem_uids.append(str(gem_uid))
+	var unit_uids: Array[String] = []
+	for raw_uid in state.units.keys():
+		unit_uids.append(str(raw_uid))
+	unit_uids.sort()
+	for unit_uid in unit_uids:
+		var unit: UnitState = state.units.get(unit_uid, null)
+		if unit == null or not unit.alive:
+			continue
+		for slot: SlotState in unit.slots:
+			if slot == null or slot.gem_uid.is_empty():
+				continue
+			var gem: GemState = state.gems.get(slot.gem_uid, null)
+			if gem == null or gem.gem_id == Constants.GEM_COUNTERFEIT:
+				continue
+			# 过载残响与赝品都是带有独立生命周期的临时占位物，
+			# 不能被普通宝石的随机变换打断清理与解锁。
+			if state.overload_echo_gems.has(gem.uid):
+				continue
+			all_gem_uids.append(gem.uid)
 	if all_gem_uids.is_empty():
 		return
 	var idx: int = RngService.roll_int("mini_casino_pick_%s_%d" % [relic_id, state.turn_index], 0, all_gem_uids.size() - 1)
@@ -453,8 +470,10 @@ func _action_random_gem_transform_one(relic_id: String, state: GameState) -> voi
 	if target_gem == null:
 		return
 	var old_id := target_gem.gem_id
-	var new_id := DataRegistry.roll_spawnable_gem_id("mini_casino_roll_%s_%d" % [relic_id, state.turn_index])
-	if new_id.is_empty() or new_id == old_id:
+	var new_id := DataRegistry.roll_spawnable_gem_id(
+		"mini_casino_roll_%s_%d" % [relic_id, state.turn_index], [], "global", 99, [old_id]
+	)
+	if new_id.is_empty():
 		return
 	target_gem.gem_id = new_id
 	target_gem.def_overrides = {}

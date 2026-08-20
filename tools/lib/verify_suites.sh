@@ -24,6 +24,7 @@ FAST_TESTS=(
   intent_consistency_contract_test
   room_effect_executor_test
   economy_service_test
+  event_content_runtime_test
   event_service_test
   adventure_rule_registry_test
   shop_service_test
@@ -149,6 +150,7 @@ ADVENTURE_TESTS=(
   balance_config_test
   adventure_chapter_transition_test
   encounter_content_diagnostics_test
+  event_content_runtime_test
   full_run_contract_test
   game_service_continue_route_test
   run_recovery_route_test
@@ -259,6 +261,8 @@ MAP_TESTS=(
 )
 
 RELIC_TESTS=(
+  fuse_relic_test
+  swap_relic_test
   counterfeit_relic_test
   fight_ticket_relic_test
   crowbar_relic_test

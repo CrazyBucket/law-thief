@@ -161,7 +161,6 @@ const COMBAT_CONFIG_NUMERIC_KEYS := {
 	"barrel_explosion_damage": true,
 	"barrel_explosion_radius": true,
 	"gravity_collision_damage": true,
-	"enemy_gravity_pull_range": true,
 	"poison_fog_damage": true,
 	"poison_fog_duration": true,
 	"toxic_smoke_duration": true,

@@ -27,6 +27,21 @@ static func compute_intent(
 	return _normal_intent(state, unit, targets, anchors, cell_blockers)
 
 
+static func compute_priority_target_intent(
+	state: GameState,
+	unit: UnitState,
+	target: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
+	if target == null or not target.alive or target.uid == unit.uid:
+		return IntentState.wait(unit.uid)
+	var targets: Array[UnitState] = [target]
+	var anchors := _reachable_anchors(state, unit, cell_blockers)
+	if StatusRules.is_lawless(unit):
+		return _lawless_intent(state, unit, targets, anchors, cell_blockers)
+	return _normal_intent(state, unit, targets, anchors, cell_blockers)
+
+
 static func enter_lawless(state: GameState, unit: UnitState, gem_uid: String) -> void:
 	if StatusRules.is_lawless(unit):
 		return

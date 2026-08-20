@@ -7,6 +7,17 @@ static func compute_intent(state: GameState, unit: UnitState, cell_blockers: Dic
 	return RollingArmadilloRules.compute_intent(state, unit, cell_blockers)
 
 
+static func build_priority_target_intent(
+	state: GameState,
+	unit: UnitState,
+	target: UnitState,
+	cell_blockers: Dictionary = {}
+) -> IntentState:
+	return RollingArmadilloRules.compute_priority_target_intent(
+		state, unit, target, cell_blockers
+	)
+
+
 static func execute_custom_intent(
 	state: GameState,
 	unit: UnitState,

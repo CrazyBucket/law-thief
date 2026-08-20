@@ -6,6 +6,8 @@ const CombatConfig = preload("res://scripts/core/combat_config.gd")
 const _GemTransfer = preload("res://scripts/rules/gem_transfer.gd")
 const _UnitSpawnService = preload("res://scripts/rules/unit_spawn_service.gd")
 const _EventBuilder = preload("res://scripts/rules/combat_event_builder.gd")
+const _FuseRules = preload("res://scripts/rules/fuse_rules.gd")
+const _RelicBattleRules = preload("res://scripts/rules/relic_battle_rules.gd")
 
 const MUTATIONS: Array[String] = [
 	Constants.OVERLOAD_LAWLESS_ANY_EXTRACT,
@@ -16,14 +18,10 @@ const MUTATIONS: Array[String] = [
 	Constants.OVERLOAD_AI_CONTROL,
 	Constants.OVERLOAD_SPAWN_LAW_BEAST,
 ]
-
-
 static func can_force_insert(state: GameState) -> bool:
 	return state != null \
 		and state.overload_last_action == Constants.ACTION_INSERT \
 		and state.overload_last_insert_turn == state.turn_index
-
-
 static func record_insert(state: GameState, forced: bool = false) -> void:
 	if state == null:
 		return
@@ -58,11 +56,12 @@ static func activate_pending(state: GameState) -> void:
 	if state == null or not state.overload_pending:
 		return
 	sync_active_mutations_to_overload_slots(state, false)
-	var mutation := _pick_next_mutation(state)
+	var target_count := maxi(0, overload_gem_count(state) - _FuseRules.deferred_mutation_count(state))
+	var mutation := "" if state.overload_active_mutations.size() >= target_count else _pick_next_mutation(state)
 	state.overload_pending = false
 	state.overload_pending_turn = 0
 	if mutation.is_empty():
-		state.log("过载涌动，但暂未形成新的异变")
+		state.log("保险丝熔断：本次异变延迟至战斗结束" if _FuseRules.has_deferred_mutation(state) else "过载涌动，但暂未形成新的异变")
 		return
 	if mutation not in state.overload_active_mutations:
 		state.overload_active_mutations.append(mutation)
@@ -99,7 +98,7 @@ static func overload_gem_count(state: GameState) -> int:
 static func sync_active_mutations_to_overload_slots(state: GameState, allow_growth: bool = true) -> void:
 	if state == null:
 		return
-	var target_count := overload_gem_count(state)
+	var target_count := maxi(0, overload_gem_count(state) - _FuseRules.deferred_mutation_count(state))
 	while state.overload_active_mutations.size() > target_count:
 		state.overload_active_mutations.pop_back()
 	if not allow_growth:
@@ -294,18 +293,21 @@ static func panel_detail_lines(state: GameState) -> Array[String]:
 	if state == null:
 		return []
 	sync_active_mutations_to_overload_slots(state, false)
-	var active_count := overload_gem_count(state)
-	if active_count <= 0 and not state.overload_pending:
+	var overload_count := overload_gem_count(state)
+	if overload_count <= 0 and not state.overload_pending:
 		return []
 	var lines: Array[String] = []
-	var total_layers := active_count + (1 if state.overload_pending else 0)
+	var total_layers := overload_count + (1 if state.overload_pending else 0)
 	lines.append("过载 %d 层" % total_layers)
 	for mutation in state.overload_active_mutations:
 		lines.append("· %s" % mutation_label(mutation))
-	if state.overload_pending:
+	if state.overload_pending and state.overload_active_mutations.size() \
+			< maxi(0, overload_count - _FuseRules.deferred_mutation_count(state)):
 		var pending_mutation := _pick_next_mutation(state)
 		if not pending_mutation.is_empty():
 			lines.append("· 待生效：%s" % mutation_label(pending_mutation))
+	if _FuseRules.has_deferred_mutation(state):
+		lines.append("· 保险丝：1 条异变延迟至战后")
 	if is_active(state, Constants.OVERLOAD_AI_CONTROL):
 		lines.append("AI 接管几率 %d%%" % int(roundf(ai_control_probability(state) * 100.0)))
 	return lines
@@ -403,13 +405,12 @@ static func _execute_player_ai_control(state: GameState, player: UnitState, out_
 	if player.alive and not state.player_acted:
 		var attack_target := _nearest_attackable_enemy(state, player)
 		if attack_target != null:
-			var max_range := GemEffects.red_attack_range(state, player, CombatConfig.attack_range())
 			var attack_result := CombatRules.ranged_attack(
 				state,
 				player,
 				attack_target.pos,
 				CombatConfig.attack_range(),
-				{"aim_cell": attack_target.pos}
+				{"aim_cell": attack_target.pos, "ignore_projectile_blockers": true}
 			)
 			if attack_result.get("ok", false):
 				out_events.append_array(attack_result.get("events", [] as Array[Dictionary]))
@@ -510,10 +511,12 @@ static func _move_player_toward_nearest_enemy(state: GameState, player: UnitStat
 	if path.is_empty():
 		return false
 	var previous := player.pos
+	var spent_move := 0
 	var tx := _CombatTransaction.begin(state, out_events).bind_event_sink()
 	for step in path:
 		if not BoardUtils.unit_footprint_passable(state, player, step, player.uid):
 			break
+		spent_move += ceili(BoardUtils.unit_step_cost(state, player, step))
 		tx.move_unit(player, step, {"reason": "overload_ai_control"})
 		TileRules.on_unit_moved_through(state, player, step)
 		if not player.alive:
@@ -521,6 +524,7 @@ static func _move_player_toward_nearest_enemy(state: GameState, player: UnitStat
 	if player.alive:
 		TileRules.finish_voluntary_move(state, player, previous)
 	tx.finish("OverloadRules._move_player_toward_nearest_enemy")
+	_RelicBattleRules.record_automatic_move_usage(state, player.uid, spent_move)
 	return player.pos != previous
 
 

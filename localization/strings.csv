@@ -31,6 +31,15 @@ battle.gem.hook_overload_hint,钩入待命 · 再次嵌入将过载,Hook ready �
 battle.gem.hook_overload_armed,钩入待命：再次嵌入将触发过载,Hook ready: insert again to overload
 battle.gem.hook_overload_done,过载钩入：已压入槽位,Overload hook inserted
 battle.gem.hook_inserted,拾荒钩已嵌入,Scavenger Hook inserted
+battle.gem.fuse_deferred,保险丝熔断：异变延迟至战后,Fuse tripped: mutation deferred until after battle
+battle.relic.swap.badge_ready,可,Ready
+battle.relic.swap.badge_used,已,Used
+battle.relic.swap.choose_first,调包：选择第一颗宝石,Swap: choose the first gem
+battle.relic.swap.choose_second,调包：选择第二颗宝石,Swap: choose the second gem
+battle.relic.swap.source_selected,已选【%s】，选择第二颗宝石,Selected [%s]; choose the second gem
+battle.relic.swap.complete,已交换【%s】与【%s】,Swapped [%s] and [%s]
+battle.relic.swap.cancelled,已取消调包,Swap cancelled
+battle.relic.swap.unavailable,当前无法调包,Swap is unavailable
 settings.section.common,常用,General
 settings.section.audio,声音,Audio
 settings.fullscreen,全屏显示,Fullscreen
@@ -103,17 +112,51 @@ event.ui.error.action,选择未能完成，请再试一次。,The choice could n
 event.ui.condition.gold,金币不足,Not Enough Gold
 event.ui.condition.hand_full,手中已有宝石,Hands Full
 event.ui.condition.unavailable,条件未满足,Unavailable
+event.option.choice.small,改一行,Rewrite one line
+event.option.choice.large,重写整页,Rewrite whole page
+event.option.choice.take,取出当前宝石,Take the gem
+event.option.choice.turn,转动嵌炉,Turn the furnace
+event.option.choice.sell_blood,出售血样,Sell blood sample
+event.option.choice.treatment,接受治疗,Accept treatment
+event.option.choice.relief,申领救济,Claim relief
+event.option.choice.buy_safe,购买稳妥拍品,Buy safe lot
+event.option.choice.buy_risky,购买冒险拍品,Buy risky lot
+event.option.choice.sign,签字领取,Sign and collect
+event.option.choice.tear,撕毁执行令,Tear up the order
+event.option.choice.stable,稳定提纯,Stable refinement
+event.option.choice.overpressure,超压提纯,Overpressure refinement
+event.option.choice.common,重铸普通遗物,Reforge common relic
+event.option.choice.rare,重铸稀有遗物,Reforge rare relic
+event.option.choice.first,注射第一针,Inject first dose
+event.option.choice.second,注射第二针,Inject second dose
+event.option.choice.open_gray,打开灰色抽屉,Open gray drawer
+event.option.choice.open_blue,打开蓝色抽屉,Open blue drawer
+event.option.choice.open_black,打开黑色抽屉,Open black drawer
+event.option.choice.hold,暂时手持,Hold for now
+event.option.choice.abandon,放弃宝石,Abandon gem
+event.option.effect.no_change,不改变当前状态,No change to current state
+event.option.effect.hold,宝石留在手中，稍后再安置,Keep the gem in hand for later
+event.option.effect.abandon,不获得这颗宝石,Do not receive this gem
+event.option.effect.toggle,把这颗普通宝石加入提纯祭品,Add this common gem to the refinement sacrifice
+event.option.effect.toggle_remove,从提纯祭品中移除这颗宝石,Remove this gem from the refinement sacrifice
+event.option.effect.confirm,永久销毁已选祭品并结算提纯结果,Permanently destroy the selected sacrifices and resolve refinement
+event.option.effect.sacrifice,永久销毁选中的遗物,Permanently destroy the selected relic
+event.option.effect.reward,从随机候选中确定一项奖励,Choose one reward from random candidates
+event.option.effect.place,嵌入空槽，或在已有槽位创建过载槽,Embed in an empty slot or create an overload slot
 gem_embed.title,嵌入宝石,Embed Gem
+gem_embed.reward_title,嵌入【{gem}】,Embed 【{gem}】
 gem_embed.tip,选择一个空槽位；也可以暂时手持。,Choose an empty slot or hold the gem for later.
 gem_embed.tip_overload,空槽可直接嵌入；已有宝石的槽位可过载嵌入。,Use an empty slot or overload an occupied slot.
 gem_embed.slot,嵌入{slot}槽,Embed in {slot} Slot
 gem_embed.slot_overload,过载嵌入{slot}槽（保留{gem}）,Overload {slot} Slot (keep {gem})
 gem_embed.later,暂时手持,Hold for Now
+gem_embed.abandon,放弃这颗宝石,Abandon Gem
 gem_embed.unavailable,该槽位当前不可用,That slot is unavailable.
 gem_embed.slot.red,红,Red
 gem_embed.slot.blue,蓝,Blue
 gem_embed.slot.black,黑,Black
 gem_embed.slot.unknown,未知,Unknown
+battle.settlement.gold_withheld,战斗结束 — 胜利 · 金币奖励已被扣押,Battle Over — Victory · Gold reward withheld
 rest.ui.title,营地,Camp
 rest.ui.subtitle,夜色将深，篝火仍暖。,Night deepens; the fire stays warm.
 rest.ui.safe,暂得安宁,A moment of safety
@@ -186,7 +229,7 @@ gem.effect.poison.enemy_red_action,触发：自身格制造毒雾,Trigger: creat
 gem.effect.poison.blue_damaged,被动：接触施加 1 层毒；2 级回合结束向最近未中毒友方传 1 层毒,Passive: inflict 1 poison stack on contact; at level 2, spread 1 poison stack to the nearest clean ally at turn end
 gem.effect.poison.black_death,死亡：周围制造毒雾,Death: create poison fog nearby
 gem.effect.gravity.player_skill,引力：将目标拉向自己，碰撞造成 {damage} 伤害,Gravity: pull the target toward you and deal {damage} collision damage
-gem.effect.gravity.unit_red_active,触发：普通攻击范围随等级 +0/+1/+2；命中后将周围 2 格单位拉扯 1/2/3 步,Trigger: basic attack range gains +0/+1/+2; on hit pull units within 2 tiles by 1/2/3 steps
+gem.effect.gravity.unit_red_active,触发：普通攻击范围随等级 +1/+2/+3；命中后将周围 2 格单位拉扯 1/2/3 步,Trigger: basic attack range gains +1/+2/+3; on hit pull units within 2 tiles by 1/2/3 steps
 gem.effect.gravity.enemy_red_action,引力攻击：普通攻击命中后拉近目标,Gravity Attack: pull the target closer after a normal attack
 gem.effect.gravity.black_death,死亡：周围 2 格拉扯,Death: pull nearby units within 2 tiles
 gem.effect.heavy_armor.player_skill,重甲：给自己加 3 点护甲（2 回合）,Heavy Armor: gain 3 armor for 2 turns

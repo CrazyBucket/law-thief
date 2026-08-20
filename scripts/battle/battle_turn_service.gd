@@ -46,6 +46,8 @@ func begin_enemy_phase() -> Dictionary:
 	StatusRules.consume_disarm(ending_player)
 	RelicBattleRules.finish_movement_window(ctrl.state, ending_player.uid if ending_player != null else "")
 	ctrl.state.clear_split_move()
+	ctrl.clear_swap_selection()
+	ctrl.selected_action = Constants.ACTION_NONE
 	# 若队列中还有待操控单位，切换后继续玩家回合
 	if _try_activate_next_controllable(ctrl):
 		RelicBattleRules.begin_next_controllable(ctrl.state)
@@ -65,7 +67,7 @@ func begin_enemy_phase() -> Dictionary:
 		ctrl._emit_changed()
 		return {"events": events, "presentation_state": presentation_state}
 	ctrl.state.phase = Constants.PHASE_ENEMY
-	ctrl.selected_action = ""
+	ctrl.selected_action = Constants.ACTION_NONE
 	OverloadRules.activate_pending(ctrl.state)
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl._emit_changed()
@@ -169,12 +171,15 @@ func finish_enemy_phase() -> Dictionary:
 	if ctrl.state.get_player() != null:
 		ctrl.selected_unit_uid = ctrl.state.player_uid
 	_apply_move_bonus(ctrl.state)
+	# 回合标记和移动账本必须先于任何回合开始自动行动初始化。
+	# 过载 AI 接管可能执行拔取和移动，沿用上回合标记会漏触发赝品，
+	# 在移动后才建账则会让飞轮重复计算已经消耗的移动力。
+	RelicBattleRules.begin_player_turn(ctrl.state)
 	var overload_result: Dictionary = OverloadRules.tick_turn_start(ctrl.state)
 	events.append_array(overload_result.get("events", [] as Array[Dictionary]))
 	IntentSystem.refresh_all_intents(ctrl.state)
 	ctrl.state.log("敌方回合结束")
 	ctrl.state.on_turn_start.emit(ctrl.state.turn_index)
-	RelicBattleRules.begin_player_turn(ctrl.state)
 	ctrl._check_battle_end()
 	var auto_enemy_execution: Dictionary = {}
 	var player: UnitState = ctrl.state.get_player()
@@ -408,6 +413,7 @@ func _append_split_merge_overload_slot(origin: UnitState, source_slot: SlotState
 	)
 	target.dual_type = source_slot.dual_type
 	target.overload_slot = true
+	target.overload_mutation_deferred = source_slot.overload_mutation_deferred
 	origin.slots.append(target)
 	return target
 

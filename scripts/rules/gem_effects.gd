@@ -368,10 +368,15 @@ static func red_attack_range(state: GameState, unit: UnitState, base_range: int 
 		return Constants.BOARD_SIZE.x + Constants.BOARD_SIZE.y
 	return base_range + red_attack_range_bonus(state, unit)
 
-static func gravity_pull_range(state: GameState, unit: UnitState, base_range: int = -1) -> int:
-	if base_range < 0:
-		base_range = CombatConfig.enemy_gravity_pull_range()
-	return base_range + red_attack_range_bonus(state, unit)
+
+static func enemy_normal_attack_base_range(state: GameState, unit: UnitState, from_pos: Vector2i) -> int:
+	if state == null or unit == null:
+		return 1
+	var behavior := _behavior_for(unit)
+	if behavior == null:
+		return 1
+	return maxi(1, int(behavior.normal_attack_base_range(state, unit, from_pos)))
+
 
 static func on_red_action(state: GameState, unit: UnitState, intent: IntentState) -> Array[Dictionary]:
 	var slot := unit.get_slot(Constants.SLOT_RED)

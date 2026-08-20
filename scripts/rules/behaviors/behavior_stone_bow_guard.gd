@@ -67,3 +67,10 @@ static func ranged_attack_context(
 		"max_range": StoneBowGuardRules.attack_range_for(move_start_pos, intent_path),
 		"payload": payload,
 	}
+
+
+static func normal_attack_base_range(_state: GameState, unit: UnitState, from_pos: Vector2i) -> int:
+	var move_path: Array[Vector2i] = []
+	if from_pos != unit.pos:
+		move_path.append(from_pos)
+	return StoneBowGuardRules.attack_range_for(unit.pos, move_path)
