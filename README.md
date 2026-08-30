@@ -1,6 +1,6 @@
 # Law Thief
 
-窃律者 Godot MVP 项目 — 8×8 战术嫁祸战棋原型。
+尝试用AI做个肉鸽游戏玩。
 
 ## 环境
 
@@ -24,8 +24,6 @@ godot --path .
 AI / 日常开发优先使用统一入口：
 
 ```bash
-./tools/context 爆炸
-./tools/design topic '爆炸|槽位' --copy
 ./tools/design affected
 ./tools/snapshot --gems gem_explosion,gem_explosion,gem_explosion
 ./tools/verify test explosion_test
@@ -42,9 +40,6 @@ AI 的相关章节；`copy combat` 或 `copy chat` 会生成并复制单文件�
 `./tools/design refresh`。Windows PowerShell / CMD 使用等价的
 `tools\design.cmd ...`，不依赖 WSL。
 
-`verify test` 是日常首选，只运行明确指定的测试；`verify changed` 按改动领域选择测试。无参数执行 `verify` 也等价于 `changed`，不会默认跑大套件。`fast` 仅用于有明确跨系统风险的改动，`all` 默认只在 CI 或明确要求时运行，`manual` 只运行压力/调试探针。加 `--list` 可只查看选择结果而不启动 Godot。所有 `verify` 模式都会执行语义契约校验和覆盖检查，默认覆盖率基线为 87.17%；只有在明确审计历史基线时才用 `SEMANTIC_COVERAGE_MIN=<值> ./tools/coverage` 临时覆盖。`fast` 默认总耗时预算为 240 秒，可用 `VERIFY_FAST_MAX_SECONDS` 调整。
-
-CI 会同时 checkout `CrazyBucket/learning-notes` 作为设计权威源；仓库变量 `DESIGN_REPOSITORY_REF` 可把权威源固定到指定分支、标签或提交（默认 `main`）。若该仓库不是公开仓库，需要配置只读 Actions secret `LEARNING_NOTES_TOKEN`。CI 中设计源缺失会直接失败，不再跳过设计同步检查。
 
 主场景无头启动：
 
@@ -148,34 +143,3 @@ export encounter custom_level_001
 ```bash
 godot --headless --path . --script res://scripts/tests/hook_test.gd
 ```
-
-## MVP 内容
-
-- 8×8 棋盘、单角色、4 种怪物、6 种宝石、2 种地块
-- 三色槽位：红（行为）/ 蓝（属性）/ 黑（死亡）
-- 操作：移动、攻击、拔出、嵌入、触发
-- 敌人意图预览、危险格高亮
-- 1 场教学 + 3 场模板战斗
-
-## 美术
-
-原型阶段不需要专门美术。使用色块、Control UI 和高亮格子表达战场信息。
-
-若要做更接近「游戏感」的快速 demo（可选），可用的外部素材备忘见：**[docs/demo-assets.md](./docs/demo-assets.md)**。
-
-## 目录
-
-```
-scripts/
-  battle/       # 回合流程
-  data/         # 状态模型
-  rules/        # 规则引擎
-  services/     # Autoload 服务（存档/成就等为壳）
-  ui/           # 战斗 UI
-  tests/        # 无头测试
-scenes/
-  main/         # 主菜单
-  battle/       # 战斗场景
-```
-
-设计文档见 learning-notes 仓库：`game/design/law-thief/`。
