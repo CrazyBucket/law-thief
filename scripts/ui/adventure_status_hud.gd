@@ -11,6 +11,9 @@ var _hp_bar: ProgressBar = null
 var _hp_value: Label = null
 var _last_signature := ""
 var _layout_viewport_size := Vector2.ZERO
+var _gold_feedback_active := false
+var _gold_feedback_value := 0
+var _gold_feedback_tween: Tween = null
 
 
 func _ready() -> void:
@@ -124,7 +127,8 @@ func _refresh() -> void:
 	if signature == _last_signature:
 		return
 	_last_signature = signature
-	_gold_value.text = str(gold)
+	if not _gold_feedback_active:
+		_gold_value.text = str(gold)
 	_hp_bar.max_value = maximum
 	_hp_bar.value = clampi(current, 0, maximum)
 	_hp_bar.add_theme_stylebox_override(
@@ -132,6 +136,49 @@ func _refresh() -> void:
 		BattleUiTheme.bar_fill_style(BattleUiTheme.hp_fill_color(float(current) / float(maximum)))
 	)
 	_hp_value.text = "%d / %d" % [current, maximum]
+
+
+func gold_target_global_position() -> Vector2:
+	if _gold_value == null or not is_instance_valid(_gold_value):
+		return Vector2(270, 48)
+	return _gold_value.get_global_rect().get_center()
+
+
+func begin_gold_gain_feedback(previous_value: int) -> void:
+	if _gold_value == null or not is_instance_valid(_gold_value):
+		return
+	_gold_feedback_active = true
+	_gold_feedback_value = maxi(0, previous_value)
+	_gold_value.text = str(_gold_feedback_value)
+
+
+func apply_gold_arrival(amount: int) -> void:
+	if _gold_value == null or not is_instance_valid(_gold_value):
+		return
+	_gold_feedback_value += maxi(0, amount)
+	_gold_value.text = str(_gold_feedback_value)
+	if _gold_feedback_tween != null and _gold_feedback_tween.is_valid():
+		_gold_feedback_tween.kill()
+	_gold_value.pivot_offset = _gold_value.size * 0.5
+	_gold_value.scale = Vector2.ONE
+	_gold_value.add_theme_color_override("font_color", Color("#fff0a8"))
+	_gold_feedback_tween = create_tween()
+	_gold_feedback_tween.tween_property(_gold_value, "scale", Vector2(1.22, 1.22), 0.055)
+	_gold_feedback_tween.tween_property(_gold_value, "scale", Vector2.ONE, 0.10)
+	_gold_feedback_tween.tween_callback(_restore_gold_feedback_color)
+
+
+func finish_gold_gain_feedback() -> void:
+	_gold_feedback_active = false
+	_gold_feedback_value = RunService.get_balance("gold")
+	if _gold_value != null and is_instance_valid(_gold_value):
+		_gold_value.text = str(_gold_feedback_value)
+	_restore_gold_feedback_color()
+
+
+func _restore_gold_feedback_color() -> void:
+	if _gold_value != null and is_instance_valid(_gold_value):
+		_gold_value.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 
 
 func _apply_layout() -> void:

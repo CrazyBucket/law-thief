@@ -64,7 +64,7 @@ static func build_lawless_intent(state: GameState, unit: UnitState, cell_blocker
 		intent.preview_text = "失律夺回宝石"
 		return intent
 	intent.path = BoardUtils.path_toward(
-		state, unit.pos, target_pos, unit.move_points, unit.uid, {}, cell_blockers, unit
+		state, unit.pos, target_pos, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit
 	)
 	intent.target_pos = intent.path.back() if not intent.path.is_empty() else unit.pos
 	if target_uid != "" and BoardUtils.manhattan(intent.target_pos, target_pos) == 1:

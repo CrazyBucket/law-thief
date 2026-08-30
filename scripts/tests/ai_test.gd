@@ -15,6 +15,7 @@ func _run_test() -> void:
 	_test_patrol_guard_crosses_poison_fog_to_attack()
 	_test_enemy_turn_execution()
 	_test_multi_enemy_coordination()
+	_test_slowed_enemy_uses_effective_move_budget()
 	_test_enemy_extra_action_consumes_bonus()
 	print("AI_TEST_PASS")
 	quit()
@@ -131,6 +132,35 @@ func _test_multi_enemy_coordination() -> void:
 	controller.finish_enemy_phase()
 	assert(state.phase == Constants.PHASE_PLAYER or state.phase == Constants.PHASE_ENDED)
 	print("  [OK] %d enemies completed turn" % enemies.size())
+
+
+func _test_slowed_enemy_uses_effective_move_budget() -> void:
+	var builder := Builder.new("fission_slime_test", 9921, true)
+	var player := builder.player()
+	builder.clear_slots(player)
+	builder.move(player, Vector2i(7, 3))
+	var enemy := builder.add_unit("slowed_enemy", "unit_patrol_guard", Constants.TEAM_ENEMY, Vector2i(1, 3), {
+		"move_points": 3,
+	})
+	builder.clear_slots(enemy)
+	var state := builder.finish()
+	StatusRules.apply_slowed(state, enemy, 1, player.uid)
+	var decision: Dictionary = EnemyAI.decide(state, enemy)
+	var path: Array[Vector2i] = decision.get("move_path", [] as Array[Vector2i])
+	assert(path.size() <= 2, "one slow stack should cap a 3-MP enemy plan at two steps")
+	enemy.intent = IntentSystem.enemy_intent_from_decision(state, enemy, decision)
+	IntentSystem.execute_intent(state, enemy)
+	assert(BoardUtils.manhattan(Vector2i(1, 3), enemy.pos) <= 2, "enemy execution should not exceed its slowed movement budget")
+
+	StatusRules.apply_slowed(state, enemy, 3, player.uid, 0)
+	decision = EnemyAI.decide(state, enemy)
+	path = decision.get("move_path", [] as Array[Vector2i])
+	assert(path.is_empty(), "zero-floor slow should prevent an enemy from planning movement")
+	var before := enemy.pos
+	enemy.intent = IntentSystem.enemy_intent_from_decision(state, enemy, decision)
+	IntentSystem.execute_intent(state, enemy)
+	assert(enemy.pos == before, "zero-floor slow should prevent enemy movement during execution")
+	print("  [OK] slowed enemies use effective movement budgets")
 
 
 func _test_enemy_extra_action_consumes_bonus() -> void:

@@ -1,7 +1,7 @@
 {
   "event_debug_cache": {
     "title": "废弃缓存",
-    "body": "你在墙缝里找到一处旧补给缓存，可以立刻换成金币，或者安装一段增益脚本。",
+    "body": "酸雨剥蚀的混凝土墙缝里，卡着一处前纪元紧急卡槽。\n\n失压开裂的卡槽散发着焦糊味，里面有一袋坚挺的硬币，以及一块微弱闪烁的战术微盘。",
     "options": [
       {
         "id": "take_gold",
@@ -9,7 +9,8 @@
         "conditions": [],
         "effects": [
           {"action": "grant_resource", "resource_id": "gold", "amount_ref": "event_debug_cache_gold"}
-        ]
+        ],
+        "description": "抠出沉甸甸的钱袋塞进挎包，现钱永远比代码靠谱。"
       },
       {
         "id": "install_rule",
@@ -17,13 +18,14 @@
         "conditions": [],
         "effects": [
           {"action": "add_adventure_rule", "rule_id": "map_rule_gold_gain_10"}
-        ]
+        ],
+        "description": "将微盘刺入战术终端，忍受报错提示强行写入资源协议。"
       }
     ]
   },
   "event_debug_relief": {
     "title": "路边补给",
-    "body": "一名倒霉商人留下了几枚硬币和一包简陋急救用品。",
+    "body": "路边躺着半截烧毁的荒野突击车，周围散落着过期补给包。\n\n死透的商人怀里死死塞着几枚硬币，旁边还扔着一包带有辐射封印的应急止痛针。",
     "options": [
       {
         "id": "take_gold",
@@ -31,7 +33,8 @@
         "conditions": [],
         "effects": [
           {"action": "grant_resource", "resource_id": "gold", "amount_ref": "event_debug_relief_gold"}
-        ]
+        ],
+        "description": "掰开死者僵硬的手指，将那些沾满血污的旧硬币据为己有。"
       },
       {
         "id": "heal",
@@ -39,13 +42,14 @@
         "conditions": [],
         "effects": [
           {"action": "heal_player", "amount_ref": "event_debug_relief_heal"}
-        ]
+        ],
+        "description": "撕开封印将止痛针推进静脉，强行压制躯体的剧烈痛楚。"
       }
     ]
   },
   "event_debug_toll": {
     "title": "收费闸机",
-    "body": "一台还在运转的旧闸机要求你缴纳 {amount_ref:event_debug_toll_cost} 金币，否则什么都不给。",
+    "body": "防空洞出口伫立着一座半埋在渣土中的自动防御闸机。\n\n警示红灯疯狂闪烁，机械音伴着杂音重复：请投入 {amount_ref:event_debug_toll_cost} 硬币解锁洗消与治疗功能，否则禁止通行。",
     "options": [
       {
         "id": "pay_for_heal",
@@ -56,13 +60,15 @@
         "effects": [
           {"action": "spend_resource", "resource_id": "gold", "amount_ref": "event_debug_toll_cost"},
           {"action": "heal_player", "amount_ref": "event_debug_toll_heal"}
-        ]
+        ],
+        "description": "将硬币塞进投币口，接受高温洗消雾气与治疗喷雾的洗礼。"
       },
       {
         "id": "leave",
         "label": "转身离开",
         "conditions": [],
-        "effects": []
+        "effects": [],
+        "description": "拒绝敲诈，捂紧钱包绕开警报声大作的金属闸口。"
       }
     ]
   },
@@ -71,7 +77,7 @@
     "nodes": {
       "start": {
         "title": "塌墙后的储藏室",
-        "body": "潮湿的墙砖后藏着一只旧铁箱。里面有一袋钱，也有几包还能使用的药粉。",
+        "body": "坍塌的防空砖墙后露出一截生锈的铁箱。\n\n箱盖被一把钝斧撬开过，里面躺着一袋旧纪元金币，还有几包未拆封的军用抗辐射药粉。",
         "options": [
           {
             "id": "take_gold",
@@ -101,14 +107,14 @@
       },
       "gold_taken": {
         "title": "旧日积蓄",
-        "body": "钱袋比看起来更沉。你收好金币，把空铁箱推回阴影里。",
+        "body": "沉甸甸的钱袋撞击出冰冷的声音。\n\n你把硬币收进口袋，顺手拉过一旁废弃的铁板，将铁箱重新掩埋在尘土里。",
         "options": [
           {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
         ]
       },
       "medicine_used": {
         "title": "苦涩药粉",
-        "body": "药粉带着铁锈味，但伤口很快止住了血。",
+        "body": "药粉散发着一股刺鼻的化学异味。\n\n咽下药粉后胃里一阵剧烈翻腾，但溃烂伤口处的灼烧感确实开始迅速褪去。",
         "options": [
           {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
         ]
@@ -120,7 +126,7 @@
     "nodes": {
       "start": {
         "title": "巷口的医生",
-        "body": "一名蒙面医生守着便携药箱。他不问来历，只在木牌上写下价钱。",
+        "body": "污浊的小巷深处坐着一名戴着鸟嘴防毒面具的无牌黑医生。\n\n他身旁放着一只沾满血迹的便携诊箱，面前的木板上粗暴地标着治疗与缝合的明码标价。",
         "options": [
           {
             "id": "pay_for_treatment",
@@ -151,14 +157,14 @@
       },
       "treated": {
         "title": "干净的绷带",
-        "body": "医生动作利落。最后一个绷带结打好时，他已经开始收拾药箱。",
+        "body": "黑医生的手艺异常娴熟。\n\n在将粗线扎紧并用劣质酒精洗消伤口后，他麻利地收下金币，重新隐入阴影中。",
         "options": [
           {"id": "leave", "label": "道谢后离开", "conditions": [], "calls": [], "finish": true}
         ]
       },
       "declined": {
         "title": "各走各路",
-        "body": "医生没有挽留，只把木牌翻回空白的一面。",
+        "body": "黑医生并没有多说什么。\n\n他只是冷冷地收回视线，重新将鸟嘴面具靠在墙壁上，继续等待下一个濒死的落脚者。",
         "options": [
           {"id": "leave", "label": "离开", "conditions": [], "calls": [], "finish": true}
         ]
@@ -170,7 +176,7 @@
     "nodes": {
       "start": {
         "title": "熄灭的嵌炉",
-        "body": "废弃工坊中央，一颗爆炸宝石仍卡在冷却的嵌炉里。旁边的废料抽屉没有上锁。",
+        "body": "废弃兵工厂深处伫立着一座开裂的重型重铸炉。\n\n炉腔中央还卡着一颗脉动着高危能量的爆炸宝石，旁边的零件抽屉则散落着一些零碎金属。",
         "options": [
           {
             "id": "take_gem",
@@ -202,14 +208,14 @@
       },
       "gem_taken": {
         "title": "尚存余温",
-        "body": "宝石离开嵌炉时闪了一下。你握紧它，直到那点危险的余温平静下来。",
+        "body": "你用隔热钳撬出了那颗结晶。\n\n宝石在你掌心中发出危险的高频震颤，散发着刺骨的毁灭性余温。",
         "options": [
           {"id": "leave", "label": "离开工坊", "conditions": [], "calls": [], "finish": true}
         ]
       },
       "gold_taken": {
         "title": "零碎收获",
-        "body": "抽屉里只有一些被遗忘的零钱。至少它们比那颗不安分的宝石可靠。",
+        "body": "你在抽屉底部的废渣里抠出了几枚未融化的金硬币。\n\n至少这比随时会引爆的危险宝石安全得多。",
         "options": [
           {"id": "leave", "label": "离开工坊", "conditions": [], "calls": [], "finish": true}
         ]
@@ -218,47 +224,47 @@
   },
   "event_misaccounting_scribe": {
     "title": "错账抄写员",
-    "body": "抄写员愿意替你改动查封账册。",
+    "body": "阴暗的据点废墟里，一名戴着老花镜的破产抄写员正在翻看查封账册。\n\n他压低声音向你示意：只要润笔费到位，他能在废土治安官的追缴清单上把你的名字涂掉。",
     "options": []
   },
   "event_sealed_gem_furnace": {
     "title": "被查封的嵌炉",
-    "body": "炉内三颗宝石依次等待取出。",
+    "body": "这座大型熔炉贴满了警示符章与废弃封条。\n\n密封玻璃罩后，三颗散发着剧烈能量波动的高阶宝石正按顺序搁置在退火轨道上。",
     "options": []
   },
   "event_injury_appraisal": {
     "title": "伤势估价所",
-    "body": "这里收购血样，也按价处理伤口。",
+    "body": "这家黑诊所里飘着消毒水与陈腐血腥的恶臭。\n\n戴防毒面具的黑医生靠在锈斑解剖台旁，机械义眼剧烈咔哒聚焦。这里的逻辑简单粗暴：活人鲜血是合成药剂的原料，而伤口不过是待价而沽的商品。\n\n你可以拧干血管换成硬币，或者花钱让他用劣质镇痛剂与粗线强行缝补你的破烂躯体。",
     "options": []
   },
   "event_counterfeit_auction": {
     "title": "赝品拍卖会",
-    "body": "两件蒙布拍品真假难辨。",
+    "body": "黑市地下室里正聚集着一群不怀好意的拾荒者。\n\n台上的拍卖师展示着两件盖着厚重防尘布的战遗物品，谁也不知道里面是神器还是废铁。",
     "options": []
   },
   "event_preliminary_execution_order": {
     "title": "先予执行令",
-    "body": "现在领钱，之后两场战斗的赏金归执行官。",
+    "body": "一名身穿外骨骼战甲的赏金执行官拦住了你的去路。\n\n他抛给你一袋预付预支的现款：现在拿钱活命，但接下来两场战斗的斩首赏金必须全额归他。",
     "options": []
   },
   "event_slag_refiner": {
     "title": "熔渣提纯机",
-    "body": "普通宝石可以在这里提纯为高阶结晶。",
+    "body": "轰鸣的工业废渣提纯终端仍在超载运转。\n\n只要将低阶结晶扔进高压熔炉中，强烈的粒子辐照就能将其提纯为高纯度的战术结晶。",
     "options": []
   },
   "event_unlicensed_reforge": {
     "title": "无证重铸台",
-    "body": "投入一件遗物，重铸成同稀有度的新遗物。",
+    "body": "一台由旧时代三维打印机与高频切削刃拼凑出来的重铸装置。\n\n它的安全阀已被拆除，投入一件遗物，强行高热分子重组，能随机重铸出同等稀有度的崭新遗物。",
     "options": []
   },
   "event_alley_anesthetist": {
     "title": "街巷麻醉师",
-    "body": "两支针剂的结果在进入巷口时已经确定。",
+    "body": "恶臭巷口里站着一名推着违禁药品的流浪麻醉师。\n\n他手里拿着两支没有任何标签的试剂针，冷笑着告诉你：结局早在你踏入这堵墙时就已经决定了。",
     "options": []
   },
   "event_evidence_cabinet": {
     "title": "三级证物柜",
-    "body": "灰、蓝、黑三层抽屉对应不同价位与奖池。",
+    "body": "旧时代废弃治安局的地下保管库里，矗立着一座高耸的重型三级证物柜。\n\n灰、蓝、黑三层防护锁对应着不同规格的解锁开锁成本，以及截然不同的风险奖池。",
     "options": []
   }
 }

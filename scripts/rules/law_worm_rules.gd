@@ -35,7 +35,8 @@ static func compute_law_worm_intent(
 	intent.target_uid = str(target.get("gem_uid", ""))
 	intent.target_pos = target.get("pos", unit.pos)
 	var full_path: Array[Vector2i] = target.get("path", [] as Array[Vector2i])
-	intent.path = full_path.slice(0, mini(unit.move_points, full_path.size()))
+	var move_budget := StatusRules.effective_move_points(unit, unit.move_points)
+	intent.path = full_path.slice(0, mini(move_budget, full_path.size()))
 	var reaches_drop := unit.pos == intent.target_pos \
 		or (not intent.path.is_empty() and intent.path[-1] == intent.target_pos)
 	intent.type = "law_worm_consume" if reaches_drop else "law_worm_seek"
@@ -166,6 +167,10 @@ static func _nearest_reachable_drop(
 
 
 static func _wander_intent(state: GameState, unit: UnitState, cell_blockers: Dictionary) -> IntentState:
+	if not StatusRules.can_move(unit) or StatusRules.effective_move_points(unit, unit.move_points) <= 0:
+		var wait := IntentState.wait(unit.uid)
+		wait.preview_text = "蜷伏"
+		return wait
 	var candidates: Array[Vector2i] = []
 	for cell in BoardUtils.neighbors4(unit.pos):
 		if BoardUtils.unit_footprint_passable(state, unit, cell, unit.uid, cell_blockers):

@@ -115,11 +115,12 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 	var turn_start: Vector2i = enemy.pos
 	var current_dist: int = BoardUtils.distance_between_units(enemy, player)
 	var can_shoot_here: bool = can_shoot_from_anchor(state, enemy, turn_start, player, [])
+	var move_budget := StatusRules.effective_move_points(enemy, enemy.move_points)
 
 	var reachable: Array[Vector2i] = []
 	if StatusRules.can_move(enemy):
 		reachable = BoardUtils.reachable_cells(
-			state, enemy.pos, enemy.move_points, enemy.uid, {}, cell_blockers, enemy
+			state, enemy.pos, move_budget, enemy.uid, {}, cell_blockers, enemy
 		)
 	reachable.append(enemy.pos)
 
@@ -129,7 +130,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 			continue
 		if move_pos != enemy.pos:
 			var move_path := BoardUtils.path_toward(
-				state, enemy.pos, move_pos, enemy.move_points, enemy.uid, {}, cell_blockers, enemy
+				state, enemy.pos, move_pos, move_budget, enemy.uid, {}, cell_blockers, enemy
 			)
 			if move_path.is_empty() or move_path[move_path.size() - 1] != move_pos:
 				continue
@@ -147,7 +148,7 @@ static func decide(state: GameState, enemy: UnitState, cell_blockers: Dictionary
 		var move_path: Array[Vector2i] = []
 		if move_pos != enemy.pos:
 			move_path = BoardUtils.path_toward(
-				state, enemy.pos, move_pos, enemy.move_points, enemy.uid, {}, cell_blockers
+				state, enemy.pos, move_pos, move_budget, enemy.uid, {}, cell_blockers
 			)
 			if move_path.is_empty():
 				continue
@@ -440,6 +441,6 @@ static func _build_decision_from_best_candidate(
 	var result_path: Array[Vector2i] = []
 	if best.move_target != enemy.pos and best.type != _EnemyAI.ActionType.WAIT:
 		result_path = BoardUtils.path_toward(
-			state, enemy.pos, best.move_target, enemy.move_points, enemy.uid, {}, cell_blockers
+			state, enemy.pos, best.move_target, StatusRules.effective_move_points(enemy, enemy.move_points), enemy.uid, {}, cell_blockers
 		)
 	return {"move_path": result_path, "action": best}

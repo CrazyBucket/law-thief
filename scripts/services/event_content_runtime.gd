@@ -216,7 +216,7 @@ static func _scribe_view(view: Dictionary) -> Dictionary:
 	var small_damage: int = [7, 8, 9][chapter - 1]
 	var small_ranges := [[35, 55], [50, 80], [80, 120]]
 	var large_ranges := [[70, 100], [100, 140], [130, 180]]
-	view["body"] = "抄写员正把一箱箱查封物誊进总账，墨水里混着能改写数字的灰粉。\n\n你可以只动一行，失败时伤到自己；也可以重写整页，赌监察印不会落下。"
+	view["body"] = "阴暗的据点废墟里，一名戴着老花镜的破产抄写员正在翻看查封账册。\n\n他压低声音向你示意：只要润笔费到位，他能在废土治安官的追缴清单上把你的名字涂掉。"
 	view["options"] = [
 		_option("small", "改一行：75%% 获得 %d～%d 金币；25%% 失去 %d HP" % [small_ranges[chapter - 1][0], small_ranges[chapter - 1][1], small_damage]),
 	]
@@ -234,7 +234,7 @@ static func _furnace_view(view: Dictionary, state: Dictionary) -> Dictionary:
 	var chapter := RunService.get_current_chapter()
 	var damage := 8 if chapter == 2 else 9
 	var has_crowbar := RunService.has_relic("relic_crowbar")
-	view["body"] = "封条把嵌炉锁在墙里，观察窗只露出最前面的【%s】。\n\n后面还压着两颗看不见的宝石；取走当前一颗，或花钱让炉膛继续转动。" % DataRegistry.get_gem_display_name(gem_id)
+	view["body"] = "这座大型熔炉贴满了警示符章与废弃封条。\n\n密封玻璃罩后，三颗散发着剧烈能量波动的高阶宝石正按顺序搁置在退火轨道上。\n\n观察窗当前露出【%s】；你可以取走它，或花钱让炉膛继续转动。" % DataRegistry.get_gem_display_name(gem_id)
 	view["options"] = [
 		_option("take", "撬开封条，获得当前宝石" if has_crowbar else "徒手取石：失去 %d HP，获得当前宝石" % damage),
 	]
@@ -256,7 +256,7 @@ static func _injury_view(view: Dictionary, state: Dictionary) -> Dictionary:
 	var damages := [8, 9, 10]
 	var costs := [30, 45, 60]
 	var heals := [16, 20, 24]
-	view["body"] = "柜台后的估价师不问姓名，只用镊子检查你身上的伤口。\n\n新鲜血样可以换成金币，旧伤则能按章缝合；每一种报价都只对今天有效。"
+	view["body"] = "这家黑诊所里飘着消毒水与陈腐血腥的恶臭。\n\n戴防毒面具的黑医生靠在锈斑解剖台旁，机械义眼剧烈咔哒聚焦。这里的逻辑简单粗暴：活人鲜血是合成药剂的原料，而伤口不过是待价而沽的商品。\n\n你可以拧干血管换成硬币，或者花钱让他用劣质镇痛剂与粗线强行缝补你的破烂躯体。"
 	view["options"] = [
 		_option("sell_blood", "出售血样：失去 %d HP，获得 %d 金币" % [damages[chapter - 1], int(data.get("blood_gold", 0))], ratio >= 0.60, "当前生命需达到 60%"),
 	]
@@ -273,7 +273,7 @@ static func _injury_view(view: Dictionary, state: Dictionary) -> Dictionary:
 static func _auction_view(view: Dictionary, state: Dictionary) -> Dictionary:
 	var data: Dictionary = state.get("data", {})
 	var can_identify := RunService.has_relic("relic_vernier_caliper")
-	view["body"] = "地下拍卖场只亮着一盏灯，两件蒙布拍品在台上等着落槌。\n\n拍卖师承认其中可能有赝品：稳妥的那件更便宜，冒险的那件可能藏着稀有遗物。"
+	view["body"] = "黑市地下室里正聚集着一群不怀好意的拾荒者。\n\n台上的拍卖师展示着两件盖着厚重防尘布的战遗物品，谁也不知道里面是神器还是废铁。"
 	var safe_truth := "（%s）" % ("真品" if bool(data.get("safe_real", false)) else "赝品") if can_identify else ""
 	var risky_truth := "（%s）" % ("真品" if bool(data.get("risky_real", false)) else "赝品") if can_identify else ""
 	var safe_price := int(data.get("safe_price", 0))
@@ -288,7 +288,7 @@ static func _auction_view(view: Dictionary, state: Dictionary) -> Dictionary:
 
 static func _execution_view(view: Dictionary, state: Dictionary) -> Dictionary:
 	var payout := int((state.get("data", {}) as Dictionary).get("payout", 0))
-	view["body"] = "一张没有债主姓名的执行令已经盖章，金币箱就在桌边等你签字。\n\n现在拿走 %d 金币，之后两场胜利的赏金会被执行官逐笔扣下。" % payout
+	view["body"] = "一名身穿外骨骼战甲的赏金执行官拦住了你的去路。\n\n他抛给你一袋预付预支的现款：现在拿钱活命，但接下来两场战斗的斩首赏金必须全额归他。\n\n签字后，你将领取 %d 金币。" % payout
 	view["options"] = [
 		_option("sign", "签字领取 %d 金币" % payout),
 		_option("tear", "撕毁执行令"),
@@ -298,7 +298,7 @@ static func _execution_view(view: Dictionary, state: Dictionary) -> Dictionary:
 
 static func _refiner_view(view: Dictionary) -> Dictionary:
 	var common_count := _destructible_gems("common").size()
-	view["body"] = "熔渣提纯机的炉膛还在发红，普通宝石投入后会被烧成高阶结晶。\n\n稳定档需要两颗祭品，超压档只要一颗，但失败时坩埚会连灰都不剩。"
+	view["body"] = "轰鸣的工业废渣提纯终端仍在超载运转。\n\n只要将低阶结晶扔进高压熔炉中，强烈的粒子辐照就能将其提纯为高纯度的战术结晶。\n\n稳定档需要两颗祭品，超压档只要一颗，但失败时坩埚会连灰都不剩。"
 	view["options"] = [
 		_option("stable", "稳定提纯：指定销毁 2 颗普通宝石，随后二选一", common_count >= 2, "普通宝石不足"),
 		_option("overpressure", "超压提纯：指定销毁 1 颗普通宝石；45% 获得稀有宝石", common_count >= 1, "没有可用的普通宝石"),
@@ -312,7 +312,7 @@ static func _reforge_view(view: Dictionary) -> Dictionary:
 	var rare_relics := _owned_relics_of_rarity("rare")
 	var common_pool := _relic_candidates("common")
 	var rare_pool := _relic_candidates("rare")
-	view["body"] = "私接电缆让重铸台重新转动，熔炉只接受一件遗物作为代价。\n\n普通遗物会盲抽替换，稀有遗物则给你三件候选；BOSS 遗物不在这张桌上。"
+	view["body"] = "一台由旧时代3D打印机与高频切削刃拼凑出来的重铸装置。\n\n它的安全阀已被拆除，投入一件遗物，强行高热分子重组，能随机重铸出同等稀有度的崭新遗物。\n\n普通遗物会盲抽替换，稀有遗物则给你三件候选；BOSS 遗物不在这张桌上。"
 	view["options"] = [
 		_option("common", "重铸普通遗物：指定销毁 1 件，随机获得 1 件普通遗物", not common_relics.is_empty() and not common_pool.is_empty(), "没有可重铸的普通遗物或结果"),
 		_option("rare", "重铸稀有遗物：指定销毁 1 件，从 3 件稀有遗物中选择 1 件", not rare_relics.is_empty() and not rare_pool.is_empty(), "没有可重铸的稀有遗物或结果"),
@@ -331,7 +331,7 @@ static func _anesthetist_view(view: Dictionary, state: Dictionary) -> Dictionary
 			_option("stop", "到此为止"),
 		]
 	else:
-		view["body"] = "麻醉师在巷口支起一盏冷灯，两支无标签针剂并排躺在布垫上。\n\n第一针可能止住疼痛，也可能让伤口裂开；如果你继续，第二针会更强，也更危险。"
+		view["body"] = "恶臭巷口里站着一名推着违禁药品的流浪麻醉师。\n\n他手里拿着两支没有任何标签的试剂针，冷笑着告诉你：结局早在你踏入这堵墙时就已经决定了。\n\n第一针可能止住疼痛，也可能让伤口裂开；如果你继续，第二针会更强，也更危险。"
 		view["options"] = [
 			_option("first", "注射第一针：65% 恢复 12 HP；35% 失去 7 HP", hp >= 8, "当前生命至少需要 8"),
 			_option("leave", "离开"),
@@ -342,7 +342,7 @@ static func _anesthetist_view(view: Dictionary, state: Dictionary) -> Dictionary
 static func _cabinet_view(view: Dictionary) -> Dictionary:
 	var chapter := RunService.get_current_chapter()
 	var gold := RunService.get_balance("gold")
-	view["body"] = "证物柜嵌在墙里，灰、蓝、黑三层抽屉分别通向不同的宝石奖池。\n\n你只能打开其中一层；锁扣一旦弹开，其余抽屉会同时封死。"
+	view["body"] = "旧时代废弃治安局的地下保管库里，矗立着一座高耸的重型三级证物柜。\n\n灰、蓝、黑三层防护锁对应着不同规格的解锁开锁成本，以及截然不同的风险奖池。\n\n你只能打开其中一层；锁扣一旦弹开，其余抽屉会同时封死。"
 	view["options"] = [
 		_option("open_gray", "灰色抽屉：支付 20 金币，普通宝石三选一", gold >= 20, "金币不足"),
 	]

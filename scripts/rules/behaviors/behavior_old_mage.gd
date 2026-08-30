@@ -228,7 +228,7 @@ static func _refill_intent(
 	var gem_uid := str(target["gem_uid"])
 	var pos: Vector2i = target["pos"]
 	var path := BoardUtils.path_toward(
-		state, unit.pos, pos, unit.move_points, unit.uid, {}, cell_blockers, unit
+		state, unit.pos, pos, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit
 	)
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid
@@ -578,7 +578,7 @@ static func _blue_light_cells(state: GameState, origin: Vector2i, source: UnitSt
 
 
 static func _spell_move_path(state: GameState, unit: UnitState, player: UnitState, cell_blockers: Dictionary = {}) -> Array[Vector2i]:
-	return BoardUtils.path_toward(state, unit.pos, player.pos, unit.move_points, unit.uid, {}, cell_blockers, unit)
+	return BoardUtils.path_toward(state, unit.pos, player.pos, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit)
 
 
 static func _spell_move_endpoint(state: GameState, unit: UnitState, player: UnitState, cell_blockers: Dictionary = {}) -> Vector2i:
@@ -868,7 +868,7 @@ static func _staff_or_move_intent(state: GameState, unit: UnitState, cell_blocke
 	var player := state.get_player()
 	if player == null:
 		return IntentState.wait(unit.uid)
-	var path := BoardUtils.path_toward(state, unit.pos, player.pos, unit.move_points, unit.uid, {}, cell_blockers, unit)
+	var path := BoardUtils.path_toward(state, unit.pos, player.pos, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit)
 	var endpoint: Vector2i = path.back() if not path.is_empty() else unit.pos
 	var intent := IntentState.new()
 	intent.source_uid = unit.uid

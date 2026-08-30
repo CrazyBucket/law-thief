@@ -1,8 +1,8 @@
 class_name BattleUiTheme
 extends RefCounted
 
-## 像素风 UI 主题工厂：颜色一律取自 UiPalette；风格约定为
-## 无圆角、不透明面板、外深内亮双层硬边、像素字体。
+## 游戏 UI 主题工厂：颜色一律取自 UiPalette；字体统一从系统字体族解析，
+## 让所有界面与世界空间文字共享同一套排版基础。
 
 const BG_DEEP := UiPalette.BG_DEEP
 const BG_PANEL := UiPalette.BG_PANEL
@@ -25,41 +25,95 @@ const PHASE_PLAYER := UiPalette.PHASE_PLAYER
 const PHASE_ENEMY := UiPalette.PHASE_ENEMY
 const PHASE_END := UiPalette.PHASE_END
 
-const FONT_SMALL := 12
-const FONT_BODY := 12
+const FONT_SMALL := 13
+const FONT_BODY := 14
 const FONT_TITLE := 24
 
-const _PIXEL_FONT_PATH := "res://assets/ui/fusion-pixel-12px-zh_hans.ttf"
+const _UI_FONT_FAMILIES := [
+	"PingFang SC",
+	"苹方-简",
+	"Microsoft YaHei UI",
+	"Noto Sans CJK SC",
+]
+const _EVENT_FONT_FAMILIES := [
+	"Noto Serif SC",
+	"Cinzel",
+	"serif",
+]
+const _FONT_WEIGHT_NORMAL := 400
+const _FONT_WEIGHT_SEMIBOLD := 600
 
-static var _pixel_font_cache: FontFile = null
+static var _ui_font_cache: SystemFont = null
+static var _ui_semibold_font_cache: SystemFont = null
+static var _event_font_cache: SystemFont = null
+static var _event_semibold_font_cache: SystemFont = null
 static var _theme_cache: Theme = null
+static var _event_theme_cache: Theme = null
 
 
+static func ui_font() -> Font:
+	if _ui_font_cache == null:
+		_ui_font_cache = _build_system_font(_UI_FONT_FAMILIES, _FONT_WEIGHT_NORMAL)
+	return _ui_font_cache
+
+
+static func ui_semibold_font() -> Font:
+	if _ui_semibold_font_cache == null:
+		_ui_semibold_font_cache = _build_system_font(_UI_FONT_FAMILIES, _FONT_WEIGHT_SEMIBOLD)
+	return _ui_semibold_font_cache
+
+
+static func event_font() -> Font:
+	if _event_font_cache == null:
+		_event_font_cache = _build_system_font(_EVENT_FONT_FAMILIES, _FONT_WEIGHT_NORMAL)
+	return _event_font_cache
+
+
+static func event_semibold_font() -> Font:
+	if _event_semibold_font_cache == null:
+		_event_semibold_font_cache = _build_system_font(_EVENT_FONT_FAMILIES, _FONT_WEIGHT_SEMIBOLD)
+	return _event_semibold_font_cache
+
+
+## 兼容现有调用点；公共字体入口已经不再返回像素字体。
 static func pixel_font() -> Font:
-	if _pixel_font_cache != null:
-		return _pixel_font_cache
-	var font := FontFile.new()
-	var err := font.load_dynamic_font(_PIXEL_FONT_PATH)
-	if err != OK:
-		return ThemeDB.fallback_font
-	font.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-	font.hinting = TextServer.HINTING_NONE
-	font.generate_mipmaps = false
-	_pixel_font_cache = font
-	return _pixel_font_cache
+	return ui_font()
+
+
+static func _build_system_font(families: Array, weight: int) -> SystemFont:
+	var font := SystemFont.new()
+	font.font_names = PackedStringArray(families)
+	font.font_weight = weight
+	font.allow_system_fallback = true
+	font.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	font.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
+	font.hinting = TextServer.HINTING_LIGHT
+	font.generate_mipmaps = true
+	return font
 
 
 static func build_theme() -> Theme:
 	if _theme_cache != null:
 		return _theme_cache
 	var theme := Theme.new()
-	theme.default_font = pixel_font()
+	theme.default_font = ui_font()
 	theme.default_font_size = FONT_BODY
 	theme.set_stylebox("panel", "TooltipPanel", tooltip_style())
 	theme.set_color("font_color", "TooltipLabel", TEXT)
 	_theme_cache = theme
 	return _theme_cache
+
+
+static func build_event_theme() -> Theme:
+	if _event_theme_cache != null:
+		return _event_theme_cache
+	var theme := Theme.new()
+	theme.default_font = event_font()
+	theme.default_font_size = FONT_BODY
+	theme.set_stylebox("panel", "TooltipPanel", tooltip_style())
+	theme.set_color("font_color", "TooltipLabel", TEXT)
+	_event_theme_cache = theme
+	return _event_theme_cache
 
 
 static func apply_root_theme(root: Control) -> void:

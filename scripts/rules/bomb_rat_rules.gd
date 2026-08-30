@@ -113,7 +113,7 @@ static func _chase_suicide_intent(
 		state,
 		unit.pos,
 		player.pos,
-		unit.move_points,
+		StatusRules.effective_move_points(unit, unit.move_points),
 		unit.uid,
 		{},
 		cell_blockers
@@ -170,7 +170,7 @@ static func _plunder_steal_intent(
 		state,
 		unit.pos,
 		victim.pos,
-		unit.move_points,
+		StatusRules.effective_move_points(unit, unit.move_points),
 		unit.uid,
 		{},
 		cell_blockers,

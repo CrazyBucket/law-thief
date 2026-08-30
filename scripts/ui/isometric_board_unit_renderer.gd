@@ -414,7 +414,7 @@ func _draw_active_turn_aura(unit: UnitState, center: Vector2, alpha: float = 1.0
 func _draw_unit_nameplate(unit: UnitState, anchor: Vector2, alpha: float = 1.0) -> void:
 	if alpha <= 0.01:
 		return
-	var font := ThemeDB.fallback_font
+	var font := BattleUiTheme.ui_font()
 	var font_size := int(IsoCoordinates.visual(9.0))
 	var text: String = _data_registry().get_unit_display_name(unit.unit_def_id)
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
@@ -803,7 +803,7 @@ func _draw_intent_badge(pos: Vector2, intent: IntentState) -> void:
 	if IntentIcons.draw_icon(self, draw_pos, intent.type, icon_size_px):
 		return
 	var icon: String = IntentState.intent_icon(intent.type)
-	var font := ThemeDB.fallback_font
+	var font := BattleUiTheme.ui_font()
 	var font_size := int(IsoCoordinates.visual(14.0))
 	var text_size := font.get_string_size(icon, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	_draw_text_with_shadow(
@@ -827,5 +827,4 @@ func pick_cell(screen_pos: Vector2) -> Vector2i:
 # ═══════════════════════════════════════════════════════════════════════════
 
 ## 近战劈砍：Knight 三段挥剑sprite，与粒子伤害并行播放
-
 

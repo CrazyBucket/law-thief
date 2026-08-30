@@ -24,10 +24,7 @@ func get_event_view(room_id: String) -> Dictionary:
 	var event_id := str(event_state.get("event_id", ""))
 	if _EventContentRuntime.handles(event_id):
 		var runtime_view := _EventContentRuntime.get_event_view(room_id, event_state)
-		runtime_view["resolved"] = str(room_state.get("status", "")) == "RESOLVED"
-		if bool(runtime_view.get("resolved", false)):
-			runtime_view["options"] = []
-		return runtime_view
+		return _with_resolution_view(runtime_view, room_state)
 	var event_def := get_event_def(event_id)
 	var node_id := str(event_state.get("node_id", _entry_node_id(event_def)))
 	var event_node := _get_event_node(event_def, node_id)
@@ -58,11 +55,12 @@ func get_event_view(room_id: String) -> Dictionary:
 			options.append({
 				"id": str(option.get("id", "")),
 				"label": _render_text(str(option.get("label", ""))),
+				"effect_text": _render_text(str(option.get("description", ""))),
 				"enabled": bool(condition_result.get("ok", false)),
 				"disabled_reason": str(condition_result.get("disabled_reason", "")),
 				"disabled_reason_code": str(condition_errors[0]) if not condition_errors.is_empty() else "",
 			})
-	return {
+	return _with_resolution_view({
 		"ok": true,
 		"room_id": room_id,
 		"event_id": event_id,
@@ -71,7 +69,23 @@ func get_event_view(room_id: String) -> Dictionary:
 		"title": _render_text(str(event_node.get("title", event_id))),
 		"body": _render_text(str(event_node.get("body", ""))),
 		"options": options,
-	}
+	}, room_state)
+
+
+## A resolved event remains a readable outcome until the player explicitly
+## leaves the room.  The room result is authoritative because a runtime event
+## may have no separate result node after its last choice.
+func _with_resolution_view(view: Dictionary, room_state: Dictionary) -> Dictionary:
+	var result := (room_state.get("result", {}) as Dictionary).duplicate(true) if room_state.get("result", {}) is Dictionary else {}
+	var resolved := str(room_state.get("status", "")) == "RESOLVED"
+	view["resolved"] = resolved
+	if not resolved:
+		return view
+	view["options"] = []
+	view["result_summary"] = str(result.get("summary", ""))
+	view["completion_title"] = "事件结算"
+	view["completion_body"] = str(result.get("summary", ""))
+	return view
 
 
 func choose_option(room_id: String, option_id: String) -> Dictionary:

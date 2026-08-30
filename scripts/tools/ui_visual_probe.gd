@@ -24,6 +24,11 @@ func _run() -> void:
 		print("UI_VISUAL_PROBE_FAIL readable renderer required; do not use --headless")
 		quit(2)
 		return
+	var transition_manager := root.get_node_or_null("TransitionManager")
+	if transition_manager != null:
+		transition_manager.process_mode = Node.PROCESS_MODE_DISABLED
+		if transition_manager.has_method("reset_immediately"):
+			transition_manager.call("reset_immediately")
 	var report := {
 		"schema_version": Contract.SCHEMA_VERSION,
 		"label": _label,
@@ -55,10 +60,7 @@ func _run() -> void:
 
 
 func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: String) -> Dictionary:
-	DisplayServer.window_set_size(resolution)
-	root.size = resolution
-	await process_frame
-	await process_frame
+	await _settle_resolution(resolution)
 	_prepare_scenario(str(scenario.get("id", "")))
 	var scene_path := str(scenario.get("scene", ""))
 	var packed := load(scene_path) as PackedScene
@@ -73,10 +75,14 @@ func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: Stri
 	await process_frame
 	await process_frame
 	await _configure_scenario(node, str(scenario.get("id", "")))
+	var transition_manager := root.get_node_or_null("TransitionManager")
+	if transition_manager != null and transition_manager.has_method("reset_immediately"):
+		transition_manager.call("reset_immediately")
 	await create_timer(0.2).timeout
 	var layout_viewport: Vector2 = node.get_viewport_rect().size
 	violations.append_array(Contract.audit_layout(node, scenario, layout_viewport))
 	violations.append_array(_audit_persistent_hud(node, str(scenario.get("id", "")), layout_viewport))
+	await RenderingServer.frame_post_draw
 	var texture := root.get_texture()
 	var image := texture.get_image() if texture != null else null
 	var relative_path := "%s/%s" % [
@@ -106,8 +112,20 @@ func _capture_scene(scenario: Dictionary, resolution: Vector2i, output_dir: Stri
 	return _capture_result(capture_key, scenario, resolution, relative_path, sha256, violations, layout_viewport)
 
 
+func _settle_resolution(resolution: Vector2i) -> void:
+	DisplayServer.window_set_size(resolution)
+	for _attempt in range(12):
+		root.size = resolution
+		await process_frame
+		var texture := root.get_texture()
+		if texture != null and Vector2i(texture.get_size()) == resolution:
+			await process_frame
+			return
+		await create_timer(0.04).timeout
+
+
 func _audit_persistent_hud(scene: Node, scenario_id: String, viewport_size: Vector2) -> Array[Dictionary]:
-	if scenario_id not in ["map_route", "event_room", "shop_room"]:
+	if scenario_id not in ["map_route", "event_room", "event_room_resolved", "event_room_hover", "shop_room"]:
 		return []
 	var violations: Array[Dictionary] = []
 	var hud := root.get_node_or_null("AdventureStatusHud/AdventureStatusLayer/AdventureStatusRoot/AdventureStatus") as Control
@@ -121,7 +139,7 @@ func _audit_persistent_hud(scene: Node, scenario_id: String, viewport_size: Vect
 	if hud_rect.end.x > viewport_size.x or hud_rect.end.y > viewport_size.y:
 		violations.append({"code": "persistent_hud_outside_viewport"})
 	var protected_paths: Array[String] = []
-	if scenario_id == "event_room":
+	if scenario_id in ["event_room", "event_room_resolved", "event_room_hover"]:
 		protected_paths = ["SafeArea/Layout/TopBar/Row/HeaderTitle", "SafeArea/Layout/TopBar/Row/ChapterLabel"]
 	elif scenario_id == "shop_room":
 		protected_paths = ["SafeArea/Layout/TopBar/Row/TitleGroup", "SafeArea/Layout/TopBar/Row/LeaveButton"]
@@ -148,7 +166,7 @@ func _prepare_scenario(scenario_id: String) -> void:
 			root.get_node("GameService").call("start_battle", "tutorial_001")
 		"map_route", "map_menu":
 			root.get_node("AdventureService").call("start_new_run", 12345)
-		"event_room":
+		"event_room", "event_room_resolved", "event_room_hover":
 			var adventure_service := root.get_node("AdventureService")
 			adventure_service.call("start_new_run", 20260717)
 			adventure_service.set("current_pos", Vector2i.ZERO)
@@ -184,6 +202,16 @@ func _configure_scenario(node: Node, scenario_id: String) -> void:
 				node.call("_on_cell_hovered", reachable[0], true)
 		"map_menu":
 			node.call("_on_menu_pressed")
+		"event_room_resolved":
+			node.call("_on_option_pressed", "sell_blood")
+		"event_room_hover":
+			var option_list := node.get_node_or_null("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll/OptionList")
+			if option_list != null:
+				for child in option_list.get_children():
+					if child is Button and not child.disabled:
+						child.set("_hover_amount", 1.0)
+						child.call("refresh_visual_state")
+						break
 	await process_frame
 	await process_frame
 

@@ -1,0 +1,1 @@
+VERIFY_FAIL design_sync_guard (see artifacts/verify/design_sync_guard.log)

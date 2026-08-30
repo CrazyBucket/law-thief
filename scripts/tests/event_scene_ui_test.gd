@@ -1,6 +1,7 @@
 extends SceneTree
 
 const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
+const EventResolutionFx = preload("res://scripts/ui/event_resolution_fx.gd")
 
 
 func _initialize() -> void:
@@ -30,12 +31,33 @@ func _run_tests() -> void:
 	assert(room_scene.get("_gem_embed_overlay") == null, "entering an event with a pre-existing carried gem must not open the embed dialog")
 
 	var event_title := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventTitle") as Label
-	var body := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventBody") as RichTextLabel
-	var continue_button := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/ContinueButton") as Button
+	var story_vbox := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox") as VBoxContainer
+	var copy_stack := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack") as VBoxContainer
+	var body := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/EventBody") as VBoxContainer
+	var choice_vbox := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox") as VBoxContainer
+	var resolved_vbox := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ResolvedVBox") as VBoxContainer
+	var continue_button := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ResolvedVBox/ContinueButton") as Button
+	var feedback_label := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/FeedbackLabel") as RichTextLabel
 	var artwork := room_scene.get_node("SafeArea/Layout/Main/ArtFrame/ArtStack/EventArtwork") as TextureRect
 	var art_fallback := room_scene.get_node("SafeArea/Layout/Main/ArtFrame/ArtStack/ArtFallback") as CenterContainer
+	var eyebrow := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/Eyebrow") as Label
+	var choice_heading := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/ChoiceHeading") as Label
 	assert(event_title.text.contains("巷口的医生"), "event scene should render the configured title")
-	assert(not body.text.contains("event_field_medic"), "normal event UI must not expose the internal event id")
+	assert(not str(body.get_meta("event_body_text", "")).contains("event_field_medic"), "normal event UI must not expose the internal event id")
+	assert(not eyebrow.visible and eyebrow.text.is_empty(), "event UI should not repeat a generic encounter eyebrow")
+	assert(not choice_heading.visible and choice_heading.text.is_empty(), "event choices should not spend space on a redundant heading")
+	assert(room_scene.theme.default_font is SystemFont, "event UI should inherit the shared system-font theme")
+	assert((room_scene.theme.default_font as SystemFont).font_names == PackedStringArray(["Noto Serif SC", "Cinzel", "serif"]), "event copy should use the dedicated Noto Serif SC, Cinzel, serif stack")
+	assert(event_title.get_theme_font_size("font_size") <= 26, "event titles should stay restrained")
+	assert(story_vbox.get_theme_constant("separation") == 32, "event title and body should keep a deliberate 32px gap")
+	assert(copy_stack.get_theme_constant("separation") == 12 and body.get_theme_constant("separation") == 12, "event paragraphs and outcome should use a compact 12px rhythm")
+	var first_paragraph := body.get_child(0) as RichTextLabel
+	assert(first_paragraph != null and first_paragraph.get_theme_font_size("normal_font_size") <= 18, "event body copy should use an adaptive readable size")
+	assert(first_paragraph.size.x >= copy_stack.size.x - 1.0, "event paragraphs should fill the story width instead of collapsing into a narrow column")
+	assert(first_paragraph.get_theme_color("default_color") == Color("#bebad2"), "event body copy should use the specified #BEBAD2 color")
+	var paragraph_font_size := first_paragraph.get_theme_font_size("normal_font_size")
+	var paragraph_line_height := first_paragraph.get_theme_font("normal_font").get_height(paragraph_font_size) + first_paragraph.get_theme_constant("line_separation")
+	assert(absf(float(paragraph_line_height) / float(paragraph_font_size) - 1.6) <= 0.08, "event body line height should stay near 1.6")
 	assert(not continue_button.visible, "unresolved events should require a configured choice")
 	assert(artwork.texture == null and art_fallback.visible, "event scene should reserve a stable artwork slot with a neutral fallback")
 	var art_frame := room_scene.get_node("SafeArea/Layout/Main/ArtFrame") as PanelContainer
@@ -44,7 +66,11 @@ func _run_tests() -> void:
 	var choice_panel := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel") as PanelContainer
 	assert(art_frame.position.x < story_column.position.x, "event artwork should stay in the left column")
 	assert(story_panel.position.y < choice_panel.position.y, "event copy should stay above the choice area")
+	assert(absf(story_panel.size.y - choice_panel.size.y) <= 1.0, "event copy and choices should split the right column evenly")
+	assert(event_title.global_position.x - story_column.global_position.x <= 28.0, "event copy should begin near the artwork blend instead of drifting right")
 	assert(art_frame.size.y == story_column.size.y, "artwork and story columns should share the full scene height")
+	assert(art_frame.get_theme_stylebox("panel") is StyleBoxEmpty, "event artwork should not be framed as a panel")
+	assert(first_paragraph.get_theme_stylebox("normal") is StyleBoxEmpty, "event body copy should sit directly in the scene instead of a text panel")
 	var option_buttons := _event_option_buttons(room_scene)
 	assert(option_buttons.size() == 2, "entry node should render both configured options")
 	assert(option_buttons[0].disabled, "unaffordable event option should be visibly disabled")
@@ -56,6 +82,15 @@ func _run_tests() -> void:
 	assert(not option_buttons[1].disabled, "decline option should remain available")
 	var enabled_effect := option_buttons[1].get_node("OptionContent/EffectText") as Label
 	assert(not enabled_effect.text.is_empty(), "enabled event option should show its result copy")
+	assert(option_buttons[1].get_global_rect().encloses(enabled_effect.get_global_rect()), "an option effect must stay inside its own interaction row")
+	assert(str(option_buttons[1].get_script().resource_path).ends_with("event_choice_button.gd"), "event choices should use the dedicated interaction component")
+	assert(option_buttons[1].get_theme_stylebox("normal") is StyleBoxEmpty and option_buttons[1].get_theme_stylebox("hover") is StyleBoxEmpty and option_buttons[1].get_theme_stylebox("pressed") is StyleBoxEmpty, "event choice hover and active states should never paint a card background")
+	var normal_title_color := (option_buttons[1].get_node("OptionContent/ChoiceTitle") as Label).get_theme_color("font_color")
+	option_buttons[1].set("_hover_amount", 1.0)
+	option_buttons[1].call("refresh_visual_state")
+	var hovered_title_color := (option_buttons[1].get_node("OptionContent/ChoiceTitle") as Label).get_theme_color("font_color")
+	assert(hovered_title_color != normal_title_color, "event choice hover should be communicated by restrained text emphasis")
+	assert(option_buttons[1].focus_mode == Control.FOCUS_NONE, "clicking an event choice should not leave a persistent active/focus treatment")
 	option_buttons[1].emit_signal("pressed")
 	await process_frame
 	assert(room_scene.get("_gem_embed_overlay") == null, "a non-gem event choice must not offer embedding for a pre-existing carried gem")
@@ -68,7 +103,21 @@ func _run_tests() -> void:
 	option_buttons[0].emit_signal("pressed")
 	await process_frame
 	assert(not run_service.get_resolved_room(room_id).is_empty(), "finishing an event should resolve its room immediately")
-	assert(run_service.get_run_phase() == "MAP", "finishing an event should return to the map without a second continue step")
+	assert(run_service.get_run_phase() == "ROOM", "a resolved event should remain open until its outcome is acknowledged")
+	assert(not choice_vbox.visible and resolved_vbox.visible, "resolved event should replace the option list with a dedicated outcome block")
+	assert(continue_button.visible, "resolved event should show a deliberate return action")
+	assert(feedback_label.visible and feedback_label.get_parsed_text() == str(run_service.get_resolved_room(room_id).get("summary", "")), "resolved event should render the applied outcome instead of silently returning to the map")
+	assert(feedback_label.bbcode_enabled and feedback_label.custom_effects.size() == 1, "resolved event copy should use the dedicated semantic rich-text treatment")
+	var last_paragraph := body.get_child(body.get_child_count() - 1) as RichTextLabel
+	assert(feedback_label.global_position.y - last_paragraph.get_global_rect().end.y <= 13.0, "the resolved outcome should follow the event copy with the 12px content rhythm")
+	assert(story_panel.get_global_rect().encloses(feedback_label.get_global_rect()), "the resolved outcome must remain in the upper story area")
+	assert(continue_button.position.y <= 1.0, "the continue action should begin at the top of the lower action area")
+	assert(continue_button.size.x <= 224.0 and continue_button.position.x <= 1.0, "the continue action should stay compact and left-aligned with the outcome")
+	assert(str(continue_button.get_script().resource_path).ends_with("event_choice_button.gd"), "continue should reuse the event interaction component")
+	assert(continue_button.get_theme_stylebox("normal") is StyleBoxEmpty and continue_button.get_theme_stylebox("hover") is StyleBoxEmpty and continue_button.get_theme_stylebox("pressed") is StyleBoxEmpty, "continue must not draw a full-width underline or card state")
+	continue_button.emit_signal("pressed")
+	await process_frame
+	assert(run_service.get_run_phase() == "MAP", "acknowledging the result should return to the map")
 	await create_timer(0.5).timeout
 	await _test_event_artwork(adventure_service, run_service, "event_misaccounting_scribe", "event_misaccounting_scribe.png", 20260722, 1)
 	await _test_event_artwork(adventure_service, run_service, "event_sealed_gem_furnace", "event_sealed_gem_furnace.png", 20260723, 2)
@@ -76,15 +125,96 @@ func _run_tests() -> void:
 	await _test_event_artwork(adventure_service, run_service, "event_counterfeit_auction", "event_counterfeit_auction.png", 20260726, 2)
 	await _test_event_reward_embed_dialog(adventure_service, run_service)
 	await _test_gem_embed_choice(adventure_service, run_service)
+	await _test_event_resolution_effects(adventure_service, run_service)
 
 	run_service.end_run()
 	print("EVENT_SCENE_UI_TEST_PASS")
 	quit()
 
 
+func _test_event_resolution_effects(adventure_service: Node, run_service: Node) -> void:
+	adventure_service.start_new_run(20260823)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	var injury_node = adventure_service.get_current_node()
+	assert(injury_node != null, "event FX test needs an injury event node")
+	injury_node.room_type = "EVENT"
+	injury_node.properties["event_id"] = "event_injury_appraisal"
+	var injury_run = run_service.get_run()
+	injury_run.player_hp = int(run_service.get_player_run_snapshot().get("max_hp", 1))
+	var hp_before := int(injury_run.player_hp)
+	var gold_before := int(run_service.get_balance("gold"))
+	var packed := load("res://scenes/adventure/event_scene.tscn") as PackedScene
+	var injury_scene := packed.instantiate()
+	root.add_child(injury_scene)
+	await process_frame
+	var sell_blood := _event_option_by_id(injury_scene, "sell_blood")
+	assert(sell_blood != null and not sell_blood.disabled, "injury FX fixture should expose blood sale")
+	sell_blood.emit_signal("pressed")
+	await process_frame
+	var injury_fx := injury_scene.get_node("EventResolutionFx")
+	var injury_delta: Dictionary = injury_fx.get("last_delta")
+	var hp_after := int(run_service.get_player_run_snapshot().get("hp", 0))
+	assert(
+		int(injury_delta.get("hp", 0)) == hp_after - hp_before and int(injury_delta.get("hp", 0)) < 0,
+		"damage FX must use the actual HP delta (fx=%d, before=%d, after=%d)" % [int(injury_delta.get("hp", 0)), hp_before, hp_after]
+	)
+	assert(int(injury_delta.get("gold", 0)) == run_service.get_balance("gold") - gold_before and int(injury_delta.get("gold", 0)) > 0, "coin FX must use the actual gold delta")
+	assert(int(injury_fx.get("damage_shake_count")) == 1, "a damaging event should trigger one restrained screen shake")
+	assert(int(injury_fx.get("coin_burst_count")) == 1 and int(injury_fx.get("delta_text_count")) >= 2, "blood sale should spawn semantic damage/gold numbers and a coin burst")
+	var animated_coins := injury_fx.get_node("EventResolutionFxRoot").find_children("*", "TextureRect", false, false)
+	assert(not animated_coins.is_empty(), "gold gain feedback should keep at least one coin alive for the first animation frame")
+	var animated_coin := animated_coins[0] as TextureRect
+	assert(
+		animated_coin.size.x <= EventResolutionFx.COIN_SIZE.x and animated_coin.size.y <= EventResolutionFx.COIN_SIZE.y,
+		"animated coins must remain 16 px after entering the scene tree (actual=%s, minimum=%s, expand=%d)" % [animated_coin.size, animated_coin.get_combined_minimum_size(), animated_coin.expand_mode]
+	)
+	var injury_feedback := injury_scene.get_node("SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/FeedbackLabel") as RichTextLabel
+	assert(injury_feedback.text.contains("kind=danger") and injury_feedback.text.contains("kind=gold"), "resolved damage and gold numbers should carry semantic rich-text colors")
+	assert(injury_feedback.get_theme_color("default_color") == Color("#ded8e8"), "resolved copy should use its own result style instead of inheriting ordinary body copy")
+	root.get_node("AdventureStatusHud").call("finish_gold_gain_feedback")
+	injury_scene.queue_free()
+	await process_frame
+
+	adventure_service.start_new_run(20260824)
+	var low_run = run_service.get_run()
+	adventure_service._begin_chapter_map(2, low_run.map_seed)
+	adventure_service.current_pos = Vector2i.ZERO
+	adventure_service.pending_room_type = "EVENT"
+	var furnace_node = adventure_service.get_current_node()
+	assert(furnace_node != null, "event FX test needs a furnace event node")
+	furnace_node.room_type = "EVENT"
+	furnace_node.properties["event_id"] = "event_sealed_gem_furnace"
+	low_run.player_hp = 9
+	var furnace_scene := packed.instantiate()
+	root.add_child(furnace_scene)
+	await process_frame
+	var take_gem := _event_option_by_id(furnace_scene, "take")
+	assert(take_gem != null and not take_gem.disabled, "low-health FX fixture should expose bare-handed gem taking")
+	take_gem.emit_signal("pressed")
+	await process_frame
+	var furnace_fx := furnace_scene.get_node("EventResolutionFx")
+	assert(int(furnace_fx.get("damage_shake_count")) == 1, "bare-handed gem taking should shake the event scene")
+	assert(int(furnace_fx.get("low_health_vignette_count")) == 1, "dropping to ten percent HP or below should trigger the red edge vignette")
+	assert(EventResolutionFx.LOW_HEALTH_DURATION == 2.0, "the low-health vignette contract should last exactly two seconds")
+	var vignette := furnace_fx.get_node("LowHealthVignette") as ColorRect
+	assert(vignette.visible and vignette.material is ShaderMaterial, "low-health feedback should be a live edge shader rather than a flat web overlay")
+	furnace_scene.queue_free()
+	await process_frame
+
+
+func _event_option_by_id(room_scene: Node, option_id: String) -> Button:
+	for button in _event_option_buttons(room_scene):
+		if str(button.get_meta("event_option_id", "")) == option_id:
+			return button
+	return null
+
+
 func _event_option_buttons(room_scene: Node) -> Array[Button]:
 	var result: Array[Button] = []
-	var option_list := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionList")
+	var option_scroll := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll")
+	assert(option_scroll is ScrollContainer, "event choice list must be scrollable so long option sets cannot soft-lock the encounter")
+	var option_list := room_scene.get_node("SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll/OptionList")
 	for child in option_list.get_children():
 		if child is Button:
 			result.append(child as Button)
@@ -112,6 +242,9 @@ func _test_event_artwork(adventure_service: Node, run_service: Node, event_id: S
 	assert(artwork.texture != null, "event should render its dedicated artwork")
 	assert(not art_fallback.visible, "dedicated event artwork should replace the neutral fallback")
 	assert(artwork.texture.resource_path.ends_with(artwork_file), "event should use its supplied illustration asset")
+	assert(artwork.material is ShaderMaterial, "event artwork should use the edge-blend material")
+	var art_material := artwork.material as ShaderMaterial
+	assert(art_material.shader != null and art_material.shader.resource_path.ends_with("event_art_blend.gdshader"), "event artwork should soften and feather its edges into the story column")
 	assert(room_scene.get_node_or_null("SafeArea/Layout/Main/ArtFrame/ArtStack/TopFade") == null, "event artwork should not add a black top band")
 	assert(room_scene.get_node_or_null("SafeArea/Layout/Main/ArtFrame/ArtStack/BottomFade") == null, "event artwork should not add a black bottom band")
 	room_scene.queue_free()

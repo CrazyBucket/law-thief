@@ -43,10 +43,29 @@ const SCENARIOS := [
 		"id": "event_room",
 		"scene": "res://scenes/adventure/event_scene.tscn",
 		"critical_controls": [
-			"SafeArea/Layout/TopBar",
 			"SafeArea/Layout/Main/ArtFrame",
 			"SafeArea/Layout/Main/StoryColumn/StoryPanel",
 			"SafeArea/Layout/Main/StoryColumn/ChoicePanel",
+		],
+	},
+	{
+		"id": "event_room_resolved",
+		"scene": "res://scenes/adventure/event_scene.tscn",
+		"critical_controls": [
+			"SafeArea/Layout/Main/ArtFrame",
+			"SafeArea/Layout/Main/StoryColumn/StoryPanel",
+			"SafeArea/Layout/Main/StoryColumn/ChoicePanel",
+			"SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/FeedbackLabel",
+			"SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ResolvedVBox/ContinueButton",
+		],
+	},
+	{
+		"id": "event_room_hover",
+		"scene": "res://scenes/adventure/event_scene.tscn",
+		"critical_controls": [
+			"SafeArea/Layout/Main/ArtFrame",
+			"SafeArea/Layout/Main/StoryColumn/StoryPanel",
+			"SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll/OptionList",
 		],
 	},
 	{

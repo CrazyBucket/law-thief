@@ -1,6 +1,8 @@
 class_name DamageTextManager
 extends CanvasLayer
 
+const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+
 ## 飘字系统：接收世界格坐标或屏幕坐标，生成带 Pop+Scatter+Fade 动画的伤害数字。
 ## 挂在战斗场景 HudLayer 之上（layer=8），节点永不随单位销毁。
 
@@ -66,28 +68,14 @@ const _STYLES: Dictionary = {
 	},
 }
 
-const _FONT_REGULAR := "res://assets/ui/Silkscreen-Regular.ttf"
-const _FONT_BOLD    := "res://assets/ui/Silkscreen-Bold.ttf"
-
-var _font_regular: FontFile = null
-var _font_bold: FontFile = null
+var _font_regular: Font = null
+var _font_bold: Font = null
 
 
 func _ready() -> void:
 	layer = 8
-	_font_regular = _load_pixel_font(_FONT_REGULAR)
-	_font_bold    = _load_pixel_font(_FONT_BOLD)
-
-
-func _load_pixel_font(path: String) -> FontFile:
-	if not ResourceLoader.exists(path):
-		return null
-	var f := ResourceLoader.load(path) as FontFile
-	if f == null:
-		return null
-	f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-	f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-	return f
+	_font_regular = BattleUiTheme.ui_font()
+	_font_bold = BattleUiTheme.ui_semibold_font()
 
 
 ## 在屏幕坐标 screen_pos 处弹出飘字（战斗 UI 全局坐标）
@@ -97,11 +85,8 @@ func spawn(screen_pos: Vector2, value: int, dmg_type: String = DMG_NORMAL) -> vo
 	var label := Label.new()
 	add_child(label)
 
-	# 字体
 	var use_bold: bool = style.get("bold", false)
-	var font: FontFile = _font_bold if (use_bold and _font_bold != null) else _font_regular
-	if font == null:
-		font = ThemeDB.fallback_font as FontFile
+	var font: Font = _font_bold if (use_bold and _font_bold != null) else _font_regular
 	if font != null:
 		label.add_theme_font_override("font", font)
 	var base_size: int = style.get("size", 20)
@@ -117,12 +102,12 @@ func spawn(screen_pos: Vector2, value: int, dmg_type: String = DMG_NORMAL) -> vo
 	var col: Color = style.get("color", Color.WHITE)
 	label.add_theme_color_override("font_color", col)
 
-	# 关闭描边外额外的阴影，避免锯齿感
+	# 轻阴影让细笔画在复杂战场上仍保持可读。
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
 	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55))
 
-	label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	label.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 	# 初始位置：在目标格上方，加随机 X 散射防止重叠
 	var scatter_x: float = randf_range(-18.0, 18.0)

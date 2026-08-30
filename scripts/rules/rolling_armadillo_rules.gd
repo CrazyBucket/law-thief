@@ -372,7 +372,7 @@ static func _reachable_anchors(
 	var anchors: Array[Vector2i] = [unit.pos]
 	if StatusRules.can_move(unit):
 		anchors.append_array(BoardUtils.reachable_cells(
-			state, unit.pos, unit.move_points, unit.uid, {}, cell_blockers, unit
+			state, unit.pos, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit
 		))
 	return anchors
 
@@ -386,7 +386,7 @@ static func _path_to(
 	if anchor == unit.pos:
 		return [] as Array[Vector2i]
 	return BoardUtils.path_toward(
-		state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers, unit
+		state, unit.pos, anchor, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit
 	)
 
 

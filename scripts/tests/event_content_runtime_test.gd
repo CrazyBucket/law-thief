@@ -20,6 +20,7 @@ func _run_tests() -> void:
 	_run_service = root.get_node("RunService")
 	for test_case in [
 		Callable(self, "_test_availability_filter"),
+		Callable(self, "_test_relic_reward_applies_persistent_state"),
 		Callable(self, "_test_scribe"),
 		Callable(self, "_test_furnace"),
 		Callable(self, "_test_injury_appraisal"),
@@ -36,6 +37,21 @@ func _run_tests() -> void:
 	_run_service.end_run()
 	print("EVENT_CONTENT_RUNTIME_TEST_PASS")
 	quit(0)
+
+
+func _test_relic_reward_applies_persistent_state() -> bool:
+	_open_event("event_counterfeit_auction", 2)
+	var run: RunState = _run_service.get_run()
+	run.player_max_hp = 60
+	run.player_hp = 60
+	_run_service.acquire_relic("relic_empty_coffin")
+	var runtime: RelicRuntimeState = _run_service.get_relic_runtime("relic_empty_coffin")
+	if not _require(run.player_max_hp == 42 and run.player_hp == 42, "a reward relic's permanent max-HP change must apply when it is acquired"):
+		return false
+	if not _require(runtime != null and bool(runtime.flags.get("empty_coffin_applied", false)), "persistent relic application must mark its once-per-run effect before the next battle"):
+		return false
+	print("  [OK] event relic rewards apply persistent run state immediately")
+	return true
 
 
 func _test_availability_filter() -> bool:

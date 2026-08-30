@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	var options: Array = event_view.get("options", [])
 	assert(options.size() == 2, "debug event should expose two options")
 	assert(bool((options[0] as Dictionary).get("enabled", false)), "unconditional option should be enabled")
+	assert(str((options[0] as Dictionary).get("effect_text", "")) == "抠出沉甸甸的钱袋塞进挎包，现钱永远比代码靠谱。", "event option should expose its configured descriptive copy")
 	var choose_rule: Dictionary = room_flow_service.submit_room_command(room_id, {
 		"action": "choose_option",
 		"option_id": "install_rule",
@@ -69,7 +70,7 @@ func _run_tests() -> void:
 	event_view = root.get_node("EventService").get_event_view(room_id)
 	options = event_view.get("options", [])
 	assert(options.size() == 2, "toll event should expose two options")
-	assert(str(event_view.get("body", "")) == "一台还在运转的旧闸机要求你缴纳 5 金币，否则什么都不给。", "amount-ref body should render configured toll text")
+	assert(str(event_view.get("body", "")) == "防空洞出口伫立着一座半埋在渣土中的自动防御闸机。\n\n警示红灯疯狂闪烁，机械音伴着杂音重复：请投入 5 硬币解锁洗消与治疗功能，否则禁止通行。", "amount-ref body should render configured toll text")
 	assert(str((options[0] as Dictionary).get("label", "")) == "支付 5 金币并恢复 4 点生命", "amount-ref option label should render configured numbers")
 	assert(not bool((options[0] as Dictionary).get("enabled", true)), "pay option should be disabled without gold")
 	assert(str((options[0] as Dictionary).get("disabled_reason", "")) != "", "disabled option should explain reason")

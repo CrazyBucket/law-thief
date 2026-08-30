@@ -44,6 +44,7 @@ func _run_tests() -> void:
 	for mask in range(1, total):
 		_run_combo_case(_profiles_from_mask(mask))
 	_test_dual_color_slot_mount()
+	_test_poison_applies_to_living_enemy()
 	if _failed:
 		push_error("ATTACK_TAG_COMBO_TEST_FAIL")
 		quit(1)
@@ -114,6 +115,23 @@ func _test_dual_color_slot_mount() -> void:
 		return
 	_case_count += 1
 	print("  [OK] dual_color_slot_mount")
+
+
+func _test_poison_applies_to_living_enemy() -> void:
+	var state := _create_isolated_state()
+	var player := state.get_player()
+	var red_slot := player.get_slot(Constants.SLOT_RED)
+	_mount_red_gem_on_slot(state, player, red_slot, Constants.GEM_POISON)
+	state.move_unit(player, PLAYER_POS)
+	var enemy := _spawn_guard(state, MAIN_AIM, 60)
+	var result := AttackPipeline.execute_aimed(
+		state, player, MAIN_AIM, [AttackPipeline.TAG_RANGED], {}, CombatConfig.attack_range()
+	)
+	if not result.get("ok", false) or not enemy.has_status(Constants.STATUS_POISON):
+		_fail("[poison_living_enemy] a living enemy hit by a poison-tag attack must receive poison")
+		return
+	_case_count += 1
+	print("  [OK] poison_living_enemy")
 
 
 func _assert_combo(

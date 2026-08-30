@@ -41,12 +41,14 @@ func _run() -> void:
 	var popup: Control = battle_scene.get("_slot_popup")
 	_require(popup.visible, "clicking the first unit should open its slot panel")
 	_require("第一颗" in str(popup.get("_title_label").text), "first panel should ask for the first gem")
+	_require((popup.get("_context_label") as Label).visible, "swap should use its dedicated two-stage context panel")
 	battle_scene.call("_on_popup_slot_selected", player.uid, player_index)
 	_require(controller.has_swap_source() and not popup.visible, "first gem click should store the source and close the panel")
 	battle_scene.call("_on_cell_clicked", enemy.pos)
 	await process_frame
 	_require(popup.visible, "clicking the second unit should open its slot panel")
 	_require("第二颗" in str(popup.get("_title_label").text), "second panel should ask for the second gem")
+	_require((popup.get("_context_label") as Label).text.contains("已选"), "second swap panel should show the first selected gem")
 	if DisplayServer.get_name() != "headless":
 		var image := root.get_viewport().get_texture().get_image()
 		_require(image != null and not image.is_empty(), "visual probe should capture the second-gem panel")

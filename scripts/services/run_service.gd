@@ -95,11 +95,46 @@ func acquire_relic(relic_id: String) -> void:
 	if _run == null:
 		push_warning("RunService.acquire_relic: no active run")
 		return
+	var already_owned := _run.has_relic(relic_id)
 	_run.add_relic(relic_id)
+	if not already_owned:
+		_apply_persistent_relic_acquisition(relic_id)
 	ProfileService.mark_seen_relic(relic_id)
 	AchievementService.refresh_progress_flags()
 	save_run()
 	DebugService.log_info("RunService: acquired %s" % relic_id)
+
+
+## Effects that permanently alter the run must resolve when the reward is
+## taken, not wait for a later battle to create a transient GameState.
+func _apply_persistent_relic_acquisition(relic_id: String) -> void:
+	var def := DataRegistry.get_relic_def(relic_id)
+	var effects: Variant = def.get("effects", [])
+	if not effects is Array:
+		return
+	for raw_effect in effects:
+		if not raw_effect is Dictionary:
+			continue
+		var effect := raw_effect as Dictionary
+		if str(effect.get("action", "")) != "apply_max_hp_reduction":
+			continue
+		var once_flag := str(effect.get("once_per_run", ""))
+		var runtime := _run.get_runtime(relic_id)
+		if runtime != null and not once_flag.is_empty() and bool(runtime.flags.get(once_flag, false)):
+			continue
+		var ratio := float(effect.get("ratio", effect.get("value", 0.0)))
+		var ratio_ref := str(effect.get("ratio_ref", ""))
+		if not ratio_ref.is_empty():
+			ratio = DataRegistry.get_relic_numeric_ref(ratio_ref, ratio)
+		if ratio <= 0.0:
+			continue
+		var max_hp := _run.player_max_hp if _run.player_max_hp > 0 else _player_default_max_hp()
+		var hp := _run.player_hp if _run.player_hp >= 0 else max_hp
+		var reduction := maxi(1, int(float(max_hp) * ratio))
+		_run.player_max_hp = maxi(1, max_hp - reduction)
+		_run.player_hp = mini(hp, _run.player_max_hp)
+		if runtime != null and not once_flag.is_empty():
+			runtime.flags[once_flag] = true
 
 
 func acquire_gem(gem_id: String) -> Dictionary:

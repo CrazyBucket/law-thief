@@ -1,6 +1,10 @@
 extends Control
 
 const BattleUiTheme = preload("res://scripts/ui/battle_ui_theme.gd")
+const EventChoiceButtonClass = preload("res://scripts/ui/event_choice_button.gd")
+const EventResolutionFxClass = preload("res://scripts/ui/event_resolution_fx.gd")
+const EventTextEffectClass = preload("res://scripts/ui/event_text_effect.gd")
+const EventTextFormatter = preload("res://scripts/ui/event_text_formatter.gd")
 const RunPlayerGemService = preload("res://scripts/services/run_player_gem_service.gd")
 const RunGemEmbedDialog = preload("res://scripts/ui/run_gem_embed_dialog.gd")
 const MISACCOUNTING_SCRIBE_ARTWORK: Texture2D = preload("res://assets/ui/events/event_misaccounting_scribe.png")
@@ -8,10 +12,11 @@ const SEALED_GEM_FURNACE_ARTWORK: Texture2D = preload("res://assets/ui/events/ev
 const INJURY_APPRAISAL_ARTWORK: Texture2D = preload("res://assets/ui/events/event_injury_appraisal.png")
 const COUNTERFEIT_AUCTION_ARTWORK: Texture2D = preload("res://assets/ui/events/event_counterfeit_auction.png")
 
-const EVENT_PANEL := Color("#181925")
-const EVENT_INSET := Color("#0b0c13")
+const EVENT_PANEL := Color("#24243a")
 const EVENT_ACCENT := Color("#a585e8")
-const EVENT_EDGE := Color("#655681")
+const OPTION_GAP := 12
+const BODY_COLOR := Color("#bebad2")
+const BODY_LINE_HEIGHT_RATIO := 1.6
 
 @onready var _top_bar: PanelContainer = $SafeArea/Layout/TopBar
 @onready var _header_title: Label = $SafeArea/Layout/TopBar/Row/HeaderTitle
@@ -23,12 +28,16 @@ const EVENT_EDGE := Color("#655681")
 @onready var _story_panel: PanelContainer = $SafeArea/Layout/Main/StoryColumn/StoryPanel
 @onready var _eyebrow: Label = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/Eyebrow
 @onready var _event_title: Label = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventTitle
-@onready var _event_body: RichTextLabel = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/EventBody
+@onready var _copy_stack: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack
+@onready var _event_body: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/EventBody
+@onready var _feedback_label: RichTextLabel = $SafeArea/Layout/Main/StoryColumn/StoryPanel/StoryMargin/StoryVBox/CopyStack/FeedbackLabel
 @onready var _choice_panel: PanelContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel
+@onready var _choice_vbox: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox
 @onready var _choice_heading: Label = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/ChoiceHeading
-@onready var _option_list: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionList
-@onready var _feedback_label: Label = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/FeedbackLabel
-@onready var _continue_button: Button = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/ContinueButton
+@onready var _option_scroll: ScrollContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll
+@onready var _option_list: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ChoiceVBox/OptionScroll/OptionList
+@onready var _resolved_vbox: VBoxContainer = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ResolvedVBox
+@onready var _continue_button: Button = $SafeArea/Layout/Main/StoryColumn/ChoicePanel/ChoiceMargin/ResolvedVBox/ContinueButton
 
 var _room_id := ""
 var _choice_locked := false
@@ -36,42 +45,51 @@ var _node_tween: Tween = null
 var _gem_embed_overlay: RunGemEmbedDialog = null
 var _pending_embed_response: Dictionary = {}
 var _event_reward_placement_active := false
+var _resolution_fx: CanvasLayer = null
+var _effect_snapshot: Dictionary = {}
+var _effect_origin := Vector2.ZERO
 
 
 func _ready() -> void:
-	theme = BattleUiTheme.build_theme()
+	theme = BattleUiTheme.build_event_theme()
 	_apply_theme()
 	_apply_copy()
+	_resolution_fx = EventResolutionFxClass.new()
+	_resolution_fx.name = "EventResolutionFx"
+	add_child(_resolution_fx)
+	var shake_targets: Array[Control] = [$Backdrop, $DarkWash, $SafeArea]
+	_resolution_fx.call("setup", shake_targets)
+	resized.connect(_fit_event_typography)
 	_room_id = AdventureService.current_room_id()
 	_refresh_room_view(RoomFlowService.enter_room(_room_id))
 
 
 func _apply_theme() -> void:
-	_top_bar.add_theme_stylebox_override("panel", _panel_style(EVENT_PANEL, EVENT_ACCENT, 12, 1))
+	_top_bar.add_theme_stylebox_override("panel", _panel_style(EVENT_PANEL.lightened(0.04), EVENT_ACCENT.darkened(0.12), 18, 1))
 	_art_frame.add_theme_stylebox_override("panel", _art_style())
-	_story_panel.add_theme_stylebox_override("panel", _panel_style(EVENT_PANEL, EVENT_EDGE, 0, 2))
-	_choice_panel.add_theme_stylebox_override("panel", _panel_style(EVENT_PANEL.darkened(0.03), EVENT_ACCENT.darkened(0.2), 0, 2))
-	var body_style := _panel_style(EVENT_INSET.lightened(0.025), EVENT_EDGE.darkened(0.28), 18, 1)
-	body_style.shadow_size = 0
-	_event_body.add_theme_stylebox_override("normal", body_style)
-	_event_body.add_theme_constant_override("line_separation", 8)
+	_story_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_choice_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_header_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
 	_chapter_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
-	_eyebrow.add_theme_color_override("font_color", EVENT_ACCENT.lightened(0.15))
-	_event_title.add_theme_color_override("font_color", BattleUiTheme.TEXT_GOLD)
-	_event_body.add_theme_color_override("default_color", BattleUiTheme.TEXT)
-	_choice_heading.add_theme_color_override("font_color", EVENT_ACCENT.lightened(0.18))
-	_feedback_label.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED)
+	_event_title.add_theme_font_override("font", BattleUiTheme.event_semibold_font())
+	_event_title.add_theme_color_override("font_color", Color("#f1e8d2"))
+	_feedback_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	_feedback_label.add_theme_font_override("normal_font", BattleUiTheme.event_font())
+	_feedback_label.add_theme_font_override("bold_font", BattleUiTheme.event_semibold_font())
+	_feedback_label.add_theme_color_override("default_color", Color("#ded8e8"))
+	_feedback_label.add_theme_constant_override("line_separation", 7)
+	_feedback_label.install_effect(EventTextEffectClass.new())
 	_art_glyph.add_theme_color_override("font_color", Color(EVENT_ACCENT, 0.34))
 	_artwork.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	_apply_choice_button(_continue_button)
 
 
 func _apply_copy() -> void:
 	_header_title.text = _t("event.ui.header")
-	_eyebrow.text = _t("event.ui.story")
-	_choice_heading.text = _t("event.ui.choices")
-	_continue_button.text = _t("event.ui.continue")
+	_eyebrow.text = ""
+	_choice_heading.text = ""
+	_continue_button.call("configure", _t("event.ui.continue"), "", "", true)
+	_continue_button.custom_minimum_size = Vector2(220, EventChoiceButtonClass.MIN_HEIGHT)
+	_continue_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_chapter_label.text = _t("event.ui.chapter", {
 		"current": AdventureService.get_current_chapter(),
 		"total": AdventureService.get_chapter_count(),
@@ -92,20 +110,27 @@ func _refresh_room_view(room_view: Dictionary) -> void:
 
 func _render_event_view(event_view: Dictionary, resolved: bool) -> void:
 	_event_title.text = str(event_view.get("title", _t("event.ui.error.title")))
-	_event_body.text = str(event_view.get("body", ""))
+	_set_event_body(str(event_view.get("body", "")))
+	_fit_event_typography()
 	_artwork.texture = _artwork_for_event(str(event_view.get("event_id", "")))
+	_art_frame.visible = true
+	_art_fallback.visible = _artwork.texture == null
 	_clear_options()
 	if not resolved and _show_event_reward_placement(event_view):
 		_choice_panel.visible = false
 		return
 	_choice_panel.visible = true
-	_choice_heading.text = _t("event.ui.resolved") if resolved else _t("event.ui.choices")
+	_choice_heading.text = ""
+	_choice_vbox.visible = not resolved
+	_resolved_vbox.visible = resolved
+	_feedback_label.visible = resolved
+	_set_result_summary(str(event_view.get("result_summary", "")) if resolved else "")
 	_continue_button.visible = resolved
 	if not resolved:
 		for raw_option in event_view.get("options", []):
 			if raw_option is Dictionary:
 				_add_option_button(raw_option as Dictionary)
-	_art_fallback.visible = _artwork.texture == null
+	_fit_option_scroll()
 	_play_node_transition()
 
 
@@ -124,66 +149,20 @@ func _artwork_for_event(event_id: String) -> Texture2D:
 
 
 func _add_option_button(option: Dictionary) -> void:
-	var button := Button.new()
-	button.custom_minimum_size = Vector2(0, 68)
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var button := EventChoiceButtonClass.new()
 	var copy := _option_copy(option)
 	var enabled := bool(option.get("enabled", true))
 	var disabled_reason := _disabled_reason(option)
-	button.text = ""
-	button.disabled = not enabled
-	button.set_meta("event_condition_disabled", not enabled)
-	if button.disabled and not disabled_reason.is_empty():
-		button.tooltip_text = disabled_reason
-	_add_option_content(
-		button,
+	button.configure(
 		str(copy.get("choice", _t("event.ui.choices"))),
 		str(copy.get("effect", "")),
 		disabled_reason,
 		enabled
 	)
-	_apply_choice_button(button)
+	button.set_meta("event_option_id", str(option.get("id", "")))
 	if not button.disabled:
 		button.pressed.connect(_on_option_pressed.bind(str(option.get("id", ""))))
 	_option_list.add_child(button)
-
-
-func _add_option_content(button: Button, choice: String, effect_text: String, disabled_reason: String, enabled: bool) -> void:
-	var content := Control.new()
-	content.name = "OptionContent"
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var title := Label.new()
-	title.name = "ChoiceTitle"
-	title.set_meta("event_choice_title", true)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.text = choice if enabled or disabled_reason.is_empty() else "%s  ·  %s" % [choice, disabled_reason]
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title.offset_left = 18.0
-	title.offset_top = 10.0
-	title.offset_right = -18.0
-	title.offset_bottom = 28.0
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	title.add_theme_font_size_override("font_size", 14)
-	var effect := Label.new()
-	effect.name = "EffectText"
-	effect.set_meta("event_effect_label", true)
-	effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	effect.text = effect_text
-	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	effect.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	effect.offset_left = 18.0
-	effect.offset_top = -28.0
-	effect.offset_right = -18.0
-	effect.offset_bottom = -10.0
-	effect.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	effect.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	effect.add_theme_font_size_override("font_size", 11)
-	content.add_child(title)
-	content.add_child(effect)
-	button.add_child(content)
 
 
 func _option_copy(option: Dictionary) -> Dictionary:
@@ -279,6 +258,8 @@ func _on_option_pressed(option_id: String) -> void:
 	if _choice_locked or option_id.is_empty():
 		return
 	_choice_locked = true
+	_effect_snapshot = _run_effect_snapshot()
+	_effect_origin = _option_effect_origin(option_id)
 	_set_options_disabled(true)
 	var carried_gem_before := _carried_gem_id()
 	var response := RoomFlowService.submit_room_command(_room_id, {
@@ -287,9 +268,11 @@ func _on_option_pressed(option_id: String) -> void:
 	})
 	if not bool(response.get("ok", false)):
 		_choice_locked = false
-		_feedback_label.text = _t("event.ui.error.action")
+		_effect_snapshot = {}
+		_set_result_summary(_t("event.ui.error.action"))
 		_set_options_disabled(false)
 		return
+	_play_resolution_effects()
 	var acquired_gem_now := carried_gem_before.is_empty() and not _carried_gem_id().is_empty()
 	if acquired_gem_now and _show_gem_embed_choice(response):
 		return
@@ -297,11 +280,6 @@ func _on_option_pressed(option_id: String) -> void:
 
 
 func _finish_option_response(response: Dictionary) -> void:
-	if str(response.get("state", "")) == "RESOLVED":
-		# A finishing choice already represents leaving the event; do not require
-		# a second "continue" action from the resolved screen.
-		AdventureService.finish_room_and_return()
-		return
 	_refresh_room_view(response)
 
 
@@ -363,7 +341,7 @@ func _on_gem_embed_slot_pressed(slot_index: int, force_overload: bool = false) -
 		return
 	var result := RunPlayerGemService.embed_carried_gem(RunService.get_run(), slot_index, force_overload)
 	if not bool(result.get("ok", false)):
-		_feedback_label.text = _t("gem_embed.unavailable")
+		_set_result_summary(_t("gem_embed.unavailable"))
 		if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
 			_gem_embed_overlay.unlock_after_failure()
 		return
@@ -393,7 +371,7 @@ func _submit_event_reward_placement(option_id: String) -> void:
 		"option_id": option_id,
 	})
 	if not bool(response.get("ok", false)):
-		_feedback_label.text = _t("event.ui.error.action")
+		_set_result_summary(_t("event.ui.error.action"))
 		if _gem_embed_overlay != null and is_instance_valid(_gem_embed_overlay):
 			_gem_embed_overlay.unlock_after_failure()
 		return
@@ -417,17 +395,119 @@ func _on_continue_pressed() -> void:
 
 func _render_error() -> void:
 	_event_title.text = _t("event.ui.error.title")
-	_event_body.text = _t("event.ui.error.body")
-	_choice_heading.text = _t("event.ui.resolved")
+	_set_event_body(_t("event.ui.error.body"))
+	_choice_heading.text = ""
+	_fit_event_typography()
 	_clear_options()
+	_choice_vbox.visible = false
+	_resolved_vbox.visible = true
+	_feedback_label.visible = false
 	_continue_button.visible = true
 	_play_node_transition()
 
 
 func _clear_options() -> void:
+	_option_scroll.scroll_vertical = 0
+	_option_scroll.custom_minimum_size.y = 0.0
 	for child in _option_list.get_children():
 		_option_list.remove_child(child)
 		child.queue_free()
+
+
+func _fit_option_scroll() -> void:
+	var visible_rows := mini(_option_list.get_child_count(), 4)
+	_option_scroll.custom_minimum_size.y = float(visible_rows * EventChoiceButtonClass.MIN_HEIGHT + maxi(visible_rows - 1, 0) * OPTION_GAP)
+
+
+func _fit_event_typography() -> void:
+	if not is_node_ready():
+		return
+	var compact_height := size.y <= 760.0
+	var title_length := _event_title.text.strip_edges().length()
+	var title_size := 26
+	if title_length > 18:
+		title_size = 23
+	elif title_length > 11:
+		title_size = 25
+	if compact_height:
+		title_size -= 1
+	_event_title.add_theme_font_size_override("font_size", title_size)
+
+	var body_length := str(_event_body.get_meta("event_body_text", "")).strip_edges().length()
+	var body_size := 18
+	if body_length > 220:
+		body_size = 16
+	elif body_length > 130:
+		body_size = 17
+	if compact_height:
+		body_size -= 1
+	var body_font := BattleUiTheme.event_font()
+	var line_separation := maxi(0, roundi(float(body_size) * BODY_LINE_HEIGHT_RATIO - body_font.get_height(body_size)))
+	for child in _event_body.get_children():
+		if child is RichTextLabel:
+			var paragraph := child as RichTextLabel
+			paragraph.add_theme_font_size_override("normal_font_size", body_size)
+			paragraph.add_theme_constant_override("line_separation", line_separation)
+
+
+func _set_event_body(body_text: String) -> void:
+	_event_body.set_meta("event_body_text", body_text)
+	for child in _event_body.get_children():
+		_event_body.remove_child(child)
+		child.queue_free()
+	for raw_paragraph in body_text.split("\n\n", false):
+		var paragraph_text := str(raw_paragraph).strip_edges()
+		if paragraph_text.is_empty():
+			continue
+		var paragraph := RichTextLabel.new()
+		paragraph.name = "Paragraph%d" % _event_body.get_child_count()
+		paragraph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		paragraph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		paragraph.fit_content = true
+		paragraph.scroll_active = false
+		paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		paragraph.bbcode_enabled = true
+		paragraph.install_effect(EventTextEffectClass.new())
+		paragraph.text = EventTextFormatter.body_bbcode(paragraph_text)
+		paragraph.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		paragraph.add_theme_font_override("normal_font", BattleUiTheme.event_font())
+		paragraph.add_theme_color_override("default_color", BODY_COLOR)
+		_event_body.add_child(paragraph)
+
+
+func _set_result_summary(summary: String) -> void:
+	_feedback_label.text = EventTextFormatter.result_bbcode(summary) if not summary.is_empty() else ""
+
+
+func _run_effect_snapshot() -> Dictionary:
+	var health := RunService.get_player_run_snapshot()
+	return {
+		"hp": int(health.get("hp", 0)),
+		"max_hp": maxi(1, int(health.get("max_hp", 1))),
+		"gold": RunService.get_balance("gold"),
+	}
+
+
+func _option_effect_origin(option_id: String) -> Vector2:
+	for child in _option_list.get_children():
+		if child is Control and str(child.get_meta("event_option_id", "")) == option_id:
+			return (child as Control).get_global_rect().get_center()
+	return _choice_panel.get_global_rect().get_center()
+
+
+func _play_resolution_effects() -> void:
+	if _effect_snapshot.is_empty() or _resolution_fx == null:
+		return
+	var before := _effect_snapshot
+	var after := _run_effect_snapshot()
+	_effect_snapshot = {}
+	var delta := {
+		"hp": int(after.get("hp", 0)) - int(before.get("hp", 0)),
+		"gold": int(after.get("gold", 0)) - int(before.get("gold", 0)),
+	}
+	if int(delta.get("hp", 0)) == 0 and int(delta.get("gold", 0)) == 0:
+		return
+	_resolution_fx.call("play", delta, before, after, _effect_origin)
 
 
 func _set_options_disabled(disabled: bool) -> void:
@@ -435,7 +515,8 @@ func _set_options_disabled(disabled: bool) -> void:
 		if child is Button:
 			var button := child as Button
 			button.disabled = disabled or bool(button.get_meta("event_condition_disabled", false))
-			_apply_choice_button(button)
+			if button.has_method("refresh_visual_state"):
+				button.call("refresh_visual_state")
 
 
 func _play_node_transition() -> void:
@@ -457,46 +538,8 @@ func _play_node_transition() -> void:
 		_node_tween.tween_property(option, "modulate:a", 1.0, 0.16).set_delay(0.1 + i * 0.04)
 
 
-func _apply_choice_button(button: Button) -> void:
-	var disabled := button.disabled
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var style := _choice_button_style(disabled)
-		if state == "hover" and not disabled:
-			style.bg_color = style.bg_color.lightened(0.08)
-			style.border_color = EVENT_ACCENT.lightened(0.18)
-		elif state == "pressed" and not disabled:
-			style.bg_color = style.bg_color.darkened(0.1)
-			style.shadow_size = 0
-		button.add_theme_stylebox_override(state, style)
-	button.add_theme_font_override("font", BattleUiTheme.pixel_font())
-	button.add_theme_font_size_override("font_size", 14)
-	button.add_theme_color_override("font_color", BattleUiTheme.TEXT if not disabled else BattleUiTheme.TEXT_MUTED)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	var title := button.get_node_or_null("OptionContent/ChoiceTitle") as Label
-	if title != null:
-		title.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED if disabled else BattleUiTheme.TEXT)
-	var effect := button.get_node_or_null("OptionContent/EffectText") as Label
-	if effect != null:
-		effect.add_theme_color_override("font_color", BattleUiTheme.TEXT_MUTED if disabled else BattleUiTheme.TEXT_GOLD)
-
-
-func _choice_button_style(disabled: bool) -> StyleBoxFlat:
-	var style := _panel_style(EVENT_INSET, EVENT_EDGE, 12, 1)
-	style.shadow_size = 1
-	if disabled:
-		style.bg_color = EVENT_INSET.darkened(0.18)
-		style.border_color = EVENT_EDGE.darkened(0.35)
-		style.shadow_size = 0
-	return style
-
-
-func _art_style() -> StyleBoxFlat:
-	var style := _panel_style(Color("#0a0a10"), EVENT_EDGE.darkened(0.18), 5, 2)
-	style.shadow_size = 6
-	style.shadow_offset = Vector2(0, 3)
-	return style
+func _art_style() -> StyleBoxEmpty:
+	return StyleBoxEmpty.new()
 
 
 func _panel_style(bg: Color, edge: Color, margin: int, border_width: int) -> StyleBoxFlat:

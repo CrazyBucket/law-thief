@@ -268,6 +268,16 @@ static func _apply_tags_at_cell(
 				"center_damage": GemEffects.red_explosion_center_damage(ctx.base_damage, gem_ctx),
 				"splash_damage": GemEffects.red_explosion_splash_damage(ctx.attacker.base_attack, gem_ctx),
 			})
+	# Poison is a hit effect. Capture and apply it while the victim is still
+	# alive; otherwise ordinary attacks that kill a low-HP monster erase the
+	# status path before it can ever resolve.
+	var hit_unit := ctx.effect_anchor_at(hit_cell, target)
+	var had_burning_before := hit_unit != null and hit_unit.has_status(Constants.STATUS_BURNING)
+	var poison_applied := false
+	if ctx.has_tag(TAG_POISON):
+		_apply_poison_at_cell(ctx, hit_cell, hit_unit, gem_ctx)
+		poison_applied = true
+
 	var dealt := 0
 	if target != null and target.alive:
 		dealt = ctx.damage_unit(target, ctx.base_damage, reason, {"pos": hit_cell, "active_attack": true, "attack_event_id": ctx.payload.get("current_attack_event_id", ""), "segment_index": ctx.payload.get("attack_segment_index", 0), "segment_count": ctx.payload.get("attack_segment_count", 1)})
@@ -280,12 +290,9 @@ static func _apply_tags_at_cell(
 		if entity != null and entity.alive and entity.max_hp > 0:
 			EntityRules.damage_entity(ctx.state, entity, ctx.base_damage, ctx.attacker.uid, ctx.events)
 
-	var hit_unit := ctx.effect_anchor_at(hit_cell, target)
-	var had_burning_before := hit_unit != null and hit_unit.has_status(Constants.STATUS_BURNING)
-
 	for entry in HIT_TAG_HANDLERS:
 		var tag := str(entry.get("tag", ""))
-		if tag.is_empty() or not ctx.has_tag(tag):
+		if tag.is_empty() or not ctx.has_tag(tag) or (tag == TAG_POISON and poison_applied):
 			continue
 		var handler := str(entry.get("handler", ""))
 		_apply_hit_tag_handler(ctx, handler, hit_cell, hit_unit, gem_ctx, had_burning_before)

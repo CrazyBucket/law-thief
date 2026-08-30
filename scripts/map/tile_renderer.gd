@@ -5,6 +5,7 @@ const IsoCoordinates = preload("res://scripts/map/iso_coordinates.gd")
 const PoisonCloudRendererClass := preload("res://scripts/map/poison_cloud_renderer.gd")
 const _AdventureRoomDisplay := preload("res://scripts/map/adventure_room_display.gd")
 const _AdventureRoomIcons := preload("res://scripts/ui/adventure_room_icons.gd")
+const _UiTheme := preload("res://scripts/ui/battle_ui_theme.gd")
 const GRASS_SPROUTS_PATH := "res://assets/overlays/vegetation/overlay_grass_sprouts.png"
 const GRASS_PATCH_PATH := "res://assets/overlays/vegetation/overlay_grass_patch.png"
 const GRASS_TALL_PATH := "res://assets/overlays/vegetation/overlay_grass_tall.png"
@@ -256,7 +257,7 @@ static func _draw_room_label(canvas: Control, center: Vector2, tile_id: String) 
 		canvas.draw_circle(icon_center, IsoCoordinates.visual(15.0), Color(room_color.darkened(0.42), 0.16))
 		canvas.draw_texture_rect(icon_tex, icon_rect, false, Color.WHITE)
 	else:
-		var font: Font = ThemeDB.fallback_font
+		var font: Font = _UiTheme.ui_font()
 		var label: String = display["label"]
 		var short_label := str(display.get("short", label.substr(0, 1)))
 		var short_size := 18

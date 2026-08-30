@@ -53,10 +53,11 @@ static func _red_skill_override_intent(
 	if player == null or not player.alive:
 		return null
 	var profile: Dictionary = AIProfiles.get_profile(unit.ai_profile_id)
+	var move_budget := StatusRules.effective_move_points(unit, unit.move_points)
 	var reachable: Array[Vector2i] = []
 	if StatusRules.can_move(unit):
 		reachable = BoardUtils.reachable_cells(
-			state, unit.pos, unit.move_points, unit.uid, {}, cell_blockers, unit
+			state, unit.pos, move_budget, unit.uid, {}, cell_blockers, unit
 		)
 	reachable.append(unit.pos)
 	var candidates: Array = []
@@ -65,7 +66,7 @@ static func _red_skill_override_intent(
 			continue
 		if anchor != unit.pos:
 			var path := BoardUtils.path_toward(
-				state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers, unit
+				state, unit.pos, anchor, move_budget, unit.uid, {}, cell_blockers, unit
 			)
 			if path.is_empty() or path[path.size() - 1] != anchor:
 				continue
@@ -95,5 +96,5 @@ static func _path_to_target_anchor(
 	if anchor == unit.pos:
 		return []
 	return BoardUtils.path_toward(
-		state, unit.pos, anchor, unit.move_points, unit.uid, {}, cell_blockers, unit
+		state, unit.pos, anchor, StatusRules.effective_move_points(unit, unit.move_points), unit.uid, {}, cell_blockers, unit
 	)

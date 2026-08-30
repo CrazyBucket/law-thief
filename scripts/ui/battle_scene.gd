@@ -262,7 +262,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 			action,
 			get_viewport().get_mouse_position(),
 			_controller.check_slot_action,
-			TranslationServer.translate(title_key)
+			"◆ 调包 · %s" % TranslationServer.translate(title_key),
+			_swap_selection_context()
 		)
 		_refresh()
 		return
@@ -346,6 +347,20 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 				_set_inspect_target(cell)
 	if not presentation_refreshed:
 		_refresh()
+
+
+func _swap_selection_context() -> String:
+	if not _controller.has_swap_source():
+		return "从任意单位选择一颗已嵌入的宝石。两颗宝石将直接互换位置。"
+	var state := _controller.state
+	var source: UnitState = state.units.get(_controller.swap_source_unit_uid, null) if state != null else null
+	if source == null:
+		return "已选第一颗宝石。选择另一颗已嵌入的宝石完成调包。"
+	var slot := source.get_slot_by_index(_controller.swap_source_slot_index)
+	var gem: GemState = state.gems.get(slot.gem_uid, null) if slot != null else null
+	var gem_name := DataRegistry.get_gem_display_name(gem.gem_id) if gem != null else "宝石"
+	var unit_name := DataRegistry.get_unit_display_name(source.unit_def_id)
+	return "已选：%s · %s\n选择第二颗宝石后立即交换。" % [unit_name, gem_name]
 
 func _set_preview_panel_visible(shown: bool, immediate: bool = false) -> void:
 	_ensure_preview_view().set_visible(shown, immediate)

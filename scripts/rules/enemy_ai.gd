@@ -58,6 +58,7 @@ static func decide_against_target(
 	## 返回 { "move_path": Array[Vector2i], "action": ActionCandidate }
 	var profile: Dictionary = AIProfiles.get_profile(enemy.ai_profile_id)
 	var path_profile: Dictionary = _build_path_cost_profile(profile)
+	var move_budget := StatusRules.effective_move_points(enemy, enemy.move_points)
 	var candidates: Array = _generate_all_candidates(state, enemy, target, profile, cell_blockers)
 
 	if candidates.is_empty():
@@ -73,7 +74,7 @@ static func decide_against_target(
 			state,
 			enemy.pos,
 			best.move_target,
-			enemy.move_points,
+			move_budget,
 			enemy.uid,
 			path_profile,
 			cell_blockers,
@@ -106,6 +107,7 @@ static func _generate_all_candidates(
 ) -> Array:
 	var candidates: Array = []
 	var path_profile: Dictionary = _build_path_cost_profile(profile)
+	var move_budget := StatusRules.effective_move_points(enemy, enemy.move_points)
 
 	# 获取所有可达格子（包括原地）
 	var reachable: Array[Vector2i] = []
@@ -113,7 +115,7 @@ static func _generate_all_candidates(
 		reachable = [] as Array[Vector2i]
 	else:
 		reachable = BoardUtils.reachable_cells(
-			state, enemy.pos, enemy.move_points, enemy.uid, path_profile, cell_blockers, enemy
+			state, enemy.pos, move_budget, enemy.uid, path_profile, cell_blockers, enemy
 		)
 	reachable.append(enemy.pos)  # 原地也是选项
 
@@ -331,7 +333,7 @@ static func _evaluate_move_only(
 		state,
 		enemy.pos,
 		target.pos,
-		enemy.move_points,
+		StatusRules.effective_move_points(enemy, enemy.move_points),
 		enemy.uid,
 		path_profile,
 		cell_blockers,
